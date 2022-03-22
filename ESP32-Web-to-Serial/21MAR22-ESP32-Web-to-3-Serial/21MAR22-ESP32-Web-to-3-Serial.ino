@@ -41,15 +41,15 @@ void setup(){
 //////////                                                                //////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
         
-        if ((p->name())== "param0" & (p->value()) == "1"){
+        if ((p->name())== "param0" & (p->value()) == "0"){
 //        Serial.println("Serial0 Chosen with If Statement");
         serialNr = 1;
         };
-    if ((p->name())== "param0" & (p->value()) == "2"){
+    if ((p->name())== "param0" & (p->value()) == "1"){
 //        Serial.println("Serial 1 Chosen with If Statement");
         serialNr = 2;
         };
-    if ((p->name())== "param0" & (p->value()) == "3"){
+    if ((p->name())== "param0" & (p->value()) == "2"){
 //      Serial.println("Serial 2 Chosen with If Statement");
           serialNr = 3;
     };
