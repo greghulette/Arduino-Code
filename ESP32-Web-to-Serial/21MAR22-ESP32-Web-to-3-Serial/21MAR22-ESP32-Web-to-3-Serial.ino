@@ -11,7 +11,7 @@ AsyncWebServer server(80);
 #define RXD2 25
 #define TXD2 27 
 void setup(){
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial1.begin(9600, SERIAL_8N1, RXD1, TXD1);
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   
