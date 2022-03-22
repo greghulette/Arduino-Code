@@ -27,18 +27,53 @@ void setup(){
  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
  
-    int paramsNr = request->params();
+    int paramsNr = request->params();               // Gets the number of parameters sent
     Serial.println(paramsNr);
-    for(int i=0;i<paramsNr;i++){
+    int serialNr;                                   // Variable for selecting which Serial port to send out
+    for(int i=0;i<paramsNr;i++){                    //Loops through all the paramaters
  
         AsyncWebParameter* p = request->getParam(i);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////                                                                //////////////////////////        
+//////////  These If statements choose the Serial port to utilize.        //////////////////////////
+//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
+//////////                                                                //////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+        
+        if ((p->name())== "param0" & (p->value()) == "1"){
+//        Serial.println("Serial0 Chosen with If Statement");
+        serialNr = 1;
+        };
+    if ((p->name())== "param0" & (p->value()) == "2"){
+//        Serial.println("Serial 1 Chosen with If Statement");
+        serialNr = 2;
+        };
+    if ((p->name())== "param0" & (p->value()) == "3"){
+//      Serial.println("Serial 2 Chosen with If Statement");
+          serialNr = 3;
+    };
+    
         Serial.print("Param name: ");
         Serial.println(p->name());
         Serial.print("Param value: ");
         Serial.println(p->value());
-        writeString(p->value());
-        writeString1(p->value());
-        writeString2(p->value());
+        Serial.println(serialNr);
+  
+        if (serialNr == 1){
+          Serial.println("Writing to Serial 0");      
+          writeString(p->value());
+        };
+         if (serialNr == 2){
+          Serial.println("Writing to Serial 1");      
+          writeString1(p->value());
+        } ;      
+          if (serialNr == 3){
+          Serial.println("Writing to Serial 2");      
+          writeString2(p->value());
+        };
+//        writeString1(p->value());
+//        writeString2(p->value());
 
         Serial.println("------");
         delay(50);
