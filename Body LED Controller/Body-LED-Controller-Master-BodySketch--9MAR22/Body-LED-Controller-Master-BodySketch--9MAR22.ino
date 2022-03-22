@@ -197,9 +197,7 @@
       #define AUXRC1PIN         9    //9
       #define AUXRC2PIN         8    //8
 
-      //Adafruit 16ch I2C Servo Controller
-      #define OEPIN 2   // This is the pin used to send a signal to turn power to the servos off and on.
-                        // This allows us to only power the servos when they are moving, helping with much of the annoying hum issues.
+     
 
       //Trigger Digital Pin Assignment
       uint8_t triggerpins[10]  = {23,25,27,29,31,33,35,37,39,41};
@@ -223,7 +221,6 @@
       #define AUX1_PIN              10
       #define AUX2_PIN              8
       #define AUX3_PIN              9
-//      #define AUX4_PIN             10
       #define analoginput 10
 
 //      int trimpins[5]  = {2,3,4,5,6};
@@ -875,7 +872,7 @@ void mainLoop() {
             //if(inputBuffer[commandLength-1] == '\r') {commandLength = commandLength-1;}
 
             if(commandLength >= 3) {
-                if(inputBuffer[0]=='P') {varName = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0'); }             //  Converts 2 Door Sequence Indentifier Characters to Integer
+                if(inputBuffer[0]=='P') {varName = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0'); }             //  Converts 2 programming  Indentifier Characters to Integer
                 else if (inputBuffer[0]=='G') {}     //  Converts 2 Gadget Sequence Indentifier Characters to Integer
                 else {displayState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}                        //  Converts Sequence character values into an integer.
             
