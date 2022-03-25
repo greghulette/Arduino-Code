@@ -197,7 +197,9 @@
       #define AUXRC1PIN         9    //9
       #define AUXRC2PIN         8    //8
 
-     
+      //Adafruit 16ch I2C Servo Controller
+      #define OEPIN 2   // This is the pin used to send a signal to turn power to the servos off and on.
+                        // This allows us to only power the servos when they are moving, helping with much of the annoying hum issues.
 
       //Trigger Digital Pin Assignment
       uint8_t triggerpins[10]  = {23,25,27,29,31,33,35,37,39,41};
@@ -221,6 +223,7 @@
       #define AUX1_PIN              10
       #define AUX2_PIN              8
       #define AUX3_PIN              9
+//      #define AUX4_PIN             10
       #define analoginput 10
 
 //      int trimpins[5]  = {2,3,4,5,6};
@@ -238,7 +241,7 @@
 //////////////////////////////////////////////////////////////////////
 
   #define LDP_PIXELS  32      //32
-  #define MAINT_PIXELS  32    //New to sketch
+  #define MAINT_PIXELS  36    //New to sketch
   #define CS_PIXELS    6      //6
   #define VU_PIXELS    9      //9
 
@@ -473,11 +476,11 @@
 ///*****               Declare DotStar Objects               *****///
 //////////////////////////////////////////////////////////////////////
 Adafruit_DotStar stripLDP = Adafruit_DotStar(LDP_PIXELS, LDP_DATA_PIN, LDP_CLOCK_PIN, DOTSTAR_BGR);
-Adafruit_DotStar stripMAINT = Adafruit_DotStar(MAINT_PIXELS, MAINT_DATA_PIN, MAINT_CLOCK_PIN, DOTSTAR_BGR);  //New to sketch
-Adafruit_DotStar stripCS1 = Adafruit_DotStar(CS_PIXELS, CS1_DATA_PIN, CS1_CLOCK_PIN, DOTSTAR_BGR);
-Adafruit_DotStar stripCS2 = Adafruit_DotStar(CS_PIXELS, CS2_DATA_PIN, CS2_CLOCK_PIN, DOTSTAR_BGR);
-Adafruit_DotStar stripVU1  = Adafruit_DotStar(VU_PIXELS, VU1_DATA_PIN, VU1_CLOCK_PIN, DOTSTAR_BGR);
-Adafruit_DotStar stripVU2 = Adafruit_DotStar(VU_PIXELS, VU2_DATA_PIN, VU2_CLOCK_PIN, DOTSTAR_BGR);
+Adafruit_DotStar stripMAINT = Adafruit_DotStar(MAINT_PIXELS, MAINT_DATA_PIN, MAINT_CLOCK_PIN, DOTSTAR_RBG);  //New to sketch
+Adafruit_DotStar stripCS1 = Adafruit_DotStar(CS_PIXELS, CS1_DATA_PIN, CS1_CLOCK_PIN, DOTSTAR_RBG);
+Adafruit_DotStar stripCS2 = Adafruit_DotStar(CS_PIXELS, CS2_DATA_PIN, CS2_CLOCK_PIN, DOTSTAR_RBG);
+Adafruit_DotStar stripVU1  = Adafruit_DotStar(VU_PIXELS, VU1_DATA_PIN, VU1_CLOCK_PIN, DOTSTAR_RBG);
+Adafruit_DotStar stripVU2 = Adafruit_DotStar(VU_PIXELS, VU2_DATA_PIN, VU2_CLOCK_PIN, DOTSTAR_RBG);
 
 //////////////////////////////////////////////////////////////////////
 ///*****              Declare Led Control Object              *****///
@@ -872,12 +875,12 @@ void mainLoop() {
             //if(inputBuffer[commandLength-1] == '\r') {commandLength = commandLength-1;}
 
             if(commandLength >= 3) {
-                if(inputBuffer[0]=='P') {varName = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0'); }             //  Converts 2 programming  Indentifier Characters to Integer
+                if(inputBuffer[0]=='P') {varName = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0'); }             //  Converts 2 Door Sequence Indentifier Characters to Integer
                 else if (inputBuffer[0]=='G') {}     //  Converts 2 Gadget Sequence Indentifier Characters to Integer
                 else {displayState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}                        //  Converts Sequence character values into an integer.
             
                 if(commandLength >= 4) {
-                  if(inputBuffer[0]=='P' || inputBuffer[0]=='p') {varNameNum1 = inputBuffer[3]-'0';}
+                  if(inputBuffer[0]=='P') {varNameNum1 = inputBuffer[3]-'0';}
                   else {typeState = inputBuffer[3]-'0';}                   //  Check to see if command contains a type value, and if so convert it to integer.
                 }
                 else {
@@ -976,7 +979,6 @@ void mainLoop() {
 
                 if(inputBuffer[0]=='P' || inputBuffer[0]=='p') {
                   Prog_command[0]   = '\0';                                                            // Flushes Array
-//                  Prog_command[0] = displayState;
                   Prog_command[0] = varName;
                   Prog_command[1] = varNameNum1;
                   Prog_command[2] = varNameNum2;
@@ -1014,8 +1016,8 @@ void mainLoop() {
         case 7: break;  //ext vu offset
         case 8: break;  //ext vu baseline
         case 9:  clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
-        }
-  }
+        };
+  };
   
   if(CS_command[0]) {
       switch (CS_command[0]) {                                                                                              //  Determine what sequence function to execute.
