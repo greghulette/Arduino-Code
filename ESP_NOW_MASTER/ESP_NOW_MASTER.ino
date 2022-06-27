@@ -1,6 +1,11 @@
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
 
+#define DEBUG
+
+
+
+
 #include <WiFi.h>
 //#include "ESPAsyncWebServer.h"
 //#include <WiFiClient.h>
@@ -31,9 +36,70 @@
 ///*****                                                                                                       *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-String inputString;         // a string to hold incoming data
-String inputStringCommand;
-volatile boolean stringComplete  = false;      // whether the serial string is complete
+
+
+//////////////////////////////////////////////////////////////////////
+///*****        Command Varaiables, Containers & Flags        *****///
+//////////////////////////////////////////////////////////////////////
+    
+    char inputBuffer[25];
+    String inputString;         // a string to hold incoming data
+    String inputStringCommand;
+    volatile boolean stringComplete  = false;      // whether the serial string is complete
+    String autoInputString;         // a string to hold incoming data
+    volatile boolean autoComplete    = false;    // whether an Auto command is setA
+    int displayState;
+    int typeState;
+    int commandLength;
+    int paramVar = 9;
+
+    uint32_t ESP_command[6]  = {0,0,0,0,0,0};
+    int commandState = 0;
+
+    uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+    int espNowCommandState = 0;
+    String espNowCommandStateString;
+    String tempESPNOWTargetID;
+ 
+#ifdef DEBUG
+  #define DEBUG_PRINT(x)     Serial.print (x)
+  #define DEBUG_PRINTLN(x)  Serial.println (x)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTLN(x) 
+#endif
+ 
+  //////////////////////////////////////////////////////////////////////
+  ///*****       Startup and Loop Variables                     *****///
+  //////////////////////////////////////////////////////////////////////
+  
+  boolean startUp = true;
+  boolean isStartUp = true;
+  
+  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
+  unsigned long MLMillis;
+  byte mainLoopDelayVar = 5;
+
+  //////////////////////////////////////////////////////////////////////
+  ///******       Serial Ports Specific Setup                   *****///
+  //////////////////////////////////////////////////////////////////////
+
+  #define RXBC 15
+  #define TXBC 16 
+  #define RXD2 25
+  #define TXD2 26 
+SoftwareSerial bcSerial;
+#define BAUD_RATE 9600
+
+  //////////////////////////////////////////////////////////////////////
+  ///******      Arduino Mega Reset Pin Specific Setup          *****///
+  //////////////////////////////////////////////////////////////////////
+
+  #define RST 4
+
+  //////////////////////////////////////////////////////////////////////
+  ///******            ESP- Specific Setup                     *****///
+  //////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
 /////*****              ESP NOW Set Up                       *****///
@@ -128,66 +194,12 @@ volatile boolean stringComplete  = false;      // whether the serial string is c
         
     }
 
-//////////////////////////////////////////////////////////////////////
-///*****        Command Varaiables, Containers & Flags        *****///
-//////////////////////////////////////////////////////////////////////
-    
-    char inputBuffer[25];
-    
-    String autoInputString;         // a string to hold incoming data
-    volatile boolean autoComplete    = false;    // whether an Auto command is setA
-    int displayState;
-    int typeState;
-    int commandLength;
-    int paramVar = 9;
-
-    uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-    int commandState = 0;
-
-    uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-    int espNowCommandState = 0;
-    String espNowCommandStateString;
- 
-  //////////////////////////////////////////////////////////////////////
-  ///*****       Startup and Loop Variables                     *****///
-  //////////////////////////////////////////////////////////////////////
-  
-  boolean startUp = true;
-  boolean isStartUp = true;
-  
-  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
-  unsigned long MLMillis;
-  byte mainLoopDelayVar = 5;
-
-  //////////////////////////////////////////////////////////////////////
-  ///******       Serial Ports Specific Setup                   *****///
-  //////////////////////////////////////////////////////////////////////
-
-  #define RXD1 15
-  #define TXD1 16 
-  #define RXD2 25
-  #define TXD2 26 
-SoftwareSerial bodyControllerSerial;
-#define BAUD_RATE 9600
-
-  //////////////////////////////////////////////////////////////////////
-  ///******      Arduino Mega Reset Pin Specific Setup          *****///
-  //////////////////////////////////////////////////////////////////////
-
-  #define RST 4
-
-  //////////////////////////////////////////////////////////////////////
-  ///******            ESP- Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
-
-
-
 
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(9600);
 //  .begin(9600, SERIAL_8N1, RXD1, TXD1);
-  bodyControllerSerial.begin(BAUD_RATE, SWSERIAL_8N1, RXD1, TXD2, false, 95);
+  bcSerial.begin(BAUD_RATE, SWSERIAL_8N1, RXBC, TXBC, false, 95);
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   delay(50);
 //  Serial.println(" ");
@@ -252,8 +264,8 @@ void loop(){
    if(Serial.available()){
    serialEvent();
    }
-   if(bodyControllerSerial.available()){
-   serialOneEvent();
+   if(bcSerial.available()){
+   bcSerialEvent();
    }
    if(Serial2.available()){
    serialTwoEvent();
@@ -265,28 +277,35 @@ void loop(){
 //     if(inputBuffer[0]=='S'  || inputBuffer[0]=='s') {inputBuffer[0]='E' || inputBuffer[0]=='e';}
      if( inputBuffer[0]=='E' ||        // Door Designator
          inputBuffer[0]=='e' ||        // Door Designator
-         inputBuffer[0]=='S'
+         inputBuffer[0]=='S' ||
+        inputBuffer[0]=='s'
+
 
 
          ) {
             commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            Serial.print("Command Length is: ");
-            Serial.println(commandLength);
+            DEBUG_PRINT("Command Length is: " );DEBUG_PRINTLN(commandLength);
+//            Serial.println(commandLength);
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
                 };
-                if(inputBuffer[0]=='S') {
+                if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
                   for (int i=1; i<=commandLength; i++)
                    {char inCharRead = inputBuffer[i];
                 // add it to the inputString:
                 inputStringCommand += inCharRead;
                    }
-                   Serial.print("Full Command Recieved: ");
-                   Serial.println(inputStringCommand);
-                   targetID = inputStringCommand.substring(0,2);
+                   DEBUG_PRINT("\nFull Command Recieved: ");DEBUG_PRINTLN(inputStringCommand);
+//                   Serial.println(inputStringCommand);
+                   espNowCommandStateString = inputStringCommand.substring(0,2);
+                   espNowCommandState = espNowCommandStateString.toInt();
+                   
+                   Serial.print("ESP NOW Command State: ");
+                   Serial.println(espNowCommandState);
+                   targetID = inputStringCommand.substring(2,4);
                    Serial.print ("Target ID: ");
                    Serial.println(targetID);
-                   commandSubString = inputStringCommand.substring(2,commandLength);
+                   commandSubString = inputStringCommand.substring(4,commandLength);
                    Serial.print("Command to Forward: ");
                    Serial.println(commandSubString);
                   
@@ -326,6 +345,14 @@ void loop(){
                   ESP_command[0] = commandState;
                 }
 
+                 if(inputBuffer[0]=='S' || inputBuffer[0] == 's') {
+                  ESPNOW_command[0]   = '\0';                                                            // Flushes Array
+                  ESPNOW_command[0] = espNowCommandState;
+                  tempESPNOWTargetID = targetID;
+//                  ESPNOW_command[2] = commandSubString;
+                }
+
+
               }
             }
 
@@ -335,7 +362,9 @@ void loop(){
        inputBuffer[0] = '\0';
        int commandState;
        inputStringCommand = "";
-       targetID="";
+       targetID = "";
+       espNowCommandState =0;
+//       targetID="";
 //       Serial.println("command Proccessed");
 
      }
@@ -349,7 +378,16 @@ void loop(){
                     delay(3000);
                     ESP.restart();
                     ESP_command[0]   = '\0'; break;
-            case 3: testESPNOW(); break;
+//            case 3: #define DEBUG; break;
+          }
+        }
+        if(ESPNOW_command[0]){
+          switch(ESPNOW_command[0]){
+            case 1: Serial.println("Case 1 Selected");
+                  ESPNOW_command[0] = '\0'; break;
+            case 2: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+                  
+            
           }
         }
   if(isStartUp) {
@@ -376,19 +414,20 @@ void loop(){
         }
                Serial.println(inputString);
       }
-       void serialOneEvent() {
+       void bcSerialEvent() {
         //int count = 0;
-       while (bodyControllerSerial.available()) {
+       while (bcSerial.available()) {
           // get the new byte:
-          char inChar = (char)bodyControllerSerial.read();
+          char inChar = (char)bcSerial.read();
+          delay(5);
           // add it to the inputString:
          inputString += inChar;
           if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
             stringComplete = true;            // set a flag so the main loop can do something about it.
-          }
+           Serial.println(inputString);
+           }
 
         }
-//               Serial.println(inputString);
       }
 
       void serialTwoEvent() {
@@ -414,11 +453,11 @@ void loop(){
           Serial.write(completeString[i]);
         }
       }
-      void writeString1(String stringData){
+      void writebcSerial(String stringData){
         String completeString = stringData + '\r';
         for (int i=0; i<completeString.length(); i++)
         {
-          bodyControllerSerial.write(completeString[i]);
+          bcSerial.write(completeString[i]);
         }
       }
       
@@ -435,13 +474,22 @@ void loop(){
 ///*****             Test Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
-  void sendESPNOWCommand(String sdest,String scomm){
+  void sendESPNOWCommand(String starget,String scomm){
 //    Serial.println("sendESPNOWCommand Function called");
 //    destination = sdest;
 //    command = scomm;
+String sdest;
+if (starget == "DS" || starget == "RS" || starget == "HP"){
+    sdest = "Dome";
+  }
     commandsToSendtoBroadcast.structDestinationID = sdest;
+    Serial.print("sdest: ");
+    Serial.println(sdest);
+    commandsToSendtoBroadcast.structTargetID = starget;
     commandsToSendtoBroadcast.structSenderID = "Body";
     commandsToSendtoBroadcast.structCommand = scomm;
+//    Serial.print("Command to Send in Function: ");
+//    Serial.println(commandsToSendtoBroadcast.structCommand);
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
    if (result == ESP_OK) {
@@ -451,38 +499,5 @@ void loop(){
       Serial.println(result);
       Serial.println("Error sending the data");
     }
+        ESPNOW_command[0] = '\0';
    }
-//
-//  void parseESPNOWCommand(String idest, String icomm){
-//    
-//  }
-//AnimationPlayer player(servoSequencer);
-  void testESPNOW(){
-    sendESPNOWCommand("Dome","d03");
-    Serial.println("testESPNOW Function called");
-    ESP_command[0] = '\0';
-//    ANIMATION_PLAY_ONCE(player, WaveFullBody);
-
-    };
-
-
-////
-//  ANIMATION(WaveFullBody)
-//  {
-//    DO_START()
-////    DO_SEQUENCE(SeqPanelWave,ALL_SERVOS_MASK)
-////      {
-//DO_ONCE_AND_WAIT({SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
-// ; }, 2100)
-//
-////    DO_ONCE_LABEL(looping, {
-////        printf("Looping all over again\n");
-////    })
-////    DO_WHILE_SEQUENCE(looping)
-//    DO_ONCE_AND_WAIT({
-////       sendESPNOWCommand("ESP","d14");
-////        StealthCommand("tmprnd=60");
-//    }, 10)
-//    DO_END()
-//}
-//  

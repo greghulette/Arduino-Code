@@ -9,6 +9,8 @@
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
 #include <esp_now.h>
+#include <SoftwareSerial.h>
+
 
 //reeltwo libaries
 #include "ReelTwo.h"
@@ -48,12 +50,14 @@
     uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 
   // Define variables to store commands to be sent
-      String senderID;
+    String senderID;
     String destinationID;
+    String targetID;
     String command;
 
   // Define variables to store incoming commands
     String incomingDestinationID;
+    String incomingTargetID;  
     String incomingSenderID;
     String incomingCommand;
     
@@ -65,6 +69,7 @@
     typedef struct struct_message {
         String structSenderID;
         String structDestinationID;
+        String structTargetID;  
         String structCommand;
     } struct_message;
 
@@ -98,18 +103,33 @@
       Serial.print("Bytes received from Dome: ");
       Serial.println(len);
       incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+      incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
       incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
       incomingCommand = commandsToReceiveFromBroadcast.structCommand;
       Serial.print("Sender ID = ");
       Serial.println(incomingSenderID);
       Serial.print("Destination ID= ");
       Serial.println(incomingDestinationID);
-      Serial.print("Command = ");
-      Serial.println(incomingCommand); 
+     
       if (incomingDestinationID =="Dome"){
         Serial.println("Accepted");
+        Serial.print("Target ID= ");
+        Serial.println(incomingTargetID);
+        if (incomingTargetID == "DS"){
+        Serial.print("Execute Local Command = ");
+        Serial.println(incomingCommand); 
         inputString = incomingCommand;
         stringComplete = true;   
+        } else if (incomingTargetID == "RS"){
+          Serial.println("Sending out rsSerial");
+          writeRSSerial(incomingCommand);
+          
+        } else if (incomingTargetID == "HP"){
+          Serial.println("Sending out hpSerial");
+          writeHPSerial(incomingCommand);
+          
+        }
+        
       } else {Serial.println("Ignored");}
   
         
@@ -257,10 +277,13 @@ ServoSequencer servoSequencer(servoDispatch);
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
   
-  #define RXD1 19
-  #define TXD1 18 
-  #define RXD2 25
-  #define TXD2 27 
+  #define RXHP 19
+  #define TXHP 18 
+  #define RXRS 25
+  #define TXRS 27 
+  #define BAUD_RATE 9600
+  SoftwareSerial hpSerial;
+  SoftwareSerial rsSerial;
   
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -296,12 +319,10 @@ void setup()
 
     //***  COMMUNICATION SET UP ***///
    Serial.begin(9600);                                                                   // Initialize Serial Connection at 9600:
-
+   hpSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXHP,TXHP,false,95);
+   rsSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXRS,TXRS,false,95);
    Wire.begin();                                                               // Start I2C Bus as Slave I2C Address
-  Serial.println(" ");
-  Serial.println(" ");
-  Serial.println(" ");
-  Serial.println("----------------------------------------");
+  Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Dome Controller");
 
    SetupEvent::ready();
@@ -319,167 +340,10 @@ void setup()
   colorWipe(red, 255); // red during bootup
   Serial.println("LED Setup Complete");
   WiFi.mode(WIFI_STA);
-//WiFi.softAP();
-//    WiFi.begin();
-//     Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-//      while (WiFi.status() != WL_CONNECTED) {
-//      delay(1000);
-//      Serial.println("Connecting to WiFi..");
-////      Serial.println(WiFi.localIP());
-////      Serial.print("Local MAC address = ");
-////      Serial.println(WiFi.macAddress());
-//      
-//    }
-  WiFi.mode(WIFI_STA);
+
       esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
-//      Serial.print("Local IP address = ");
-//      Serial.println(WiFi.localIP());
       Serial.print("Local STA MAC address = ");
       Serial.println(WiFi.macAddress());
-//     Serial.println(WiFi.softAPmacAddress());
-
- //Setup the webpage and accept the GET requests, and parses the variables 
-//  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-// 
-//    int paramsNr = request->params();               // Gets the number of parameters sent
-//    Serial.println(paramsNr);                       // Variable for selecting which Serial port to send out
-//    for(int i=0;i<paramsNr;i++){                    //Loops through all the paramaters
-//         AsyncWebParameter* p = request->getParam(i);
-//
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////                                                                //////////////////////////        
-////////////  These If statements choose where to send the commands         //////////////////////////
-////////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-////////////                                                                //////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-// 
-//    if ((p->name())== "param0" & (p->value()) == "Serial0"){
-//        //Serial.println("Serial0 Chosen with If Statement");
-//        paramVar = 0;
-//        };
-//    if ((p->name())== "param0" & (p->value()) == "Serial1"){
-//        //Serial.println("Serial 1 Chosen with If Statement");
-//        paramVar = 1;
-//        };
-//    if ((p->name())== "param0" & (p->value()) == "Serial2"){
-//        //Serial.println("Serial 2 Chosen with If Statement");
-//          paramVar = 2;
-//        };
-//     if ((p->name())== "param0" & (p->value()) == "ESP"){
-//        //Serial.println("ESP(Self) Chosen with If Statement");
-//          paramVar = 3;
-//        };
-//    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-//        Serial.println("Reset ESP and Arduino Chosen with If Statement");
-//        ESP.restart();
-//        };
-//               
-//        Serial.print("Param name: ");
-//        Serial.println(p->name());
-//        Serial.print("Param value: ");
-//        Serial.println(p->value());
-//        Serial.println(paramVar);
-//  
-//        if (paramVar == 0){
-//          Serial.println("Writing to Serial 0");      
-//          writeString(p->value());
-//        };
-//         if (paramVar == 1){
-//          Serial.println("Writing to Serial 1");      
-//          writeString1(p->value());
-//        } ;      
-//          if (paramVar == 2){
-//          Serial.println("Writing to Serial 2");      
-//          writeString2(p->value());
-//        };
-//         if (paramVar == 3){
-//          Serial.println("Executing on self");      
-//          inputString = (p->value());
-//          stringComplete = true;  
-//        };
-//         
-//        Serial.println("------");
-////        delay(50);
-//
-//    }
-// 
-//    request->send(200, "text/plain", "message received");
-//  });
-//  
- //Setup the webpage and accept the GET requests, and parses the variables 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      
-    int paramsNr = request->params();               // Gets the number of parameters sent
-    Serial.println(paramsNr);                       // Variable for selecting which Serial port to send out
-    for(int i=0;i<paramsNr;i++){                    //Loops through all the paramaters
-         AsyncWebParameter* p = request->getParam(i);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////                                                                //////////////////////////        
-//////////  These If statements choose where to send the commands         //////////////////////////
-//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-//////////                                                                //////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-        
-    if ((p->name())== "param0" & (p->value()) == "Serial0"){
-//        Serial.println("Serial0 Chosen with If Statement");
-        paramVar = 0;
-        };
-    if ((p->name())== "param0" & (p->value()) == "Serial1"){
-//        Serial.println("Serial 1 Chosen with If Statement");
-        paramVar = 1;
-        };
-    if ((p->name())== "param0" & (p->value()) == "Serial2"){
-//      Serial.println("Serial 2 Chosen with If Statement");
-          paramVar = 2;
-    };
-     if ((p->name())== "param0" & (p->value()) == "ESP"){
-//      Serial.println("ESP(Self) Chosen with If Statement");
-          paramVar = 3;
-    };
-
-    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        Serial.println("Reset ESP and Arduino Chosen with If Statement");
-        ESP.restart();
-        };
-        
-        Serial.print("Param name: ");
-        Serial.println(p->name());
-        Serial.print("Param value: ");
-        Serial.println(p->value());
-        Serial.println(paramVar);
-  
-        if (paramVar == 0){
-          Serial.println("Writing to Serial 0");      
-          writeString(p->value());
-        };
-         if (paramVar == 1){
-          Serial.println("Writing to Serial 1");      
-          writeString1(p->value());
-        } ;      
-          if (paramVar == 2){
-          Serial.println("Writing to Serial 2");      
-          writeString2(p->value());
-        };
-         if (paramVar == 3){
-          Serial.println("Executing on self");      
-          inputString = (p->value());
-          stringComplete = true;  
-        };
-
-        Serial.println("------");
-//        delay(50);
-    }
- 
-    request->send(200, "text/plain", "message received");
-  });
-  
-  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-
-  //Initialize the AsycWebServer
-  server.begin();
-//   Serial.println(server.begin() ? "Web Server Ready" : " Web Server Failed!");
 
 
 //Initialize ESP-NOW
@@ -995,7 +859,23 @@ void shortCircuit(int count) {
           Serial2.write(completeString[i]);
         }
       }
+      void writeRSSerial(String stringData){
+        String completeString = stringData + '\r';
+        for (int i=0; i<completeString.length(); i++)
+        {
+          rsSerial.write(completeString[i]);
+        }
+        Serial.println("Printing to rsSerial");
+      }
 
+      void writeHPSerial(String stringData){
+        String completeString = stringData + '\r';
+        for (int i=0; i<completeString.length(); i++)
+        {
+          hpSerial.write(completeString[i]);
+        }
+        Serial.println("Printing to hpSerial");
+      }
 
       //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
