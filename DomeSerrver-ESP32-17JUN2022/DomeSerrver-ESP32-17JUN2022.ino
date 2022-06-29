@@ -1,15 +1,18 @@
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
 
-#include "WiFi.h"
+//#include "WiFi.h"
 #include "ESPAsyncWebServer.h"
-#include <WiFiClient.h>
-#include <WiFiAP.h>
+//#include <WiFiClient.h>
+//#include <WiFiAP.h>
 #include "esp_wifi.h"
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
 #include <esp_now.h>
 #include <SoftwareSerial.h>
+#include <AsyncElegantOTA.h>
+#include <elegantWebpage.h>
+#include <Hash.h>
 
 
 //reeltwo libaries
@@ -290,17 +293,18 @@ ServoSequencer servoSequencer(servoDispatch);
   //////////////////////////////////////////////////////////////////////
   
   //Raspberry Pi              192.168.4.100
-  //Body Controller ESP       192.168.4.101  
-  //Dome Controller ESP       192.168.4.102  ************
-  //Periscope Controller ESP  192.168.4.103
-  //Stealth Controller ESP    192.168.4.104  (Probably not going to be different then Body Controller ESP IP)
-  //Dome Servo Controller     192.168.4.105  (Probably not going to be different then Dome Controller ESP IP)
-  //Body Servo Controller     192.168.4.106  (Probably not going to be different then Body Controller ESP IP)
+  //Body Controller ESP       192.168.4.101
+  //ESP-NOW Master ESP        192.168.4.110  
+  //Dome Controller ESP       192.168.4.111  ************
+  //Periscope Controller ESP  192.168.4.112
+  //Stealth Controller ESP    192.168.4.  (Probably not going to be different then Body Controller ESP IP)
+  //Dome Servo Controller     192.168.4.  (Probably not going to be different then Dome Controller ESP IP)
+  //Body Servo Controller     192.168.4.  (Probably not going to be different then Body Controller ESP IP)
   //Remote                    192.168.4.107
   //Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,102);
+  IPAddress local_IP(192,168,4,111);
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,100);
   
@@ -345,7 +349,12 @@ void setup()
       Serial.print("Local STA MAC address = ");
       Serial.println(WiFi.macAddress());
 
+server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! This is a sample response.");
+  });
 
+  
+  Serial.println("HTTP server started");
 //Initialize ESP-NOW
   
   if (esp_now_init() != ESP_OK) {
@@ -503,7 +512,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             case 2: Serial.println("Resetting the ESP in 5 Seconds");
                     DelayCall::schedule([] {ESP.restart();}, 5000);
                     ESP_command[0]   = '\0'; break;
-            case 3: testESPNOW();
+            case 3: connectWiFi();  
+                    ESP_command[0]   = '\0'; break;
+            case 4: esp_err_t results = esp_wifi_stop();; 
+                    Serial.println("WiFi Disconnected");
+                    Serial.println(WiFi.localIP());
+                    ESP_command[0]   = '\0'; break;
           }
         }
 
@@ -908,4 +922,18 @@ void shortCircuit(int count) {
 //    Serial.println("testESPNOW Function called");
     ESP_command[0] = '\0';
 
+  }
+
+  void connectWiFi(){
+    Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+      WiFi.begin();
+      while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.println("Connecting to WiFi..");
+      Serial.println(WiFi.localIP());
+//      Serial.print("Local MAC address = ");
+//      Serial.println(WiFi.macAddress());
+  }
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
   }

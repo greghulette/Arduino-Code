@@ -1,14 +1,12 @@
 
 
 #define DEBUG
-//#include <WiFi.h>
 #include "ESPAsyncWebServer.h"
-//#include <WiFiClient.h>
-
-//#include <WiFiAP.h>
+#include <AsyncElegantOTA.h>
+#include <elegantWebpage.h>
+#include <Hash.h>
 #include "esp_wifi.h"
 #include <Wire.h>
-//#include <esp_now.h>
 #include <SoftwareSerial.h>
 
 //reeltwo libaries
@@ -93,13 +91,13 @@ ServoSequencer servoSequencer(servoDispatch);
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState     = 0;
 
-#ifdef DEBUG
-  #define DEBUG_PRINT(x)    Serial.print (x)
-  #define DEBUG_PRINTLN(x)  Serial.println (x)
-#else
-  #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTLN(x) 
-#endif
+    #ifdef DEBUG
+      #define DPRINT(x)    Serial.print (x)
+      #define DPRINTLN(x)  Serial.println (x)
+    #else
+      #define DPRINT(x)
+      #define DPRINTLN(x) 
+    #endif
 
   //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -316,6 +314,7 @@ void setup(){
   
   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
 
   //Initialize the AsycWebServer
   server.begin();
@@ -323,32 +322,7 @@ void setup(){
   //Reset Arudino Mega
   resetArduino(500);
 
-//  //Initialize ESP-NOW
-////  
-////    esp_now_init();
-//  if (esp_now_init() != ESP_OK) {
-//    Serial.println("Error initializing ESP-NOW");
-//  return;
-//  }
-////  // Once ESPNow is successfully Init, we will register for Send CB to
-////  // get the status of Trasnmitted packet
-//  esp_now_register_send_cb(OnDataSent);
-////  
-////  // Register peer
-//  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-//  peerInfo.channel = 6;  
-//  peerInfo.encrypt = false;
-//  peerInfo.ifidx=WIFI_IF_AP;
-//////  
-////  // Add peer        
-//  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-//    Serial.println("Failed to add peer");
-//    return;
-//  }
-////  // Register for a callback function that will be called when data is received
-//  esp_now_register_recv_cb(OnDataRecv);
-////  
-  }   // end of setup
+
  
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
@@ -560,7 +534,7 @@ if (servoBoard == 1 || servoBoard == 3){
 
 
   void openAllDoors(int servoBoard) {
-        DEBUG_PRINTLN("Open all Doors");
+        DPRINTLN("Open all Doors");
 
     if (servoBoard == 1 || servoBoard == 3){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
@@ -574,7 +548,7 @@ if (servoBoard == 1 || servoBoard == 3){
 
   
   void closeAllDoors(int servoBoard) {
-    DEBUG_PRINTLN("Close all Doors");
+    DPRINTLN("Close all Doors");
 
     if (servoBoard == 1 || servoBoard == 3){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);

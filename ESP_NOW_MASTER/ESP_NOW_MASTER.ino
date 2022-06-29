@@ -6,16 +6,20 @@
 
 
 
-#include <WiFi.h>
-//#include "ESPAsyncWebServer.h"
-//#include <WiFiClient.h>
-
-//#include <WiF/iAP.h>
+//#include <WiFi.h>
+#include "ESPAsyncWebServer.h"
+////#include <WiFiClient.h>
+//
+////#include <WiF/iAP.h>
 #include "esp_wifi.h"
 //#include <Wire.h>
 #include <esp_now.h>
 
 #include <SoftwareSerial.h>
+
+#include <AsyncElegantOTA.h>
+#include <elegantWebpage.h>
+#include <Hash.h>
 
 //reeltwo libaries
 //#include "ReelTwo.h"
@@ -193,7 +197,34 @@ SoftwareSerial bcSerial;
   
         
     }
+//////////////////////////////////////////////////////////////////////
+  ///******             WiFi Specific Setup                     *****///
+  //////////////////////////////////////////////////////////////////////
+  
+  //Raspberry Pi              192.168.4.100
+  //Body Controller ESP       192.168.4.101
+  //ESP-NOW Master ESP        192.168.4.110  
+  //Dome Controller ESP       192.168.4.111  ************
+  //Periscope Controller ESP  192.168.4.112
+  //Stealth Controller ESP    192.168.4.  (Probably not going to be different then Body Controller ESP IP)
+  //Dome Servo Controller     192.168.4.  (Probably not going to be different then Dome Controller ESP IP)
+  //Body Servo Controller     192.168.4.  (Probably not going to be different then Body Controller ESP IP)
+  //Remote                    192.168.4.107
+  //Developer Laptop          192.168.4.125
+  
+  // IP Address config of local ESP
+  IPAddress local_IP(192,168,4,110);
+  IPAddress subnet(255,255,255,0);
+  IPAddress gateway(192,168,4,100);
+  
+//uint8_t newMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 
+   ////R2 Control Network Details
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+  
+  AsyncWebServer server(80);
+  
 
 void setup(){
   //Initialize the Serial Ports
@@ -378,7 +409,9 @@ void loop(){
                     delay(3000);
                     ESP.restart();
                     ESP_command[0]   = '\0'; break;
-//            case 3: #define DEBUG; break;
+            case 3: connectWiFi();
+                    ESP_command[0]   = '\0'; break;
+            case 4: ESP.restart();
           }
         }
         if(ESPNOW_command[0]){
@@ -501,3 +534,18 @@ if (starget == "DS" || starget == "RS" || starget == "HP"){
     }
         ESPNOW_command[0] = '\0';
    }
+
+
+    void connectWiFi(){
+    Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+      WiFi.begin();
+      while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.println("Connecting to WiFi..");
+      Serial.println(WiFi.localIP());
+//      Serial.print("Local MAC address = ");
+//      Serial.println(WiFi.macAddress());
+  }
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+  }
