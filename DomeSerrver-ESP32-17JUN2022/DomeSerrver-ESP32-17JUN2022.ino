@@ -1,21 +1,26 @@
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
-
-//#include "WiFi.h"
+#define DEBUG
+// Used for OTA
 #include "ESPAsyncWebServer.h"
-//#include <WiFiClient.h>
-//#include <WiFiAP.h>
-#include "esp_wifi.h"
-#include <Adafruit_NeoPixel.h>
-#include <Wire.h>
-#include <esp_now.h>
-#include <SoftwareSerial.h>
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <Hash.h>
 
+//Used for ESP-NOW
+#include "esp_wifi.h"
+#include <esp_now.h>
+
+//Used for Camera LEDs
+#include <Adafruit_NeoPixel.h>
+
+//Used for PC9685 - Servo Expansion Board
+#include <Wire.h>
+
+// Used for Software Serial to allow more useful naming
+#include <SoftwareSerial.h>
 
 //reeltwo libaries
+//#define USE_DEBUG
+//#define USE_SERVO_DEBUG
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
 #include "ServoDispatchPCA9685.h"
@@ -34,110 +39,7 @@
 ///*****                                                                                                                                                           *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  String inputString;         // a string to hold incoming data
-  volatile boolean stringComplete  = false;      // whether the serial string is complete
 
-/////////////////////////////////////////////////////////////////////////
-///*****              ESP NOW Set Up                       *****///
-/////////////////////////////////////////////////////////////////////////
-
-  // REPLACE WITH THE MAC Address of your receiver 
-//    MAC Address of your receivers 
-    uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-    uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-
-//    MAC Address to broadcast to all senders at once
-    uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-
-  // Define variables to store commands to be sent
-    String senderID;
-    String destinationID;
-    String targetID;
-    String command;
-
-  // Define variables to store incoming commands
-    String incomingDestinationID;
-    String incomingTargetID;  
-    String incomingSenderID;
-    String incomingCommand;
-    
-  // Variable to store if sending data was successful
-    String success;
-
-  //Structure example to send data
-  //Must match the receiver structure
-    typedef struct struct_message {
-        String structSenderID;
-        String structDestinationID;
-        String structTargetID;  
-        String structCommand;
-    } struct_message;
-
-  // Create a struct_message calledcommandsTosend to hold variables that will be sent
-    struct_message commandsToSendtoBody;
-    struct_message commandsToSendtoPeriscope;
-    struct_message commandsToSendtoBroadcast;
-
-  // Create a struct_message to hold incoming commands from the Body
-    struct_message commandsToReceiveFromBody;
-    struct_message commandsToReceiveFromPeriscope;
-    struct_message commandsToReceiveFromBroadcast;
-
-    esp_now_peer_info_t peerInfo;
-
-  // Callback when data is sent
-    void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-      char macStr[18];
-      Serial.print("Packet to: ");
-      // Copies the sender mac address to a string
-      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-      Serial.print(macStr);
-      Serial.print(" send status:\t");
-      Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    }
-
-  // Callback when data is received
-      void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      Serial.print("Bytes received from Dome: ");
-      Serial.println(len);
-      incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
-      incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-      incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-      incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      Serial.print("Sender ID = ");
-      Serial.println(incomingSenderID);
-      Serial.print("Destination ID= ");
-      Serial.println(incomingDestinationID);
-     
-      if (incomingDestinationID =="Dome"){
-        Serial.println("Accepted");
-        Serial.print("Target ID= ");
-        Serial.println(incomingTargetID);
-        if (incomingTargetID == "DS"){
-        Serial.print("Execute Local Command = ");
-        Serial.println(incomingCommand); 
-        inputString = incomingCommand;
-        stringComplete = true;   
-        } else if (incomingTargetID == "RS"){
-          Serial.println("Sending out rsSerial");
-          writeRSSerial(incomingCommand);
-          
-        } else if (incomingTargetID == "HP"){
-          Serial.println("Sending out hpSerial");
-          writeHPSerial(incomingCommand);
-          
-        }
-        
-      } else {Serial.println("Ignored");}
-  
-        
-    }
- 
 
 /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
@@ -184,17 +86,25 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
 
-  char inputBuffer[10];
+  char inputBuffer[100];
+  String inputString;         // a string to hold incoming data
+  volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
   int displayState;
   int typeState;
   int commandLength;
-  int paramVar = 9;  
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int commandState     = 0;
-  
+
+  #ifdef DEBUG
+  #define DPRINT(x)     Serial.print (x)
+  #define DPRINTLN(x)  Serial.println (x)
+#else
+  #define DPRINT(x)
+  #define DPRINTLN(x) 
+#endif
 //////////////////////////////////////////////////////////////////////
 ///*****   Door Values, Containers, Flags & Timers   *****///
 //////////////////////////////////////////////////////////////////////
@@ -287,7 +197,109 @@ ServoSequencer servoSequencer(servoDispatch);
   #define BAUD_RATE 9600
   SoftwareSerial hpSerial;
   SoftwareSerial rsSerial;
+
+  /////////////////////////////////////////////////////////////////////////
+///*****              ESP NOW Set Up                       *****///
+/////////////////////////////////////////////////////////////////////////
+
+  // REPLACE WITH THE MAC Address of your receiver 
+//    MAC Address of your receivers 
+    uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+    uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+
+//    MAC Address to broadcast to all senders at once
+    uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
+    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+
+  // Define variables to store commands to be sent
+    String senderID;
+    String destinationID;
+    String targetID;
+    String command;
+
+  // Define variables to store incoming commands
+    String incomingDestinationID;
+    String incomingTargetID;  
+    String incomingSenderID;
+    String incomingCommand;
+    
+  // Variable to store if sending data was successful
+    String success;
+
+  //Structure example to send data
+  //Must match the receiver structure
+    typedef struct struct_message {
+        String structSenderID;
+        String structDestinationID;
+        String structTargetID;  
+        String structCommand;
+    } struct_message;
+
+  // Create a struct_message calledcommandsTosend to hold variables that will be sent
+    struct_message commandsToSendtoBody;
+    struct_message commandsToSendtoPeriscope;
+    struct_message commandsToSendtoBroadcast;
+
+  // Create a struct_message to hold incoming commands from the Body
+    struct_message commandsToReceiveFromBody;
+    struct_message commandsToReceiveFromPeriscope;
+    struct_message commandsToReceiveFromBroadcast;
+
+    esp_now_peer_info_t peerInfo;
+
+  // Callback when data is sent
+    void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+      char macStr[18];
+      Serial.print("Packet to: ");
+      // Copies the sender mac address to a string
+      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+      Serial.print(macStr);
+      Serial.print(" send status:\t");
+      Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    }
+
+  // Callback when data is received
+      void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+      Serial.print("Bytes received from ES-NOW Message: ");
+      Serial.println(len);
+      incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+      incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+      incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+      incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+      Serial.print("Sender ID = ");
+      Serial.println(incomingSenderID);
+      Serial.print("Destination ID= ");
+      Serial.println(incomingDestinationID);
+     
+      if (incomingDestinationID =="Dome"){
+        Serial.println("Accepted");
+        Serial.print("Target ID= ");
+        Serial.println(incomingTargetID);
+        if (incomingTargetID == "DS"){
+        Serial.print("Execute Local Command = ");
+        Serial.println(incomingCommand); 
+        inputString = incomingCommand;
+        stringComplete = true;   
+        } else if (incomingTargetID == "RS"){
+          Serial.println("Sending out rsSerial");
+          writeRSSerial(incomingCommand);
+          
+        } else if (incomingTargetID == "HP"){
+          Serial.println("Sending out hpSerial");
+          writeHPSerial(incomingCommand);
+          
+        }
+        
+      } else {Serial.println("Ignored");}
   
+        
+    }
+ 
+
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -331,8 +343,8 @@ void setup()
 
    SetupEvent::ready();
 
-   inputString.reserve(20);                                                              // Reserve 100 bytes for the inputString:
-   autoInputString.reserve(20);
+   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+   autoInputString.reserve(100);
 
 
 
@@ -419,9 +431,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
      if( inputBuffer[0]=='D' ||        // Door Designator
          inputBuffer[0]=='d' ||        // Door Designator
          inputBuffer[0]=='R' ||        //Radar Eye LED
-         inputBuffer[0]=='r'  ||         //Radar Eye LED
-         inputBuffer[0] =='E' ||          // Command designatore for internal ESP functions
-         inputBuffer[0] =='e'           // Command designatore for internal ESP functions
+         inputBuffer[0]=='r'  ||       //Radar Eye LED
+         inputBuffer[0] =='E' ||       // Command designatore for internal ESP functions
+         inputBuffer[0] =='e'          // Command designatore for internal ESP functions
 
          ) {
             commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
@@ -895,13 +907,19 @@ void shortCircuit(int count) {
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
  
-  void sendESPNOWBodyCommand(String sdest,String scomm){
-//    Serial.println("sendESPNOWCommand Function called");
-//    destinationID = sdest;
-//    command = scomm;
-   commandsToSendtoBroadcast.structDestinationID = sdest;
+  void sendESPNOWCommand(String starget,String scomm){
+    String sdest;
+    if (starget == "PC"){
+        sdest = "Periscope";
+      } else if (starget == "BC"){
+        sdest = "Body";
+        }
+    commandsToSendtoBroadcast.structDestinationID = sdest;
+    DPRINT("sdest: ");DPRINTLN(sdest);
+    commandsToSendtoBroadcast.structTargetID = starget;
     commandsToSendtoBroadcast.structSenderID = "Dome";
     commandsToSendtoBroadcast.structCommand = scomm;
+//    DPRINT("Command to Send in Function: ");DPRINTLN(commandsToSendtoBroadcast.structCommand);
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
    if (result == ESP_OK) {
@@ -911,6 +929,7 @@ void shortCircuit(int count) {
       Serial.println(result);
       Serial.println("Error sending the data");
     }
+        ESPNOW_command[0] = '\0';
    }
 
   void parseESPNOWCommand(String idest, String icomm){

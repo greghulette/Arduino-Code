@@ -1,52 +1,38 @@
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
-
 #define DEBUG
 
-
-
-
-//#include <WiFi.h>
+// Used for OTA
 #include "ESPAsyncWebServer.h"
-////#include <WiFiClient.h>
-//
-////#include <WiF/iAP.h>
-#include "esp_wifi.h"
-//#include <Wire.h>
-#include <esp_now.h>
-
-#include <SoftwareSerial.h>
-
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <Hash.h>
 
-//reeltwo libaries
-//#include "ReelTwo.h"
-//#include "core/DelayCall.h"
-//#include "ServoDispatchPCA9685.h"
-//#include "ServoSequencer.h"
-//#include "core/Animation.h"
+//Used for ESP-NOW
+#include "esp_wifi.h"
+#include <esp_now.h>
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.  I started with the code from flthymcnsty         *****///
-///*****                                                                                                       *****///
-///*****                                     So exactly what does this all do.....?                            *****///
-///*****                       - Receives commands via Serial and transmits out via ESP-NOW                    *****///
-///*****                       - Receives commands via ESP-NOW and tranmits out via Serial                     *****///
-///*****                       - Sends Serial commands to the LED Controller and the Stealth Board             *****///
-///*****                                                                                                       *****///
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Used for Software Serial to allow more useful naming
+#include <SoftwareSerial.h>
+
+//reeltwo libaries
+#include "ReelTwo.h"
+#include "core/DelayCall.h"
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///*****                                                                                                                                                           *****///
+///*****                       Created by Greg Hulette.  I started with the code from flthymcnsty
+///*****                                                                                                                                                           *****///
+///*****                                 So exactly what does this all do.....?                                                            *****///
+///*****                       - Sends Serial commands to the Uppity Spinner                                                                                       *****///
+///*****                                                                                                                                                           *****///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
     
-    char inputBuffer[100];
+    char inputBuffer[25];
     String inputString;         // a string to hold incoming data
     String inputStringCommand;
     volatile boolean stringComplete  = false;      // whether the serial string is complete
@@ -55,7 +41,6 @@
     int displayState;
     int typeState;
     int commandLength;
-    int paramVar = 9;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState = 0;
@@ -88,37 +73,29 @@
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXBC 15
-  #define TXBC 16 
-  #define RXD2 25
-  #define TXD2 26 
-SoftwareSerial bcSerial;
-#define BAUD_RATE 9600
+  #define RXFU 19
+  #define TXFU 18 
+  #define RXPL 25
+  #define TXPL 27
+SoftwareSerial plSerial;
+SoftwareSerial fuSerial;
 
-  //////////////////////////////////////////////////////////////////////
-  ///******      Arduino Mega Reset Pin Specific Setup          *****///
-  //////////////////////////////////////////////////////////////////////
-
-  #define RST 4
-
-  //////////////////////////////////////////////////////////////////////
-  ///******            ESP- Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
+#define BAUD_RATE 57600
 
 ///////////////////////////////////////////////////////////////////////////
 /////*****              ESP NOW Set Up                       *****///
 ///////////////////////////////////////////////////////////////////////////
 
 
-//    MAC Address of your receivers 
+//    MAC Address of your receivers - Not really used but have it in case it's needed.
     uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-    uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+    uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
-//    MAC Address to broadcast to all senders at once
+//    MAC Address to broadcast to all senders at once - Mainly Used in my code
     uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
 //  // Define variables to store commands to be sent
     String senderID;
@@ -176,76 +153,74 @@ SoftwareSerial bcSerial;
 //  // Callback when data is received
       void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      Serial.print("Bytes received from Dome: ");
-      Serial.println(len);
+      DPRINT("Bytes received from ESP-NOW Message: ");DPRINTLN(len);
       incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+      incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
       incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
       incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      Serial.print("Sender ID = ");
-      Serial.println(incomingSenderID);
-      Serial.print("Destination ID= ");
-      Serial.println(incomingDestinationID);
-      Serial.print("Target ID= ");
-      Serial.println(incomingTargetID);
-      Serial.print("Command = ");
-      Serial.println(incomingCommand); 
-      if (incomingDestinationID =="Body"){
-        Serial.println("Accepted");
+      DPRINT("Sender ID = ");DPRINTLN(incomingSenderID);
+      DPRINT("Destination ID= ");DPRINTLN(incomingDestinationID);
+      DPRINT("Target ID= ");DPRINTLN(incomingTargetID);
+      DPRINT("Command = ");DPRINTLN(incomingCommand); 
+      if (incomingDestinationID =="Periscope"){
+        DPRINTLN("Accepted");
+
+        if (incomingTargetID == "PL"){
+          DPRINT("Sending out plSerial");DPRINTLN(incomingCommand);
+          writePlSerial(incomingCommand);
+        }
+        else{
         inputString = incomingCommand;
         stringComplete = true;   
-      } else {Serial.println("Ignored");}
+        }
+      } else {DPRINTLN("Ignored");}
   
         
     }
 //////////////////////////////////////////////////////////////////////
-  ///******             WiFi Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
+///***   WiFi Specific Setup  (Only used when OTA is enabled)   ***///
+//////////////////////////////////////////////////////////////////////
   
   //Raspberry Pi              192.168.4.100
   //Body Controller ESP       192.168.4.101
   //ESP-NOW Master ESP        192.168.4.110  
-  //Dome Controller ESP       192.168.4.111  ************
-  //Periscope Controller ESP  192.168.4.112
-  //Stealth Controller ESP    192.168.4.  (Probably not going to be different then Body Controller ESP IP)
-  //Dome Servo Controller     192.168.4.  (Probably not going to be different then Dome Controller ESP IP)
-  //Body Servo Controller     192.168.4.  (Probably not going to be different then Body Controller ESP IP)
+  //Dome Controller ESP       192.168.4.111  
+  //Periscope Controller ESP  192.168.4.112   ************
   //Remote                    192.168.4.107
   //Developer Laptop          192.168.4.125
   
-  // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,110);
+  // IP Address config of local ESP 
+  IPAddress local_IP(192,168,4,112);
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,100);
   
-//uint8_t newMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-
-   ////R2 Control Network Details
+ ////R2 Control Network Details     
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
   
   AsyncWebServer server(80);
   
-
 void setup(){
-  //Initialize the Serial Ports
+
+
   Serial.begin(9600);
-//  .begin(9600, SERIAL_8N1, RXD1, TXD1);
-  bcSerial.begin(BAUD_RATE, SWSERIAL_8N1, RXBC, TXBC, false, 95);
-  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
-  delay(50);
-//  Serial.println(" ");
-//  Serial.println(" ");
-//  Serial.println(" ");
-  Serial.print("\n\n\n----------------------------------------\n");
-  Serial.print("Booting up the Master ESP-NOW Controller\n");
-//  Serial.print("\n\n----------------------------------------\n");
+  plSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXPL,TXPL,false,95);
+  fuSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXFU,TXFU,false,95);
+
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Periscope Controller");
+
+
+   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+   autoInputString.reserve(100);
 
     WiFi.mode(WIFI_STA);
     esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
     Serial.print("Local STA MAC address = ");
     Serial.println(WiFi.macAddress());
 
-  //Initialize ESP-NOW
+  
+//Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
   return;
@@ -266,9 +241,9 @@ void setup(){
       return;
     }
 
-    memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
+    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
     if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Periscope ESP-NOW peer");
+      Serial.println("Failed to add Body ESP-NOW peer");
       return;
     }
     memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
@@ -280,39 +255,39 @@ void setup(){
   esp_now_register_recv_cb(OnDataRecv);
   
   }   // end of setup
- 
-void loop(){
-  if (millis() - MLMillis >= mainLoopDelayVar){
-      MLMillis = millis();
-  
-  if(startUp) {
-      startUp = false;
-      Serial.print("Startup complete\nStarting main loop\n\n\n");
-   }
-   if(Serial.available()){
-   serialEvent();
-   }
-   if(bcSerial.available()){
-   bcSerialEvent();
-   }
-   if(Serial2.available()){
-   serialTwoEvent();
-   }
-  if (stringComplete) {autoComplete=false;}
+
+  void loop(){
+    if (millis() - MLMillis >= mainLoopDelayVar){
+        MLMillis = millis();
+    
+    if(startUp) {
+        startUp = false;
+        Serial.print("Startup complete\nStarting main loop\n\n\n");
+     }
+     if(Serial.available()){
+     serialEvent();
+     }
+     if(plSerial.available()){
+     plSerialEvent();
+     }
+     if(fuSerial.available()){
+     fuSerialEvent();
+     }
+if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
-    if(stringComplete) {inputString.toCharArray(inputBuffer, 25);inputString="";}
-     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 25);autoInputString="";}
+    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
 //     if(inputBuffer[0]=='S'  || inputBuffer[0]=='s') {inputBuffer[0]='E' || inputBuffer[0]=='e';}
-     if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
-         inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-         inputBuffer[0]=='S' ||        // Command for Sending ESP-NOW Messages
-         inputBuffer[0]=='s'           // Command for Sending ESP-NOW Messages
+     if( inputBuffer[0]=='E' ||       // Command designatore for internal ESP functions
+         inputBuffer[0]=='e' ||       // Command designatore for internal ESP functions
+         inputBuffer[0]=='S' ||       // Command for Sending ESP-NOW Messages
+         inputBuffer[0]=='s'          // Command for Sending ESP-NOW Messages
 
 
 
          ) {
             commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            DPRINT("Command Length is: " );DPRINTLN(commandLength);
+            DEBUG_PRINT("Command Length is: " );DEBUG_PRINTLN(commandLength);
 //            Serial.println(commandLength);
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -323,7 +298,7 @@ void loop(){
                 // add it to the inputString:
                 inputStringCommand += inCharRead;
                    }
-                   DPRINT("\nFull Command Recieved: ");DPRINTLN(inputStringCommand);
+                   DEBUG_PRINT("\nFull Command Recieved: ");DEBUG_PRINTLN(inputStringCommand);
 //                   Serial.println(inputStringCommand);
                    espNowCommandStateString = inputStringCommand.substring(0,2);
                    espNowCommandState = espNowCommandStateString.toInt();
@@ -400,14 +375,14 @@ void loop(){
 
           if(ESP_command[0]){
           switch (ESP_command[0]){
-            case 1: Serial.println("Controller: Master ESP-NOW Controller");   
+            case 1: Serial.println("Controller: Periscope Controller");   
                     ESP_command[0]   = '\0'; break;
             case 2: Serial.println("Resetting the ESP in 3 Seconds");
                     delay(3000);
                     ESP.restart();
                     ESP_command[0]   = '\0'; break;
             case 3: connectWiFi();
-                    ESP_command[0]   = '\0'; break;
+                    break;
             case 4: ESP.restart();
           }
         }
@@ -444,11 +419,11 @@ void loop(){
         }
                Serial.println(inputString);
       }
-       void bcSerialEvent() {
+       void plSerialEvent() {
         //int count = 0;
-       while (bcSerial.available()) {
+       while (plSerial.available()) {
           // get the new byte:
-          char inChar = (char)bcSerial.read();
+          char inChar = (char)plSerial.read();
           delay(5);
           // add it to the inputString:
          inputString += inChar;
@@ -460,11 +435,11 @@ void loop(){
         }
       }
 
-      void serialTwoEvent() {
+      void fuSerialEvent() {
         //int count = 0;
-       while (Serial2.available()) {
+       while (fuSerial.available()) {
           // get the new byte:
-          char inChar = (char)Serial2.read();
+          char inChar = (char)fuSerial.read();
           // add it to the inputString:
          inputString += inChar;
           if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
@@ -483,19 +458,19 @@ void loop(){
           Serial.write(completeString[i]);
         }
       }
-      void writebcSerial(String stringData){
+      void writePlSerial(String stringData){
         String completeString = stringData + '\r';
         for (int i=0; i<completeString.length(); i++)
         {
-          bcSerial.write(completeString[i]);
+          plSerial.write(completeString[i]);
         }
       }
       
-      void writeString2(String stringData){
+      void writeFuSerial(String stringData){
         String completeString = stringData + '\r';
         for (int i=0; i<completeString.length(); i++)
         {
-          Serial2.write(completeString[i]);
+          fuSerial.write(completeString[i]);
         }
       }
 
@@ -505,23 +480,18 @@ void loop(){
 //////////////////////////////////////////////////////////////////////
 // 
   void sendESPNOWCommand(String starget,String scomm){
-//    Serial.println("sendESPNOWCommand Function called");
-//    destination = sdest;
-//    command = scomm;
-String sdest;
-if (starget == "DS" || starget == "RS" || starget == "HP"){
-    sdest = "Dome";
-  } else if (starget == "PC" || starget == "PL"){
-    sdest = "Periscope";
-  }
+    String sdest;
+    if (starget == "DS" || starget == "RS" || starget == "HP"){
+        sdest = "Dome";
+      } else if (starget == "BC"){
+        sdest = "Body";
+        }
     commandsToSendtoBroadcast.structDestinationID = sdest;
-    Serial.print("sdest: ");
-    Serial.println(sdest);
+    DPRINT("sdest: ");DPRINTLN(sdest);
     commandsToSendtoBroadcast.structTargetID = starget;
-    commandsToSendtoBroadcast.structSenderID = "Body";
+    commandsToSendtoBroadcast.structSenderID = "Periscope";
     commandsToSendtoBroadcast.structCommand = scomm;
-//    Serial.print("Command to Send in Function: ");
-//    Serial.println(commandsToSendtoBroadcast.structCommand);
+//    DPRINT("Command to Send in Function: ");DPRINTLN(commandsToSendtoBroadcast.structCommand);
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
    if (result == ESP_OK) {
@@ -541,10 +511,9 @@ if (starget == "DS" || starget == "RS" || starget == "HP"){
       while (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       Serial.println("Connecting to WiFi..");
+      }
       Serial.println(WiFi.localIP());
-//      Serial.print("Local MAC address = ");
-//      Serial.println(WiFi.macAddress());
-  }
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
-  }
+      AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+      server.begin();
+       ESP_command[0]   = '\0';
+      }

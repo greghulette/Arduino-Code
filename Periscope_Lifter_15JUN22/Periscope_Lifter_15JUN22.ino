@@ -8,7 +8,7 @@
 ///////////////////////////////////
 
 // If debug is enabled the serial baud rate will be 57600
-#define SERIAL_BAUD_RATE                    9600
+#define SERIAL_BAUD_RATE                    57600
 #define I2C_ADDRESS                         0x20
 #define CONSOLE_BUFFER_SIZE                 300
 #define COMMAND_BUFFER_SIZE                 256
@@ -52,7 +52,7 @@
 // This option is for builders working on their own custom lifters.
 // It will leave the lifter logic intact but act as if there is no rotary.
 ///////////////////////////////////
-#define DISABLE_ROTARY
+//#define DISABLE_ROTARY
 ///////////////////////////////////
 
 #ifdef DISABLE_ROTARY

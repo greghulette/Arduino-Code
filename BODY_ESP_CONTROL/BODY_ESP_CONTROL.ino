@@ -149,7 +149,7 @@ ServoSequencer servoSequencer(servoDispatch);
   
   #define BAUD_RATE 9600
   SoftwareSerial enSerial;
-  SoftwareSerial bcSerial;
+  SoftwareSerial blSerial;
   SoftwareSerial stSerial;
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
@@ -191,7 +191,7 @@ void setup(){
   //Initialize the Serial Ports
   Serial.begin(9600);
    enSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXen,TXen,false,95);
-   bcSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXbc,TXbc,false,95);
+   blSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXbc,TXbc,false,95);
    stSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXst,TXst,false,95);
 
 //  Serial1.begin(9600, SERIAL_8N1, RXD1, TXD1);
@@ -250,7 +250,7 @@ void setup(){
 //        Serial.println("Serial 1 Chosen with If Statement");
         paramVar = 1;
         };
-    if ((p->name())== "param0" & (p->value()) == "bcSerial"){
+    if ((p->name())== "param0" & (p->value()) == "blSerial"){
 //      Serial.println("Serial 2 Chosen with If Statement");
           paramVar = 2;
     };
@@ -292,8 +292,8 @@ void setup(){
           };
         } ;      
           if (paramVar == 2){
-          Serial.println("Writing to bcSerial");      
-          writeBcSerial(p->value());
+          Serial.println("Writing to blSerial");      
+          writeBlSerial(p->value());
         };
         if (paramVar == 3){
           Serial.println("Writing to stSerial");      
@@ -322,7 +322,7 @@ void setup(){
   //Reset Arudino Mega
   resetArduino(500);
 
-
+}
  
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
@@ -690,27 +690,12 @@ void shortCircuit(int count) {
           Serial.write(completeString[i]);
         };
       };
-//      void writeString1(String stringData){
-//        String completeString = stringData + '\r';
-//        for (int i=0; i<completeString.length(); i++)
-//        {
-//          Serial1.write(completeString[i]);
-//        }
-////        Serial.println(completeString);
-//      }
-//      
-//      void writeString2(String stringData){
-//        String completeString = stringData + '\r';
-//        for (int i=0; i<completeString.length(); i++)
-//        {
-//          Serial2.write(completeString[i]);
-//        }
-//      }
-      void writeBcSerial(String stringData){
+
+      void writeBlSerial(String stringData){
               String completeString = stringData + '\r';
               for (int i=0; i<completeString.length(); i++)
               {
-               bcSerial.write(completeString[i]);
+               blSerial.write(completeString[i]);
               };
             };
 
