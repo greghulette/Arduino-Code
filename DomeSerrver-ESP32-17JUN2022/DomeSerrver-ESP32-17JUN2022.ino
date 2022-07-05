@@ -98,6 +98,13 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int commandState     = 0;
 
+
+
+    uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+    int espNowCommandState = 0;
+    String espNowCommandStateString;
+    String tempESPNOWTargetID;
+    
   #ifdef DEBUG
   #define DPRINT(x)     Serial.print (x)
   #define DPRINTLN(x)  Serial.println (x)
@@ -355,7 +362,7 @@ void setup()
   stripCL.show(); // Initialize all pixels to 'off'
   colorWipe(red, 255); // red during bootup
   Serial.println("LED Setup Complete");
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
 
       esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
       Serial.print("Local STA MAC address = ");
@@ -937,7 +944,7 @@ void shortCircuit(int count) {
   }
 
   void testESPNOW(){
-    sendESPNOWBodyCommand("ESP","d03");
+    sendESPNOWCommand("ESP","d03");
 //    Serial.println("testESPNOW Function called");
     ESP_command[0] = '\0';
 

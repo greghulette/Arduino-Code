@@ -1,4 +1,4 @@
-#define USE_DEBUG
+//#define USE_DEBUG
 #include "ReelTwo.h"
 #include "core/SetupEvent.h"
 #include "core/Enthropy.h"
@@ -8,7 +8,7 @@
 ///////////////////////////////////
 
 // If debug is enabled the serial baud rate will be 57600
-#define SERIAL_BAUD_RATE                    57600
+#define SERIAL_BAUD_RATE                    115200
 #define I2C_ADDRESS                         0x20
 #define CONSOLE_BUFFER_SIZE                 300
 #define COMMAND_BUFFER_SIZE                 256

@@ -80,7 +80,7 @@
 SoftwareSerial plSerial;
 SoftwareSerial fuSerial;
 
-#define BAUD_RATE 57600
+#define BAUD_RATE 115200
 
 ///////////////////////////////////////////////////////////////////////////
 /////*****              ESP NOW Set Up                       *****///
@@ -203,7 +203,7 @@ SoftwareSerial fuSerial;
 void setup(){
 
 
-  Serial.begin(9600);
+  Serial.begin(115200);
   plSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXPL,TXPL,false,95);
   fuSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXFU,TXFU,false,95);
 
