@@ -27,6 +27,7 @@
 ///*****                       - Controls the Body servos                                                      *****///
 ///*****                       - Creates the WiFI network                                                      *****///
 ///*****                       - Sends Serial commands to the LED Controller and the Stealth Board             *****///
+///*****                       - Sends Serial commands to the ESP-NOW Master to relay to other Controllers     *****///
 ///*****                                                                                                       *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
