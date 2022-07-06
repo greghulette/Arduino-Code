@@ -1,6 +1,12 @@
 
 
-#define DEBUG
+
+
+
+
+
+
+
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
@@ -80,7 +86,7 @@ ServoSequencer servoSequencer(servoDispatch);
     
     char inputBuffer[25];
     String inputString;         // a string to hold incoming data
-   volatile boolean stringComplete  = false;      // whether the serial string is complete
+    volatile boolean stringComplete  = false;      // whether the serial string is complete
 
     String autoInputString;         // a string to hold incoming data
     volatile boolean autoComplete    = false;    // whether an Auto command is setA
@@ -92,13 +98,10 @@ ServoSequencer servoSequencer(servoDispatch);
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState     = 0;
 
-    #ifdef DEBUG
-      #define DPRINT(x)    Serial.print (x)
-      #define DPRINTLN(x)  Serial.println (x)
-    #else
-      #define DPRINT(x)
-      #define DPRINTLN(x) 
-    #endif
+
+    int debugflag = 0;
+    int debugflagparam = 0;
+
 
   //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -148,7 +151,7 @@ ServoSequencer servoSequencer(servoDispatch);
   #define RXst 12
   #define TXst 14
   
-  #define BAUD_RATE 9600
+  #define BAUD_RATE 115200
   SoftwareSerial enSerial;
   SoftwareSerial blSerial;
   SoftwareSerial stSerial;
@@ -190,7 +193,7 @@ AsyncWebServer server(80);
 
 void setup(){
   //Initialize the Serial Ports
-  Serial.begin(9600);
+  Serial.begin(115200);
    enSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXen,TXen,false,95);
    blSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXbc,TXbc,false,95);
    stSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXst,TXst,false,95);
@@ -201,7 +204,7 @@ void setup(){
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body LED/Servo Controller");
 
-  
+
   
   //Configure the Reset Pins for the arduinoReset() function
   pinMode(4, OUTPUT);
@@ -232,7 +235,7 @@ void setup(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
     int paramsNr = request->params();               // Gets the number of parameters sent
-    Serial.println(paramsNr);                       // Variable for selecting which Serial port to send out
+    DBG_P("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
          AsyncWebParameter* p = request->getParam(i);
 
@@ -244,69 +247,69 @@ void setup(){
 ////////////////////////////////////////////////////////////////////////////////////////////////////
         
     if ((p->name())== "param0" & (p->value()) == "Serial0"){
-//        Serial.println("Serial0 Chosen with If Statement");
+        DBG_P("Serial0 Chosen with If Statement\n");
         paramVar = 0;
         };
     if ((p->name())== "param0" & (p->value()) == "enSerial"){
-//        Serial.println("Serial 1 Chosen with If Statement");
+        DBG_P("Serial 1 Chosen with If Statement\n");
         paramVar = 1;
         };
     if ((p->name())== "param0" & (p->value()) == "blSerial"){
-//      Serial.println("Serial 2 Chosen with If Statement");
+      DBG_P("Serial 2 Chosen with If Statement\n");
           paramVar = 2;
     };
         if ((p->name())== "param0" & (p->value()) == "stSerial"){
-//      Serial.println("Serial 2 Chosen with If Statement");
+          DBG_P("Serial 2 Chosen with If Statement\n");
           paramVar = 3;
     };
      if ((p->name())== "param0" & (p->value()) == "ESP"){
-//      Serial.println("ESP(Self) Chosen with If Statement");
+          DBG_P("ESP(Self) Chosen with If Statement\n");
           paramVar = 4;
     };
     if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-        Serial.println("Reset Only Arduino Chosen with If Statement");
+        DBG_P("Reset Only Arduino Chosen with If Statement\n");
           resetArduino(500);
         };
     if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        Serial.println("Reset ESP and Arduino Chosen with If Statement");
+        DBG_P("Reset ESP and Arduino Chosen with If Statement\n");
         ESP.restart();
         };
         
-        Serial.print("Param name: ");
-        Serial.println(p->name());
-        Serial.print("Param value: ");
-        Serial.println(p->value());
-        Serial.println(paramVar);
+        DBG_P("Param name: %s\n", (p->name()));
+//        DBG(p->name());
+        DBG_P("Param value: %s\n", (p->value()));
+//        DBG(p->value());
+//        DBG(paramVar);
   
         if (paramVar == 0){
-          Serial.println("Writing to Serial 0");      
+          DBG_P("Writing to Serial 0\n");      
           writeString(p->value());
         };
          if (paramVar == 1){
-          Serial.println("Writing to enSerial"); 
+          DBG_P("Writing to enSerial\n"); 
           delay(100);     
          if ((p->name())== "param0" & (p->value()) == "EnSerial"){
-            Serial.println("Skipping param 0 in the EspNowSerial Write");
+            DBG_P("Skipping param 0 in the EspNowSerial Write\n");
           } 
           else {
             writeEnSerial(p->value());
           };
         } ;      
           if (paramVar == 2){
-          Serial.println("Writing to blSerial");      
+          DBG_P("Writing to blSerial\n");      
           writeBlSerial(p->value());
         };
         if (paramVar == 3){
-          Serial.println("Writing to stSerial");      
+          DBG_P("Writing to stSerial\n");      
           writeStSerial(p->value());
         };
          if (paramVar == 4){
-          Serial.println("Executing on self");      
+          DBG_P("Executing on self\n");      
           inputString = (p->value());
           stringComplete = true;  
         };
 
-        Serial.println("------");
+        DBG_P("------\n");
 //        delay(50);
     }
  
@@ -404,7 +407,7 @@ void loop(){
        int speedState;
        int door = -1;
        int doorState;
-       Serial.println("command Proccessed");
+       DBG("command Proccessed\n");
 
      }
 
@@ -412,19 +415,23 @@ void loop(){
     switch (ESP_command[0]){
       case 1: Serial.println("Body ESP Controller");   
               ESP_command[0]   = '\0'; break;
-      case 2: Serial.println("Resetting the ESP in 5 Seconds");
-              DelayCall::schedule([] {ESP.restart();}, 5000);
+      case 2: Serial.println("Resetting the ESP in 3 Seconds");
+              DelayCall::schedule([] {ESP.restart();}, 3000);
               ESP_command[0]   = '\0'; break;
       case 3: writeEnSerial("DCE01"); 
               ESP_command[0]   = '\0'; break;
+      case 4: toggleDebug();           break;
+      case 5: toggleDebugParam();      break;
+      case 6: break;
+      case 7: break;
     }
   }
 
   if(D_command[0]) {
        if((D_command[2] == 1 || D_command[2] == 2) && D_command[2] >= 11) {
-         //Serial.println("Incorrect Door Value Specified, Command Aborted!");
+         //DBG("Incorrect Door Value Specified, Command Aborted!");
          D_command[0] = '\0';
-//         Serial.println("wrong if");
+//         DBG("wrong if");
        }
        else {
          switch (D_command[0]) {
@@ -468,6 +475,45 @@ void loop(){
  }
 
 
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_P(char *format, ...) {
+        if (!debugflagparam)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void toggleDebug(){
+  debugflag = !debugflag;
+  if (debugflag == 1){
+     DBG("Debugging Enabled \n");
+    }
+  else{
+    Serial.println("Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+void toggleDebugParam(){
+  debugflagparam = !debugflagparam;
+  if (debugflagparam == 1){
+     DBG("Parameter Debugging Enabled \n");
+    }
+  else{
+    DBG("Parameter Debugging Disabled\n");
+  }
+    ESP_command[0]   = '\0';
+}
+
  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
@@ -479,63 +525,63 @@ void loop(){
 
 
   void openDoor(int servoBoard, int doorpos) {
-    Serial.println("Open Specific Door");
+    DBG("Open Specific Door\n");
     if (servoBoard == 1 || servoBoard == 3){
       switch (doorpos){
-       case 1: Serial.println("Open Top Utility Arm");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, TOP_UTILITY_ARM);     break;
-       case 2: Serial.println("Open Bottom Utility Arm");         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, BOTTOM_UTILITY_ARM);  break;
-       case 3: Serial.println("Open Large Left Door");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, LARGE_LEFT_DOOR);     break;
-       case 4: Serial.println("Open Large Right Door");           SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, LARGE_RIGHT_DOOR);    break;
-       case 5: Serial.println("Open Charge Bay Indicator Door");  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, CHARGE_BAY_DOOR);     break;
-       case 6: Serial.println("Open Data Panel Door");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, DATA_PANEL_DOOR);     break;
+       case 1: DBG("Open Top Utility Arm\n");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, TOP_UTILITY_ARM);     break;
+       case 2: DBG("Open Bottom Utility Arm\n");         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, BOTTOM_UTILITY_ARM);  break;
+       case 3: DBG("Open Large Left Door\n");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, LARGE_LEFT_DOOR);     break;
+       case 4: DBG("Open Large Right Door\n");           SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, LARGE_RIGHT_DOOR);    break;
+       case 5: DBG("Open Charge Bay Indicator Door\n");  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, CHARGE_BAY_DOOR);     break;
+       case 6: DBG("Open Data Panel Door\n");            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, DATA_PANEL_DOOR);     break;
         }};
      if (servoBoard == 2 || servoBoard == 3){
       switch (doorpos){
-       case 1: Serial.println("Open SMALL_PANEL_ONE");      writeEnSerial("S02DSD0101");  break;
-       case 2: Serial.println("Open SMALL_PANEL_TWO");      writeEnSerial("S02DSD0102");  break;
-       case 3: Serial.println("Open SMALL_PANEL_THREE");    writeEnSerial("S02DSD0103");  break;
-       case 4: Serial.println("Open MEDIUM_PANEL_PAINTED"); writeEnSerial("S02DSD0104");  break;
-       case 5: Serial.println("Open MEDIUM_PANEL_SILVER");  writeEnSerial("S02DSD0105");  break;
-       case 6: Serial.println("Open BIG_PANEL");            writeEnSerial("S02DSD0106");  break;
-       case 7: Serial.println("Open PIE_PANEL_ONE");        writeEnSerial("S02DSD0107");  break;
-       case 8: Serial.println("Open PIE_PANEL_TWO");        writeEnSerial("S02DSD0108");  break;
-       case 9: Serial.println("Open PIE_PANEL_THREE");      writeEnSerial("S02DSD0109");  break;
-       case 10: Serial.println("Open PIE_PANEL_FOUR");      writeEnSerial("S02DSD0110");  break;
+       case 1: DBG("Open SMALL_PANEL_ONE\n");      writeEnSerial("S02DSD0101");  break;
+       case 2: DBG("Open SMALL_PANEL_TWO\n");      writeEnSerial("S02DSD0102");  break;
+       case 3: DBG("Open SMALL_PANEL_THREE\n");    writeEnSerial("S02DSD0103");  break;
+       case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); writeEnSerial("S02DSD0104");  break;
+       case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  writeEnSerial("S02DSD0105");  break;
+       case 6: DBG("Open BIG_PANEL\n");            writeEnSerial("S02DSD0106");  break;
+       case 7: DBG("Open PIE_PANEL_ONE\n");        writeEnSerial("S02DSD0107");  break;
+       case 8: DBG("Open PIE_PANEL_TWO\n");        writeEnSerial("S02DSD0108");  break;
+       case 9: DBG("Open PIE_PANEL_THREE\n");      writeEnSerial("S02DSD0109");  break;
+       case 10: DBG("Open PIE_PANEL_FOUR\n");      writeEnSerial("S02DSD0110");  break;
         }};
      D_command[0]   = '\0';
   };
 
 
   void closeDoor(int servoBoard, int doorpos) {
-    Serial.println("Close Specific Door");
+    DBG("Close Specific Door");
 if (servoBoard == 1 || servoBoard == 3){
     switch(doorpos){
-       case 1: Serial.println("Close Top Utility Arm");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, TOP_UTILITY_ARM);  break;
-       case 2: Serial.println("Close Bottom Utility Arm");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, BOTTOM_UTILITY_ARM);  break;
-       case 3: Serial.println("Close Large Left Door");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, LARGE_LEFT_DOOR);break;
-       case 4: Serial.println("Close Large Right Door");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, LARGE_RIGHT_DOOR);  break;
-       case 5: Serial.println("Close Charge Bay Indicator Door");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, CHARGE_BAY_DOOR);break;
-       case 6: Serial.println("Close Data Panel Door");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, DATA_PANEL_DOOR);  break;
+       case 1: DBG("Close Top Utility Arm\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, TOP_UTILITY_ARM);  break;
+       case 2: DBG("Close Bottom Utility Arm\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, BOTTOM_UTILITY_ARM);  break;
+       case 3: DBG("Close Large Left Door\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, LARGE_LEFT_DOOR);break;
+       case 4: DBG("Close Large Right Door\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, LARGE_RIGHT_DOOR);  break;
+       case 5: DBG("Close Charge Bay Indicator Door\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, CHARGE_BAY_DOOR);break;
+       case 6: DBG("Close Data Panel Door\n");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, DATA_PANEL_DOOR);  break;
     }};
      if (servoBoard == 2 || servoBoard == 3){
       switch (doorpos){
-       case 1: Serial.println("Close SMALL_PANEL_ONE");      writeEnSerial("S02DSD0201");  break;
-       case 2: Serial.println("Close SMALL_PANEL_TWO");      writeEnSerial("S02DSD0202");  break;
-       case 3: Serial.println("Close SMALL_PANEL_THREE");    writeEnSerial("S02DSD0203");  break;
-       case 4: Serial.println("Close MEDIUM_PANEL_PAINTED"); writeEnSerial("S02DSD0204");  break;
-       case 5: Serial.println("Close MEDIUM_PANEL_SILVER");  writeEnSerial("S02DSD0205");  break;
-       case 6: Serial.println("Close BIG_PANEL");            writeEnSerial("S02DSD0206");  break;
-       case 7: Serial.println("Close PIE_PANEL_ONE");        writeEnSerial("S02DSD0207");  break;
-       case 8: Serial.println("Close PIE_PANEL_TWO");        writeEnSerial("S02DSD0208");  break;
-       case 9: Serial.println("Close PIE_PANEL_THREE");      writeEnSerial("S02DSD0209");  break;
-       case 10: Serial.println("Close PIE_PANEL_FOUR");      writeEnSerial("S02DSD0210");  break;
+       case 1: DBG("Close SMALL_PANEL_ONE\n");      writeEnSerial("S02DSD0201");  break;
+       case 2: DBG("Close SMALL_PANEL_TWO\n");      writeEnSerial("S02DSD0202");  break;
+       case 3: DBG("Close SMALL_PANEL_THREE\n");    writeEnSerial("S02DSD0203");  break;
+       case 4: DBG("Close MEDIUM_PANEL_PAINTED\n"); writeEnSerial("S02DSD0204");  break;
+       case 5: DBG("Close MEDIUM_PANEL_SILVER\n");  writeEnSerial("S02DSD0205");  break;
+       case 6: DBG("Close BIG_PANEL\n");            writeEnSerial("S02DSD0206");  break;
+       case 7: DBG("Close PIE_PANEL_ON\nE");        writeEnSerial("S02DSD0207");  break;
+       case 8: DBG("Close PIE_PANEL_TWO\n");        writeEnSerial("S02DSD0208");  break;
+       case 9: DBG("Close PIE_PANEL_THREE\n");      writeEnSerial("S02DSD0209");  break;
+       case 10: DBG("Close PIE_PANEL_FOUR\n");      writeEnSerial("S02DSD0210");  break;
         }};
     D_command[0]   = '\0';
   }
 
 
   void openAllDoors(int servoBoard) {
-        DPRINTLN("Open all Doors");
+        DBG("Open all Doors\n");
 
     if (servoBoard == 1 || servoBoard == 3){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
@@ -549,7 +595,7 @@ if (servoBoard == 1 || servoBoard == 3){
 
   
   void closeAllDoors(int servoBoard) {
-    DPRINTLN("Close all Doors");
+    DBG("Close all Doors\n");
 
     if (servoBoard == 1 || servoBoard == 3){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);
@@ -561,7 +607,7 @@ if (servoBoard == 1 || servoBoard == 3){
   }
 
   void alternateDoors() {
-    Serial.println("Alternate All Doors");
+    DBG("Alternate All Doors\n");
         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);
 //    sendESPNOWCommand("ESP","d03");
 
@@ -569,22 +615,22 @@ if (servoBoard == 1 || servoBoard == 3){
   }
 
   void cycleDoors() {
-    Serial.println("Cycle All Doors");
+    DBG("Cycle All Doors\n\n");
     D_command[0]   = '\0';
   }
 
   void waveAllDoors() {
-    Serial.println("Open Doors 1 at a time");
+    DBG("Open Doors 1 at a time\n");
     D_command[0]   = '\0';
   }
 
   void waveAllDoorsClose() {
-    Serial.println("Close Doors 1 at a time");
+    DBG("Close Doors 1 at a time\n");
     D_command[0]   = '\0';
   }
 
   void quickWaveAllDoors() {
-    Serial.println("Open Doors 1 at a time");
+    DBG("Open Doors 1 at a time\n");
     D_command[0]   = '\0';
   }
  
@@ -599,30 +645,43 @@ void shortCircuit(int count) {
   //////////////  Functions to call ReelTwo animations
 
   void allOpenClose(){
-      Serial.println("Open and Close All Doors");
-      SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
+      DBG("Open and Close All Doors\n");
+      
+      if (servoBoard == 1 || servoBoard == 3){
+        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
+    }
+    if (servoBoard == 2 || servoBoard == 3){
+      writeEnSerial("S02DSD10");
+        };
+        
        D_command[0]   = '\0';                                           
       }
       
   void allOpenCloseLong(){
-      Serial.println("Open and Close Doors Long");
-      SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
-      D_command[0]   = '\0';                                                 
+      DBG("Open and Close Doors Long\n");
+
+      if (servoBoard == 1 || servoBoard == 3){
+        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
+    }
+    if (servoBoard == 2 || servoBoard == 3){
+      writeEnSerial("S02DSD211");
+        };
+       D_command[0]   = '\0';                                                 
       }
           
   void allFlutter(){
-      Serial.println("Flutter All Doors");
+      DBG("Flutter All Doors\n");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
 //      sendESPNOWCommand("ESP","d12");
       D_command[0]   = '\0';   
       }
   void allOpenCloseRepeat(){
-      Serial.println("Open and Close All Doors Repeat");
+      DBG("Open and Close All Doors Repeat\n");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
       D_command[0]   = '\0';             
              }
   void panelWave(){
-       Serial.println("Wave");
+       DBG("Wave\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
        DelayCall::schedule([] {writeEnSerial("S02DSD14");}, 2000);
 //       writeString1("S02DSD14");
@@ -630,41 +689,41 @@ void shortCircuit(int count) {
        D_command[0]   = '\0';                                             
        }
   void panelWaveFast(){
-       Serial.println("Wave Fast");
+       DBG("Wave Fast\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }
   void openCloseWave() {
-       Serial.println("Open Close Wave ");
+       DBG("Open Close Wave \n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                          
  
   void marchingAnts() {
-       Serial.println("Marching Ants");
+       DBG("Marching Ants\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                             
   void panelAlternate() {
-       Serial.println("Panel Alternate");
+       DBG("Panel Alternate\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                                            
 
   void panelDance() {
-       Serial.println("Panel Dance");
+       DBG("Panel Dance\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }
 
   void longDisco() {
-         Serial.println("Panel Dance");
+         DBG("Panel Dance\n");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
          D_command[0]   = '\0';                                             
          }
 
   void longHarlemShake() {
-         Serial.println("Panel Dance");
+         DBG("Panel Dance\n");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
          D_command[0]   = '\0';                                             
          }                                                       
@@ -681,7 +740,7 @@ void shortCircuit(int count) {
           };
 
         };
-               Serial.println(inputString);
+               DBG("InputString: %s \n",inputString);
       };
 
       void writeString(String stringData){
@@ -707,7 +766,7 @@ void shortCircuit(int count) {
           enSerial.write(completeString[i]);
           delay(5);
         };
-        Serial.println(String("String to Send over ESPNOW Serial: " + completeString));
+        DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
       };
 
       void writeStSerial(String stringData){
@@ -719,11 +778,11 @@ void shortCircuit(int count) {
       };
 
     void resetArduino(int delayperiod){
-      Serial.println("Opening of reset function");
+      DBG("Opening of reset function");
       digitalWrite(4,LOW);
       delay(delayperiod);
       digitalWrite(4,HIGH);
-      Serial.println("reset witin function");
+      DBG("reset witin function");
     //  paramVar = 0;
     
     }
@@ -733,7 +792,7 @@ void shortCircuit(int count) {
 //////////////////////////////////////////////////////////////////////
 // 
 //  void sendESPNOWCommand(String sdest,String scomm){
-////    Serial.println("sendESPNOWCommand Function called");
+////    DBG("sendESPNOWCommand Function called");
 //    destination = sdest;
 //    command = scomm;
 //    commandsToSend.dest = destination;
@@ -741,11 +800,11 @@ void shortCircuit(int count) {
 //    // Send message via ESP-NOW
 //    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &commandsToSend, sizeof(commandsToSend));
 //   if (result == ESP_OK) {
-//    Serial.println("Sent with success");
+//    DBG("Sent with success");
 //    }
 //    else {
-//      Serial.println(result);
-//      Serial.println("Error sending the data");
+//      DBG(result);
+//      DBG("Error sending the data");
 //    }
 //   }
 //
@@ -755,7 +814,7 @@ void shortCircuit(int count) {
 AnimationPlayer player(servoSequencer);
   void testESPNOW(){
 //    sendESPNOWCommand("ESP","d03");
-//    Serial.println("testESPNOW Function called");
+//    DBG("testESPNOW Function called");
     D_command[0] = '\0';
     ANIMATION_PLAY_ONCE(player, WaveFullBody);
 
