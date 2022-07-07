@@ -1,32 +1,21 @@
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
-
-#define DEBUG
-
-
-
-
-//#include <WiFi.h>
+// Used for OTA
 #include "ESPAsyncWebServer.h"
-////#include <WiFiClient.h>
-//
-////#include <WiF/iAP.h>
-#include "esp_wifi.h"
-//#include <Wire.h>
-#include <esp_now.h>
-
-#include <SoftwareSerial.h>
-
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <Hash.h>
 
+//Used for ESP-NOW
+#include "esp_wifi.h"
+#include <esp_now.h>
+
+// Used for Software Serial to allow more useful naming
+#include <SoftwareSerial.h>
+
+
 //reeltwo libaries
-//#include "ReelTwo.h"
-//#include "core/DelayCall.h"
-//#include "ServoDispatchPCA9685.h"
-//#include "ServoSequencer.h"
-//#include "core/Animation.h"
+#include "ReelTwo.h"
+#include "core/DelayCall.h"
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -65,14 +54,10 @@
     String espNowCommandStateString;
     String tempESPNOWTargetID;
  
-#ifdef DEBUG
-  #define DPRINT(x)     Serial.print (x)
-  #define DPRINTLN(x)  Serial.println (x)
-#else
-  #define DPRINT(x)
-  #define DPRINTLN(x) 
-#endif
- 
+  // Flags to enable/disable debugging in runtime
+    int debugflag = 0;
+    int debugflagparam = 0;  // debugging for params recieved from clients
+
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -92,8 +77,8 @@
   #define TXBC 16 
   #define RXD2 25
   #define TXD2 26 
-SoftwareSerial bcSerial;
-#define BAUD_RATE 9600
+#define bcSerial Serial1
+#define BAUD_RATE 115200
 
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
@@ -228,10 +213,10 @@ SoftwareSerial bcSerial;
 
 void setup(){
   //Initialize the Serial Ports
-  Serial.begin(9600);
+  Serial.begin(115200);
 //  .begin(9600, SERIAL_8N1, RXD1, TXD1);
-  bcSerial.begin(BAUD_RATE, SWSERIAL_8N1, RXBC, TXBC, false, 95);
-  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
+  bcSerial.begin(BAUD_RATE, SERIAL_8N1, RXBC, TXBC);
+  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
   delay(50);
 //  Serial.println(" ");
 //  Serial.println(" ");
@@ -312,7 +297,7 @@ void loop(){
 
          ) {
             commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            DPRINT("Command Length is: " );DPRINTLN(commandLength);
+            DBG("Command Length is: %i\n", commandLength);
 //            Serial.println(commandLength);
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -323,7 +308,7 @@ void loop(){
                 // add it to the inputString:
                 inputStringCommand += inCharRead;
                    }
-                   DPRINT("\nFull Command Recieved: ");DPRINTLN(inputStringCommand);
+                   DBG("\nFull Command Recieved: %s ",inputStringCommand);
 //                   Serial.println(inputStringCommand);
                    espNowCommandStateString = inputStringCommand.substring(0,2);
                    espNowCommandState = espNowCommandStateString.toInt();
@@ -401,14 +386,18 @@ void loop(){
           if(ESP_command[0]){
           switch (ESP_command[0]){
             case 1: Serial.println("Controller: Master ESP-NOW Controller");   
-                    ESP_command[0]   = '\0'; break;
+                    ESP_command[0]   = '\0';  break;
             case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                    delay(3000);
-                    ESP.restart();
-                    ESP_command[0]   = '\0'; break;
-            case 3: connectWiFi();
-                    ESP_command[0]   = '\0'; break;
-            case 4: ESP.restart();
+                    DelayCall::schedule([] {ESP.restart();}, 3000) ; break;
+            case 3: connectWiFi();            break;
+            case 4: ESP.restart();            break;
+            case 5: break;
+            case 6: break;
+            case 7: break;
+            case 8: break;
+            case 9: break;
+            case 10: toggleDebug();           break;
+            case 11: toggleDebugParam();      break;
           }
         }
         if(ESPNOW_command[0]){
@@ -501,7 +490,7 @@ void loop(){
 
 
 //////////////////////////////////////////////////////////////////////
-///*****             Test Functions                        *****///
+///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
   void sendESPNOWCommand(String starget,String scomm){
@@ -548,3 +537,47 @@ if (starget == "DS" || starget == "RS" || starget == "HP"){
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
   }
+
+//////////////////////////////////////////////////////////////////////
+///*****             Debug Functions                          *****///
+//////////////////////////////////////////////////////////////////////
+      void DBG(char *format, ...) {
+              if (!debugflag)
+                      return;
+              va_list ap;
+              va_start(ap, format);
+              vfprintf(stderr, format, ap);
+              va_end(ap);
+      }
+      
+      void DBG_P(char *format, ...) {
+              if (!debugflagparam)
+                      return;
+              va_list ap;
+              va_start(ap, format);
+              vfprintf(stderr, format, ap);
+              va_end(ap);
+      }
+      
+      void toggleDebug(){
+        debugflag = !debugflag;
+        if (debugflag == 1){
+           DBG("Debugging Enabled \n");
+          }
+        else{
+          Serial.println("Debugging Disabled");
+        }
+          ESP_command[0]   = '\0';
+      }
+      void toggleDebugParam(){
+        debugflagparam = !debugflagparam;
+        if (debugflagparam == 1){
+           DBG("Parameter Debugging Enabled \n");
+          }
+        else{
+          DBG("Parameter Debugging Disabled\n");
+        }
+          ESP_command[0]   = '\0';
+      }
+      
+      

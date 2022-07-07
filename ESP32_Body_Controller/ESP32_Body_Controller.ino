@@ -1,18 +1,17 @@
-
-
-
-
-
-
-
-
-
+// Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <Hash.h>
+
+//Used for ESP-NOW
 #include "esp_wifi.h"
+#include <esp_now.h>
+
+//Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
+
+// Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
 //reeltwo libaries
@@ -100,7 +99,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
 
     int debugflag = 0;
-    int debugflagparam = 0;
+    int debugflagparam = 0;  // debugging for params recieved from clients
 
 
   //////////////////////////////////////////////////////////////////////
@@ -152,7 +151,7 @@ ServoSequencer servoSequencer(servoDispatch);
   #define TXst 14
   
   #define BAUD_RATE 115200
-  SoftwareSerial enSerial;
+  #define enSerial Serial1
   SoftwareSerial blSerial;
   SoftwareSerial stSerial;
   //////////////////////////////////////////////////////////////////////
@@ -194,7 +193,7 @@ AsyncWebServer server(80);
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-   enSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXen,TXen,false,95);
+   enSerial.begin(BAUD_RATE,SERIAL_8N1,RXen,TXen);
    blSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXbc,TXbc,false,95);
    stSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXst,TXst,false,95);
 
@@ -235,7 +234,7 @@ void setup(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
     int paramsNr = request->params();               // Gets the number of parameters sent
-    DBG_P("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+//    DBG_P("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
          AsyncWebParameter* p = request->getParam(i);
 
@@ -276,10 +275,7 @@ void setup(){
         };
         
         DBG_P("Param name: %s\n", (p->name()));
-//        DBG(p->name());
         DBG_P("Param value: %s\n", (p->value()));
-//        DBG(p->value());
-//        DBG(paramVar);
   
         if (paramVar == 0){
           DBG_P("Writing to Serial 0\n");      
@@ -418,12 +414,16 @@ void loop(){
       case 2: Serial.println("Resetting the ESP in 3 Seconds");
               DelayCall::schedule([] {ESP.restart();}, 3000);
               ESP_command[0]   = '\0'; break;
-      case 3: writeEnSerial("DCE01"); 
-              ESP_command[0]   = '\0'; break;
-      case 4: toggleDebug();           break;
-      case 5: toggleDebugParam();      break;
+      case 3: break;  //reserved for commonality. Used for connecting to WiFi on 
+      case 4: break;
+      case 5: break;
       case 6: break;
       case 7: break;
+      case 8: break;
+      case 9: break;
+      case 10: toggleDebug();           break;
+      case 11: toggleDebugParam();      break;
+
     }
   }
 
@@ -443,8 +443,8 @@ void loop(){
            case 6:  cycleDoors();                                                       break;
            case 7:  waveAllDoors();                                                     break;
            case 8:  quickWaveAllDoors();                                                break;
-           case 10: allOpenClose();                                                     break;
-           case 11: allOpenCloseLong();                                                 break;
+           case 10: allOpenClose(D_command[1]);                                                     break;
+           case 11: allOpenCloseLong(D_command[1]);                                                 break;
            case 12: allFlutter();                                                       break;
            case 13: allOpenCloseRepeat();                                               break;
            case 14: panelWave();                                                        break;
@@ -457,7 +457,7 @@ void loop(){
            case 21: longHarlemShake();                                                  break;
 //           case 22: ();                                                                 break;
 //           case 23: ();                                                                 break;
-           case 50: testESPNOW();                                                                 break;
+           case 50: ;                                                                  break;
 //           case 98: closeAllDoors();                                                    break;
 //           case 99: closeAllDoors();                                                    break;
            default: break;
@@ -472,47 +472,8 @@ void loop(){
 
     }
   }
- }
+ }  // end of main loop
 
-
-void DBG(char *format, ...) {
-        if (!debugflag)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void DBG_P(char *format, ...) {
-        if (!debugflagparam)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void toggleDebug(){
-  debugflag = !debugflag;
-  if (debugflag == 1){
-     DBG("Debugging Enabled \n");
-    }
-  else{
-    Serial.println("Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-void toggleDebugParam(){
-  debugflagparam = !debugflagparam;
-  if (debugflagparam == 1){
-     DBG("Parameter Debugging Enabled \n");
-    }
-  else{
-    DBG("Parameter Debugging Disabled\n");
-  }
-    ESP_command[0]   = '\0';
-}
 
  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -644,7 +605,7 @@ void shortCircuit(int count) {
 
   //////////////  Functions to call ReelTwo animations
 
-  void allOpenClose(){
+  void allOpenClose(int servoBoard){
       DBG("Open and Close All Doors\n");
       
       if (servoBoard == 1 || servoBoard == 3){
@@ -657,7 +618,7 @@ void shortCircuit(int count) {
        D_command[0]   = '\0';                                           
       }
       
-  void allOpenCloseLong(){
+  void allOpenCloseLong(int servoBoard){
       DBG("Open and Close Doors Long\n");
 
       if (servoBoard == 1 || servoBoard == 3){
@@ -764,7 +725,7 @@ void shortCircuit(int count) {
         for (int i=0; i<completeString.length(); i++)
         {
           enSerial.write(completeString[i]);
-          delay(5);
+//          delay(5);
         };
         DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
       };
@@ -788,56 +749,50 @@ void shortCircuit(int count) {
     }
 
 //////////////////////////////////////////////////////////////////////
+///*****             Debug Functions                          *****///
+//////////////////////////////////////////////////////////////////////
+      void DBG(char *format, ...) {
+              if (!debugflag)
+                      return;
+              va_list ap;
+              va_start(ap, format);
+              vfprintf(stderr, format, ap);
+              va_end(ap);
+      }
+      
+      void DBG_P(char *format, ...) {
+              if (!debugflagparam)
+                      return;
+              va_list ap;
+              va_start(ap, format);
+              vfprintf(stderr, format, ap);
+              va_end(ap);
+      }
+      
+      void toggleDebug(){
+        debugflag = !debugflag;
+        if (debugflag == 1){
+           DBG("Debugging Enabled \n");
+          }
+        else{
+          Serial.println("Debugging Disabled");
+        }
+          ESP_command[0]   = '\0';
+      }
+      void toggleDebugParam(){
+        debugflagparam = !debugflagparam;
+        if (debugflagparam == 1){
+           DBG("Parameter Debugging Enabled \n");
+          }
+        else{
+          DBG("Parameter Debugging Disabled\n");
+        }
+          ESP_command[0]   = '\0';
+      }
+      
+      
+//////////////////////////////////////////////////////////////////////
 ///*****             Test Functions                        *****///
 //////////////////////////////////////////////////////////////////////
-// 
-//  void sendESPNOWCommand(String sdest,String scomm){
-////    DBG("sendESPNOWCommand Function called");
-//    destination = sdest;
-//    command = scomm;
-//    commandsToSend.dest = destination;
-//    commandsToSend.comm = command;
-//    // Send message via ESP-NOW
-//    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &commandsToSend, sizeof(commandsToSend));
-//   if (result == ESP_OK) {
-//    DBG("Sent with success");
-//    }
-//    else {
-//      DBG(result);
-//      DBG("Error sending the data");
-//    }
-//   }
-//
-//  void parseESPNOWCommand(String idest, String icomm){
-//    
-//  }
-AnimationPlayer player(servoSequencer);
-  void testESPNOW(){
-//    sendESPNOWCommand("ESP","d03");
-//    DBG("testESPNOW Function called");
-    D_command[0] = '\0';
-    ANIMATION_PLAY_ONCE(player, WaveFullBody);
 
-    };
-
-
-
-  ANIMATION(WaveFullBody)
-  {
-    DO_START()
-//    DO_SEQUENCE(SeqPanelWave,ALL_SERVOS_MASK)
-//      {
-DO_ONCE_AND_WAIT({SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
- ; }, 2100)
-
-//    DO_ONCE_LABEL(looping, {
-//        printf("Looping all over again\n");
-//    })
-//    DO_WHILE_SEQUENCE(looping)
-    DO_ONCE_AND_WAIT({
-//       sendESPNOWCommand("ESP","d14");
-//        StealthCommand("tmprnd=60");
-    }, 10)
-    DO_END()
-}
   
