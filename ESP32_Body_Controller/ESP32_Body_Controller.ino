@@ -608,10 +608,10 @@ void shortCircuit(int count) {
   void allOpenClose(int servoBoard){
       DBG("Open and Close All Doors\n");
       
-      if (servoBoard == 1 || servoBoard == 3){
+      if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
     }
-    if (servoBoard == 2 || servoBoard == 3){
+      if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       writeEnSerial("S02DSD10");
         };
         
@@ -621,74 +621,118 @@ void shortCircuit(int count) {
   void allOpenCloseLong(int servoBoard){
       DBG("Open and Close Doors Long\n");
 
-      if (servoBoard == 1 || servoBoard == 3){
+      if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
     }
-    if (servoBoard == 2 || servoBoard == 3){
+    if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       writeEnSerial("S02DSD211");
         };
        D_command[0]   = '\0';                                                 
       }
           
-  void allFlutter(){
+  void allFlutter(int servoBoard){
       DBG("Flutter All Doors\n");
-    if (servoBoard == 1 || servoBoard == 3){
+    if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
     }
-    if (servoBoard == 2 || servoBoard == 3){
+    if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
       writeEnSerial("S02DSD212");
         };
 
       D_command[0]   = '\0';   
       }
-  void allOpenCloseRepeat(){
+
+  void allOpenCloseRepeat(int servoBoard){
       DBG("Open and Close All Doors Repeat\n");
-      SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
+    if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
+    }
+    if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
+      writeEnSerial("S02DSD213");
+       };
+
+
       D_command[0]   = '\0';             
              }
-  void panelWave(){
-       DBG("Wave\n");
-       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
-       DelayCall::schedule([] {writeEnSerial("S02DSD14");}, 2000);
-//       writeString1("S02DSD14");
 
+  void panelWave(int servoBoard){
+       DBG("Wave\n");
+
+       switch(servoBoard){
+        case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
+        case 2: writeEnSerial("S02DSD214"); break;
+        case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
+                DelayCall::schedule([] {writeEnSerial("S02DSD214");}, 2000); break;
+        case 4: writeEnSerial("S02DSD214")
+                DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
+       }
+      //  if (servoBoard == 1){
+      //  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
+      //  } else if (servoBoard == 2){
+      //  writeEnSerial("S02DSD14")
+      //  } else if(servoBoard == 3){
+      //  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
+      //  DelayCall::schedule([] {writeEnSerial("S02DSD14");}, 2000);
+      //  } else if (servoBoard == 4){
+      //   writeEnSerial("S02DSD14")
+      //   DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);}, 3000);
+      //  }
        D_command[0]   = '\0';                                             
        }
-  void panelWaveFast(){
+
+  void panelWaveFast(int servoBoard){
        DBG("Wave Fast\n");
-       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
+
+      switch(servoBoard){
+        case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
+        case 2: writeEnSerial("S02DSD215"); break;
+        case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
+                DelayCall::schedule([] {writeEnSerial("S02DSD215");}, 2000); break;
+        case 4: writeEnSerial("S02DSD215")
+                DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
+       }
+
+      //  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }
-  void openCloseWave() {
+  void openCloseWave(int servoBoard) {
        DBG("Open Close Wave \n");
-       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
+      switch(servoBoard){
+        case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
+        case 2: writeEnSerial("S02DSD216"); break;
+        case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
+                DelayCall::schedule([] {writeEnSerial("S02DSD5216");}, 2000); break;
+        case 4: writeEnSerial("S02DSD216")
+                DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
+       }
+      //  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                          
  
-  void marchingAnts() {
+  void marchingAnts(int servoBoard) {
        DBG("Marching Ants\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                             
-  void panelAlternate() {
+  void panelAlternate(int servoBoard) {
        DBG("Panel Alternate\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }                                                            
 
-  void panelDance() {
+  void panelDance(int servoBoard) {
        DBG("Panel Dance\n");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
        D_command[0]   = '\0';                                             
        }
 
-  void longDisco() {
+  void longDisco(int servoBoard) {
          DBG("Panel Dance\n");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
          D_command[0]   = '\0';                                             
          }
 
-  void longHarlemShake() {
+  void longHarlemShake(int servoBoard) {
          DBG("Panel Dance\n");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
          D_command[0]   = '\0';                                             
