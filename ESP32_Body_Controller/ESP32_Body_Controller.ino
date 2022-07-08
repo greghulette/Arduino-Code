@@ -445,16 +445,16 @@ void loop(){
            case 8:  quickWaveAllDoors();                                                break;
            case 10: allOpenClose(D_command[1]);                                                     break;
            case 11: allOpenCloseLong(D_command[1]);                                                 break;
-           case 12: allFlutter();                                                       break;
-           case 13: allOpenCloseRepeat();                                               break;
-           case 14: panelWave();                                                        break;
-           case 15: panelWaveFast();                                                    break;
-           case 16: openCloseWave();                                                    break;
-           case 17: marchingAnts();                                                     break;
-           case 18: panelAlternate();                                                   break;
-           case 19: panelDance();                                                       break;
-           case 20: longDisco();                                                        break;
-           case 21: longHarlemShake();                                                  break;
+           case 12: allFlutter(D_command[1]);                                                       break;
+           case 13: allOpenCloseRepeat(D_command[1]);                                               break;
+           case 14: panelWave(D_command[1]);                                                        break;
+           case 15: panelWaveFast(D_command[1]);                                                    break;
+           case 16: openCloseWave(D_command[1]);                                                    break;
+           case 17: marchingAnts(D_command[1]);                                                     break;
+           case 18: panelAlternate(D_command[1]);                                                   break;
+           case 19: panelDance(D_command[1]);                                                       break;
+           case 20: longDisco(D_command[1]);                                                        break;
+           case 21: longHarlemShake(D_command[1]);                                                  break;
 //           case 22: ();                                                                 break;
 //           case 23: ();                                                                 break;
            case 50: ;                                                                  break;
@@ -632,8 +632,13 @@ void shortCircuit(int count) {
           
   void allFlutter(){
       DBG("Flutter All Doors\n");
-      SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
-//      sendESPNOWCommand("ESP","d12");
+    if (servoBoard == 1 || servoBoard == 3){
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
+    }
+    if (servoBoard == 2 || servoBoard == 3){
+      writeEnSerial("S02DSD212");
+        };
+
       D_command[0]   = '\0';   
       }
   void allOpenCloseRepeat(){
