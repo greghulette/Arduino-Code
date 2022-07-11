@@ -91,9 +91,8 @@ ServoSequencer servoSequencer(servoDispatch);
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState     = 0;
 
-
     int debugflag = 0;
-    int debugflag1 = 0;  // debugging for params recieved from clients
+    int debugflag1 = 0;  // Used for debugging params recieved from clients
 
   //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -147,7 +146,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
 //Raspberry Pi              192.168.4.100
 //Body Controller ESP       192.168.4.101   ************
-//ESP-NOW Master ESP        192.168.4.110v  (Only used for OTA)
+//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA) 
 //Periscope Controller ESP  192.168.4.112   (Only used for OTA)
 //Remote                    192.168.4.107
@@ -176,8 +175,8 @@ void setup(){
    blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL;
    stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Body LED/Servo Controller");
+   Serial.println("\n\n\n-----------------------------------\nBooting up the Dome Controller");
+
   
   //Configure the Reset Pins for the arduinoReset() function
   pinMode(4, OUTPUT);
@@ -188,6 +187,11 @@ void setup(){
   
   //Initialize the ReelTwo Library
   SetupEvent::ready();
+
+  
+  //Reserve the inputStrings
+  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(100);
 
   //Initialize the Soft Access Point
   WiFi.mode(WIFI_AP);
@@ -362,19 +366,19 @@ void loop(){
     if(ESP_command[0]){
       switch (ESP_command[0]){
         case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0'; break;
+                ESP_command[0]   = '\0';                                                        break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0'; break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi on 
-        case 4: break;
-        case 5: break;
-        case 6: break;
-        case 7: break;
-        case 8: break;
-        case 9: break;
-        case 10: toggleDebug();           break;
-        case 11: toggleDebug1();      break;
+                ESP_command[0]   = '\0';                                                        break;
+        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+        case 4: break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9: break;  //reserved for future use
+        case 10: toggleDebug();                                                                 break;
+        case 11: toggleDebug1();                                                                break;
 
       }
     }
@@ -386,26 +390,26 @@ void loop(){
       }
       else {
         switch (D_command[0]) {
-        case 1: openDoor(D_command[1],D_command[2]);                                            break;
-        case 2: closeDoor(D_command[1],D_command[2]);                                           break;
-        case 3: openAllDoors(D_command[1]);                                                     break;
-        case 4: closeAllDoors(D_command[1]);                                                    break;
-        case 5: shortCircuit(D_Command[1]);                                                     break;
-        case 6: allOpenClose(D_command[1]);                                                     break;
-        case 7: allOpenCloseLong(D_command[1]);                                                 break;
-        case 8: allFlutter(D_command[1]);                                                       break;
-        case 9: allOpenCloseRepeat(D_command[1]);                                               break;
-        case 10: panelWave(D_command[1]);                                                       break;
-        case 11: panelWaveFast(D_command[1]);                                                   break;
-        case 12: openCloseWave(D_command[1]);                                                   break;
-        case 13: marchingAnts(D_command[1]);                                                    break;
-        case 14: panelAlternate(D_command[1]);                                                  break;
-        case 15: panelDance(D_command[1]);                                                      break;
-        case 16: longDisco(D_command[1]);                                                       break;
-        case 17: longHarlemShake(D_command[1]);                                                 break;
-        case 98: closeAllDoors(3);                                                               break;
-        case 99: closeAllDoors(3);                                                               break;
-        default: break;
+          case 1: openDoor(D_command[1],D_command[2]);                                            break;
+          case 2: closeDoor(D_command[1],D_command[2]);                                           break;
+          case 3: openAllDoors(D_command[1]);                                                     break;
+          case 4: closeAllDoors(D_command[1]);                                                    break;
+          case 5: shortCircuit(D_Command[1]);                                                     break;
+          case 6: allOpenClose(D_command[1]);                                                     break;
+          case 7: allOpenCloseLong(D_command[1]);                                                 break;
+          case 8: allFlutter(D_command[1]);                                                       break;
+          case 9: allOpenCloseRepeat(D_command[1]);                                               break;
+          case 10: panelWave(D_command[1]);                                                       break;
+          case 11: panelWaveFast(D_command[1]);                                                   break;
+          case 12: openCloseWave(D_command[1]);                                                   break;
+          case 13: marchingAnts(D_command[1]);                                                    break;
+          case 14: panelAlternate(D_command[1]);                                                  break;
+          case 15: panelDance(D_command[1]);                                                      break;
+          case 16: longDisco(D_command[1]);                                                       break;
+          case 17: longHarlemShake(D_command[1]);                                                 break;
+          case 98: closeAllDoors(3);                                                               break;
+          case 99: closeAllDoors(3);                                                               break;
+          default: break;
         }
       }
     } 
@@ -450,16 +454,16 @@ void openDoor(int servoBoard, int doorpos) {
   };
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
-      case 1: DBG("Open SMALL_PANEL_ONE\n");      writeEnSerial("S02DSD20101");  break;
-      case 2: DBG("Open SMALL_PANEL_TWO\n");      writeEnSerial("S02DSD20102");  break;
-      case 3: DBG("Open SMALL_PANEL_THREE\n");    writeEnSerial("S02DSD20103");  break;
-      case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); writeEnSerial("S02DSD20104");  break;
-      case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  writeEnSerial("S02DSD20105");  break;
-      case 6: DBG("Open BIG_PANEL\n");            writeEnSerial("S02DSD20106");  break;
-      case 7: DBG("Open PIE_PANEL_ONE\n");        writeEnSerial("S02DSD20107");  break;
-      case 8: DBG("Open PIE_PANEL_TWO\n");        writeEnSerial("S02DSD20108");  break;
-      case 9: DBG("Open PIE_PANEL_THREE\n");      writeEnSerial("S02DSD20109");  break;
-      case 10: DBG("Open PIE_PANEL_FOUR\n");      writeEnSerial("S02DSD20110");  break;
+      case 1: DBG("Open SMALL_PANEL_ONE\n");      writeEnSerial("N01DSD20101");  break;
+      case 2: DBG("Open SMALL_PANEL_TWO\n");      writeEnSerial("N01DSD20102");  break;
+      case 3: DBG("Open SMALL_PANEL_THREE\n");    writeEnSerial("N01DSD20103");  break;
+      case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); writeEnSerial("N01DSD20104");  break;
+      case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  writeEnSerial("N01DSD20105");  break;
+      case 6: DBG("Open BIG_PANEL\n");            writeEnSerial("N01DSD20106");  break;
+      case 7: DBG("Open PIE_PANEL_ONE\n");        writeEnSerial("N01DSD20107");  break;
+      case 8: DBG("Open PIE_PANEL_TWO\n");        writeEnSerial("N01DSD20108");  break;
+      case 9: DBG("Open PIE_PANEL_THREE\n");      writeEnSerial("N01DSD20109");  break;
+      case 10: DBG("Open PIE_PANEL_FOUR\n");      writeEnSerial("N01DSD20110");  break;
     }
   };
   D_command[0]   = '\0';
@@ -481,16 +485,16 @@ void closeDoor(int servoBoard, int doorpos) {
   };
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
-      case 1: DBG("Close SMALL_PANEL_ONE\n");      writeEnSerial("S02DSD20201");  break;
-      case 2: DBG("Close SMALL_PANEL_TWO\n");      writeEnSerial("S02DSD20202");  break;
-      case 3: DBG("Close SMALL_PANEL_THREE\n");    writeEnSerial("S02DSD20203");  break;
-      case 4: DBG("Close MEDIUM_PANEL_PAINTED\n"); writeEnSerial("S02DSD20204");  break;
-      case 5: DBG("Close MEDIUM_PANEL_SILVER\n");  writeEnSerial("S02DSD20205");  break;
-      case 6: DBG("Close BIG_PANEL\n");            writeEnSerial("S02DSD20206");  break;
-      case 7: DBG("Close PIE_PANEL_ON\nE");        writeEnSerial("S02DSD20207");  break;
-      case 8: DBG("Close PIE_PANEL_TWO\n");        writeEnSerial("S02DSD20208");  break;
-      case 9: DBG("Close PIE_PANEL_THREE\n");      writeEnSerial("S02DSD20209");  break;
-      case 10: DBG("Close PIE_PANEL_FOUR\n");      writeEnSerial("S02DSD20210");  break;
+      case 1: DBG("Close SMALL_PANEL_ONE\n");      writeEnSerial("N01DSD20201");  break;
+      case 2: DBG("Close SMALL_PANEL_TWO\n");      writeEnSerial("N01DSD20202");  break;
+      case 3: DBG("Close SMALL_PANEL_THREE\n");    writeEnSerial("N01DSD20203");  break;
+      case 4: DBG("Close MEDIUM_PANEL_PAINTED\n"); writeEnSerial("N01DSD20204");  break;
+      case 5: DBG("Close MEDIUM_PANEL_SILVER\n");  writeEnSerial("N01DSD20205");  break;
+      case 6: DBG("Close BIG_PANEL\n");            writeEnSerial("N01DSD20206");  break;
+      case 7: DBG("Close PIE_PANEL_ON\nE");        writeEnSerial("N01DSD20207");  break;
+      case 8: DBG("Close PIE_PANEL_TWO\n");        writeEnSerial("N01DSD20208");  break;
+      case 9: DBG("Close PIE_PANEL_THREE\n");      writeEnSerial("N01DSD20209");  break;
+      case 10: DBG("Close PIE_PANEL_FOUR\n");      writeEnSerial("N01DSD20210");  break;
     }
   };
   D_command[0]   = '\0';
@@ -504,7 +508,7 @@ void openAllDoors(int servoBoard) {
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    writeEnSerial("S02DSD203");
+    writeEnSerial("N01DSD203");
   };
   D_command[0] = '\0';
 }
@@ -517,7 +521,7 @@ void closeAllDoors(int servoBoard) {
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    writeEnSerial("S02DSD204");
+    writeEnSerial("N01DSD204");
   };
   D_command[0] = '\0';
 }
@@ -536,7 +540,7 @@ void allOpenClose(int servoBoard){
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    writeEnSerial("S02DSD206");
+    writeEnSerial("N01DSD206");
   };
   D_command[0]   = '\0';                                           
 }
@@ -549,7 +553,7 @@ void allOpenCloseLong(int servoBoard){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    writeEnSerial("S02DSD207");
+    writeEnSerial("N01DSD207");
   };
   D_command[0]   = '\0';                                                 
 }
@@ -562,7 +566,7 @@ void allFlutter(int servoBoard){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    writeEnSerial("S02DSD208");
+    writeEnSerial("N01DSD208");
   };
   D_command[0]   = '\0';   
 }
@@ -575,7 +579,7 @@ void allOpenCloseRepeat(int servoBoard){
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    writeEnSerial("S02DSD209");
+    writeEnSerial("N01DSD209");
   };
   D_command[0]   = '\0';             
 }
@@ -586,10 +590,10 @@ void panelWave(int servoBoard){
   DBG("Wave\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD210"); break;
+    case 2: writeEnSerial("N01DSD210"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
-            DelayCall::schedule([] {writeEnSerial("S02DSD210");}, 2000); break;
-    case 4: writeEnSerial("S02DSD210");
+            DelayCall::schedule([] {writeEnSerial("N01DSD210");}, 2000); break;
+    case 4: writeEnSerial("N01DSD210");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -601,10 +605,10 @@ void panelWaveFast(int servoBoard){
   DBG("Wave Fast\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD211"); break;
+    case 2: writeEnSerial("N01DSD211"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
-            DelayCall::schedule([] {writeEnSerial("S02DSD211");}, 2000); break;
-    case 4: writeEnSerial("S02DSD212");
+            DelayCall::schedule([] {writeEnSerial("N01DSD211");}, 2000); break;
+    case 4: writeEnSerial("N01DSD212");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -616,10 +620,10 @@ void openCloseWave(int servoBoard) {
   DBG("Open Close Wave \n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD212"); break;
+    case 2: writeEnSerial("N01DSD212"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
-            DelayCall::schedule([] {writeEnSerial("S02DSD5212");}, 2000); break;
-    case 4: writeEnSerial("S02DSD212");
+            DelayCall::schedule([] {writeEnSerial("N01DSD5212");}, 2000); break;
+    case 4: writeEnSerial("N01DSD212");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -631,10 +635,10 @@ void marchingAnts(int servoBoard) {
   DBG("Marching Ants\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD213"); break;
+    case 2: writeEnSerial("N01DSD213"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
-          DelayCall::schedule([] {writeEnSerial("S02DSD5213");}, 2000); break;
-    case 4: writeEnSerial("S02DSD213");
+          DelayCall::schedule([] {writeEnSerial("N01DSD5213");}, 2000); break;
+    case 4: writeEnSerial("N01DSD213");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -646,10 +650,10 @@ void panelAlternate(int servoBoard) {
   DBG("Panel Alternate\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD214"); break;
+    case 2: writeEnSerial("N01DSD214"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
-          DelayCall::schedule([] {writeEnSerial("S02DSD5214");}, 2000); break;
-    case 4: writeEnSerial("S02DSD214");
+          DelayCall::schedule([] {writeEnSerial("N01DSD5214");}, 2000); break;
+    case 4: writeEnSerial("N01DSD214");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -661,10 +665,10 @@ void panelDance(int servoBoard) {
   DBG("Panel Dance\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD215"); break;
+    case 2: writeEnSerial("N01DSD215"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
-          DelayCall::schedule([] {writeEnSerial("S02DSD5215");}, 2000); break;
-    case 4: writeEnSerial("S02DSD215");
+          DelayCall::schedule([] {writeEnSerial("N01DSD5215");}, 2000); break;
+    case 4: writeEnSerial("N01DSD215");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -676,10 +680,10 @@ void longDisco(int servoBoard) {
   DBG("Panel Dance Long\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD216"); break;
+    case 2: writeEnSerial("N01DSD216"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
-          DelayCall::schedule([] {writeEnSerial("S02DSD5216");}, 2000); break;
-    case 4: writeEnSerial("S02DSD216");
+          DelayCall::schedule([] {writeEnSerial("N01DSD5216");}, 2000); break;
+    case 4: writeEnSerial("N01DSD216");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -691,10 +695,10 @@ void longHarlemShake(int servoBoard) {
   DBG("Harlem Shake\n");
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
-    case 2: writeEnSerial("S02DSD217"); break;
+    case 2: writeEnSerial("N01DSD217"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
-          DelayCall::schedule([] {writeEnSerial("S02DSD5217");}, 2000); break;
-    case 4: writeEnSerial("S02DSD217");
+          DelayCall::schedule([] {writeEnSerial("N01DSD5217");}, 2000); break;
+    case 4: writeEnSerial("N01DSD217");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             

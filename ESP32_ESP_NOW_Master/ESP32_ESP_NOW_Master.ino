@@ -50,8 +50,8 @@
     int commandState = 0;
 
     uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-    int espNowCommandState = 0;
-    String espNowCommandStateString;
+    int espNowespCommandFunction = 0;
+    String espNowespCommandFunctionString;
     String tempESPNOWTargetID;
  
   // Flags to enable/disable debugging in runtime
@@ -174,7 +174,7 @@
       Serial.println(incomingTargetID);
       Serial.print("Command = ");
       Serial.println(incomingCommand); 
-      if (incomingDestinationID =="Body"){
+      if (incomingDestinationID =="Body" || incomingDestinationID == "ESPNOW"){
         Serial.println("Accepted");
         inputString = incomingCommand;
         stringComplete = true;   
@@ -191,9 +191,6 @@
   //ESP-NOW Master ESP        192.168.4.110  
   //Dome Controller ESP       192.168.4.111  ************
   //Periscope Controller ESP  192.168.4.112
-  //Stealth Controller ESP    192.168.4.  (Probably not going to be different then Body Controller ESP IP)
-  //Dome Servo Controller     192.168.4.  (Probably not going to be different then Dome Controller ESP IP)
-  //Body Servo Controller     192.168.4.  (Probably not going to be different then Body Controller ESP IP)
   //Remote                    192.168.4.107
   //Developer Laptop          192.168.4.125
   
@@ -290,8 +287,8 @@ void loop(){
 //     if(inputBuffer[0]=='S'  || inputBuffer[0]=='s') {inputBuffer[0]='E' || inputBuffer[0]=='e';}
      if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-         inputBuffer[0]=='S' ||        // Command for Sending ESP-NOW Messages
-         inputBuffer[0]=='s'           // Command for Sending ESP-NOW Messages
+         inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+         inputBuffer[0]=='n'           // Command for Sending ESP-NOW Messages
 
 
 
@@ -302,31 +299,27 @@ void loop(){
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
                 };
-                if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+                if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
                   for (int i=1; i<=commandLength; i++)
                    {char inCharRead = inputBuffer[i];
                 // add it to the inputString:
                 inputStringCommand += inCharRead;
                    }
                    DBG("\nFull Command Recieved: %s ",inputStringCommand);
-//                   Serial.println(inputStringCommand);
-                   espNowCommandStateString = inputStringCommand.substring(0,2);
-                   espNowCommandState = espNowCommandStateString.toInt();
+
+                   espNowespCommandFunctionString = inputStringCommand.substring(0,2);
+                   espNowespCommandFunction = espNowespCommandFunctionString.toInt();
                    
                    Serial.print("ESP NOW Command State: ");
-                   Serial.println(espNowCommandState);
+                   Serial.println(espNowespCommandFunction);
                    targetID = inputStringCommand.substring(2,4);
                    Serial.print ("Target ID: ");
                    Serial.println(targetID);
                    commandSubString = inputStringCommand.substring(4,commandLength);
                    Serial.print("Command to Forward: ");
                    Serial.println(commandSubString);
-                  
-//                  espNowCommandState  = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0')*100+(inputBuffer[3]-'0')*1000+(inputBuffer[4]-'0');
-//                  espNowCommandStateString = String(espNowCommandState);
-//                  Serial.print("Recieved Command: ");
-//                  Serial.println(espNowCommandStateString);
-                  };
+
+                };
                 
 //                if(commandLength >= 4) {
 //                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {typeState = inputBuffer[3]-'0';}
@@ -358,14 +351,11 @@ void loop(){
                   ESP_command[0] = commandState;
                 }
 
-                 if(inputBuffer[0]=='S' || inputBuffer[0] == 's') {
-                  ESPNOW_command[0]   = '\0';                                                            // Flushes Array
-                  ESPNOW_command[0] = espNowCommandState;
-                  tempESPNOWTargetID = targetID;
-//                  ESPNOW_command[2] = commandSubString;
-                }
-
-
+                 if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
+                    ESPNOW_command[0]   = '\0';                                                            // Flushes Array
+                    ESPNOW_command[0] = espNowespCommandFunction;
+                    tempESPNOWTargetID = targetID;
+                  }
               }
             }
 
@@ -376,7 +366,7 @@ void loop(){
        int commandState;
        inputStringCommand = "";
        targetID = "";
-       espNowCommandState =0;
+       espNowespCommandFunction =0;
 //       targetID="";
 //       Serial.println("command Proccessed");
 
@@ -402,10 +392,9 @@ void loop(){
         }
         if(ESPNOW_command[0]){
           switch(ESPNOW_command[0]){
-            case 1: Serial.println("Case 1 Selected");
-                  ESPNOW_command[0] = '\0'; break;
-            case 2: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
-                  
+            case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+            case 2: break;  //reserved for future use
+            case 3: break;  //reserved for future use      
             
           }
         }

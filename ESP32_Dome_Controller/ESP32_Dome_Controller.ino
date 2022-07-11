@@ -15,10 +15,8 @@
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
 
-//reeltwo libaries
+//ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
 #include "ReelTwo.h"
@@ -26,20 +24,20 @@
 #include "ServoDispatchPCA9685.h"
 #include "ServoSequencer.h"
 
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                                                                           *****///
-///*****                                                     Created by Greg Hulette.  I started with the code from flthymcnsty
-///*****                                                                                                                                                           *****///
-///*****                                                         So exactly what does this all do.....?                                                            *****///
-///*****                       - Controls the Dome servos                                                                                     *****///
-///*****                       - Controls the Camera Light                                                                                     *****///
-///*****                       - Sends Serial commands to the HPs and RSeries                                   *****///
-///*****                                                                                                                                                           *****///
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///*****                                                                                                       *****///
+///*****                            Created by Greg Hulette.                                                   *****///
+///*****                                                                                                       *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
+///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
+///*****                                                                                                       *****///
+///*****                      So exactly what does this all do.....?                                           *****///
+///*****                       - Controls the Dome servos                                                      *****///
+///*****                       - Controls the Camera Light                                                     *****///
+///*****                       - Sends Serial commands to the HPs and RSeries Logic Displays                   *****///
+///*****                                                                                                       *****///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
@@ -65,7 +63,7 @@
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
-//     Pin  Min, ,Max,  Group ID
+//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
      { 1,  600, 2400, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
      { 2,  600, 2400, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
@@ -88,54 +86,33 @@ ServoSequencer servoSequencer(servoDispatch);
 
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
+  String inputStringCommand;
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
-  int displayState;
-  int typeState;
+  int ledFunction;
   int commandLength;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int commandState     = 0;
+  int espCommandFunction     = 0;
 
+  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+  int espNowespCommandFunction = 0;
+  String espNowespCommandFunctionString;
+  String tempESPNOWTargetID;
+  
 
+  int debugflag = 0;
+  int debugflag1 = 0;  // Used for optional level of debuging
 
-    uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-    int espNowCommandState = 0;
-    String espNowCommandStateString;
-    String tempESPNOWTargetID;
-    
-  #ifdef DEBUG
-  #define DPRINT(x)     Serial.print (x)
-  #define DPRINTLN(x)  Serial.println (x)
-#else
-  #define DPRINT(x)
-  #define DPRINTLN(x) 
-#endif
 //////////////////////////////////////////////////////////////////////
 ///*****   Door Values, Containers, Flags & Timers   *****///
 //////////////////////////////////////////////////////////////////////
-   int door = -1;
+  int door = -1;
   // Door Command Container
-   uint32_t D_command[6]  = {0,0,0,0,0,0};
-   int doorState     = 0;
-  // Door Counters
-//   long int Dcounts[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-//   long int Dcount  = 0;
-//   long int D1count  = 0;
-//   long int Dpcount = 0;
-//   long int qwDuration = 800;
-  // Door Timer
-//   unsigned long Dmillis;
-//   unsigned long Doorsmillis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-//   unsigned long D1millis;
-//   unsigned long Doors1millis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-//   unsigned long D2millis;
-//   unsigned long Doors2millis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-//  // Door Flags
-//   boolean DaltToggle = true;
-//   boolean DWToggle   = false;
-//   boolean GaltToggle = true;
+  uint32_t D_command[6]  = {0,0,0,0,0,0};
+  int doorFunction = 0;
+  int doorBoard = 0; 
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -181,8 +158,7 @@ ServoSequencer servoSequencer(servoDispatch);
   byte CL_command[4] = {0,0,0,0};
   
   int colorState1;
-  int colorState2;
-
+  int speedState;
   // Set some primary and secondary default color values as a fall back in case no colors
   // are provided in input commands. This makes the ssytem much more user friendly.
 
@@ -201,72 +177,79 @@ ServoSequencer servoSequencer(servoDispatch);
   #define TXHP 18 
   #define RXRS 25
   #define TXRS 27 
-  #define BAUD_RATE 9600
-  SoftwareSerial hpSerial;
-  SoftwareSerial rsSerial;
+  #define HP_BAUD_RATE 115200
+  #define RS_BAUD_RATE 115200
+  #define hpSerial Serial1
+  #define rsSerial Serial2
 
   /////////////////////////////////////////////////////////////////////////
 ///*****              ESP NOW Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
 
-  // REPLACE WITH THE MAC Address of your receiver 
-//    MAC Address of your receivers 
-    uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-    uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  MAC Addresses used in the Droid
+//  ESP-NOW Master =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Dome Controller =       {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Periscope Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+
+//  MAC Address of the receivers (Not Currenlty needed but have this in the code for future use)
+uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
 //    MAC Address to broadcast to all senders at once
-    uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 
-  // Define variables to store commands to be sent
-    String senderID;
-    String destinationID;
-    String targetID;
-    String command;
+// Define variables to store commands to be sent
+  String senderID;
+  String destinationID;
+  String targetID;
+  String command;
+  String commandSubString;
 
-  // Define variables to store incoming commands
-    String incomingDestinationID;
-    String incomingTargetID;  
-    String incomingSenderID;
-    String incomingCommand;
-    
-  // Variable to store if sending data was successful
-    String success;
 
-  //Structure example to send data
-  //Must match the receiver structure
-    typedef struct struct_message {
-        String structSenderID;
-        String structDestinationID;
-        String structTargetID;  
-        String structCommand;
-    } struct_message;
+// Define variables to store incoming commands
+  String incomingDestinationID;
+  String incomingTargetID;  
+  String incomingSenderID;
+  String incomingCommand;
+  
+// Variable to store if sending data was successful
+  String success;
 
-  // Create a struct_message calledcommandsTosend to hold variables that will be sent
-    struct_message commandsToSendtoBody;
-    struct_message commandsToSendtoPeriscope;
-    struct_message commandsToSendtoBroadcast;
+//Structure example to send data
+//Must match the receiver structure
+  typedef struct struct_message {
+      String structSenderID;
+      String structDestinationID;
+      String structTargetID;  
+      String structCommand;
+  } struct_message;
 
-  // Create a struct_message to hold incoming commands from the Body
-    struct_message commandsToReceiveFromBody;
-    struct_message commandsToReceiveFromPeriscope;
-    struct_message commandsToReceiveFromBroadcast;
+// Create a struct_message calledcommandsTosend to hold variables that will be sent
+  struct_message commandsToSendtoBody;
+  struct_message commandsToSendtoPeriscope;
+  struct_message commandsToSendtoBroadcast;
 
-    esp_now_peer_info_t peerInfo;
+// Create a struct_message to hold incoming commands from the Body
+  struct_message commandsToReceiveFromBody;
+  struct_message commandsToReceiveFromPeriscope;
+  struct_message commandsToReceiveFromBroadcast;
 
-  // Callback when data is sent
-    void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-      char macStr[18];
-      Serial.print("Packet to: ");
-      // Copies the sender mac address to a string
-      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-      Serial.print(macStr);
-      Serial.print(" send status:\t");
-      Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    }
+  esp_now_peer_info_t peerInfo;
+
+// Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  Serial.print("Packet to: ");
+  // Copies the sender mac address to a string
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print(macStr);
+  Serial.print(" send status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
 
   // Callback when data is received
       void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
@@ -311,16 +294,13 @@ ServoSequencer servoSequencer(servoDispatch);
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
   
-  //Raspberry Pi              192.168.4.100
-  //Body Controller ESP       192.168.4.101
-  //ESP-NOW Master ESP        192.168.4.110  
-  //Dome Controller ESP       192.168.4.111  ************
-  //Periscope Controller ESP  192.168.4.112
-  //Stealth Controller ESP    192.168.4.  (Probably not going to be different then Body Controller ESP IP)
-  //Dome Servo Controller     192.168.4.  (Probably not going to be different then Dome Controller ESP IP)
-  //Body Servo Controller     192.168.4.  (Probably not going to be different then Body Controller ESP IP)
-  //Remote                    192.168.4.107
-  //Developer Laptop          192.168.4.125
+//Raspberry Pi              192.168.4.100
+//Body Controller ESP       192.168.4.101   ************
+//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA) 
+//Periscope Controller ESP  192.168.4.112   (Only used for OTA)
+//Remote                    192.168.4.107
+//Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP
   IPAddress local_IP(192,168,4,111);
@@ -337,49 +317,46 @@ ServoSequencer servoSequencer(servoDispatch);
   
 
 
-void setup()
-{
+void setup(){
+  //Initialize the Serial Ports
+  Serial.begin(9600);                                                                   // Initialize Serial Connection at 9600:
+  hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
+  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
+  
+  //Initialize I2C for the Servo Expander Board
+  Wire.begin();
+  
+  Serial.println("\n\n\n-----------------------------------\nBooting up the Dome Controller");
 
-    //***  COMMUNICATION SET UP ***///
-   Serial.begin(9600);                                                                   // Initialize Serial Connection at 9600:
-   hpSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXHP,TXHP,false,95);
-   rsSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXRS,TXRS,false,95);
-   Wire.begin();                                                               // Start I2C Bus as Slave I2C Address
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Dome Controller");
-
+  //Initialize the ReelTwo Library
    SetupEvent::ready();
 
+  //Reserve the inputStrings
    inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
    autoInputString.reserve(100);
-
-
 
    //***     RANDOM SET UP     ***///
    randomSeed(millis());                         //  Sets a Random Seed so Random is More Randomy
 
+  //Sertup the NeoPixel ring for the camera lens/radar eye
   stripCL.begin();
   stripCL.show(); // Initialize all pixels to 'off'
   colorWipe(red, 255); // red during bootup
   Serial.println("LED Setup Complete");
+
+
+  //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_AP_STA);
+    esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+    Serial.print("Local STA MAC address = ");
+    Serial.println(WiFi.macAddress());
 
-      esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
-      Serial.print("Local STA MAC address = ");
-      Serial.println(WiFi.macAddress());
-
-server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! This is a sample response.");
-  });
-
-  
-  Serial.println("HTTP server started");
 //Initialize ESP-NOW
-  
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
   return;
   }
+
   // Once ESPNow is successfully Init, we will register for Send CB to
   // get the status of Trasnmitted packet
   esp_now_register_send_cb(OnDataSent);
@@ -387,7 +364,7 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
   // Register peer
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
-//  peerInfo.ifidx=WIFI_IF_AP;
+  //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
     memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
@@ -414,207 +391,188 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
 //
 void loop() {
 if (millis() - MLMillis >= mainLoopDelayVar){
-        MLMillis = millis();
+  MLMillis = millis();
   loopTime = millis();
-   AnimatedEvent::process();
-//   mainLoop();
- if(startUp) {
+  AnimatedEvent::process();
+  if(startUp) {
       closeAllDoors();
       startUp = false;
       Serial.println("Startup");
-   }
-   if(Serial.available()){
-   serialEvent();
-   }
-   cameraLED(blue, 5); // blue
-//       Serial.println("looping");
+  }
+  if(Serial.available()){
+    serialEvent();
+  }
+  cameraLED(blue, 5); // blue
 
-//
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
     if(stringComplete) {inputString.toCharArray(inputBuffer, 10);inputString="";}
-     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
-//     if(inputBuffer[0]=='S'  || inputBuffer[0]=='s') {inputBuffer[0]='E' || inputBuffer[0]=='e';}
-     if( inputBuffer[0]=='D' ||        // Door Designator
-         inputBuffer[0]=='d' ||        // Door Designator
-         inputBuffer[0]=='R' ||        //Radar Eye LED
-         inputBuffer[0]=='r'  ||       //Radar Eye LED
-         inputBuffer[0] =='E' ||       // Command designatore for internal ESP functions
-         inputBuffer[0] =='e'          // Command designatore for internal ESP functions
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
+      if( inputBuffer[0]=='D' ||        // Door Designator
+          inputBuffer[0]=='d' ||        // Door Designator
+          inputBuffer[0]=='R' ||        //Radar Eye LED
+          inputBuffer[0]=='r' ||        //Radar Eye LED
+          inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
-         ) {
-            commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
 
-            if(commandLength >= 3) {
-                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-//                Serial.println("Here");
-                }    
-              else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-                commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-                  }                                                                               //  Converts 2 Door Sequence Indentifier Characters to Integer
-                                                                                                  //  Converts 2 Door Sequence Indentifier Characters to Integer
-                else {displayState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
+          if(commandLength >= 3) {
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}    
+            else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
+            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+              for (int i=1; i<=commandLength; i++){
+                char inCharRead = inputBuffer[i];
+                // add it to the inputString:
+                inputStringCommand += inCharRead;
+              }
+              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              espNowespCommandFunctionString = inputStringCommand.substring(0,2);
+              espNowespCommandFunction = espNowespCommandFunctionString.toInt();
+              Serial.print("ESP NOW Command State: ");
+              Serial.println(espNowespCommandFunction);
+              targetID = inputStringCommand.substring(2,4);
+              Serial.print ("Target ID: ");
+              Serial.println(targetID);
+              commandSubString = inputStringCommand.substring(4,commandLength);
+              Serial.print("Command to Forward: ");
+              Serial.println(commandSubString);
+            }   
+            else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
+            if(commandLength >= 4) {
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
+              if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {colorState1 = inputBuffer[3]-'0';};
+            }
+            if(commandLength >= 5) {
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
+              else {speedState = inputBuffer[4]-'0';} 
+            }
+       
 
-                if(commandLength >= 4) {
-                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d' || inputBuffer[0]=='R' || inputBuffer[0]=='r') {typeState = inputBuffer[3]-'0';}
-                }
-                else {
-                     typeState = -1;
-                }
-
-                if(commandLength >= 5) {
-                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
-                  else {colorState1 = inputBuffer[4]-'0';} 
-                 }
-                else {colorState1 = -1;}
-
-                if(colorState1 < 0 || colorState1 > 9) {
-                    colorState1 = defaultPrimaryColorInt;
-                 }
-                if(commandLength >= 6) {colorState2 = inputBuffer[5]-'0';}
-
-
-                else {colorState2 = -1;}
-
-                if(colorState2 < 0 || colorState2 > 9) {
-                     colorState2 = defaultSecondaryColorInt;
-                 }
-
-               
-                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-                  D_command[0]   = '\0';                                                            // Flushes Array
-                  D_command[0] = doorState;
-                  if(door>=0) {
-                     D_command[1] = door;
-                     Serial.println(door);
-                  }
-                }
-
-                if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
-                  CL_command[0]   = '\0';                                                            // Flushes Array
-                  CL_command[0] = displayState;
-                  CL_command[1] = typeState;
-                  CL_command[2] = colorState1;
-                  CL_command[3] = colorState2;
-                  CLMillis = millis();
-                      
-                }
-                
-                if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-                  ESP_command[0]   = '\0';                                                            // Flushes Array
-                  ESP_command[0] = commandState;
-                }
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+              D_command[0]   = '\0';                                                            // Flushes Array
+              D_command[0] = doorFunction;
+              if(door>=0) {
+                D_command[1] = door;
               }
             }
 
+            if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
+              CL_command[0]   = '\0';                                                            // Flushes Array
+              CL_command[0] = ledFunction;
+              CL_command[1] = colorState1;
+              CL_command[2] = speedState;
+              CLMillis = millis();
+            }
+                
+            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+              ESP_command[0]   = '\0';                                                            // Flushes Array
+              ESP_command[0] = espCommandFunction;
+            }
 
-      ///***  Clear States and Reset for next command.  ***///
-       stringComplete =false;
-       autoComplete = false;
-       inputBuffer[0] = '\0';
-       int displayState;
-       int typeState;
-       int speedState;
-       int colorState1;
-       int colorState2;
-       int door = -1;
-       int doorState;
-//       Serial.println("command taken");
-
-     }
-
-
-      if(ESP_command[0]){
-          switch (ESP_command[0]){
-            case 1: Serial.println("Controller: Dome ESP Controller");   
-                    ESP_command[0]   = '\0'; break;
-            case 2: Serial.println("Resetting the ESP in 5 Seconds");
-                    DelayCall::schedule([] {ESP.restart();}, 5000);
-                    ESP_command[0]   = '\0'; break;
-            case 3: connectWiFi();  
-                    ESP_command[0]   = '\0'; break;
-            case 4: esp_err_t results = esp_wifi_stop();; 
-                    Serial.println("WiFi Disconnected");
-                    Serial.println(WiFi.localIP());
-                    ESP_command[0]   = '\0'; break;
+            if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
+              ESPNOW_command[0]   = '\0';                                                            // Flushes Array
+              ESPNOW_command[0] = espNowespCommandFunction;
+              tempESPNOWTargetID = targetID;
+            }
           }
         }
 
-  if(D_command[0]) {
-       if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-         //Serial.println("Incorrect Door Value Specified, Command Aborted!");
-         D_command[0] = '\0';
-//         Serial.println("wrong if");
-       }
-       else {
-         switch (D_command[0]) {
-           case 1:  openDoor(D_command[1]);                                             break;
-           case 2:  closeDoor(D_command[1]);                                            break;
-           case 3:  openAllDoors();                                                     break;
-           case 4:  closeAllDoors();                                                    break;
-           case 5:  alternateDoors();                                                   break;
-           case 6:  cycleDoors();                                                       break;
-           case 7:  waveAllDoors();                                                     break;
-           case 8:  quickWaveAllDoors();                                                break;
-           case 10: allOpenClose();                                                     break;
-           case 11: allOpenCloseLong();                                                 break;
-           case 12: allFlutter();                                                       break;
-           case 13: allOpenCloseRepeat();                                               break;
-           case 14: panelWave();                                                     break;
-           case 15: panelWaveFast();                                                     break;
-           case 16: openCloseWave();                                                     break;
-           case 17: marchingAnts();                                                     break;
-           case 18: panelAlternate();                                                     break;
-           case 19: panelDance();                                                     break;
-           case 20: longDisco();                                                     break;
-           case 21: longHarlemShake();                                                     break;
-//           case 22: ();                                                     break;
-//           case 23: ();                                                     break;
-//           case 24: ();                                                     break;
-//           case 50: testESPNOW();                                                                 break;
-           case 98: closeAllDoors();                                                    break;
-           case 99: closeAllDoors();                                                    break;
-           default: break;
-          }
-       }
-     }
-   if(CL_command[0]){
-    switch(CL_command[0]){
-      case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);
-      }
-   }
+      ///***  Clear States and Reset for next command.  ***///
+      stringComplete =false;
+      autoComplete = false;
+      inputBuffer[0] = '\0';
+      int ledFunction;
+      int speedState;
+      int colorState1;
+      int door = -1;
+      int doorFunction;
+      int commandState;
+      inputStringCommand = "";
+      targetID = "";
+      espNowespCommandFunction =0;
+      DBG("command taken");
 
-  if(isStartUp) {
-        isStartUp = false;
-//        Ucount  = 0;
-//        closeArm(BOTH, SLOW);
-        delay(500);
-//        digitalWrite(OEPIN, HIGH);
     }
-}
 
-}
+    if(ESP_command[0]){
+      switch (ESP_command[0]){
+        case 1: Serial.println("Controller: Dome ESP Controller");   
+                ESP_command[0]   = '\0'; break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0'; break;
+        case 3: connectWiFi();  
+                ESP_command[0]   = '\0'; break;
+        case 4: break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9: break;  //reserved for future use
+        case 10: toggleDebug();                                                                 break;
+        case 11: toggleDebug1();  
+      }
+    }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                        Main Loop for Running the System in Normal Mode                        /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-void mainLoop() {
-  
+    if(D_command[0]) {
+      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
+        DBG("Incorrect Door Value Specified, Command Aborted!");
+        D_command[0] = '\0';
+      }
+      else {
+        switch (D_command[0]) {
+          case 1: openDoor(D_command[1],D_command[2]);                                            break;
+          case 2: closeDoor(D_command[1],D_command[2]);                                           break;
+          case 3: openAllDoors(D_command[1]);                                                     break;
+          case 4: closeAllDoors(D_command[1]);                                                    break;
+          case 5: shortCircuit(D_Command[1]);                                                     break;
+          case 6: allOpenClose(D_command[1]);                                                     break;
+          case 7: allOpenCloseLong(D_command[1]);                                                 break;
+          case 8: allFlutter(D_command[1]);                                                       break;
+          case 9: allOpenCloseRepeat(D_command[1]);                                               break;
+          case 10: panelWave(D_command[1]);                                                       break;
+          case 11: panelWaveFast(D_command[1]);                                                   break;
+          case 12: openCloseWave(D_command[1]);                                                   break;
+          case 13: marchingAnts(D_command[1]);                                                    break;
+          case 14: panelAlternate(D_command[1]);                                                  break;
+          case 15: panelDance(D_command[1]);                                                      break;
+          case 16: longDisco(D_command[1]);                                                       break;
+          case 17: longHarlemShake(D_command[1]);                                                 break;
+          case 98: closeAllDoors(3);                                                              break;
+          case 99: closeAllDoors(3);                                                              break;
+          default: break;
+        }
+      }
+    }
+
+    if(CL_command[0]){
+      switch(CL_command[0]){
+        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use
+      }
+    }
+
+    if(ESPNOW_command[0]){
+      switch(ESPNOW_command[0]){
+        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use
+          }
+        }
+
+    if(isStartUp) {
+      isStartUp = false;
+      delay(500);
+    }
   }
+}  //end of main loop
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                                  End of Main Loop Function                                    /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
@@ -659,17 +617,13 @@ void cameraLED(uint32_t color, int CLSpeed){
   }
 
   //  Color Changing Function for the Camera Lens LEDs
-  void colorWipe(uint32_t c, int brightness) {
-    for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
-        stripCL.setBrightness(brightness);
-        stripCL.setPixelColor(i, c);
-        stripCL.show();
-       }
-}
-
-
-
-
+void colorWipe(uint32_t c, int brightness) {
+  for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
+    stripCL.setBrightness(brightness);
+    stripCL.setPixelColor(i, c);
+    stripCL.show();
+  }
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -677,22 +631,54 @@ void cameraLED(uint32_t color, int CLSpeed){
 ///////                                                                                               /////
 ///////                                       Door Functions                                          /////
 ///////                                                                                               /////
+///////                           Door Command Stucture: Dxyyzz                                       /////
+///////                             D = Door Command                                                  /////
+///////                             x = Servo Board                                                   /////
+///////                               1 = Body Only                                                   /////
+///////                               2 = Dome Only                                                   /////
+///////                               3 = Both, starting with the body                                /////
+///////                               4 = Both, starting with the dome                                /////
+///////                             yy = Door Function                                                /////
+///////                             zz = Door Specified (Only used for Dx01 & Dx02)                   /////
+///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
+
+void openDoor(int servoBoard, int doorpos) {
+  //Command: Dx01zz
+  DBG("Open Specific Door\n");
+  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
+    switch (doorpos){
+      case 1: Serial.println("Open SMALL_PANEL_ONE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_ONE);  break;
+      case 2: Serial.println("Open SMALL_PANEL_TWO");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_TWO);  break;
+      case 3: Serial.println("Open SMALL_PANEL_THREE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_THREE);break;
+      case 4: Serial.println("Open MEDIUM_PANEL_PAINTED");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_PAINTED);  break;
+      case 5: Serial.println("Open MEDIUM_PANEL_SILVER");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_SILVER);  break;
+      case 6: Serial.println("Open BIG_PANEL");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, BIG_PANEL);  break;
+      case 7: Serial.println("Open PIE_PANEL_ONE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_ONE);break;
+      case 8: Serial.println("Open PIE_PANEL_TWO");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_TWO);  break;
+      case 9: Serial.println("Open PIE_PANEL_THREE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_THREE);break;
+      case 10: Serial.println("Open PIE_PANEL_FOUR");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_FOUR);  break;
+      
+     
+    }
+  };
+  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
+    switch (doorpos){
+      case 1: DBG("Open Top Utility Arm\n");            sendESPNOWCommand("BC","D10101");  break;
+      case 2: DBG("Open Bottom Utility Arm\n");         writeEnSerial("S02DSD20101");  break;
+      case 3: DBG("Open Large Left Door\n");            writeEnSerial("S02DSD20101");  break;
+      case 4: DBG("Open Large Right Door\n");           writeEnSerial("S02DSD20101");  break;
+      case 5: DBG("Open Charge Bay Indicator Door\n");  writeEnSerial("S02DSD20101");  break;
+      case 6: DBG("Open Data Panel Door\n");            writeEnSerial("S02DSD20101");  break;
+    }
+  };
+  D_command[0]   = '\0';
+};
   void openDoor(int doorpos) {
     Serial.println("Open Specific Door");
        switch (doorpos){
-       case 1: Serial.println("Open SMALL_PANEL_ONE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_ONE);  break;
-       case 2: Serial.println("Open SMALL_PANEL_TWO");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_TWO);  break;
-       case 3: Serial.println("Open SMALL_PANEL_THREE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_THREE);break;
-       case 4: Serial.println("Open MEDIUM_PANEL_PAINTED");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_PAINTED);  break;
-       case 5: Serial.println("Open MEDIUM_PANEL_SILVER");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_SILVER);  break;
-       case 6: Serial.println("Open BIG_PANEL");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, BIG_PANEL);  break;
-       case 7: Serial.println("Open PIE_PANEL_ONE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_ONE);break;
-       case 8: Serial.println("Open PIE_PANEL_TWO");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_TWO);  break;
-       case 9: Serial.println("Open PIE_PANEL_THREE");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_THREE);break;
-       case 10: Serial.println("Open PIE_PANEL_FOUR");SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, PIE_PANEL_FOUR);  break;
+
 
         }
      D_command[0]   = '\0';
@@ -918,9 +904,10 @@ void shortCircuit(int count) {
     String sdest;
     if (starget == "PC"){
         sdest = "Periscope";
-      } else if (starget == "BC"){
-        sdest = "Body";
-        }
+    } else if (starget == "BC" || starget == "BL" || starget == "ST" || starget == "EN"){
+        sdest = "Body"; 
+      }
+    else {DBG("No Board Specified")};
     commandsToSendtoBroadcast.structDestinationID = sdest;
     DPRINT("sdest: ");DPRINTLN(sdest);
     commandsToSendtoBroadcast.structTargetID = starget;
