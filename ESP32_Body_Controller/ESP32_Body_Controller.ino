@@ -348,16 +348,15 @@ void loop(){
           }
         }
 
-          ///***  Clear States and Reset for next command.  ***///
-            stringComplete =false;
-            autoComplete = false;
-            inputBuffer[0] = '\0';
-            int commandState;
-            int door = -1;
-            int doorFunction;
-            int doorBoard;
-            DBG("command Proccessed\n");
-
+      ///***  Clear States and Reset for next command.  ***///
+      stringComplete =false;
+      autoComplete = false;
+      inputBuffer[0] = '\0';
+      int commandState;
+      int door = -1;
+      int doorFunction;
+      int doorBoard;
+      DBG("command Proccessed\n");
     }
 
     if(ESP_command[0]){
