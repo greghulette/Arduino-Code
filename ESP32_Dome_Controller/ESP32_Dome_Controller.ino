@@ -458,11 +458,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if (serialBoard == "HP"){
                 serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
                 serialCommandFunction = serialCommandFunctionString.toInt();
-//                DBG(serialCommandFunction);
-
-
-
-              writeHpSerial(serialStringCommand);
+                //DBG(serialCommandFunction);
+                writeHpSerial(serialStringCommand);
               } else if (serialBoard == "DS"){
                 inputString = serialStringCommand;
                 stringComplete = true; 
