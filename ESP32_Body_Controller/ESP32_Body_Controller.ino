@@ -151,12 +151,10 @@ ServoSequencer servoSequencer(servoDispatch);
   //////////////////////////////////////////////////////////////////////
 
 //Raspberry Pi              192.168.4.100
-//Body Controller ESP       192.168.4.101  ************
-//Dome Controller ESP       192.168.4.102
-//Periscope Controller ESP  192.168.4.103
-//Stealth Controller ESP    192.168.4.104  (Probably not going to be different then Body Controller ESP IP)
-//Dome Servo Controller     192.168.4.105  (Probably not going to be different then Dome Controller ESP IP)
-//Body Servo Controller     192.168.4.106  (Probably not going to be different then Body Controller ESP IP)
+//Body Controller ESP       192.168.4.101   ************
+//ESP-NOW Master ESP        192.168.4.110v  (Only used for OTA)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA) 
+//Periscope Controller ESP  192.168.4.112   (Only used for OTA)
 //Remote                    192.168.4.107
 //Developer Laptop          192.168.4.125
 
@@ -170,8 +168,8 @@ uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
  ////R2 Control Network Details
 const char* ssid = "R2D2_Control_Network";
 const char* password =  "astromech";
-int channel =  0;
-int broadcastNetwork = 0;
+int channel =  6;
+int broadcastSSID = 0;  //0 for yes, 1 for no
 int maxConnections = 8;
 
 AsyncWebServer server(80);
@@ -183,13 +181,8 @@ void setup(){
    blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL;
    stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
-//  Serial1.begin(9600, SERIAL_8N1, RXD1, TXD1);
-//  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
-
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body LED/Servo Controller");
-
-
   
   //Configure the Reset Pins for the arduinoReset() function
   pinMode(4, OUTPUT);
@@ -203,7 +196,7 @@ void setup(){
 
   //Initialize the Soft Access Point
   WiFi.mode(WIFI_AP);
-    Serial.println(WiFi.softAP(ssid,password,6,0,8) ? "AP Ready" : "Failed!");
+    Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
     delay(200);
     Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
     delay(200);
@@ -605,7 +598,7 @@ void panelWave(int servoBoard){
     case 2: writeEnSerial("S02DSD210"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);
             DelayCall::schedule([] {writeEnSerial("S02DSD210");}, 2000); break;
-    case 4: writeEnSerial("S02DSD210")
+    case 4: writeEnSerial("S02DSD210");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -620,7 +613,7 @@ void panelWaveFast(int servoBoard){
     case 2: writeEnSerial("S02DSD211"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);
             DelayCall::schedule([] {writeEnSerial("S02DSD211");}, 2000); break;
-    case 4: writeEnSerial("S02DSD212")
+    case 4: writeEnSerial("S02DSD212");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -635,7 +628,7 @@ void openCloseWave(int servoBoard) {
     case 2: writeEnSerial("S02DSD212"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
             DelayCall::schedule([] {writeEnSerial("S02DSD5212");}, 2000); break;
-    case 4: writeEnSerial("S02DSD212")
+    case 4: writeEnSerial("S02DSD212");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -650,7 +643,7 @@ void marchingAnts(int servoBoard) {
     case 2: writeEnSerial("S02DSD213"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
           DelayCall::schedule([] {writeEnSerial("S02DSD5213");}, 2000); break;
-    case 4: writeEnSerial("S02DSD213")
+    case 4: writeEnSerial("S02DSD213");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -665,7 +658,7 @@ void panelAlternate(int servoBoard) {
     case 2: writeEnSerial("S02DSD214"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
           DelayCall::schedule([] {writeEnSerial("S02DSD5214");}, 2000); break;
-    case 4: writeEnSerial("S02DSD214")
+    case 4: writeEnSerial("S02DSD214");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -680,7 +673,7 @@ void panelDance(int servoBoard) {
     case 2: writeEnSerial("S02DSD215"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
           DelayCall::schedule([] {writeEnSerial("S02DSD5215");}, 2000); break;
-    case 4: writeEnSerial("S02DSD215")
+    case 4: writeEnSerial("S02DSD215");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -695,7 +688,7 @@ void longDisco(int servoBoard) {
     case 2: writeEnSerial("S02DSD216"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
           DelayCall::schedule([] {writeEnSerial("S02DSD5216");}, 2000); break;
-    case 4: writeEnSerial("S02DSD216")
+    case 4: writeEnSerial("S02DSD216");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
@@ -710,13 +703,11 @@ void longHarlemShake(int servoBoard) {
     case 2: writeEnSerial("S02DSD217"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
           DelayCall::schedule([] {writeEnSerial("S02DSD5217");}, 2000); break;
-    case 4: writeEnSerial("S02DSD217")
+    case 4: writeEnSerial("S02DSD217");
           DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
 }                                                       
-
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -748,6 +739,53 @@ void serialEvent() {
   DBG("InputString: %s \n",inputString);
 };
 
+
+void serialEnEvent() {
+  while (enSerial.available()) {
+    // get the new byte:
+    char inChar = (char)enSerial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  DBG("InputString: %s \n",inputString);
+};
+void serialBlEvent() {
+  while (blSerial.available()) {
+    // get the new byte:
+    char inChar = (char)blSerial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  DBG("InputString: %s \n",inputString);
+};
+
+
+void serialStEvent() {
+  while (stSerial.available()) {
+    // get the new byte:
+    char inChar = (char)stSerial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  DBG("InputString: %s \n",inputString);
+};
+
+      /////////////////////////////////////////////////////////
+      ///*****          Serial Write Function          *****///
+      /////////////////////////////////////////////////////////
+      /// These functions recieve a string and transmits    ///
+      /// one character at a time and adds a '/r' to the    ///
+      /// end of the string.                                ///
+      /////////////////////////////////////////////////////////
 
 void writeString(String stringData){
   String completeString = stringData + '\r';
@@ -782,17 +820,8 @@ void writeStSerial(String stringData){
 };
 
 
-
-void resetArduino(int delayperiod){
-  DBG("Opening of reset function");
-  digitalWrite(4,LOW);
-  delay(delayperiod);
-  digitalWrite(4,HIGH);
-  DBG("reset witin function");
-}
-
 //////////////////////////////////////////////////////////////////////
-///*****             Debug Functions                          *****///
+///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 void DBG(char *format, ...) {
         if (!debugflag)
@@ -837,7 +866,19 @@ void toggleDebug1(){
       
       
 //////////////////////////////////////////////////////////////////////
-///*****             Test Functions                        *****///
+///*****             Misc. Functions                          *****///
 //////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****    Resets Arduino Mega due to bug in my PCB          *****///
+//////////////////////////////////////////////////////////////////////
+void resetArduino(int delayperiod){
+  DBG("Opening of reset function");
+  digitalWrite(4,LOW);
+  delay(delayperiod);
+  digitalWrite(4,HIGH);
+  DBG("reset witin function");
+}
+
 
   
