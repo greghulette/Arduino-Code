@@ -174,11 +174,14 @@
       Serial.println(incomingTargetID);
       Serial.print("Command = ");
       Serial.println(incomingCommand); 
-      if (incomingDestinationID =="Body" || incomingDestinationID == "ESPNOW"){
+      if (incomingDestinationID =="Body" && incomingDestinationID == "ESPNOW"){
         Serial.println("Accepted");
         inputString = incomingCommand;
         stringComplete = true;   
-      } else {Serial.println("Ignored");}
+      } else if(incomingDestinationID =="Body" && incomingDestinationID == "BC" || incomingDestinationID == "BL" || incomingDestinationID == "ST"){
+          writebcSerial(incomingCOmmand);
+      }      
+      else {Serial.println("Ignored");}
   
         
     }

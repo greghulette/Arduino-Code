@@ -95,6 +95,11 @@ ServoSequencer servoSequencer(servoDispatch);
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
+  
+  int serialBoard;
+  String serialStringCommand;
+  int serialCommandFunction;
+  String serialCommandFunctionString;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowespCommandFunction = 0;
@@ -441,6 +446,28 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               commandSubString = inputStringCommand.substring(4,commandLength);
               Serial.print("Command to Forward: ");
               Serial.println(commandSubString);
+            }
+            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialBoard =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+                char inCharRead = inputBuffer[i];
+                // add it to the inputString:
+                serialStringCommand += inCharRead;
+              }
+              if (serialBoard == 'HP'){
+                serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
+                serialCommandFunction = serialCommandFunctionString.toInt();
+                DBG(serialCommandFunction);
+
+
+
+              writeHpSerial(serialStringCommand)
+              } else if (serialBoard == 'DS'){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              } else if (serialBoard == 'RS'){
+                writeRsSerial(serialStringCommand);
+              }
             }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {

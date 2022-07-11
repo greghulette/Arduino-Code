@@ -88,6 +88,9 @@ ServoSequencer servoSequencer(servoDispatch);
     int commandState;
     int paramVar = 9;
 
+    int serialBoard;
+    String serialStringCommand;
+
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState     = 0;
 
@@ -319,13 +322,30 @@ void loop(){
       if( inputBuffer[0]=='D'     ||        // Door Designator
           inputBuffer[0]=='d'     ||        // Door Designator
           inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e'               // Command designatore for internal ESP functions
-
+          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'               // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
 
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 digit sequence sndentifier Characters to Integer
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialBoard =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+                char inCharRead = inputBuffer[i];
+                // add it to the inputString:
+                serialStringCommand += inCharRead;
+              }
+              if (serialBoard == 'BL'){
+              writeBlSerial(serialStringCommand)
+              } else if (serialBoard == 'BC'){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              } else if (serialBoard == 'ST'){
+                writeStSerial(serialStringCommand);
+              }
+            };
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
             }
