@@ -670,133 +670,195 @@ void openCloseWave(int servoBoard) {
 void marchingAnts(int servoBoard) {
   // Command: Dx13
   DBG("Marching Ants\n");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
-       D_command[0]   = '\0';                                             
-       }                                             
-  void panelAlternate(int servoBoard) {
-       DBG("Panel Alternate\n");
-       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
-       D_command[0]   = '\0';                                             
-       }                                                            
+  switch(servoBoard){
+    case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
+    case 2: writeEnSerial("S02DSD213"); break;
+    case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
+          DelayCall::schedule([] {writeEnSerial("S02DSD5213");}, 2000); break;
+    case 4: writeEnSerial("S02DSD213")
+          DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 3000); break;
+  }
+  D_command[0]   = '\0';                                             
+}
 
-  void panelDance(int servoBoard) {
-       DBG("Panel Dance\n");
-       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
-       D_command[0]   = '\0';                                             
-       }
 
-  void longDisco(int servoBoard) {
-         DBG("Panel Dance\n");
-         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
-         D_command[0]   = '\0';                                             
-         }
+void panelAlternate(int servoBoard) {
+  // Command: Dx14
+  DBG("Panel Alternate\n");
+  switch(servoBoard){
+    case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
+    case 2: writeEnSerial("S02DSD214"); break;
+    case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
+          DelayCall::schedule([] {writeEnSerial("S02DSD5214");}, 2000); break;
+    case 4: writeEnSerial("S02DSD214")
+          DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);}, 3000); break;
+  }
+  D_command[0]   = '\0';                                             
+}                                                            
 
-  void longHarlemShake(int servoBoard) {
-         DBG("Panel Dance\n");
-         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
-         D_command[0]   = '\0';                                             
-         }                                                       
-                                                     
- void serialEvent() {
-        //int count = 0;
-       while (Serial.available()) {
-          // get the new byte:
-          char inChar = (char)Serial.read();
-          // add it to the inputString:
-         inputString += inChar;
-          if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-            stringComplete = true;            // set a flag so the main loop can do something about it.
-          };
 
-        };
-               DBG("InputString: %s \n",inputString);
-      };
+void panelDance(int servoBoard) {
+ // Command: Dx15
+  DBG("Panel Dance\n");
+  switch(servoBoard){
+    case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
+    case 2: writeEnSerial("S02DSD215"); break;
+    case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
+          DelayCall::schedule([] {writeEnSerial("S02DSD5215");}, 2000); break;
+    case 4: writeEnSerial("S02DSD215")
+          DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);}, 3000); break;
+  }
+  D_command[0]   = '\0';                                             
+}
 
-      void writeString(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          Serial.write(completeString[i]);
-        };
-      };
 
-      void writeBlSerial(String stringData){
-              String completeString = stringData + '\r';
-              for (int i=0; i<completeString.length(); i++)
-              {
-               blSerial.write(completeString[i]);
-              };
-            };
+void longDisco(int servoBoard) {
+  // Command: Dx16
+  DBG("Panel Dance Long\n");
+  switch(servoBoard){
+    case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
+    case 2: writeEnSerial("S02DSD216"); break;
+    case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
+          DelayCall::schedule([] {writeEnSerial("S02DSD5216");}, 2000); break;
+    case 4: writeEnSerial("S02DSD216")
+          DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);}, 3000); break;
+  }
+  D_command[0]   = '\0';                                             
+}
 
-      void writeEnSerial(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          enSerial.write(completeString[i]);
-//          delay(5);
-        };
-        DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
-      };
 
-      void writeStSerial(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          stSerial.write(completeString[i]);
-        };
-      };
+void longHarlemShake(int servoBoard) {
+  // Command: Dx17
+  DBG("Harlem Shake\n");
+  switch(servoBoard){
+    case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
+    case 2: writeEnSerial("S02DSD217"); break;
+    case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
+          DelayCall::schedule([] {writeEnSerial("S02DSD5217");}, 2000); break;
+    case 4: writeEnSerial("S02DSD217")
+          DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);}, 3000); break;
+  }
+  D_command[0]   = '\0';                                             
+}                                                       
 
-    void resetArduino(int delayperiod){
-      DBG("Opening of reset function");
-      digitalWrite(4,LOW);
-      delay(delayperiod);
-      digitalWrite(4,HIGH);
-      DBG("reset witin function");
-    //  paramVar = 0;
-    
-    }
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////                                                                                               /////
+/////                             Serial Communication Functions                              /////
+/////                                                                                               /////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+      /////////////////////////////////////////////////////////
+      ///*****          Serial Event Function          *****///
+      /////////////////////////////////////////////////////////
+      /// This routine is called each loop() runs, so using ///
+      /// delay inside loop can delay response.  Multiple   ///
+      /// bytes of data may be available.                   ///
+      /////////////////////////////////////////////////////////
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  DBG("InputString: %s \n",inputString);
+};
+
+
+void writeString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+      Serial.write(completeString[i]);
+  };
+};
+
+
+void writeBlSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    blSerial.write(completeString[i]);
+  };
+};
+
+
+void writeEnSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    enSerial.write(completeString[i]);
+  };
+  DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
+};
+
+
+void writeStSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    stSerial.write(completeString[i]);
+  };
+};
+
+
+
+void resetArduino(int delayperiod){
+  DBG("Opening of reset function");
+  digitalWrite(4,LOW);
+  delay(delayperiod);
+  digitalWrite(4,HIGH);
+  DBG("reset witin function");
+}
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Debug Functions                          *****///
 //////////////////////////////////////////////////////////////////////
-      void DBG(char *format, ...) {
-              if (!debugflag)
-                      return;
-              va_list ap;
-              va_start(ap, format);
-              vfprintf(stderr, format, ap);
-              va_end(ap);
-      }
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
       
-      void DBG_P(char *format, ...) {
-              if (!debugflagparam)
-                      return;
-              va_list ap;
-              va_start(ap, format);
-              vfprintf(stderr, format, ap);
-              va_end(ap);
-      }
+void DBG_P(char *format, ...) {
+if (!debugflagparam)
+        return;
+va_list ap;
+va_start(ap, format);
+vfprintf(stderr, format, ap);
+va_end(ap);
+}
       
-      void toggleDebug(){
-        debugflag = !debugflag;
-        if (debugflag == 1){
-           DBG("Debugging Enabled \n");
-          }
-        else{
-          Serial.println("Debugging Disabled");
-        }
-          ESP_command[0]   = '\0';
-      }
-      void toggleDebugParam(){
-        debugflagparam = !debugflagparam;
-        if (debugflagparam == 1){
-           DBG("Parameter Debugging Enabled \n");
-          }
-        else{
-          DBG("Parameter Debugging Disabled\n");
-        }
-          ESP_command[0]   = '\0';
-      }
+void toggleDebug(){
+  debugflag = !debugflag;
+  if (debugflag == 1){
+    DBG("Debugging Enabled \n");
+  }
+  else{
+    Serial.println("Debugging Disabled");
+  }
+  ESP_command[0]   = '\0';
+}
+
+
+void toggleDebugParam(){
+  debugflagparam = !debugflagparam;
+  if (debugflagparam == 1){
+    DBG("Parameter Debugging Enabled \n");
+  }
+  else{
+    DBG("Parameter Debugging Disabled\n");
+  }
+  ESP_command[0]   = '\0';
+}
       
       
 //////////////////////////////////////////////////////////////////////
