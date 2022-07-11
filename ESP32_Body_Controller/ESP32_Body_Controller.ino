@@ -4,9 +4,8 @@
 #include <elegantWebpage.h>
 #include <Hash.h>
 
-//Used for ESP-NOW
+//Used for WiFi
 #include "esp_wifi.h"
-#include <esp_now.h>
 
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
@@ -14,7 +13,7 @@
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
-//reeltwo libaries
+//ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
 #include "ReelTwo.h"
@@ -108,25 +107,9 @@ ServoSequencer servoSequencer(servoDispatch);
    int door = -1;
   // Door Command Container
    uint32_t D_command[6]  = {0,0,0,0,0,0};
-   int doorState     = 0;
+   int doorFunction     = 0;
    int doorBoard = 0;
-  // Door Counters
-   long int Dcounts[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-   long int Dcount  = 0;
-   long int D1count  = 0;
-   long int Dpcount = 0;
-   long int qwDuration = 800;
-  // Door Timer
-   unsigned long Dmillis;
-   unsigned long Doorsmillis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-   unsigned long D1millis;
-   unsigned long Doors1millis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-   unsigned long D2millis;
-   unsigned long Doors2millis[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-  // Door Flags
-   boolean DaltToggle = true;
-   boolean DWToggle   = false;
-   boolean GaltToggle = true;
+
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -143,16 +126,19 @@ ServoSequencer servoSequencer(servoDispatch);
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXen 15
-  #define TXen 16 
-  #define RXbc 25
-  #define TXbc 26
-  #define RXst 12
-  #define TXst 14
+  #define RXEN 15
+  #define TXEN 16 
+  #define RXBL 25
+  #define TXBL 26
+  #define RXST 12
+  #define TXST 14
   
-  #define BAUD_RATE 115200
+  #define EN_BAUD_RATE 115200
+  #define BL_BAUD_RATE 115200
+  #define ST_BAUD_RATE 9600
+
   #define enSerial Serial1
-  SoftwareSerial blSerial;
+  #define blSerial Serial2
   SoftwareSerial stSerial;
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
@@ -193,9 +179,9 @@ AsyncWebServer server(80);
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-   enSerial.begin(BAUD_RATE,SERIAL_8N1,RXen,TXen);
-   blSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXbc,TXbc,false,95);
-   stSerial.begin(BAUD_RATE,SWSERIAL_8N1,RXst,TXst,false,95);
+   enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
+   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL;
+   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
 //  Serial1.begin(9600, SERIAL_8N1, RXD1, TXD1);
 //  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
@@ -326,103 +312,94 @@ void setup(){
  
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
-      MLMillis = millis();
-  
-      AnimatedEvent::process();
-
-  if(startUp) {
+    MLMillis = millis();
+    AnimatedEvent::process();
+    if(startUp) {
       closeAllDoors(1);
       startUp = false;
       Serial.println("Startup");
-   }
-   if(Serial.available()){
-   serialEvent();
-   }
-  if (stringComplete) {autoComplete=false;}
-  if (stringComplete || autoComplete) {
-    if(stringComplete) {inputString.toCharArray(inputBuffer, 25);inputString="";}
-     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 25);autoInputString="";}
-     if( inputBuffer[0]=='D'  ||       // Door Designator
-         inputBuffer[0]=='d'  ||       // Door Designator
-         inputBuffer[0]=='E'  ||       // Command designatore for internal ESP functions
-         inputBuffer[0]=='e'           // Command designatore for internal ESP functions
+    }
+    if(Serial.available()){serialEvent();}
 
+    if (stringComplete) {autoComplete=false;}
+    if (stringComplete || autoComplete) {
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 25);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 25);autoInputString="";}
+      if( inputBuffer[0]=='D'     ||        // Door Designator
+          inputBuffer[0]=='d'     ||        // Door Designator
+          inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e'               // Command designatore for internal ESP functions
 
-         ) {
-            commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
 
-            if(commandLength >= 3) {
-               if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}  
-               if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 Door Sequence Indentifier Characters to Integer
-              if(commandLength >= 4) {
-                if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorState = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
-                }
-                else {
-                     typeState = -1;
-                }
-                if(commandLength >= 5) {
-                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');}
-                  }
+          if(commandLength >= 3) {
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}  
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 Door Sequence Indentifier Characters to Integer
+            if(commandLength >= 4) {
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
+            }
+            else {
+              typeState = -1;
+            }
+            if(commandLength >= 5) {
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');}
+            }
 
-
-
-                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-                  D_command[0]   = '\0';                                                            // Flushes Array
-                  DaltToggle = true;
-                  D_command[0] = doorState;
-                  D_command[1] = doorBoard;
-                  if(door>=0) {
-                    D_command[2] = door;
-                  }
-                  else {Dcount = 0;}
-                }
-
-                if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-                  ESP_command[0]   = '\0';                                                            // Flushes Array
-                  ESP_command[0] = commandState;
-                }
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+              D_command[0]   = '\0';                                                            // Flushes Array
+              D_command[0] = doorFunction;
+              D_command[1] = doorBoard;
+              if(door>=0) {
+                D_command[2] = door;
               }
             }
 
-      ///***  Clear States and Reset for next command.  ***///
-       stringComplete =false;
-       autoComplete = false;
-       inputBuffer[0] = '\0';
-       int displayState;
-       int typeState;
-       int speedState;
-       int door = -1;
-       int doorState;
-       DBG("command Proccessed\n");
+            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+              ESP_command[0]   = '\0';                                                            // Flushes Array
+              ESP_command[0] = commandState;
+            }
+          }
+        }
 
-     }
-
-  if(ESP_command[0]){
-    switch (ESP_command[0]){
-      case 1: Serial.println("Body ESP Controller");   
-              ESP_command[0]   = '\0'; break;
-      case 2: Serial.println("Resetting the ESP in 3 Seconds");
-              DelayCall::schedule([] {ESP.restart();}, 3000);
-              ESP_command[0]   = '\0'; break;
-      case 3: break;  //reserved for commonality. Used for connecting to WiFi on 
-      case 4: break;
-      case 5: break;
-      case 6: break;
-      case 7: break;
-      case 8: break;
-      case 9: break;
-      case 10: toggleDebug();           break;
-      case 11: toggleDebug1();      break;
+          ///***  Clear States and Reset for next command.  ***///
+            stringComplete =false;
+            autoComplete = false;
+            inputBuffer[0] = '\0';
+            int displayState;
+            int typeState;
+            int speedState;
+            int door = -1;
+            int doorFunction;
+            DBG("command Proccessed\n");
 
     }
-  }
 
-  if(D_command[0]) {
-       if((D_command[2] == 1 || D_command[2] == 2) && D_command[2] >= 11) {
-         DBG("Incorrect Door Value Specified, Command Aborted!");
-         D_command[0] = '\0';
-       }
-       else {
+    if(ESP_command[0]){
+      switch (ESP_command[0]){
+        case 1: Serial.println("Body ESP Controller");   
+                ESP_command[0]   = '\0'; break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0'; break;
+        case 3: break;  //reserved for commonality. Used for connecting to WiFi on 
+        case 4: break;
+        case 5: break;
+        case 6: break;
+        case 7: break;
+        case 8: break;
+        case 9: break;
+        case 10: toggleDebug();           break;
+        case 11: toggleDebug1();      break;
+
+      }
+    }
+
+    if(D_command[0]) {
+      if((D_command[2] == 1 || D_command[2] == 2) && D_command[2] >= 11) {
+        DBG("Incorrect Door Value Specified, Command Aborted!");
+        D_command[0] = '\0';
+      }
+      else {
         switch (D_command[0]) {
         case 1: openDoor(D_command[1],D_command[2]);                                            break;
         case 2: closeDoor(D_command[1],D_command[2]);                                           break;
@@ -445,14 +422,12 @@ void loop(){
         case 99: closeAllDoors(3);                                                               break;
         default: break;
         }
-       }
-  } 
-   
-  if(isStartUp) {
-        isStartUp = false;
-
-        delay(500);
-
+      }
+    } 
+    
+    if(isStartUp) {
+      isStartUp = false;
+      delay(500);
     }
   }
 }  // end of main loop
