@@ -96,7 +96,7 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
   
-  int serialBoard;
+  String serialBoard;
   String serialStringCommand;
   int serialCommandFunction;
   String serialCommandFunctionString;
