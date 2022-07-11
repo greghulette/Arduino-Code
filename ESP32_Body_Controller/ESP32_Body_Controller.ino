@@ -25,7 +25,10 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.  I started with the code from flthymcnsty         *****///
+///*****                            Created by Greg Hulette.                                                   *****///
+///*****                                                                                                       *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
+///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
 ///*****                                                                                                       *****///
 ///*****                                     So exactly what does this all do.....?                            *****///
 ///*****                       - Controls the Body servos                                                      *****///
@@ -35,7 +38,6 @@
 ///*****                                                                                                       *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
@@ -48,10 +50,6 @@
 #define CHARGE_BAY_DOOR       0x0010 //b0000010000
 #define DATA_PANEL_DOOR       0x0020 //b0000100000
 
-
-
-
-
 #define UTILITY_ARMS_MASK     (TOP_UTILITY_ARM|BOTTOM_UTILITY_ARM)
 #define LARGE_DOORS_MASK      (LARGE_LEFT_DOOR|LARGE_RIGHT_DOOR)
 #define SMALL_DOORS_MASK      (CHARGE_BAY_DOOR|DATA_PANEL_DOOR)
@@ -61,7 +59,7 @@
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
-//     Pin  Min, ,Max,  Group ID
+//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
      { 1,  700, 2400, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
      { 2,  700, 2400, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
@@ -70,10 +68,6 @@ const ServoSettings servoSettings[] PROGMEM = {
      { 5,  700, 2400, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
      { 6,  700, 2400, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
     };
-
-
-
-
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
@@ -91,6 +85,7 @@ ServoSequencer servoSequencer(servoDispatch);
     int displayState;
     int typeState;
     int commandLength;
+    int commandState;
     int paramVar = 9;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
@@ -100,16 +95,15 @@ ServoSequencer servoSequencer(servoDispatch);
     int debugflag = 0;
     int debugflag1 = 0;  // debugging for params recieved from clients
 
-
   //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
   //////////////////////////////////////////////////////////////////////
+
    int door = -1;
   // Door Command Container
    uint32_t D_command[6]  = {0,0,0,0,0,0};
    int doorFunction     = 0;
    int doorBoard = 0;
-
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -140,6 +134,7 @@ ServoSequencer servoSequencer(servoDispatch);
   #define enSerial Serial1
   #define blSerial Serial2
   SoftwareSerial stSerial;
+
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
   //////////////////////////////////////////////////////////////////////
@@ -207,7 +202,6 @@ void setup(){
     delay(2000);
     Serial.print("Local AP MAC address = ");
     Serial.println(WiFi.softAPmacAddress());
-
  
  //Setup the webpage and accept the GET requests, and parses the variables 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -323,11 +317,11 @@ void loop(){
           inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
           inputBuffer[0]=='e'               // Command designatore for internal ESP functions
 
-        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
 
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}  
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 Door Sequence Indentifier Characters to Integer
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 digit sequence sndentifier Characters to Integer
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
             }
@@ -358,11 +352,10 @@ void loop(){
             stringComplete =false;
             autoComplete = false;
             inputBuffer[0] = '\0';
-            int displayState;
-            int typeState;
-            int speedState;
+            int commandState;
             int door = -1;
             int doorFunction;
+            int doorBoard;
             DBG("command Proccessed\n");
 
     }
@@ -424,7 +417,6 @@ void loop(){
     }
   }
 }  // end of main loop
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -717,7 +709,6 @@ void longHarlemShake(int servoBoard) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
       /////////////////////////////////////////////////////////
       ///*****          Serial Event Function          *****///
       /////////////////////////////////////////////////////////
@@ -752,6 +743,8 @@ void serialEnEvent() {
   };
   DBG("InputString: %s \n",inputString);
 };
+
+
 void serialBlEvent() {
   while (blSerial.available()) {
     // get the new byte:
@@ -819,10 +812,10 @@ void writeStSerial(String stringData){
   };
 };
 
-
 //////////////////////////////////////////////////////////////////////
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
+
 void DBG(char *format, ...) {
         if (!debugflag)
                 return;
@@ -831,7 +824,8 @@ void DBG(char *format, ...) {
         vfprintf(stderr, format, ap);
         va_end(ap);
 }
-      
+
+
 void DBG_1(char *format, ...) {
 if (!debugflag1)
         return;
@@ -840,7 +834,8 @@ va_start(ap, format);
 vfprintf(stderr, format, ap);
 va_end(ap);
 }
-      
+
+
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
@@ -863,8 +858,8 @@ void toggleDebug1(){
   }
   ESP_command[0]   = '\0';
 }
-      
-      
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****             Misc. Functions                          *****///
 //////////////////////////////////////////////////////////////////////
@@ -872,6 +867,7 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
 //////////////////////////////////////////////////////////////////////
+
 void resetArduino(int delayperiod){
   DBG("Opening of reset function");
   digitalWrite(4,LOW);
