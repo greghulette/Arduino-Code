@@ -992,7 +992,7 @@ va_end(ap);
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    DBG("Debugging Enabled \n");
+    DBG("Debugging Enabled \n",);
   }
   else{
     Serial.println("Debugging Disabled");
@@ -1004,10 +1004,10 @@ void toggleDebug(){
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
-    DBG("Parameter Debugging Enabled \n");
+    DBG("Parameter Debugging Enabled \n",);
   }
   else{
-    DBG("Parameter Debugging Disabled\n");
+    DBG("Parameter Debugging Disabled\n",);
   }
   ESP_command[0]   = '\0';
 }
