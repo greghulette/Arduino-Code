@@ -96,7 +96,7 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
   
-  int serialBoard;
+  String serialBoard;
   String serialStringCommand;
   int serialCommandFunction;
   String serialCommandFunctionString;
@@ -936,11 +936,11 @@ void shortCircuit(int count) {
       }
     else {DBG("No Board Specified")};
     commandsToSendtoBroadcast.structDestinationID = sdest;
-    DPRINT("sdest: ");DPRINTLN(sdest);
+    //DRPINT("sdest: ");//DRPINTLN(sdest);
     commandsToSendtoBroadcast.structTargetID = starget;
     commandsToSendtoBroadcast.structSenderID = "Dome";
     commandsToSendtoBroadcast.structCommand = scomm;
-//    DPRINT("Command to Send in Function: ");DPRINTLN(commandsToSendtoBroadcast.structCommand);
+//    //DRPINT("Command to Send in Function: ");//DRPINTLN(commandsToSendtoBroadcast.structCommand);
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
    if (result == ESP_OK) {
