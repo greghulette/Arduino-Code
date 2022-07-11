@@ -964,6 +964,55 @@ void shortCircuit(int count) {
 
   }
 
+
+//////////////////////////////////////////////////////////////////////
+///*****             Debugging Functions                      *****///
+//////////////////////////////////////////////////////////////////////
+
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+void DBG_1(char *format, ...) {
+if (!debugflag1)
+        return;
+va_list ap;
+va_start(ap, format);
+vfprintf(stderr, format, ap);
+va_end(ap);
+}
+
+
+void toggleDebug(){
+  debugflag = !debugflag;
+  if (debugflag == 1){
+    DBG("Debugging Enabled \n");
+  }
+  else{
+    Serial.println("Debugging Disabled");
+  }
+  ESP_command[0]   = '\0';
+}
+
+
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
+    DBG("Parameter Debugging Enabled \n");
+  }
+  else{
+    DBG("Parameter Debugging Disabled\n");
+  }
+  ESP_command[0]   = '\0';
+}
+
+
   void connectWiFi(){
     Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
       WiFi.begin();
