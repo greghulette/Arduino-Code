@@ -99,7 +99,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
 
     int debugflag = 0;
-    int debugflagparam = 0;  // debugging for params recieved from clients
+    int debugflag1 = 0;  // debugging for params recieved from clients
 
 
   //////////////////////////////////////////////////////////////////////
@@ -234,7 +234,7 @@ void setup(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
     int paramsNr = request->params();               // Gets the number of parameters sent
-//    DBG_P("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+//    DBG_1("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
          AsyncWebParameter* p = request->getParam(i);
 
@@ -246,66 +246,66 @@ void setup(){
 ////////////////////////////////////////////////////////////////////////////////////////////////////
         
     if ((p->name())== "param0" & (p->value()) == "Serial0"){
-        DBG_P("Serial0 Chosen with If Statement\n");
+        DBG_1("Serial0 Chosen with If Statement\n");
         paramVar = 0;
         };
     if ((p->name())== "param0" & (p->value()) == "enSerial"){
-        DBG_P("Serial 1 Chosen with If Statement\n");
+        DBG_1("Serial 1 Chosen with If Statement\n");
         paramVar = 1;
         };
     if ((p->name())== "param0" & (p->value()) == "blSerial"){
-      DBG_P("Serial 2 Chosen with If Statement\n");
+      DBG_1("Serial 2 Chosen with If Statement\n");
           paramVar = 2;
     };
         if ((p->name())== "param0" & (p->value()) == "stSerial"){
-          DBG_P("Serial 2 Chosen with If Statement\n");
+          DBG_1("Serial 2 Chosen with If Statement\n");
           paramVar = 3;
     };
      if ((p->name())== "param0" & (p->value()) == "ESP"){
-          DBG_P("ESP(Self) Chosen with If Statement\n");
+          DBG_1("ESP(Self) Chosen with If Statement\n");
           paramVar = 4;
     };
     if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-        DBG_P("Reset Only Arduino Chosen with If Statement\n");
+        DBG_1("Reset Only Arduino Chosen with If Statement\n");
           resetArduino(500);
         };
     if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        DBG_P("Reset ESP and Arduino Chosen with If Statement\n");
+        DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
         ESP.restart();
         };
         
-        DBG_P("Param name: %s\n", (p->name()));
-        DBG_P("Param value: %s\n", (p->value()));
+        DBG_1("Param name: %s\n", (p->name()));
+        DBG_1("Param value: %s\n", (p->value()));
   
         if (paramVar == 0){
-          DBG_P("Writing to Serial 0\n");      
+          DBG_1("Writing to Serial 0\n");      
           writeString(p->value());
         };
          if (paramVar == 1){
-          DBG_P("Writing to enSerial\n"); 
+          DBG_1("Writing to enSerial\n"); 
           delay(100);     
          if ((p->name())== "param0" & (p->value()) == "EnSerial"){
-            DBG_P("Skipping param 0 in the EspNowSerial Write\n");
+            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
           } 
           else {
             writeEnSerial(p->value());
           };
         } ;      
           if (paramVar == 2){
-          DBG_P("Writing to blSerial\n");      
+          DBG_1("Writing to blSerial\n");      
           writeBlSerial(p->value());
         };
         if (paramVar == 3){
-          DBG_P("Writing to stSerial\n");      
+          DBG_1("Writing to stSerial\n");      
           writeStSerial(p->value());
         };
          if (paramVar == 4){
-          DBG_P("Executing on self\n");      
+          DBG_1("Executing on self\n");      
           inputString = (p->value());
           stringComplete = true;  
         };
 
-        DBG_P("------\n");
+        DBG_1("------\n");
 //        delay(50);
     }
  
@@ -412,7 +412,7 @@ void loop(){
       case 8: break;
       case 9: break;
       case 10: toggleDebug();           break;
-      case 11: toggleDebugParam();      break;
+      case 11: toggleDebug1();      break;
 
     }
   }
@@ -828,8 +828,8 @@ void DBG(char *format, ...) {
         va_end(ap);
 }
       
-void DBG_P(char *format, ...) {
-if (!debugflagparam)
+void DBG_1(char *format, ...) {
+if (!debugflag1)
         return;
 va_list ap;
 va_start(ap, format);
@@ -849,9 +849,9 @@ void toggleDebug(){
 }
 
 
-void toggleDebugParam(){
-  debugflagparam = !debugflagparam;
-  if (debugflagparam == 1){
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
     DBG("Parameter Debugging Enabled \n");
   }
   else{
