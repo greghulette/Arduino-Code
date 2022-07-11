@@ -281,11 +281,11 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
         stringComplete = true;   
         } else if (incomingTargetID == "RS"){
           Serial.println("Sending out rsSerial");
-          writeRSSerial(incomingCommand);
+          writeRsSerial(incomingCommand);
           
         } else if (incomingTargetID == "HP"){
           Serial.println("Sending out hpSerial");
-          writeHPSerial(incomingCommand);
+          writeHpSerial(incomingCommand);
           
         }
         
@@ -400,7 +400,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
-      closeAllDoors();
+      closeAllDoors(3);
       startUp = false;
       Serial.println("Startup");
   }
@@ -454,18 +454,18 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 // add it to the inputString:
                 serialStringCommand += inCharRead;
               }
-              if (serialBoard == 'HP'){
+              if (serialBoard == "HP"){
                 serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
                 serialCommandFunction = serialCommandFunctionString.toInt();
-                DBG(serialCommandFunction);
+//                DBG(serialCommandFunction);
 
 
 
-              writeHpSerial(serialStringCommand)
-              } else if (serialBoard == 'DS'){
+              writeHpSerial(serialStringCommand);
+              } else if (serialBoard == "DS"){
                 inputString = serialStringCommand;
                 stringComplete = true; 
-              } else if (serialBoard == 'RS'){
+              } else if (serialBoard == "RS"){
                 writeRsSerial(serialStringCommand);
               }
             }   
@@ -557,7 +557,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 2: closeDoor(D_command[1],D_command[2]);                                           break;
           case 3: openAllDoors(D_command[1]);                                                     break;
           case 4: closeAllDoors(D_command[1]);                                                    break;
-          case 5: shortCircuit(D_Command[1]);                                                     break;
+          case 5: shortCircuit(D_command[1]);                                                     break;
           case 6: allOpenClose(D_command[1]);                                                     break;
           case 7: allOpenCloseLong(D_command[1]);                                                 break;
           case 8: allFlutter(D_command[1]);                                                       break;
@@ -712,7 +712,7 @@ void openDoor(int servoBoard, int doorpos) {
   };
 
 
-  void closeDoor(int doorpos) {
+  void closeDoor(int servoBoard, int doorpos) {
     Serial.println("Close Specific Door");
 
     switch(doorpos){
@@ -731,47 +731,47 @@ void openDoor(int servoBoard, int doorpos) {
   }
 
 
-  void openAllDoors() {
+  void openAllDoors(int servoBoard) {
     Serial.println("Open all Doors");
         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_DOME_PANELS_MASK);
     D_command[0] = '\0';
    }
 
   
-  void closeAllDoors() {
+  void closeAllDoors(int servoBoard) {
     Serial.println("Close all doors");
         SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_DOME_PANELS_MASK);
     D_command[0] = '\0';
   }
 
-  void alternateDoors() {
+  void alternateDoors(int servoBoard) {
     Serial.println("Alternate All Doors");
     D_command[0]   = '\0';
   }
 
-  void cycleDoors() {
+  void cycleDoors(int servoBoard) {
     Serial.println("Cycle All Doors");
     D_command[0]   = '\0';
   }
 
-  void waveAllDoors() {
+  void waveAllDoors(int servoBoard) {
     Serial.println("Open Doors 1 at a time");
     D_command[0]   = '\0';
   }
 
-  void waveAllDoorsClose() {
+  void waveAllDoorsClose(int servoBoard) {
     Serial.println("Close Doors 1 at a time");
     D_command[0]   = '\0';
   }
 
-  void quickWaveAllDoors() {
+  void quickWaveAllDoors(int servoBoard) {
     Serial.println("Open Doors 1 at a time");
     D_command[0]   = '\0';
   }
  
 
 //
-void shortCircuit(int count) {
+void shortCircuit(int servoBoard) {
 
 }
 
@@ -779,14 +779,14 @@ void shortCircuit(int count) {
 
   //////////////  Functions to call ReelTwo animations
 
-  void allOpenClose(){
+  void allOpenClose(int servoBoard){
       Serial.println("Open and Close All Doors");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_DOME_PANELS_MASK);
 //      DelayCall::schedule([] {sendESPNOWCommand("ESP","d10");}, 4000);
  D_command[0]   = '\0';                                           
       }
       
-  void allOpenCloseLong(){
+  void allOpenCloseLong(int servoBoard){
       Serial.println("Open and Close Doors Long");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_DOME_PANELS_MASK);
 //      DelayCall::schedule([] {sendESPNOWCommand("ESP","d11");}, 4000);
@@ -794,56 +794,56 @@ void shortCircuit(int count) {
       D_command[0]   = '\0';                                                 
       }
           
-  void allFlutter(){
+  void allFlutter(int servoBoard){
       Serial.println("Flutter All Doors");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_DOME_PANELS_MASK);
       D_command[0]   = '\0';   
       }
-  void allOpenCloseRepeat(){
+  void allOpenCloseRepeat(int servoBoard){
       Serial.println("Open and Close All Doors Repeat");
       SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_DOME_PANELS_MASK);
       D_command[0]   = '\0';             
              }
-  void panelWave(){
+  void panelWave(int servoBoard){
        Serial.println("Wave");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }
-  void panelWaveFast(){
+  void panelWaveFast(int servoBoard){
        Serial.println("Wave Fast");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }
-  void openCloseWave() {
+  void openCloseWave(int servoBoard) {
        Serial.println("Open Close Wave ");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }                                          
  
-  void marchingAnts() {
+  void marchingAnts(int servoBoard) {
        Serial.println("Marching Ants");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }                                             
-  void panelAlternate() {
+  void panelAlternate(int servoBoard) {
        Serial.println("Panel Alternate");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }                                                            
 
-  void panelDance() {
+  void panelDance(int servoBoard) {
        Serial.println("Panel Dance");
        SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK);
        D_command[0]   = '\0';                                             
        }
 
-  void longDisco() {
+  void longDisco(int servoBoard) {
          Serial.println("Panel Dance");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);
          D_command[0]   = '\0';                                             
          }
 
-  void longHarlemShake() {
+  void longHarlemShake(int servoBoard) {
          Serial.println("Panel Dance");
          SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK);
          D_command[0]   = '\0';                                             
@@ -905,7 +905,7 @@ void shortCircuit(int count) {
           Serial2.write(completeString[i]);
         }
       }
-      void writeRSSerial(String stringData){
+      void writeRsSerial(String stringData){
         String completeString = stringData + '\r';
         for (int i=0; i<completeString.length(); i++)
         {
@@ -914,7 +914,7 @@ void shortCircuit(int count) {
         Serial.println("Printing to rsSerial");
       }
 
-      void writeHPSerial(String stringData){
+      void writeHpSerial(String stringData){
         String completeString = stringData + '\r';
         for (int i=0; i<completeString.length(); i++)
         {
@@ -934,7 +934,7 @@ void shortCircuit(int count) {
     } else if (starget == "BC" || starget == "BL" || starget == "ST" || starget == "EN"){
         sdest = "Body"; 
       }
-    else {DBG("No Board Specified")};
+    else {DBG("No Board Specified");};
     commandsToSendtoBroadcast.structDestinationID = sdest;
     //DRPINT("sdest: ");//DRPINTLN(sdest);
     commandsToSendtoBroadcast.structTargetID = starget;
