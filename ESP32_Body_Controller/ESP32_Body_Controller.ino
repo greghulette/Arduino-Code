@@ -414,7 +414,7 @@ void loop(){
           case 2: closeDoor(D_command[1],D_command[2]);                                           break;
           case 3: openAllDoors(D_command[1]);                                                     break;
           case 4: closeAllDoors(D_command[1]);                                                    break;
-          case 5: shortCircuit(D_Command[1]);                                                     break;
+          case 5: shortCircuit(D_command[1]);                                                     break;
           case 6: allOpenClose(D_command[1]);                                                     break;
           case 7: allOpenCloseLong(D_command[1]);                                                 break;
           case 8: allFlutter(D_command[1]);                                                       break;
@@ -795,13 +795,13 @@ void serialStEvent() {
   DBG("InputString: %s \n",inputString);
 };
 
-      /////////////////////////////////////////////////////////
-      ///*****          Serial Write Function          *****///
-      /////////////////////////////////////////////////////////
-      /// These functions recieve a string and transmits    ///
-      /// one character at a time and adds a '/r' to the    ///
-      /// end of the string.                                ///
-      /////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////
+  ///*****          Serial Write Function          *****///
+  /////////////////////////////////////////////////////////
+  /// These functions recieve a string and transmits    ///
+  /// one character at a time and adds a '/r' to the    ///
+  /// end of the string.                                ///
+  /////////////////////////////////////////////////////////
 
 void writeString(String stringData){
   String completeString = stringData + '\r';
