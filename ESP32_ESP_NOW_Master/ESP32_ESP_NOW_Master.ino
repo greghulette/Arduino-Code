@@ -177,7 +177,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     inputString = incomingCommand;
     stringComplete = true;   
   } else if(incomingDestinationID =="Body" && incomingDestinationID == "BC" || incomingDestinationID == "BL" || incomingDestinationID == "ST"){
-    writebcSerial(incomingCOmmand);
+    writebcSerial(incomingCommand);
   }      
   else {Serial.println("Ignored");}
 }

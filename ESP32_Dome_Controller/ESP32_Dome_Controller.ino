@@ -97,8 +97,9 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
   
-  String serialBoard;
+  String serialPort;
   String serialStringCommand;
+  
   int serialCommandFunction;
   String serialCommandFunctionString;
 
@@ -433,40 +434,34 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
               for (int i=1; i<=commandLength; i++){
                 char inCharRead = inputBuffer[i];
-                // add it to the inputString:
-                inputStringCommand += inCharRead;
+                inputStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
               espNowespCommandFunctionString = inputStringCommand.substring(0,2);
               espNowespCommandFunction = espNowespCommandFunctionString.toInt();
-              Serial.print("ESP NOW Command State: ");
-              Serial.println(espNowespCommandFunction);
+              DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
               targetID = inputStringCommand.substring(2,4);
-              Serial.print ("Target ID: ");
-              Serial.println(targetID);
+              DBG("Target ID: %s \n", targetID);
               commandSubString = inputStringCommand.substring(4,commandLength);
-              Serial.print("Command to Forward: ");
-              Serial.println(commandSubString);
+              DBG("Command to Forward: %s\n", commandSubString);
             }
             else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialBoard =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=3; i<commandLength-2;i++ ){
                 char inCharRead = inputBuffer[i];
-                // add it to the inputString:
-                serialStringCommand += inCharRead;
+                serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              if (serialBoard == "HP"){
-                // serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
-                // serialCommandFunction = serialCommandFunctionString.toInt();
-                //DBG(serialCommandFunction);
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "HP"){
                 writeHpSerial(serialStringCommand);
-              } else if (serialBoard == "DS"){
+              } else if (serialPort == "RS"){
+                writeRsSerial(serialStringCommand);
+              }else if (serialPort == "DS"){
                 inputString = serialStringCommand;
                 stringComplete = true; 
-              } else if (serialBoard == "RS"){
-                writeRsSerial(serialStringCommand);
               }
-              serialBoard = "NA";
+              serialStringCommand = "";
+              serialPort = "";
             }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {

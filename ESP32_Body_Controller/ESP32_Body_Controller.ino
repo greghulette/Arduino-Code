@@ -87,7 +87,7 @@ ServoSequencer servoSequencer(servoDispatch);
     int commandLength;
     int paramVar = 9;
 
-    int serialBoard;
+    int serialPort;
     String serialStringCommand;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
@@ -330,21 +330,25 @@ void loop(){
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 digit sequence sndentifier Characters to Integer
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialBoard =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=3; i<commandLength-2;i++ ){
                 char inCharRead = inputBuffer[i];
-                // add it to the inputString:
-                serialStringCommand += inCharRead;
+                serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              if (serialBoard == "BL"){
-              writeBlSerial(serialStringCommand);
-              } else if (serialBoard == "BC"){
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "BL"){
+                writeBlSerial(serialStringCommand);
+              } else if (serialPort == "EN"){
+                writeEnSerial(serialStringCommand);
+              } else if (serialPort == "ST"){
+                writeStSerial(serialStringCommand);
+              }else if (serialPort == "BC"){
                 inputString = serialStringCommand;
                 stringComplete = true; 
-              } else if (serialBoard == "ST"){
-                  writeStSerial(serialStringCommand);
               }
-            };
+              serialStringCommand = "";
+              serialPort = "";
+            } 
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
             }
