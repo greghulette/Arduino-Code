@@ -863,7 +863,7 @@ void marchingAnts(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D113");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D113"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 3000); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 50); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D113");}, 2000); break;
   }
