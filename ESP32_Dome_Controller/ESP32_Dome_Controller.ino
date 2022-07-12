@@ -456,8 +456,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 serialStringCommand += inCharRead;
               }
               if (serialBoard == "HP"){
-                serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
-                serialCommandFunction = serialCommandFunctionString.toInt();
+                // serialCommandFunctionString = serialStringCommand.substring(3,commandLength);
+                // serialCommandFunction = serialCommandFunctionString.toInt();
                 //DBG(serialCommandFunction);
                 writeHpSerial(serialStringCommand);
               } else if (serialBoard == "DS"){
@@ -466,6 +466,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               } else if (serialBoard == "RS"){
                 writeRsSerial(serialStringCommand);
               }
+              serialBoard = "NA";
             }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {
