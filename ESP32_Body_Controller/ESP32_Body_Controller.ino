@@ -85,7 +85,6 @@ ServoSequencer servoSequencer(servoDispatch);
     int displayState;
     int typeState;
     int commandLength;
-    int commandState;
     int paramVar = 9;
 
     int serialBoard;
@@ -337,13 +336,13 @@ void loop(){
                 // add it to the inputString:
                 serialStringCommand += inCharRead;
               }
-              if (serialBoard == 'BL'){
-              writeBlSerial(serialStringCommand)
-              } else if (serialBoard == 'BC'){
+              if (serialBoard == "BL"){
+              writeBlSerial(serialStringCommand);
+              } else if (serialBoard == "BC"){
                 inputString = serialStringCommand;
                 stringComplete = true; 
-              } else if (serialBoard == 'ST'){
-                writeStSerial(serialStringCommand);
+              } else if (serialBoard == "ST"){
+                  writeStSerial(serialStringCommand);
               }
             };
             if(commandLength >= 4) {

@@ -41,10 +41,8 @@
     volatile boolean stringComplete  = false;      // whether the serial string is complete
     String autoInputString;         // a string to hold incoming data
     volatile boolean autoComplete    = false;    // whether an Auto command is setA
-    int displayState;
-    int typeState;
+  
     int commandLength;
-    int paramVar = 9;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState = 0;
@@ -77,8 +75,8 @@
   #define TXBC 16 
   #define RXD2 25
   #define TXD2 26 
-#define bcSerial Serial1
-#define BAUD_RATE 115200
+  #define bcSerial Serial1
+  #define BAUD_RATE 115200
 
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
@@ -96,95 +94,93 @@
 
 
 //    MAC Address of your receivers 
-    uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-    uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
 //    MAC Address to broadcast to all senders at once
-    uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
 //  // Define variables to store commands to be sent
-    String senderID;
-    String destinationID;
-    String targetID;
-    String command;
-    String commandSubString;
+  String senderID;
+  String destinationID;
+  String targetID;
+  String command;
+  String commandSubString;
     
 //
 
 //  // Define variables to store incoming commands
-    String incomingDestinationID;
-    String incomingTargetID;  
-    String incomingSenderID;
-    String incomingCommand;
+  String incomingDestinationID;
+  String incomingTargetID;  
+  String incomingSenderID;
+  String incomingCommand;
 //    
 //  // Variable to store if sending data was successful
-    String success;
+  String success;
 //
 //  //Structure example to send data
 //  //Must match the receiver structure
-    typedef struct struct_message {
-        String structSenderID;
-        String structDestinationID;
-        String structTargetID;  
-        String structCommand;
-    } struct_message;
+  typedef struct struct_message {
+      String structSenderID;
+      String structDestinationID;
+      String structTargetID;  
+      String structCommand;
+  } struct_message;
 //
 //  // Create a struct_message calledcommandsTosend to hold variables that will be sent
-    struct_message commandsToSendtoDome;
-    struct_message commandsToSendtoPeriscope;
-    struct_message commandsToSendtoBroadcast;
+  struct_message commandsToSendtoDome;
+  struct_message commandsToSendtoPeriscope;
+  struct_message commandsToSendtoBroadcast;
 
 //
 //  // Create a struct_message to hold incoming commands from the Dome
-    struct_message commandsToReceiveFromDome;
-    struct_message commandsToReceiveFromPeriscope;
-    struct_message commandsToReceiveFromBroadcast;
+  struct_message commandsToReceiveFromDome;
+  struct_message commandsToReceiveFromPeriscope;
+  struct_message commandsToReceiveFromBroadcast;
 //
    esp_now_peer_info_t peerInfo;
 
 //
 //  // Callback when data is sent
-    void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-      char macStr[18];
-      Serial.print("Packet to: ");
-      // Copies the sender mac address to a string
-      snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-      Serial.print(macStr);
-      Serial.print(" send status:\t");
-      Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    }
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  Serial.print("Packet to: ");
+  // Copies the sender mac address to a string
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print(macStr);
+  Serial.print(" send status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
 //
 //  // Callback when data is received
-      void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      Serial.print("Bytes received from Dome: ");
-      Serial.println(len);
-      incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
-      incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-      incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      Serial.print("Sender ID = ");
-      Serial.println(incomingSenderID);
-      Serial.print("Destination ID= ");
-      Serial.println(incomingDestinationID);
-      Serial.print("Target ID= ");
-      Serial.println(incomingTargetID);
-      Serial.print("Command = ");
-      Serial.println(incomingCommand); 
-      if (incomingDestinationID =="Body" && incomingDestinationID == "ESPNOW"){
-        Serial.println("Accepted");
-        inputString = incomingCommand;
-        stringComplete = true;   
-      } else if(incomingDestinationID =="Body" && incomingDestinationID == "BC" || incomingDestinationID == "BL" || incomingDestinationID == "ST"){
-          writebcSerial(incomingCOmmand);
-      }      
-      else {Serial.println("Ignored");}
-  
-        
-    }
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  Serial.print("Bytes received from Dome: ");
+  Serial.println(len);
+  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  Serial.print("Sender ID = ");
+  Serial.println(incomingSenderID);
+  Serial.print("Destination ID= ");
+  Serial.println(incomingDestinationID);
+  Serial.print("Target ID= ");
+  Serial.println(incomingTargetID);
+  Serial.print("Command = ");
+  Serial.println(incomingCommand); 
+  if (incomingDestinationID =="Body" && incomingDestinationID == "ESPNOW"){
+    Serial.println("Accepted");
+    inputString = incomingCommand;
+    stringComplete = true;   
+  } else if(incomingDestinationID =="Body" && incomingDestinationID == "BC" || incomingDestinationID == "BL" || incomingDestinationID == "ST"){
+    writebcSerial(incomingCOmmand);
+  }      
+  else {Serial.println("Ignored");}
+}
 //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
