@@ -59,7 +59,6 @@
 #define DOME_PANELS_MASK      (SMALL_PANELS_MASK|MEDIUM_PANELS_MASK|BIG_PANEL)
 #define PIE_PANELS_MASK       (PIE_PANEL_ONE|PIE_PANEL_TWO|PIE_PANEL_THREE|PIE_PANEL_FOUR)
 #define ALL_DOME_PANELS_MASK  (DOME_PANELS_MASK|PIE_PANELS_MASK)
-#define ALL_SERVOS_MASK       (DOME_PANELS_MASK|PIE_PANELS_MASK)
 
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
@@ -429,40 +428,40 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
 
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}    
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
             else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
-//            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-//              for (int i=1; i<=commandLength; i++){
-//                char inCharRead = inputBuffer[i];
-//                inputStringCommand += inCharRead;  // add it to the inputString:
-//              }
-//              DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
-//              espNowespCommandFunctionString = inputStringCommand.substring(0,2);
-//              espNowespCommandFunction = espNowespCommandFunctionString.toInt();
-//              DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
-//              targetID = inputStringCommand.substring(2,4);
-//              DBG("Target ID: %s \n", targetID);
-//              commandSubString = inputStringCommand.substring(4,commandLength);
-//              DBG("Command to Forward: %s\n", commandSubString);
-//            }
-//            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-//              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-//              for (int i=3; i<commandLength-2;i++ ){
-//                char inCharRead = inputBuffer[i];
-//                serialStringCommand += inCharRead;  // add it to the inputString:
-//              }
-//              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-//              if (serialPort == "HP"){
-//                writeHpSerial(serialStringCommand);
-//              } else if (serialPort == "RS"){
-//                writeRsSerial(serialStringCommand);
-//              }else if (serialPort == "DS"){
-//                inputString = serialStringCommand;
-//                stringComplete = true; 
-//              }
-//              serialStringCommand = "";
-//              serialPort = "";
-//            }   
+           else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+             for (int i=1; i<=commandLength; i++){
+               char inCharRead = inputBuffer[i];
+               inputStringCommand += inCharRead;  // add it to the inputString:
+             }
+             DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
+             espNowespCommandFunctionString = inputStringCommand.substring(0,2);
+             espNowespCommandFunction = espNowespCommandFunctionString.toInt();
+             DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
+             targetID = inputStringCommand.substring(2,4);
+             DBG("Target ID: %s \n", targetID);
+             commandSubString = inputStringCommand.substring(4,commandLength);
+             DBG("Command to Forward: %s\n", commandSubString);
+           }
+           else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+             serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+             for (int i=3; i<commandLength-2;i++ ){
+               char inCharRead = inputBuffer[i];
+               serialStringCommand += inCharRead;  // add it to the inputString:
+             }
+             DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+             if (serialPort == "HP"){
+               writeHpSerial(serialStringCommand);
+             } else if (serialPort == "RS"){
+               writeRsSerial(serialStringCommand);
+             }else if (serialPort == "DS"){
+               inputString = serialStringCommand;
+               stringComplete = true; 
+             }
+             serialStringCommand = "";
+             serialPort = "";
+           }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
@@ -747,7 +746,7 @@ void closeAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D104");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_DOME_PANELS_MASK);
   };
   D_command[0] = '\0';
 }
@@ -766,7 +765,7 @@ void allOpenClose(int servoBoard){
     sendESPNOWCommand("BC","D106");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_DOME_PANELS_MASK);
   };
   D_command[0]   = '\0';                                           
 }
@@ -779,7 +778,7 @@ void allOpenCloseLong(int servoBoard){
     sendESPNOWCommand("BC","D107");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_DOME_PANELS_MASK);
   };
   D_command[0]   = '\0';                                                 
 }
@@ -792,7 +791,7 @@ void allFlutter(int servoBoard){
     sendESPNOWCommand("BC","D108");
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_DOME_PANELS_MASK);
   };
   D_command[0]   = '\0';   
 }
@@ -805,7 +804,7 @@ void allOpenCloseRepeat(int servoBoard){
     sendESPNOWCommand("BC","D108");
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_DOME_PANELS_MASK);
   };
   D_command[0]   = '\0';             
 }
@@ -816,10 +815,10 @@ void panelWave(int servoBoard){
   DBG("Wave\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D110");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D110"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D110");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -831,10 +830,10 @@ void panelWaveFast(int servoBoard){
   DBG("Wave Fast\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D111");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D111"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D111");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -846,10 +845,10 @@ void openCloseWave(int servoBoard) {
   DBG("Open Close Wave \n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D112");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D112"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D112");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -861,10 +860,10 @@ void marchingAnts(int servoBoard) {
   DBG("Marching Ants\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D113");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D113"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);}, 50); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK);}, 50); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D113");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -876,10 +875,10 @@ void panelAlternate(int servoBoard) {
   DBG("Panel Alternate\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D114");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D114"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D114");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -891,10 +890,10 @@ void panelDance(int servoBoard) {
   DBG("Panel Dance\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D115");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D115"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D115");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -906,10 +905,10 @@ void longDisco(int servoBoard) {
   DBG("Panel Dance Long\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D116");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D116"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D116");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -921,10 +920,10 @@ void longHarlemShake(int servoBoard) {
   DBG("Harlem Shake\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D117");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D117"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D117");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
