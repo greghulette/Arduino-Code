@@ -326,7 +326,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void setup(){
   //Initialize the Serial Ports
-  Serial.begin(9600);                                                                   // Initialize Serial Connection at 9600:
+  Serial.begin(57600);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
   
@@ -402,7 +402,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
-      closeAllDoors(3);
+      closeAllDoors(2);
       startUp = false;
       Serial.println("Startup");
   }
@@ -431,38 +431,38 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}    
             else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
-            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-              for (int i=1; i<=commandLength; i++){
-                char inCharRead = inputBuffer[i];
-                inputStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
-              espNowespCommandFunctionString = inputStringCommand.substring(0,2);
-              espNowespCommandFunction = espNowespCommandFunctionString.toInt();
-              DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
-              targetID = inputStringCommand.substring(2,4);
-              DBG("Target ID: %s \n", targetID);
-              commandSubString = inputStringCommand.substring(4,commandLength);
-              DBG("Command to Forward: %s\n", commandSubString);
-            }
-            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-              if (serialPort == "HP"){
-                writeHpSerial(serialStringCommand);
-              } else if (serialPort == "RS"){
-                writeRsSerial(serialStringCommand);
-              }else if (serialPort == "DS"){
-                inputString = serialStringCommand;
-                stringComplete = true; 
-              }
-              serialStringCommand = "";
-              serialPort = "";
-            }   
+//            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+//              for (int i=1; i<=commandLength; i++){
+//                char inCharRead = inputBuffer[i];
+//                inputStringCommand += inCharRead;  // add it to the inputString:
+//              }
+//              DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
+//              espNowespCommandFunctionString = inputStringCommand.substring(0,2);
+//              espNowespCommandFunction = espNowespCommandFunctionString.toInt();
+//              DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
+//              targetID = inputStringCommand.substring(2,4);
+//              DBG("Target ID: %s \n", targetID);
+//              commandSubString = inputStringCommand.substring(4,commandLength);
+//              DBG("Command to Forward: %s\n", commandSubString);
+//            }
+//            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+//              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+//              for (int i=3; i<commandLength-2;i++ ){
+//                char inCharRead = inputBuffer[i];
+//                serialStringCommand += inCharRead;  // add it to the inputString:
+//              }
+//              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+//              if (serialPort == "HP"){
+//                writeHpSerial(serialStringCommand);
+//              } else if (serialPort == "RS"){
+//                writeRsSerial(serialStringCommand);
+//              }else if (serialPort == "DS"){
+//                inputString = serialStringCommand;
+//                stringComplete = true; 
+//              }
+//              serialStringCommand = "";
+//              serialPort = "";
+//            }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
@@ -473,12 +473,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               else {speedState = inputBuffer[4]-'0';} 
             }
        
-
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
+              D_command[1] = doorBoard;
               if(door>=0) {
-                D_command[1] = door;
+                D_command[2] = door;
               }
             }
 
@@ -516,7 +516,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       inputStringCommand = "";
       targetID = "";
       espNowespCommandFunction =0;
-      DBG("command taken");
+      DBG("command taken\n");
 
     }
 
@@ -734,7 +734,7 @@ void openAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_DOME_PANELS_MASK);
   };
   D_command[0] = '\0';
 }

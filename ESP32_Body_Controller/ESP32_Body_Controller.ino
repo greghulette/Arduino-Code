@@ -87,7 +87,7 @@ ServoSequencer servoSequencer(servoDispatch);
     int commandLength;
     int paramVar = 9;
 
-    int serialPort;
+    String serialPort;
     String serialStringCommand;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
@@ -174,7 +174,7 @@ void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
    enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
-   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL;
+   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
    stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
    Serial.println("\n\n\n-----------------------------------\nBooting up the Dome Controller");
