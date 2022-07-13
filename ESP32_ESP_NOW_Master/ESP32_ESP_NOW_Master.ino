@@ -319,32 +319,6 @@ void loop(){
                    Serial.println(commandSubString);
 
                 };
-                
-//                if(commandLength >= 4) {
-//                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {typeState = inputBuffer[3]-'0';}
-//                }
-//                else {
-//                     typeState = -1;
-//                }
-//                if(commandLength >= 5) {
-//                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
-//                  }
-//                 if(commandLength >= 6) {colorState2 = inputBuffer[5]-'0';}
-
-
-                
-
-               
-//                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-//                  D_command[0]   = '\0';                                                            // Flushes Array
-//                  DaltToggle = true;
-//                  D_command[0] = doorState;
-//                  if(door>=0) {
-//                               D_command[1] = door;
-//                               Dcounts[door] = 0;
-//                  }
-//                  else {Dcount = 0;}
-//                }
                 if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
                   ESP_command[0]   = '\0';                                                            // Flushes Array
                   ESP_command[0] = commandState;
