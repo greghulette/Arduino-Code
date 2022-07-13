@@ -77,11 +77,11 @@
   #define TXFU 18 
   #define RXPL 25
   #define TXPL 27
-#define plSerial Serial1
-#define fuSerial Serial2
-
-#define PL_BAUD_RATE 9600
-#define BAUD_RATE 115200
+  #define plSerial Serial1
+  #define fuSerial Serial2
+  
+  #define PL_BAUD_RATE 9600
+  #define FU_BAUD_RATE 115200
 
 ///////////////////////////////////////////////////////////////////////////
 /////*****              ESP NOW Set Up                       *****///
@@ -167,7 +167,7 @@
         DPRINTLN("Accepted");
 
         if (incomingTargetID == "PL"){
-          DPRINT("Sending out plSerial");DPRINTLN(incomingCommand);
+          DPRINT("Sending out plSercial");DPRINTLN(incomingCommand);
           writePlSerial(incomingCommand);
         }
         else{
@@ -206,7 +206,7 @@ void setup(){
 
   Serial.begin(115200);
   plSerial.begin(PL_BAUD_RATE,SERIAL_8N1,RXPL,TXPL);
-  fuSerial.begin(BAUD_RATE,SERIAL_8N1,RXFU,TXFU);
+  fuSerial.begin(FU_BAUD_RATE,SERIAL_8N1,RXFU,TXFU);
 
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Periscope Controller");
