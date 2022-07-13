@@ -645,7 +645,7 @@ void openCloseWave(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD212"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);
-            DelayCall::schedule([] {writeEnSerial("N01DSD5212");}, 2000); break;
+            DelayCall::schedule([] {writeEnSerial("N01DSD212");}, 2000); break;
     case 4: writeEnSerial("N01DSD212");
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
   }
@@ -660,7 +660,7 @@ void marchingAnts(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD213"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK);
-            writeEnSerial("N01DSD5213"); break;
+            writeEnSerial("N01DSD213"); break;
     case 4: writeEnSerial("N01DSD213");
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
   }
@@ -675,7 +675,7 @@ void panelAlternate(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD214");   break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK);
-            writeEnSerial("N01DSD5214");  break;
+            writeEnSerial("N01DSD214");  break;
     case 4: writeEnSerial("N01DSD214");
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
   }
@@ -690,7 +690,7 @@ void panelDance(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD215"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);
-            writeEnSerial("N01DSD5215");  break;
+            writeEnSerial("N01DSD215");  break;
     case 4: writeEnSerial("N01DSD215");
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK);  break;
   }
@@ -705,7 +705,7 @@ void longDisco(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD216"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);
-            writeEnSerial("N01DSD5216");   break;
+            writeEnSerial("N01DSD216");   break;
     case 4: writeEnSerial("N01DSD216");
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);  break;
   }
@@ -720,7 +720,7 @@ void longHarlemShake(int servoBoard) {
     case 1: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
     case 2: writeEnSerial("N01DSD217"); break;
     case 3: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);
-            writeEnSerial("N01DSD5217");   break;
+            writeEnSerial("N01DSD217");   break;
     case 4: writeEnSerial("N01DSD217");
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);  break;
   }
