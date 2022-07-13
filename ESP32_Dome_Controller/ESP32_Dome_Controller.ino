@@ -862,9 +862,9 @@ void marchingAnts(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D113");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D113"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK);}, 50); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC","D113");}, 2000); break;
+            DsendESPNOWCommand("BC","D113");  break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -877,9 +877,9 @@ void panelAlternate(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D114");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D114"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK);}, 3000); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC","D114");}, 2000); break;
+            sendESPNOWCommand("BC","D114"); break;
   }
   D_command[0]   = '\0';                                             
 }                                                            
@@ -892,9 +892,9 @@ void panelDance(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D115");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D115"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK);}, 3000); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC","D115");}, 2000); break;
+            sendESPNOWCommand("BC","D115"); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -907,9 +907,9 @@ void longDisco(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D116");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D116"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);}, 3000); break;
+            {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC","D116");}, 2000); break;
+            sendESPNOWCommand("BC","D116");break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -922,9 +922,9 @@ void longHarlemShake(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D117");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D117"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK);}, 3000); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK);break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC","D117");}, 2000); break;
+            sendESPNOWCommand("BC","D117");break;
   }
   D_command[0]   = '\0';                                             
 }                                                       
