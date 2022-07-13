@@ -907,7 +907,7 @@ void longDisco(int servoBoard) {
     case 1: sendESPNOWCommand("BC","D116");                                    break;
     case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
     case 3: sendESPNOWCommand("BC","D116"); 
-            {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
             sendESPNOWCommand("BC","D116");break;
   }
@@ -986,14 +986,13 @@ void writeRsSerial(String stringData){
   Serial.println("Printing to rsSerial");
 }
 
-      void writeHpSerial(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          hpSerial.write(completeString[i]);
-        }
-        Serial.println("Printing to hpSerial");
-      }
+void writeHpSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    hpSerial.write(completeString[i]);
+  }
+  Serial.println("Printing to hpSerial");
+}
 
       //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
@@ -1024,17 +1023,6 @@ void writeRsSerial(String stringData){
     }
         ESPNOW_command[0] = '\0';
    }
-
-  void parseESPNOWCommand(String idest, String icomm){
-    
-  }
-
-  void testESPNOW(){
-    sendESPNOWCommand("ESP","d03");
-//    Serial.println("testESPNOW Function called");
-    ESP_command[0] = '\0';
-
-  }
 
 
 //////////////////////////////////////////////////////////////////////
@@ -1085,16 +1073,14 @@ void toggleDebug1(){
 }
 
 
-  void connectWiFi(){
-    Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-      WiFi.begin();
-      while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("Connecting to WiFi..");
-      Serial.println(WiFi.localIP());
-//      Serial.print("Local MAC address = ");
-//      Serial.println(WiFi.macAddress());
+void connectWiFi(){
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.begin();
+  while (WiFi.status() != WL_CONNECTED) {
+  delay(1000);
+  Serial.println("Connecting to WiFi..");
+  Serial.println(WiFi.localIP());
   }
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
-  }
+}
