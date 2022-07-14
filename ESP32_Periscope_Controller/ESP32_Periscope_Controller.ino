@@ -10,9 +10,6 @@
 #include "esp_wifi.h"
 #include <esp_now.h>
 
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
-
 //reeltwo libaries
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
