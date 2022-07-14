@@ -58,23 +58,23 @@
 #define MEDIUM_PANELS_MASK    (MEDIUM_PANEL_PAINTED|MEDIUM_PANEL_SILVER)
 #define DOME_PANELS_MASK      (SMALL_PANELS_MASK|MEDIUM_PANELS_MASK|BIG_PANEL)
 #define PIE_PANELS_MASK       (PIE_PANEL_ONE|PIE_PANEL_TWO|PIE_PANEL_THREE|PIE_PANEL_FOUR)
-#define ALL_DOME_PANELS_MASK  (DOME_PANELS_MASK|PIE_PANELS_MASK)
+#define ALL_SERVOS_MASK       (DOME_PANELS_MASK|PIE_PANELS_MASK)
 
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
 //     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-     { 1,   600, 2400, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
-     { 2,   600, 2400, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
-     { 3,   600, 2400, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
-     { 4,   600, 2400, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
-     { 5,   600, 2400, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-     { 6,   600, 2400, BIG_PANEL },             /* 5: door 6 Big Lower door */
-     { 7,   600, 2400, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
-     { 8,   600, 2400, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
-     { 9,   600, 2400, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
-     { 10,  600, 2400, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
+    { 1,   600, 2400, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
+    { 2,   600, 2400, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
+    { 3,   600, 2400, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
+    { 4,   600, 2400, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
+    { 5,   600, 2400, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
+    { 6,   600, 2400, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 7,   600, 2400, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
+    { 8,   600, 2400, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
+    { 9,   600, 2400, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
+    { 10,  600, 2400, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
 };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -392,21 +392,16 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       startUp = false;
       Serial.println("Startup");
   }
-  if(Serial.available()){
-    serialEvent();
-  }
-  if(hpSerial.available()){
-    hpserialEvent();
-  }
-  if(rsSerial.available()){
-    rsserialEvent();
-  }
+  if(Serial.available()){serialEvent();}
+  if(hpSerial.available()){hpserialEvent();}
+  if(rsSerial.available()){rsserialEvent();}
+  
   cameraLED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
-    if(stringComplete) {inputString.toCharArray(inputBuffer, 10);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
+    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
       if( inputBuffer[0]=='D' ||        // Door Designator
           inputBuffer[0]=='d' ||        // Door Designator
           inputBuffer[0]=='R' ||        //Radar Eye LED
@@ -436,35 +431,37 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 commandSubString = inputStringCommand.substring(4,commandLength);
                 DBG("Command to Forward: %s\n", commandSubString);
               }
-           else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-             serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-             for (int i=3; i<commandLength-2;i++ ){
-               char inCharRead = inputBuffer[i];
-               serialStringCommand += inCharRead;  // add it to the inputString:
-             }
-             DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-             if (serialPort == "HP"){
-               writeHpSerial(serialStringCommand);
-             } else if (serialPort == "RS"){
-               writeRsSerial(serialStringCommand);
-             }else if (serialPort == "DS"){
-               inputString = serialStringCommand;
-               stringComplete = true; 
-             }
-             serialStringCommand = "";
-             serialPort = "";
-           }   
+            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+              char inCharRead = inputBuffer[i];
+              serialStringCommand += inCharRead;  // add it to the inputString:
+              }
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "HP"){
+                writeHpSerial(serialStringCommand);
+              } else if (serialPort == "RS"){
+                writeRsSerial(serialStringCommand);
+              } else if (serialPort == "DS"){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              }
+              serialStringCommand = "";
+              serialPort = "";
+            }   
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
+            
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
               if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
               if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {colorState1 = inputBuffer[3]-'0';};
             }
+
             if(commandLength >= 5) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
               else {speedState = inputBuffer[4]-'0';} 
             }
-       
+
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
@@ -605,7 +602,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 void cameraLED(uint32_t color, int CLSpeed){
   int CLRLow = 1;
   int CLRHigh = 50;
-       CLSpeed = map(CLSpeed, 0, 9, 1, 250);
+      CLSpeed = map(CLSpeed, 0, 9, 1, 250);
       if (millis() - CLMillis >= CLSpeed){
         CLMillis = millis();
       if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
@@ -626,7 +623,7 @@ void cameraLED(uint32_t color, int CLSpeed){
             dim=dim + random(CLRLow, CLRHigh); // set the brightness to current plus a random number between 5 and 40.  I think that
                                               //adding a random causes a less smooth transition which makes it look a little better
             colorWipe(color, dim);           // Set the LEDs to the color and brightness using the colorWheel function
-         }
+        }
           if(dim>=250){                       //Check to see if the brightness is at or above 235.  Modifying the "235" will
                                                //allow the dim variable to go above 255 causing the flicker.  The closer you
                                               //set the "235" to 255, the more flickering will happen. I use half the larger
@@ -734,7 +731,7 @@ void openAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
   };
   D_command[0] = '\0';
 }
@@ -747,7 +744,7 @@ void closeAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D104");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK);
   };
   D_command[0] = '\0';
 }
@@ -766,7 +763,7 @@ void allOpenClose(int servoBoard){
     sendESPNOWCommand("BC","D106");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK);
   };
   D_command[0]   = '\0';                                           
 }
@@ -779,7 +776,7 @@ void allOpenCloseLong(int servoBoard){
     sendESPNOWCommand("BC","D107");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK);
   };
   D_command[0]   = '\0';                                                 
 }
@@ -792,7 +789,7 @@ void allFlutter(int servoBoard){
     sendESPNOWCommand("BC","D108");
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK);
   };
   D_command[0]   = '\0';   
 }
@@ -805,7 +802,7 @@ void allOpenCloseRepeat(int servoBoard){
     sendESPNOWCommand("BC","D108");
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_DOME_PANELS_MASK);
+    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK);
   };
   D_command[0]   = '\0';             
 }
@@ -816,10 +813,10 @@ void panelWave(int servoBoard){
   DBG("Wave\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D110");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D110"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_DOME_PANELS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D110");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -831,10 +828,10 @@ void panelWaveFast(int servoBoard){
   DBG("Wave Fast\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D111");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D111"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_DOME_PANELS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D111");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -846,10 +843,10 @@ void openCloseWave(int servoBoard) {
   DBG("Open Close Wave \n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D112");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D112"); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK);}, 3000); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_DOME_PANELS_MASK); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC","D112");}, 2000); break;
   }
   D_command[0]   = '\0';                                             
@@ -861,10 +858,10 @@ void marchingAnts(int servoBoard) {
   DBG("Marching Ants\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D113");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D113"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_DOME_PANELS_MASK); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
             DsendESPNOWCommand("BC","D113");  break;
   }
   D_command[0]   = '\0';                                             
@@ -876,10 +873,10 @@ void panelAlternate(int servoBoard) {
   DBG("Panel Alternate\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D114");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D114"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_DOME_PANELS_MASK); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
             sendESPNOWCommand("BC","D114"); break;
   }
   D_command[0]   = '\0';                                             
@@ -891,10 +888,10 @@ void panelDance(int servoBoard) {
   DBG("Panel Dance\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D115");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D115"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_DOME_PANELS_MASK); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
             sendESPNOWCommand("BC","D115"); break;
   }
   D_command[0]   = '\0';                                             
@@ -906,10 +903,10 @@ void longDisco(int servoBoard) {
   DBG("Panel Dance Long\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D116");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D116"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK);break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_DOME_PANELS_MASK); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
             sendESPNOWCommand("BC","D116");break;
   }
   D_command[0]   = '\0';                                             
@@ -921,10 +918,10 @@ void longHarlemShake(int servoBoard) {
   DBG("Harlem Shake\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D117");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
+    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
     case 3: sendESPNOWCommand("BC","D117"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK);break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_DOME_PANELS_MASK); break;
+            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);break;
+    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
             sendESPNOWCommand("BC","D117");break;
   }
   D_command[0]   = '\0';                                             
@@ -934,11 +931,10 @@ void longHarlemShake(int servoBoard) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
-///////                             Serial & I2C Communication Functions                              /////
+///////                             Serial & ESP-NOW Communication Functions                          /////
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
 //
 //      /////////////////////////////////////////////////////////
 //      ///*****          Serial Event Function          *****///
@@ -1020,32 +1016,36 @@ void writeHpSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
  
-  void sendESPNOWCommand(String starget,String scomm){
-    String sdest;
-    if (starget == "PC"){
-        sdest = "Periscope";
-    } else if (starget == "BC" || starget == "BL" || starget == "ST" || starget == "EN"){
-        sdest = "Body"; 
-      }
-    else {DBG("No Board Specified");};
-    commandsToSendtoBroadcast.structDestinationID = sdest;
-    //DRPINT("sdest: ");//DRPINTLN(sdest);
-    commandsToSendtoBroadcast.structTargetID = starget;
-    commandsToSendtoBroadcast.structSenderID = "Dome";
-    commandsToSendtoBroadcast.structCommand = scomm;
-//    //DRPINT("Command to Send in Function: ");//DRPINTLN(commandsToSendtoBroadcast.structCommand);
-    // Send message via ESP-NOW
-    esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-   if (result == ESP_OK) {
-    Serial.println("Sent with success");
-    }
-    else {
-      Serial.println(result);
-      Serial.println("Error sending the data");
-    }
-        ESPNOW_command[0] = '\0';
-   }
+void sendESPNOWCommand(String starget,String scomm){
+  String sdest;
+  if (starget == "DS" || starget == "RS" || starget == "HP"){
+    sdest = "Dome";
+  } else if (starget == "PC" || starget == "PL"){
+    sdest = "Periscope";
+  }
+  commandsToSendtoBroadcast.structDestinationID = sdest;
+  DBG("sdest: %s\n", sdest);
+  commandsToSendtoBroadcast.structTargetID = starget;
+  commandsToSendtoBroadcast.structSenderID = "Body";
+  commandsToSendtoBroadcast.structCommand = scomm;
+  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+  if (result == ESP_OK) {
+    DBG("Sent with success\n");
+  }
+  else {
+    DBG("Error sending the data\n");
+  }
+  ESPNOW_command[0] = '\0';
+}
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Debugging Functions                      *****///
@@ -1061,8 +1061,8 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
-        if (!debugflag1)
+void DBG_P(char *format, ...) {
+        if (!debugflagparam)
                 return;
         va_list ap;
         va_start(ap, format);
@@ -1074,28 +1074,29 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    DBG("Debugging Enabled \n");
-  }
+    Serial.println(("Debugging Enabled \n");
+    }
   else{
     Serial.println("Debugging Disabled");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
 
 
-void toggleDebug1(){
-  debugflag1 = !debugflag1;
-  if (debugflag1 == 1){
-    DBG("Parameter Debugging Enabled \n");
-  }
+void toggleDebugParam(){
+  debugflagparam = !debugflagparam;
+  if (debugflagparam == 1){
+    Serial.println("Parameter Debugging Enabled \n");
+    }
   else{
-    DBG("Parameter Debugging Disabled\n");
+    erial.println(("Parameter Debugging Disabled\n");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
+
 
 //////////////////////////////////////////////////////////////////////
-///*****             Misc. Functions                          *****///
+///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){

@@ -34,7 +34,7 @@
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
     
-  char inputBuffer[100;
+  char inputBuffer[100];
   String inputString;         // a string to hold incoming data
   String inputStringCommand;
   volatile boolean stringComplete  = false;      // whether the serial string is complete
@@ -140,7 +140,7 @@
     struct_message commandsToReceiveFromPeriscope;
     struct_message commandsToReceiveFromBroadcast;
 //
-   esp_now_peer_info_t peerInfo;
+  esp_now_peer_info_t peerInfo;
 
 //  // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -182,7 +182,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   }
   else {DBG("ESP-NOW Message Ignored\n");}
 }
- 
+
 //////////////////////////////////////////////////////////////////////
 ///***   WiFi Specific Setup  (Only used when OTA is enabled)   ***///
 //////////////////////////////////////////////////////////////////////
@@ -240,7 +240,7 @@ void setup(){
   // Register peer configuration
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
- 
+
   // Add peers  
     memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
     if (esp_now_add_peer(&peerInfo) != ESP_OK){
@@ -270,23 +270,21 @@ void loop(){
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
     }
-    if(Serial.available()){
-      serialEvent();
-    }
-    if(plSerial.available()){
-      plSerialEvent();
-    }
-    if(fuSerial.available()){
-      fuSerialEvent();
-    }
+    // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
+    if(Serial.available()){serialEvent();}
+    if(plSerial.available()){plSerialEvent();}
+    if(fuSerial.available()){fuSerialEvent();}
+
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='E' ||       // Command designatore for internal ESP functions
-          inputBuffer[0]=='e' ||       // Command designatore for internal ESP functions
-          inputBuffer[0]=='S' ||       // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'          // Command for sending Serial Strings out Serial ports
+      if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           DBG("Command Length is: %s\n" , commandLength);
           if(commandLength >= 3) {
@@ -353,8 +351,7 @@ void loop(){
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
                 ESP_command[0]   = '\0';                                                        break;
-        case 3: connectWiFi();  
-                ESP_command[0]   = '\0'; break;        
+        case 3: connectWiFi(); break;        
         case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
@@ -384,7 +381,7 @@ void loop(){
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
-///////                             Serial & I2C Communication Functions                              /////
+///////                             Serial & ESP-NOW Communication Functions                          /////
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -440,64 +437,42 @@ void fuSerialEvent() {
   //      /// end of the string.                                ///
   //      /////////////////////////////////////////////////////////
 
-      void writeSerialString(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          Serial.write(completeString[i]);
-        }
-      }
-      void writePlSerial(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          plSerial.write(completeString[i]);
-        }
-      }
-      
-      void writeFuSerial(String stringData){
-        String completeString = stringData + '\r';
-        for (int i=0; i<completeString.length(); i++)
-        {
-          fuSerial.write(completeString[i]);
-        }
-      }
+void writeSerialString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    Serial.write(completeString[i]);
+  }
+}
+void writePlSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    plSerial.write(completeString[i]);
+  }
+}
+
+void writeFuSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    fuSerial.write(completeString[i]);
+  }
+}
 
 
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
-  void sendESPNOWCommand(String starget,String scomm){
-    String sdest;
-    if (starget == "DS" || starget == "RS" || starget == "HP"){
-        sdest = "Dome";
-      } else if (starget == "BC"){
-        sdest = "Body";
-        }
-    commandsToSendtoBroadcast.structDestinationID = sdest;
-    DBG("sdest: ");DBG(sdest);
-    commandsToSendtoBroadcast.structTargetID = starget;
-    commandsToSendtoBroadcast.structSenderID = "Periscope";
-    commandsToSendtoBroadcast.structCommand = scomm;
-//    DBG("Command to Send in Function: ");DBG(commandsToSendtoBroadcast.structCommand);
-    // Send message via ESP-NOW
-    esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-   if (result == ESP_OK) {
-    Serial.println("Sent with success");
-    }
-    else {
-      Serial.println(result);
-      Serial.println("Error sending the data");
-    }
-        ESPNOW_command[0] = '\0';
-   }
-
-//////////////////////////////////////////////////////////////////////
-///*****             Debugging Functions                      *****///
-//////////////////////////////////////////////////////////////////////
-
-void DBG(char *format, ...) {
+void sendESPNOWCommand(String starget,String scomm){
+  String sdest;
+  if (starget == "DS" || starget == "RS" || starget == "HP"){
+    sdest = "Dome";
+  } else if (starget == "PC" || starget == "PL"){
+    sdest = "Periscope";
+  }
+  commandsToSendtoBvoid DBG(char *format, ...) {
         if (!debugflag)
                 return;
         va_list ap;
@@ -507,51 +482,65 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
-if (!debugflag1)
-        return;
-va_list ap;
-va_start(ap, format);
-vfprintf(stderr, format, ap);
-va_end(ap);
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****             Debugging Functions                      *****///
+//////////////////////////////////////////////////////////////////////
+
+void DBG_P(char *format, ...) {
+        if (!debugflagparam)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
 }
 
 
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    DBG("Debugging Enabled \n");
-  }
+    Serial.println(("Debugging Enabled \n");
+    }
   else{
     Serial.println("Debugging Disabled");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
 
 
-void toggleDebug1(){
-  debugflag1 = !debugflag1;
-  if (debugflag1 == 1){
-    DBG("Parameter Debugging Enabled \n");
-  }
+void toggleDebugParam(){
+  debugflagparam = !debugflagparam;
+  if (debugflagparam == 1){
+    Serial.println("Parameter Debugging Enabled \n");
+    }
   else{
-    DBG("Parameter Debugging Disabled\n");
+    erial.println(("Parameter Debugging Disabled\n");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
+
+
 //////////////////////////////////////////////////////////////////////
-///*****             Misc. Functions                          *****///
+///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
 
-    void connectWiFi(){
-    Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-      WiFi.begin();
-      while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("Connecting to WiFi..");
-      }
-      Serial.println(WiFi.localIP());
-      AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-      server.begin();
-       ESP_command[0]   = '\0';
+void connectWiFi(){
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.begin();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.println(WiFi.localIP());
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+  ESP_command[0]   = '\0';
       }

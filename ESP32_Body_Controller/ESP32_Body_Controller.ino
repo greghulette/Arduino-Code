@@ -61,12 +61,12 @@
 
 //     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-     { 1,  700, 2400, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
-     { 2,  700, 2400, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
-     { 3,  700, 2400, LARGE_LEFT_DOOR },       /* 2: Large Left Door as viewing from looking at R2 */
-     { 4,  700, 2400, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
-     { 5,  700, 2400, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
-     { 6,  700, 2400, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
+    { 1,  700, 2400, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
+    { 2,  700, 2400, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
+    { 3,  700, 2400, LARGE_LEFT_DOOR },       /* 2: Large Left Door as viewing from looking at R2 */
+    { 4,  700, 2400, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
+    { 5,  700, 2400, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
+    { 6,  700, 2400, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
     };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -76,7 +76,7 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
     
-  char inputBuffer[25];
+  char inputBuffer[100];
   String inputString;         // a string to hold incoming data
   volatile boolean stringComplete  = false;      // whether the serial string is complete
 
@@ -99,11 +99,11 @@ ServoSequencer servoSequencer(servoDispatch);
   ///*****   Door Values, Containers, Flags & Timers   *****///
   //////////////////////////////////////////////////////////////////////
 
-   int door = -1;
+  int door = -1;
   // Door Command Container
-   uint32_t D_command[6]  = {0,0,0,0,0,0};
-   int doorFunction     = 0;
-   int doorBoard = 0;
+  uint32_t D_command[6]  = {0,0,0,0,0,0};
+  int doorFunction     = 0;
+  int doorBoard = 0;
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -174,9 +174,9 @@ AsyncWebServer server(80);
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-   enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
-   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
-   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
+  enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
+  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
+  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Periscope Controller");
@@ -215,7 +215,7 @@ void setup(){
     int paramsNr = request->params();               // Gets the number of parameters sent
 //    DBG_1("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-         AsyncWebParameter* p = request->getParam(i);
+      AsyncWebParameter* p = request->getParam(i);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////                                                                //////////////////////////        
@@ -240,7 +240,7 @@ void setup(){
           DBG_1("Serial 2 Chosen with If Statement\n");
           paramVar = 3;
     };
-     if ((p->name())== "param0" & (p->value()) == "ESP"){
+    if ((p->name())== "param0" & (p->value()) == "ESP"){
           DBG_1("ESP(Self) Chosen with If Statement\n");
           paramVar = 4;
     };
@@ -260,10 +260,10 @@ void setup(){
           DBG_1("Writing to Serial 0\n");      
           writeSerialString(p->value());
         };
-         if (paramVar == 1){
+        if (paramVar == 1){
           DBG_1("Writing to enSerial\n"); 
           delay(100);     
-         if ((p->name())== "param0" & (p->value()) == "EnSerial"){
+        if ((p->name())== "param0" & (p->value()) == "EnSerial"){
             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
           } 
           else {
@@ -278,7 +278,7 @@ void setup(){
           DBG_1("Writing to stSerial\n");      
           writeStSerial(p->value());
         };
-         if (paramVar == 4){
+        if (paramVar == 4){
           DBG_1("Executing on self\n");      
           inputString = (p->value());
           stringComplete = true;  
@@ -287,7 +287,7 @@ void setup(){
         DBG_1("------\n");
 //        delay(50);
     }
- 
+
     request->send(200, "text/plain", "message received");
   });
   
@@ -297,12 +297,12 @@ void setup(){
 
   //Initialize the AsycWebServer
   server.begin();
-   
+
   //Reset Arudino Mega
   resetArduino(500);
 
 }
- 
+
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
@@ -313,11 +313,13 @@ void loop(){
       Serial.println("Startup");
     }
     if(Serial.available()){serialEvent();}
-
+    if(blSerial.available()){bcSerialEvent();}
+    if(enSerial.available()){fuSerialEvent();}
+    
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 25);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 25);autoInputString="";}
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
       if( inputBuffer[0]=='D'     ||        // Door Designator
           inputBuffer[0]=='d'     ||        // Door Designator
           inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
@@ -732,7 +734,7 @@ void longHarlemShake(int servoBoard) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
-/////                             Serial Communication Functions                              /////
+/////                             Serial Communication Functions                                    /////
 /////                                                                                               /////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -840,6 +842,14 @@ void writeStSerial(String stringData){
   };
 };
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -854,43 +864,40 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
-if (!debugflag1)
-        return;
-va_list ap;
-va_start(ap, format);
-vfprintf(stderr, format, ap);
-va_end(ap);
+void DBG_P(char *format, ...) {
+        if (!debugflagparam)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
 }
 
 
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    DBG("Debugging Enabled \n");
-  }
+    Serial.println(("Debugging Enabled \n");
+    }
   else{
     Serial.println("Debugging Disabled");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
 
 
-void toggleDebug1(){
-  debugflag1 = !debugflag1;
-  if (debugflag1 == 1){
-    DBG("Parameter Debugging Enabled \n");
-  }
+void toggleDebugParam(){
+  debugflagparam = !debugflagparam;
+  if (debugflagparam == 1){
+    Serial.println("Parameter Debugging Enabled \n");
+    }
   else{
-    DBG("Parameter Debugging Disabled\n");
+    erial.println(("Parameter Debugging Disabled\n");
   }
-  ESP_command[0]   = '\0';
+    ESP_command[0]   = '\0';
 }
 
 
-//////////////////////////////////////////////////////////////////////
-///*****             Misc. Functions                          *****///
-//////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
