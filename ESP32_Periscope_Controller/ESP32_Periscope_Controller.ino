@@ -286,7 +286,7 @@ void loop(){
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           DBG("Command Length is: %s\n" , commandLength);
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
             if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
               for (int i=1; i<=commandLength; i++){
                 char inCharRead = inputBuffer[i];
