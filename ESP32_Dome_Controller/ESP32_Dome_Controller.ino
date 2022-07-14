@@ -79,6 +79,40 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
+char* easingMethod[] = {"LinearInterpolation",    //00
+                        "QuadraticEasein",        //01
+                        "QuadraticEaseInOut",     //02
+                        "CubicEaseIn",            //03
+                        "CubicEaseOut",           //04
+                        "CubicEaseInOut",         //05
+                        "QuarticEaseIn",          //06
+                        "QuarticEaseOut",         //07
+                        "QuarticEaseInOut",       //08
+                        "QuinticEaseIn",          //09
+                        "QuinticEaseOut",         //10
+                        "QuinticEaseInOut",       //11
+                        "SineEaseIn",             //12
+                        "SineEaseOut",            //13
+                        "SineEaseInOut",          //14
+                        "CircularEaseIn",         //15
+                        "CircularEaseOut",        //16
+                        "CircularEaseInOut",      //17
+                        "ExponentialEaseIn",      //18
+                        "ExponentialEaseOut",     //19
+                        "ExponentialEaseInOut",   //20
+                        "ElasticEaseIn",          //21
+                        "ElasticEaseOut",         //22
+                        "ElasticEaseInOut",       //23
+                        "BackEaseIn",             //24
+                        "BackEaseOut",            //25
+                        "BackEaseInOut",          //26
+                        "BounceEaseIn",           //27
+                        "BounceEaseOut",          //28
+                        "BounceEaseInOut"}        //29
+
+
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
@@ -731,7 +765,7 @@ void openAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);
+    servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::easingMethod[2]);
     SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK,1500);
   };
   D_command[0] = '\0';
