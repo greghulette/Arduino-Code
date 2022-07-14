@@ -76,25 +76,24 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
     
-    char inputBuffer[25];
-    String inputString;         // a string to hold incoming data
-    volatile boolean stringComplete  = false;      // whether the serial string is complete
+  char inputBuffer[25];
+  String inputString;         // a string to hold incoming data
+  volatile boolean stringComplete  = false;      // whether the serial string is complete
 
-    String autoInputString;         // a string to hold incoming data
-    volatile boolean autoComplete    = false;    // whether an Auto command is setA
-    int displayState;
-    int typeState;
-    int commandLength;
-    int paramVar = 9;
+  String autoInputString;         // a string to hold incoming data
+  volatile boolean autoComplete    = false;    // whether an Auto command is setA
+  int displayState;
+  int typeState;
+  int commandLeespCommandFunctionngth;
+  int paramVar = 9;
+  String serialPort;
+  String serialStringCommand;
 
-    String serialPort;
-    String serialStringCommand;
+  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
+  int commandState     = 0;
 
-    uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-    int commandState     = 0;
-
-    int debugflag = 0;
-    int debugflag1 = 0;  // Used for debugging params recieved from clients
+  int debugflag = 0;
+  int debugflag1 = 0;  // Used for debugging params recieved from clients
 
   //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -128,13 +127,15 @@ ServoSequencer servoSequencer(servoDispatch);
   #define RXST 12
   #define TXST 14
   
+  #define enSerial Serial1
+  #define blSerial Serial2
+  SoftwareSerial stSerial;
+
   #define EN_BAUD_RATE 115200
   #define BL_BAUD_RATE 115200
   #define ST_BAUD_RATE 9600
 
-  #define enSerial Serial1
-  #define blSerial Serial2
-  SoftwareSerial stSerial;
+
 
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
@@ -177,8 +178,8 @@ void setup(){
    blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
    stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 
-   Serial.println("\n\n\n-----------------------------------\nBooting up the Dome Controller");
-
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Periscope Controller");
   
   //Configure the Reset Pins for the arduinoReset() function
   pinMode(4, OUTPUT);
@@ -190,7 +191,6 @@ void setup(){
   //Initialize the ReelTwo Library
   SetupEvent::ready();
 
-  
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
@@ -258,7 +258,7 @@ void setup(){
   
         if (paramVar == 0){
           DBG_1("Writing to Serial 0\n");      
-          writeString(p->value());
+          writeSerialString(p->value());
         };
          if (paramVar == 1){
           DBG_1("Writing to enSerial\n"); 
@@ -328,7 +328,7 @@ void loop(){
 
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 digit sequence sndentifier Characters to Integer
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};       //  Converts 2 digit sequence sndentifier Characters to Integer
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=3; i<commandLength-2;i++ ){
@@ -342,9 +342,6 @@ void loop(){
                 writeEnSerial(serialStringCommand);
               } else if (serialPort == "ST"){
                 writeStSerial(serialStringCommand);
-              }else if (serialPort == "BC"){
-                inputString = serialStringCommand;
-                stringComplete = true; 
               }
               serialStringCommand = "";
               serialPort = "";
@@ -370,19 +367,24 @@ void loop(){
 
             if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
               ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = commandState;
+              ESP_command[0] = espCommandFunction;
             }
           }
         }
 
       ///***  Clear States and Reset for next command.  ***///
-      stringComplete =false;
-      autoComplete = false;
-      inputBuffer[0] = '\0';
-      int commandState;
-      int door = -1;
-      int doorFunction;
-      int doorBoard;
+        stringComplete =false;
+        autoComplete = false;
+        inputBuffer[0] = '\0';
+
+        // reset Local ESP Command Variables
+        int espCommandFunction;
+
+        // reset Door Variables
+        int door = -1;
+        int doorFunction;
+        int doorBoard;
+
       DBG("command Proccessed\n");
     }
 
@@ -806,7 +808,7 @@ void serialStEvent() {
   /// end of the string.                                ///
   /////////////////////////////////////////////////////////
 
-void writeString(String stringData){
+void writeSerialString(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
       Serial.write(completeString[i]);

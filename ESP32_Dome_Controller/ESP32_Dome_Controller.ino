@@ -92,22 +92,20 @@ ServoSequencer servoSequencer(servoDispatch);
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
   int ledFunction;
   int commandLength;
+  int serialCommandFunction;
+  String serialCommandFunctionString;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
   
   String serialPort;
   String serialStringCommand;
-  
-  int serialCommandFunction;
-  String serialCommandFunctionString;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-  int espNowespCommandFunction = 0;
-  String espNowespCommandFunctionString;
+  int espNowCommandFunction = 0;
+  String espNowCommandFunctionString;
   String tempESPNOWTargetID;
-  
-
+    
   int debugflag = 0;
   int debugflag1 = 0;  // Used for optional level of debuging
 
@@ -183,13 +181,16 @@ ServoSequencer servoSequencer(servoDispatch);
   #define TXHP 18 
   #define RXRS 25
   #define TXRS 27 
-  #define HP_BAUD_RATE 115200
-  #define RS_BAUD_RATE 115200
+  
   #define hpSerial Serial1
   #define rsSerial Serial2
 
-  /////////////////////////////////////////////////////////////////////////
-///*****              ESP NOW Set Up                       *****///
+  #define HP_BAUD_RATE 115200
+  #define RS_BAUD_RATE 115200
+
+
+/////////////////////////////////////////////////////////////////////////
+///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
 //  MAC Addresses used in the Droid
@@ -248,61 +249,51 @@ uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   char macStr[18];
-  Serial.print("Packet to: ");
   // Copies the sender mac address to a string
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  Serial.print(macStr);
-  Serial.print(" send status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  DBG("Packet to: %s\n", macStr);
+  DBG(" send status:\t");
+  DBG(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success\n" : "Delivery Fail\n");
 }
 
   // Callback when data is received
-      void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      Serial.print("Bytes received from ES-NOW Message: ");
-      Serial.println(len);
-      incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
-      incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-      incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-      incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      Serial.print("Sender ID = ");
-      Serial.println(incomingSenderID);
-      Serial.print("Destination ID= ");
-      Serial.println(incomingDestinationID);
-     
-      if (incomingDestinationID =="Dome"){
-        Serial.println("Accepted");
-        Serial.print("Target ID= ");
-        Serial.println(incomingTargetID);
-        if (incomingTargetID == "DS"){
-        Serial.print("Execute Local Command = ");
-        Serial.println(incomingCommand); 
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  DBG("Bytes received from ESP-NOW Message: %s\n", len);
+  DBG("Sender ID = %s\n",incomingSenderID);
+  DBG("Destination ID= %s\n" ,incomingDestinationID);
+  DBG("Target ID= %s\n", incomingTargetID);
+  DBG("Command = %s\n" , incomingCommand); 
+  if (incomingDestinationID =="Dome"){
+    DBG("ESP-NOW Command Accepted\n");
+    DBG("Target ID= %s\n", incomingTargetID);
+    if (incomingTargetID == "RS"){
+        DBG("Sending %s out rsSerial\n", incomingCommand);
+        writeRsSerial(incomingCommand);
+    } else if (incomingTargetID == "HP"){
+        DBG("Sending %s out hpSerial\n", incomingCommand);
+        writeHpSerial(incomingCommand)
+    } else if (incomingTargetID == "DS"){
+        DBG("Execute Local Command = %s\n", incomingCommand);
         inputString = incomingCommand;
-        stringComplete = true;   
-        } else if (incomingTargetID == "RS"){
-          Serial.println("Sending out rsSerial");
-          writeRsSerial(incomingCommand);
-          
-        } else if (incomingTargetID == "HP"){
-          Serial.println("Sending out hpSerial");
-          writeHpSerial(incomingCommand);
-          
-        }
-        
-      } else {Serial.println("Ignored");}
-  
-        
-    }
- 
+        stringComplete = true; 
+    } else {DBG("Wrong Target ID Sent\n");}
+  }
+  else {DBG("ESP-NOW Message Ignored\n");}
+}
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
   
 //Raspberry Pi              192.168.4.100
-//Body Controller ESP       192.168.4.101   ************
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)
+//Body Controller ESP       192.168.4.101   
+//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA) ************
 //Dome Controller ESP       192.168.4.111   (Only used for OTA) 
 //Periscope Controller ESP  192.168.4.112   (Only used for OTA)
 //Remote                    192.168.4.107
@@ -313,9 +304,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,100);
   
-//uint8_t newMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-
-   ////R2 Control Network Details
+  ////R2 Control Network Details
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
   
@@ -328,23 +317,21 @@ void setup(){
   Serial.begin(57600);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
-  
+    
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Periscope Controller");
+
   //Initialize I2C for the Servo Expander Board
   Wire.begin();
   
-  Serial.println("\n\n\n-----------------------------------\nBooting up the Dome Controller");
-
   //Initialize the ReelTwo Library
-   SetupEvent::ready();
+  SetupEvent::ready();
 
   //Reserve the inputStrings
-   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-   autoInputString.reserve(100);
+  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(100);
 
-   //***     RANDOM SET UP     ***///
-   randomSeed(millis());                         //  Sets a Random Seed so Random is More Randomy
-
-  //Sertup the NeoPixel ring for the camera lens/radar eye
+  //Initialize the NeoPixel ring for the camera lens/radar eye
   stripCL.begin();
   stripCL.show(); // Initialize all pixels to 'off'
   colorWipe(red, 255); // red during bootup
@@ -353,9 +340,9 @@ void setup(){
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_AP_STA);
-    esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
-    Serial.print("Local STA MAC address = ");
-    Serial.println(WiFi.macAddress());
+  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  Serial.print("Local STA MAC address = ");
+  Serial.println(WiFi.macAddress());
 
 //Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
@@ -408,6 +395,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if(Serial.available()){
     serialEvent();
   }
+  if(hpSerial.available()){
+    hpserialEvent();
+  }
+  if(rsSerial.available()){
+    rsserialEvent();
+  }
   cameraLED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
@@ -426,24 +419,23 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
             else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
-           else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-             for (int i=1; i<=commandLength; i++){
-               char inCharRead = inputBuffer[i];
-               inputStringCommand += inCharRead;  // add it to the inputString:
-             }
-             DBG("ESP-NOW Full Command Recieved: %s \n",inputStringCommand);
-             espNowespCommandFunctionString = inputStringCommand.substring(0,2);
-             espNowespCommandFunction = espNowespCommandFunctionString.toInt();
-             DBG("ESP-NOW Command State: %s\n", espNowespCommandFunction );
-             targetID = inputStringCommand.substring(2,4);
-             DBG("Target ID: %s \n", targetID);
-             commandSubString = inputStringCommand.substring(4,commandLength);
-             DBG("Command to Forward: %s\n", commandSubString);
-           }
+            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+                for (int i=1; i<=commandLength; i++){
+                  char inCharRead = inputBuffer[i];
+                  inputStringCommand += inCharRead;                   // add it to the inputString:
+                }
+                DBG("\nFull Command Recieved: %s ",inputStringCommand);
+                espNowCommandFunctionString = inputStringCommand.substring(0,2);
+                espNowCommandFunction = espNowespCommandFunctionString.toInt();
+                DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+                targetID = inputStringCommand.substring(2,4);
+                DBG("Target ID: %s\n", targetID);
+                commandSubString = inputStringCommand.substring(4,commandLength);
+                DBG("Command to Forward: %s\n", commandSubString);
+              }
            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
              for (int i=3; i<commandLength-2;i++ ){
@@ -465,6 +457,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
+              if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
               if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {colorState1 = inputBuffer[3]-'0';};
             }
             if(commandLength >= 5) {
@@ -496,25 +489,34 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
             if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
               ESPNOW_command[0]   = '\0';                                                            // Flushes Array
-              ESPNOW_command[0] = espNowespCommandFunction;
+              ESPNOW_command[0] = espNowCommandFunction;
               tempESPNOWTargetID = targetID;
             }
           }
         }
 
       ///***  Clear States and Reset for next command.  ***///
-      stringComplete =false;
-      autoComplete = false;
-      inputBuffer[0] = '\0';
-      int ledFunction;
-      int speedState;
-      int colorState1;
-      int door = -1;
-      int doorFunction;
-      int commandState;
-      inputStringCommand = "";
-      targetID = "";
-      espNowespCommandFunction =0;
+        stringComplete =false;
+        autoComplete = false;
+        inputBuffer[0] = '\0';
+
+        // reset Local ESP Command Variables
+        int espCommandFunction;
+
+        // reset Camera Variables
+        int ledFunction;
+        int speedState;
+        int colorState1;
+        
+        // reset Door Variables
+        int door = -1;
+        int doorFunction;
+        int doorBoard;
+
+        // reset ESP-NOW Variables
+        inputStringCommand = "";
+        targetID = "";
+    
       DBG("command taken\n");
 
     }
@@ -526,8 +528,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
                 ESP_command[0]   = '\0'; break;
-        case 3: connectWiFi();  
-                ESP_command[0]   = '\0'; break;
+        case 3: connectWiFi();  break;
         case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
@@ -583,8 +584,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
-          }
-        }
+      }
+    }
 
     if(isStartUp) {
       isStartUp = false;
@@ -950,16 +951,37 @@ void longHarlemShake(int servoBoard) {
 void serialEvent() {
   //int count = 0;
   while (Serial.available()) {
-    // get the new byte:
     char inChar = (char)Serial.read();
-    // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
-
   }
-  Serial.println(inputString);
+  DBG("%s\n", inputString);
+}
+
+
+void hpSerialEvent() {
+  while (hpSerial.available()) {
+    char inChar = (char)hpSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("%s\n", inputString);
+}
+
+
+void rsSerialEvent() {
+  while (rsSerial.available()) {
+    char inChar = (char)rsSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("%s\n", inputString);
 }
 
  /////////////////////////////////////////////////////////
@@ -970,7 +992,7 @@ void serialEvent() {
   /// end of the string.                                ///
   /////////////////////////////////////////////////////////
 
-void writeString(String stringData){
+void writeSerialString(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++)
   {
@@ -994,7 +1016,7 @@ void writeHpSerial(String stringData){
   Serial.println("Printing to hpSerial");
 }
 
-      //////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
  
@@ -1072,6 +1094,9 @@ void toggleDebug1(){
   ESP_command[0]   = '\0';
 }
 
+//////////////////////////////////////////////////////////////////////
+///*****             Misc. Functions                          *****///
+//////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
@@ -1083,4 +1108,5 @@ void connectWiFi(){
   }
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
+  ESP_command[0]   = '\0';
 }
