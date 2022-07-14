@@ -324,29 +324,15 @@ if (stringComplete) {autoComplete=false;}
 
      }
 
-
-          if(ESP_command[0]){
-          switch (ESP_command[0]){
-            case 1: Serial.println("Controller: Periscope Controller");   
-                    ESP_command[0]   = '\0'; break;
-            case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                    delay(3000);
-                    ESP.restart();
-                    ESP_command[0]   = '\0'; break;
-            case 3: connectWiFi();
-                    break;
-            case 4: ESP.restart();
-          }
-        }
       if(ESP_command[0]){
         switch (ESP_command[0]){
         case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
+                ESP_command[0]   = '\0';          break;                                                 break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: connectWiFi();  
-                ESP_command[0]   = '\0'; break;        case 4: break;  //reserved for future use
+                ESP_command[0]   = '\0';                ;break                                        break;
+        case 3: connectWiFi(); ESP_command[0]   = '\0'; break;        
+        case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
