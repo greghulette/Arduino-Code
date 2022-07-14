@@ -135,27 +135,27 @@
 //  // Callback when data is sent
     void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
       char macStr[18];
-      Serial.print("Packet to: ");
+      DBG("Packet to: ");
       // Copies the sender mac address to a string
       snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
                mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-      Serial.print(macStr);
-      Serial.print(" send status:\t");
-      Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+      DBG(macStr);
+      DBG(" send status:\t");
+      DBG(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
     }
 //
 //  // Callback when data is received
       void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      DBG("Bytes received from ESP-NOW Message: ");DBG(len);
+      DBG("Bytes received from ESP-NOW Message: %s\n", len);
       incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
       incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
       incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
       incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      DBG("Sender ID = ");DBG(incomingSenderID);
-      DBG("Destination ID= ");DBG(incomingDestinationID);
-      DBG("Target ID= ");DBG(incomingTargetID);
-      DBG("Command = ");DBG(incomingCommand); 
+      DBG("Sender ID = %s\n",incomingSenderID);
+      DBG("Destination ID= %s\n" ,incomingDestinationID);
+      DBG("Target ID= %s\n", incomingTargetID);
+      DBG("Command = %s\n" , incomingCommand); 
       if (incomingDestinationID =="Periscope"){
         DBG("Accepted");
 
@@ -281,7 +281,7 @@ if (stringComplete) {autoComplete=false;}
 
          ) {
             commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            DEBUG_PRINT("Command Length is: " );DEBUG_PRINTLN(commandLength);
+            DBG("Command Length is: %s\n" , commandLength);
 //            Serial.println(commandLength);
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -292,63 +292,21 @@ if (stringComplete) {autoComplete=false;}
                 // add it to the inputString:
                 inputStringCommand += inCharRead;
                    }
-                   DEBUG_PRINT("\nFull Command Recieved: ");DEBUG_PRINTLN(inputStringCommand);
+                   DBG("\nFull Command Recieved:  %s\n",inputStringCommand);
 //                   Serial.println(inputStringCommand);
                    espNowCommandStateString = inputStringCommand.substring(0,2);
                    espNowCommandState = espNowCommandStateString.toInt();
                    
-                   Serial.print("ESP NOW Command State: ");
-                   Serial.println(espNowCommandState);
+                   DBG("ESP NOW Command State: %s", espNowCommandState);
                    targetID = inputStringCommand.substring(2,4);
-                   Serial.print ("Target ID: ");
-                   Serial.println(targetID);
+                   DBG("Target ID: %s\n", targetID);
                    commandSubString = inputStringCommand.substring(4,commandLength);
-                   Serial.print("Command to Forward: ");
-                   Serial.println(commandSubString);
-                  
-//                  espNowCommandState  = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0')*100+(inputBuffer[3]-'0')*1000+(inputBuffer[4]-'0');
-//                  espNowCommandStateString = String(espNowCommandState);
-//                  Serial.print("Recieved Command: ");
-//                  Serial.println(espNowCommandStateString);
-                  };
-                
-//                if(commandLength >= 4) {
-//                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {typeState = inputBuffer[3]-'0';}
-//                }
-//                else {
-//                     typeState = -1;
-//                }
-//                if(commandLength >= 5) {
-//                  if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
-//                  }
-//                 if(commandLength >= 6) {colorState2 = inputBuffer[5]-'0';}
-
-
-                
-
-               
-//                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-//                  D_command[0]   = '\0';                                                            // Flushes Array
-//                  DaltToggle = true;
-//                  D_command[0] = doorState;
-//                  if(door>=0) {
-//                               D_command[1] = door;
-//                               Dcounts[door] = 0;
-//                  }
-//                  else {Dcount = 0;}
-//                }
+                   DBG("Command to Forward: %s\n", commandSubString);
+ 
                 if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
                   ESP_command[0]   = '\0';                                                            // Flushes Array
                   ESP_command[0] = commandState;
                 }
-
-                 if(inputBuffer[0]=='S' || inputBuffer[0] == 's') {
-                  ESPNOW_command[0]   = '\0';                                                            // Flushes Array
-                  ESPNOW_command[0] = espNowCommandState;
-                  tempESPNOWTargetID = targetID;
-//                  ESPNOW_command[2] = commandSubString;
-                }
-
 
               }
             }
