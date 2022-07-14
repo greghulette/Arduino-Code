@@ -162,8 +162,10 @@
         DBG("Accepted");
 
         if (incomingTargetID == "PL"){
-          DBG("Sending out plSercial");DBG(incomingCommand);
+          DBG("Sending out plSercial %s\n",incomingCommand);
           writePlSerial(incomingCommand);
+        } else if (incomingTargetID == "FU"){
+          writeFuSerial(incomingData);
         }
         else{
         inputString = incomingCommand;
