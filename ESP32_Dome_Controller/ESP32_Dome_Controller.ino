@@ -252,38 +252,39 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   DBG("Packet to: %s\n", macStr);
-  DBG(" send status:\t");
-  DBG(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success\n" : "Delivery Fail\n");
+  status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail";
+  DBG("Send Status:\t %s\n", status);
 }
 
-  // Callback when data is received
+//   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %s\n", len);
-  DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Destination ID= %s\n" ,incomingDestinationID);
-  DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand); 
+  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
+  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
+  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
+  Serial.print("Command = "); Serial.println(incomingCommand); 
   if (incomingDestinationID =="Dome"){
     DBG("ESP-NOW Command Accepted\n");
-    DBG("Target ID= %s\n", incomingTargetID);
+    Serial.print("Target ID= "); Serial.println(incomingTargetID);
     if (incomingTargetID == "RS"){
-        DBG("Sending %s out rsSerial\n", incomingCommand);
+        Serial.println("Sending out rsSerial");
         writeRsSerial(incomingCommand);
     } else if (incomingTargetID == "HP"){
-        DBG("Sending %s out hpSerial\n", incomingCommand);
-        writeHpSerial(incomingCommand)
+        Serial.println("Sending out hpSerial");
+        writeHpSerial(incomingCommand);
     } else if (incomingTargetID == "DS"){
-        DBG("Execute Local Command = %s\n", incomingCommand);
+        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
         inputString = incomingCommand;
         stringComplete = true; 
-    } else {DBG("Wrong Target ID Sent\n");}
+    } else {
+        Serial.println("Wrong Target ID Sent");
+      }
   }
-  else {DBG("ESP-NOW Message Ignored\n");}
+  else {Serial.println("ESP-NOW Message Ignored");}
 }
 
   //////////////////////////////////////////////////////////////////////
@@ -392,8 +393,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       Serial.println("Startup");
   }
   if(Serial.available()){serialEvent();}
-  if(hpSerial.available()){hpserialEvent();}
-  if(rsSerial.available()){rsserialEvent();}
+  if(hpSerial.available()){hpSerialEvent();}
+  if(rsSerial.available()){rsSerialEvent();}
 
   cameraLED(blue, 5); // blue
 
@@ -423,7 +424,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 }
                 DBG("\nFull Command Recieved: %s ",inputStringCommand);
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
-                espNowCommandFunction = espNowespCommandFunctionString.toInt();
+                espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
                 targetID = inputStringCommand.substring(2,4);
                 DBG("Target ID: %s\n", targetID);
@@ -731,7 +732,7 @@ void openAllDoors(int servoBoard) {
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);
-    SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
+    SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK,1500);
   };
   D_command[0] = '\0';
 }
@@ -862,7 +863,7 @@ void marchingAnts(int servoBoard) {
     case 3: sendESPNOWCommand("BC","D113"); 
             SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
-            DsendESPNOWCommand("BC","D113");  break;
+            sendESPNOWCommand("BC","D113");  break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -1075,7 +1076,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println(("Debugging Enabled \n");
+    Serial.println("Debugging Enabled \n");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -1090,7 +1091,7 @@ void toggleDebug1(){
     Serial.println("Parameter Debugging Enabled \n");
     }
   else{
-    Serial.println(("Parameter Debugging Disabled\n");
+    Serial.println("Parameter Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }
