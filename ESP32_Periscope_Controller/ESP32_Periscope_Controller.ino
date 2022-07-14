@@ -161,27 +161,28 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %s\n", len);
-  DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Destination ID= %s\n" ,incomingDestinationID);
-  DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand); 
+  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
+  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
+  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
+  Serial.print("Command = "); Serial.println(incomingCommand); 
   if (incomingDestinationID =="Periscope"){
-    DBG("ESP-NOW Command Accepted\n");
-    DBG("Target ID= %s\n", incomingTargetID);
+    Serial.println("ESP-NOW Command Accepted");
+    Serial.print("Target ID= "); Serial.println(incomingTargetID);
     if (incomingTargetID == "PL"){
-        DBG("Sending %s out plSerial\n", incomingCommand);
+        Serial.println("Sending out plSerial");
         writePlSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
-        DBG("Sending %s out fuSerial\n", incomingCommand);
+        Serial.println("Sending out fuSerial");
         writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "PC"){
-        DBG("Execute Local Command = %s\n", incomingCommand);
+        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
         inputString = incomingCommand;
         stringComplete = true; 
-    } else {DBG("Wrong Target ID Sent\n");}
+    } else {
+        Serial.println("Wrong Target ID Sent");
+      }
   }
-  else {DBG("ESP-NOW Message Ignored\n");}
+  else {Serial.println("ESP-NOW Message Ignored");}
 }
 
 //////////////////////////////////////////////////////////////////////
