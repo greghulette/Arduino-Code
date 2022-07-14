@@ -55,7 +55,7 @@
 
 // Flags to enable/disable debugging in runtime
   int debugflag = 0;
-  int debugflagparam = 0;  // debugging for params recieved from clients
+  int debugflag1 = 0;  // debugging for params recieved from clients
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -501,6 +501,7 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debug Functions                          *****///
 //////////////////////////////////////////////////////////////////////
 
+
 void DBG(char *format, ...) {
         if (!debugflag)
                 return;
@@ -511,8 +512,8 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_P(char *format, ...) {
-        if (!debugflagparam)
+void DBG_1(char *format, ...) {
+        if (!debugflag1)
                 return;
         va_list ap;
         va_start(ap, format);
@@ -533,13 +534,13 @@ void toggleDebug(){
 }
 
 
-void toggleDebugParam(){
-  debugflagparam = !debugflagparam;
-  if (debugflagparam == 1){
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
     Serial.println("Parameter Debugging Enabled \n");
     }
   else{
-    erial.println(("Parameter Debugging Disabled\n");
+    Serial.println(("Parameter Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }

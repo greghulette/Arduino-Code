@@ -472,13 +472,19 @@ void sendESPNOWCommand(String starget,String scomm){
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
   }
-  commandsToSendtoBvoid DBG(char *format, ...) {
-        if (!debugflag)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
+  commandsToSendtoBroadcast.structDestinationID = sdest;
+  DBG("sdest: %s\n", sdest);
+  commandsToSendtoBroadcast.structTargetID = starget;
+  commandsToSendtoBroadcast.structSenderID = "Body";
+  commandsToSendtoBroadcast.structCommand = scomm;
+  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+  if (result == ESP_OK) {
+    DBG("Sent with success\n");
+  }
+  else {
+    DBG("Error sending the data\n");
+  }
+  ESPNOW_command[0] = '\0';
 }
 
 
@@ -494,8 +500,19 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-void DBG_P(char *format, ...) {
-        if (!debugflagparam)
+
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+void DBG_1(char *format, ...) {
+        if (!debugflag1)
                 return;
         va_list ap;
         va_start(ap, format);
@@ -516,16 +533,17 @@ void toggleDebug(){
 }
 
 
-void toggleDebugParam(){
-  debugflagparam = !debugflagparam;
-  if (debugflagparam == 1){
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
     Serial.println("Parameter Debugging Enabled \n");
     }
   else{
-    erial.println(("Parameter Debugging Disabled\n");
+    Serial.println(("Parameter Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }
+
 
 
 //////////////////////////////////////////////////////////////////////

@@ -315,7 +315,7 @@ void loop(){
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){bcSerialEvent();}
     if(enSerial.available()){fuSerialEvent();}
-    
+
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
@@ -864,8 +864,8 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_P(char *format, ...) {
-        if (!debugflagparam)
+void DBG_1(char *format, ...) {
+        if (!debugflag1)
                 return;
         va_list ap;
         va_start(ap, format);
@@ -886,13 +886,13 @@ void toggleDebug(){
 }
 
 
-void toggleDebugParam(){
-  debugflagparam = !debugflagparam;
-  if (debugflagparam == 1){
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
     Serial.println("Parameter Debugging Enabled \n");
     }
   else{
-    erial.println(("Parameter Debugging Disabled\n");
+    Serial.println(("Parameter Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }
