@@ -40,7 +40,9 @@
     volatile boolean autoComplete    = false;    // whether an Auto command is setA
     int displayState;
     int typeState;
-    int commandLength;
+    int commandLength;    
+    String serialPort;
+    String serialStringCommand;
 
     uint32_t ESP_command[6]  = {0,0,0,0,0,0};
     int commandState = 0;
@@ -274,8 +276,8 @@ if (stringComplete) {autoComplete=false;}
 //     if(inputBuffer[0]=='S'  || inputBuffer[0]=='s') {inputBuffer[0]='E' || inputBuffer[0]=='e';}
      if( inputBuffer[0]=='E' ||       // Command designatore for internal ESP functions
          inputBuffer[0]=='e' ||       // Command designatore for internal ESP functions
-         inputBuffer[0]=='S' ||       // Command for Sending ESP-NOW Messages
-         inputBuffer[0]=='s'          // Command for Sending ESP-NOW Messages
+         inputBuffer[0]=='S' ||       // Command for sending Serial Strings out Serial ports
+         inputBuffer[0]=='s'          // Command for sending Serial Strings out Serial ports
 
 
 
@@ -286,29 +288,24 @@ if (stringComplete) {autoComplete=false;}
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {commandState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
                 };
-                if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-                  for (int i=1; i<=commandLength; i++)
-                   {char inCharRead = inputBuffer[i];
-                // add it to the inputString:
-                inputStringCommand += inCharRead;
-                   }
-                   DBG("\nFull Command Recieved:  %s\n",inputStringCommand);
-//                   Serial.println(inputStringCommand);
-                   espNowCommandStateString = inputStringCommand.substring(0,2);
-                   espNowCommandState = espNowCommandStateString.toInt();
-                   
-                   DBG("ESP NOW Command State: %s", espNowCommandState);
-                   targetID = inputStringCommand.substring(2,4);
-                   DBG("Target ID: %s\n", targetID);
-                   commandSubString = inputStringCommand.substring(4,commandLength);
-                   DBG("Command to Forward: %s\n", commandSubString);
- 
-                if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-                  ESP_command[0]   = '\0';                                                            // Flushes Array
-                  ESP_command[0] = commandState;
-                }
-
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+                char inCharRead = inputBuffer[i];
+                serialStringCommand += inCharRead;  // add it to the inputString:
               }
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "PL"){
+                writePlSerial(serialStringCommand);
+              } else if (serialPort == "FU"){
+                writeFuSerial(serialStringCommand);
+              } else if (serialPort == "PC"){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              }
+              serialStringCommand = "";
+              serialPort = "";
+            } 
             }
 
       ///***  Clear States and Reset for next command.  ***///
@@ -327,11 +324,12 @@ if (stringComplete) {autoComplete=false;}
       if(ESP_command[0]){
         switch (ESP_command[0]){
         case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';          break;                                                 break;
+                ESP_command[0]   = '\0';                                                        break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                ;break                                        break;
-        case 3: connectWiFi(); ESP_command[0]   = '\0'; break;        
+                ESP_command[0]   = '\0';                                                        break;
+        case 3: connectWiFi();  
+                ESP_command[0]   = '\0'; break;        
         case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
