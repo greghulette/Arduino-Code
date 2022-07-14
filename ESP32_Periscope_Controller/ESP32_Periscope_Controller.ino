@@ -50,14 +50,7 @@
     String espNowCommandStateString;
     String tempESPNOWTargetID;
  
-#ifdef DEBUG
-  #define DPRINT(x)     Serial.print (x)
-  #define DPRINTLN(x)  Serial.println (x)
-#else
-  #define DPRINT(x)
-  #define DPRINTLN(x) 
-#endif
- 
+
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -154,27 +147,27 @@
 //  // Callback when data is received
       void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      DPRINT("Bytes received from ESP-NOW Message: ");DPRINTLN(len);
+      DBG("Bytes received from ESP-NOW Message: ");DBG(len);
       incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
       incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
       incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
       incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-      DPRINT("Sender ID = ");DPRINTLN(incomingSenderID);
-      DPRINT("Destination ID= ");DPRINTLN(incomingDestinationID);
-      DPRINT("Target ID= ");DPRINTLN(incomingTargetID);
-      DPRINT("Command = ");DPRINTLN(incomingCommand); 
+      DBG("Sender ID = ");DBG(incomingSenderID);
+      DBG("Destination ID= ");DBG(incomingDestinationID);
+      DBG("Target ID= ");DBG(incomingTargetID);
+      DBG("Command = ");DBG(incomingCommand); 
       if (incomingDestinationID =="Periscope"){
-        DPRINTLN("Accepted");
+        DBG("Accepted");
 
         if (incomingTargetID == "PL"){
-          DPRINT("Sending out plSercial");DPRINTLN(incomingCommand);
+          DBG("Sending out plSercial");DBG(incomingCommand);
           writePlSerial(incomingCommand);
         }
         else{
         inputString = incomingCommand;
         stringComplete = true;   
         }
-      } else {DPRINTLN("Ignored");}
+      } else {DBG("Ignored");}
   
         
     }
@@ -387,15 +380,25 @@ if (stringComplete) {autoComplete=false;}
             case 4: ESP.restart();
           }
         }
-        if(ESPNOW_command[0]){
-          switch(ESPNOW_command[0]){
-            case 1: Serial.println("Case 1 Selected");
-                  ESPNOW_command[0] = '\0'; break;
-            case 2: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
-                  
-            
-          }
-        }
+      if(ESP_command[0]){
+        switch (ESP_command[0]){
+        case 1: Serial.println("Body ESP Controller");   
+                ESP_command[0]   = '\0';                                                        break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0';                                                        break;
+        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+        case 4: break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9: break;  //reserved for future use
+        case 10: toggleDebug();                                                                 break;
+        case 11: toggleDebug1();                                                                break;
+
+      }
+    }
   if(isStartUp) {
         isStartUp = false;
 
@@ -475,6 +478,53 @@ if (stringComplete) {autoComplete=false;}
         }
       }
 
+//////////////////////////////////////////////////////////////////////
+///*****             Debugging Functions                      *****///
+//////////////////////////////////////////////////////////////////////
+
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+void DBG_1(char *format, ...) {
+if (!debugflag1)
+        return;
+va_list ap;
+va_start(ap, format);
+vfprintf(stderr, format, ap);
+va_end(ap);
+}
+
+
+void toggleDebug(){
+  debugflag = !debugflag;
+  if (debugflag == 1){
+    DBG("Debugging Enabled \n");
+  }
+  else{
+    Serial.println("Debugging Disabled");
+  }
+  ESP_command[0]   = '\0';
+}
+
+
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
+    DBG("Parameter Debugging Enabled \n");
+  }
+  else{
+    DBG("Parameter Debugging Disabled\n");
+  }
+  ESP_command[0]   = '\0';
+}
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Test Functions                        *****///
@@ -488,11 +538,11 @@ if (stringComplete) {autoComplete=false;}
         sdest = "Body";
         }
     commandsToSendtoBroadcast.structDestinationID = sdest;
-    DPRINT("sdest: ");DPRINTLN(sdest);
+    DBG("sdest: ");DBG(sdest);
     commandsToSendtoBroadcast.structTargetID = starget;
     commandsToSendtoBroadcast.structSenderID = "Periscope";
     commandsToSendtoBroadcast.structCommand = scomm;
-//    DPRINT("Command to Send in Function: ");DPRINTLN(commandsToSendtoBroadcast.structCommand);
+//    DBG("Command to Send in Function: ");DBG(commandsToSendtoBroadcast.structCommand);
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
    if (result == ESP_OK) {
