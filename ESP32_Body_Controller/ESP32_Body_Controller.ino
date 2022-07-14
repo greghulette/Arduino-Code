@@ -877,7 +877,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println(("Debugging Enabled \n");
+    Serial.println("Debugging Enabled \n"); 
     }
   else{
     Serial.println("Debugging Disabled");
@@ -892,7 +892,7 @@ void toggleDebug1(){
     Serial.println("Parameter Debugging Enabled \n");
     }
   else{
-    Serial.println(("Parameter Debugging Disabled\n");
+    Serial.println("Parameter Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }

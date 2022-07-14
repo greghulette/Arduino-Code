@@ -297,7 +297,7 @@ void loop(){
               }
               DBG("\nFull Command Recieved: %s ",inputStringCommand);
               espNowCommandFunctionString = inputStringCommand.substring(0,2);
-              espNowCommandFunction = espNowespCommandFunctionString.toInt();
+              espNowCommandFunction = espNowCommandFunctionString.toInt();
               DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
               targetID = inputStringCommand.substring(2,4);
               DBG("Target ID: %s\n", targetID);
@@ -472,7 +472,7 @@ void sendESPNOWCommand(String starget,String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }
+  };
   commandsToSendtoBroadcast.structDestinationID = sdest;
   DBG("sdest: %s\n", sdest);
   commandsToSendtoBroadcast.structTargetID = starget;
@@ -525,7 +525,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println(("Debugging Enabled");
+    Serial.println("Debugging Enabled");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -540,7 +540,7 @@ void toggleDebug1(){
     Serial.println("Parameter Debugging Enabled");
     }
   else{
-    Serial.println(("Parameter Debugging Disabled");
+    Serial.println("Parameter Debugging Disabled");
   }
     ESP_command[0]   = '\0';
 }
@@ -562,4 +562,4 @@ void connectWiFi(){
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
   ESP_command[0]   = '\0';
-      }
+}
