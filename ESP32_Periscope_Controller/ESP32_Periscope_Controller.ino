@@ -142,12 +142,13 @@
 //  // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   char macStr[18];
+  String status;
   // Copies the sender mac address to a string
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   DBG("Packet to: %s\n", macStr);
-  DBG(" send status:\t");
-  DBG(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success\n" : "Delivery Fail\n");
+  status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail";
+  DBG("Send Status:\t %s\n", status);
 }
 
 // Callback when data is received
@@ -170,7 +171,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         writePlSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
         DBG("Sending %s out fuSerial\n", incomingCommand);
-        writeFuSerial(incomingCommand)
+        writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "PC"){
         DBG("Execute Local Command = %s\n", incomingCommand);
         inputString = incomingCommand;
@@ -521,7 +522,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println(("Debugging Enabled \n");
+    Serial.println(("Debugging Enabled");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -533,10 +534,10 @@ void toggleDebug(){
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled \n");
+    Serial.println("Parameter Debugging Enabled ");
     }
   else{
-    Serial.println(("Parameter Debugging Disabled\n");
+    Serial.println(("Parameter Debugging Disabled");
   }
     ESP_command[0]   = '\0';
 }

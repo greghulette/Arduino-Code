@@ -15,7 +15,6 @@
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
-
 //ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
@@ -731,6 +730,7 @@ void openAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
+    servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);
     SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK);
   };
   D_command[0] = '\0';
