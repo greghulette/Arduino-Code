@@ -314,7 +314,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 
 void setup(){
   //Initialize the Serial Ports
-  Serial.begin(57600);                                                                   // Initialize Serial Connection at 115200:
+  Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
     
@@ -395,7 +395,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpserialEvent();}
   if(rsSerial.available()){rsserialEvent();}
-  
+
   cameraLED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
