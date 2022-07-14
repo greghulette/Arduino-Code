@@ -345,8 +345,8 @@ if (stringComplete) {autoComplete=false;}
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
                 ESP_command[0]   = '\0';                                                        break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-        case 4: break;  //reserved for future use
+        case 3: connectWiFi();  
+                ESP_command[0]   = '\0'; break;        case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
