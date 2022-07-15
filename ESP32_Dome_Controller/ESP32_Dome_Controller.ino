@@ -255,8 +255,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   DBG("Packet to: %s\n", macStr);
-  status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail";
-  DBG("Send Status:\t %s\n", status);
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+//  DBG("Send Status:\t %s\n", status);
 }
 
 //   Callback when data is received
@@ -768,7 +768,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
 //  String stringToSend = "D103" + String(servoEasingMethod) + String(servoMovementDuration);
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sendESPNOWCommand("BC",stringToSend);
-    Serial.print("Sending ESP-NOW Message of: "); Serial.println(stringToSend);
+    DBG("Sending ESP-NOW Message of: %s \n", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       setServoEasingMethod(servoEasingMethod);
@@ -1111,10 +1111,10 @@ void sendESPNOWCommand(String starget,String scomm){
   commandsToSendtoBroadcast.structCommand = scomm;
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    Serial.println("Sent with success");
+    DBG("Sent with success\n");
   }
   else {
-    Serial.println("Error sending the data\n");
+    DBG("Error sending the data\n");
   }
   ESPNOW_command[0] = '\0';
 }
@@ -1132,16 +1132,50 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-
-void DBG(char *format, ...) {
-        if (!debugflag)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
+void DBG(char *fmt, ...)
+{
+   va_list ap; /* points to each unnamed arg in turn */
+   char *p, *sval;
+   int ival;
+   double dval;
+   va_start(ap, fmt); /* make ap point to 1st unnamed arg */
+   for (p = fmt; *p; p++) 
+   {
+      if (*p != '%') 
+      {
+         putchar(*p);
+         continue;
+      }
+      switch (*++p) 
+      {
+         case 'd':
+            ival = va_arg(ap, int);
+            printf("%d", ival);
+            break;
+        case 'f':
+            dval = va_arg(ap, double);
+            printf("%f", dval);
+            break;
+        case 's':
+            for (sval = va_arg(ap, char *); *sval; sval++)
+            putchar(*sval);
+            break;
+        default:
+            putchar(*p);
+            break;
+      }
+   }
+   va_end(ap); /* clean up when done */
 }
-
+//void DBG(char *format, ...) {
+//        if (!debugflag)
+//                return;
+//        va_list ap;
+//        va_start(ap, format);
+//        vfprintf(stderr, format, ap);
+//        va_end(ap);
+//}
+//
 
 void DBG_1(char *format, ...) {
         if (!debugflag1)
