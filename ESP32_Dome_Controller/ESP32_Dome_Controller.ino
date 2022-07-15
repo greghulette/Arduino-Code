@@ -79,40 +79,6 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
-String easingMethod[] = {"LinearInterpolation",    //00
-                        "QuadraticEasein",        //01
-                        "QuadraticEaseInOut",     //02
-                        "CubicEaseIn",            //03
-                        "CubicEaseOut",           //04
-                        "CubicEaseInOut",         //05
-                        "QuarticEaseIn",          //06
-                        "QuarticEaseOut",         //07
-                        "QuarticEaseInOut",       //08
-                        "QuinticEaseIn",          //09
-                        "QuinticEaseOut",         //10
-                        "QuinticEaseInOut",       //11
-                        "SineEaseIn",             //12
-                        "SineEaseOut",            //13
-                        "SineEaseInOut",          //14
-                        "CircularEaseIn",         //15
-                        "CircularEaseOut",        //16
-                        "CircularEaseInOut",      //17
-                        "ExponentialEaseIn",      //18
-                        "ExponentialEaseOut",     //19
-                        "ExponentialEaseInOut",   //20
-                        "ElasticEaseIn",          //21
-                        "ElasticEaseOut",         //22
-                        "ElasticEaseInOut",       //23
-                        "BackEaseIn",             //24
-                        "BackEaseOut",            //25
-                        "BackEaseInOut",          //26
-                        "BounceEaseIn",           //27
-                        "BounceEaseOut",          //28
-                        "BounceEaseInOut"         //29
-                        };       
-
-
-
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
@@ -151,8 +117,8 @@ String easingMethod[] = {"LinearInterpolation",    //00
   uint32_t D_command[6]  = {0,0,0,0,0,0};
   int doorFunction = 0;
   int doorBoard = 0; 
-  int doorEasingMethod = 0;
-  uint32_t doorEasingDuration = 0;
+  int doorEasingMethod;
+  uint32_t doorEasingDuration;
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -441,8 +407,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
       if( inputBuffer[0]=='D' ||        // Door Designator
           inputBuffer[0]=='d' ||        // Door Designator
-          inputBuffer[0]=='R' ||        //Radar Eye LED
-          inputBuffer[0]=='r' ||        //Radar Eye LED
+          inputBuffer[0]=='R' ||        // Radar Eye LED
+          inputBuffer[0]=='r' ||        // Radar Eye LED
           inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
           inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
           inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
@@ -451,22 +417,35 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+          Serial.print("Command: ");Serial.println(inputBuffer);
+          Serial.print("Command Length: ");Serial.println(commandLength);
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               doorBoard = inputBuffer[1]-'0';
               doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
               if (doorFunction == 1 || doorFunction == 2){
                 door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                if(commandLength >= 7){
+                if(commandLength >= 8){
+                  Serial.println("Door Function Called");
                   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                   doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0');
+                } else{
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
                 }
               }
-              if ((doorFunction != 1 || doorFunction != 2) && commandLength >=5){
-                doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0');
+              if (doorFunction != 1 || doorFunction != 2) {
+                 Serial.print("Other Door Function Called ");
+                if (commandLength >=6){
+                Serial.println("with Easing");
+                doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[7]-'0')*100+(inputBuffer[6]-'0')*1000+(inputBuffer[9]-'0');
+                }else{
+                  Serial.println("without Easing");
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
                 }
-              
+              }
               }                                    
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
             if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
@@ -501,7 +480,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               serialStringCommand = "";
               serialPort = "";
             }   
-            if(inputBuffer[0]=="R" || inputBuffer[0]=="r") {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
+            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             
             if(commandLength >= 4) {
               if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {}
@@ -518,11 +497,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
               D_command[1] = doorBoard;
-              if(door>=0) {
-                D_command[2] = door;
-              }
+                if(door>=0) {D_command[2] = door;}
               D_command[3] = doorEasingMethod;
               D_command[4] = doorEasingDuration;
+              Serial.println(doorFunction);
+              Serial.println(doorEasingMethod);
+              Serial.println(doorEasingDuration);
             }
 
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
@@ -563,6 +543,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         int door = -1;
         int doorFunction;
         int doorBoard;
+        int doorEasingMethod;
+        uint32_t doorEasingDuration;
 
         // reset ESP-NOW Variables
         inputStringCommand = "";
@@ -600,14 +582,14 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         switch (D_command[0]) {
           case 1: openDoor(D_command[1],D_command[2]);                                            break;
           case 2: closeDoor(D_command[1],D_command[2]);                                           break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                                                     break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                           break;
           case 4: closeAllDoors(D_command[1]);                                                    break;
           case 5: shortCircuit(D_command[1]);                                                     break;
           case 6: allOpenClose(D_command[1]);                                                     break;
           case 7: allOpenCloseLong(D_command[1]);                                                 break;
           case 8: allFlutter(D_command[1]);                                                       break;
           case 9: allOpenCloseRepeat(D_command[1]);                                               break;
-          case 10: panelWave(D_command[1]);                                                       break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                                                       break;
           case 11: panelWaveFast(D_command[1]);                                                   break;
           case 12: openCloseWave(D_command[1]);                                                   break;
           case 13: marchingAnts(D_command[1]);                                                    break;
@@ -781,8 +763,12 @@ void closeDoor(int servoBoard, int doorpos) {
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx03
   DBG("Open all Doors\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D103%02d%04d", servoEasingMethod, servoMovementDuration);
+//  String stringToSend = "D103" + String(servoEasingMethod) + String(servoMovementDuration);
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sendESPNOWCommand("BC","D103");
+    sendESPNOWCommand("BC",stringToSend);
+    Serial.print("Sending ESP-NOW Message of: "); Serial.println(stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       setServoEasingMethod(servoEasingMethod);
@@ -899,12 +885,13 @@ void allOpenCloseRepeat(int servoBoard){
 }
 
 
-void panelWave(int servoBoard){
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
   // Command: Dx10
   DBG("Wave\n");
   switch(servoBoard){
     case 1: sendESPNOWCommand("BC","D110");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
+    case 2: setServoEasingMethod(servoEasingMethod);
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 3: sendESPNOWCommand("BC","D110"); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK); break;
@@ -1113,18 +1100,21 @@ void sendESPNOWCommand(String starget,String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
+  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"){
+    sdest = "Body";
   }
+  
   commandsToSendtoBroadcast.structDestinationID = sdest;
   DBG("sdest: %s\n", sdest);
   commandsToSendtoBroadcast.structTargetID = starget;
-  commandsToSendtoBroadcast.structSenderID = "Body";
+  commandsToSendtoBroadcast.structSenderID = "Dome";
   commandsToSendtoBroadcast.structCommand = scomm;
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent with success\n");
+    Serial.println("Sent with success");
   }
   else {
-    DBG("Error sending the data\n");
+    Serial.println("Error sending the data\n");
   }
   ESPNOW_command[0] = '\0';
 }
@@ -1166,7 +1156,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println("Debugging Enabled \n");
+    Serial.println("Debugging Enabled");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -1178,10 +1168,10 @@ void toggleDebug(){
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled \n");
+    Serial.println("Parameter Debugging Enabled");
     }
   else{
-    Serial.println("Parameter Debugging Disabled\n");
+    Serial.println("Parameter Debugging Disabled");
   }
     ESP_command[0]   = '\0';
 }
