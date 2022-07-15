@@ -151,6 +151,8 @@ String easingMethod[] = {"LinearInterpolation",    //00
   uint32_t D_command[6]  = {0,0,0,0,0,0};
   int doorFunction = 0;
   int doorBoard = 0; 
+  int doorEasingMethod = 0;
+  uint32_t doorEasingDuration = 0;
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -450,23 +452,38 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {doorBoard = inputBuffer[1]-'0';}                                    
-            else if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
-            else if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-                for (int i=1; i<=commandLength; i++){
-                  char inCharRead = inputBuffer[i];
-                  inputStringCommand += inCharRead;                   // add it to the inputString:
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+              doorBoard = inputBuffer[1]-'0';
+              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+              if (doorFunction == 1 || doorFunction == 2){
+                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                if(commandLength >= 7){
+                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
+                  doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0');
                 }
-                DBG("\nFull Command Recieved: %s ",inputStringCommand);
-                espNowCommandFunctionString = inputStringCommand.substring(0,2);
-                espNowCommandFunction = espNowCommandFunctionString.toInt();
-                DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
-                targetID = inputStringCommand.substring(2,4);
-                DBG("Target ID: %s\n", targetID);
-                commandSubString = inputStringCommand.substring(4,commandLength);
-                DBG("Command to Forward: %s\n", commandSubString);
               }
-            else if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              if ((doorFunction != 1 || doorFunction != 2) && commandLength >=5){
+                doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
+                doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0');
+                }
+              
+              }                                    
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
+            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+                  for (int i=1; i<=commandLength; i++){
+                    char inCharRead = inputBuffer[i];
+                    inputStringCommand += inCharRead;                   // add it to the inputString:
+                  }
+                  DBG("\nFull Command Recieved: %s ",inputStringCommand);
+                  espNowCommandFunctionString = inputStringCommand.substring(0,2);
+                  espNowCommandFunction = espNowCommandFunctionString.toInt();
+                  DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+                  targetID = inputStringCommand.substring(2,4);
+                  DBG("Target ID: %s\n", targetID);
+                  commandSubString = inputStringCommand.substring(4,commandLength);
+                  DBG("Command to Forward: %s\n", commandSubString);
+                }
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=3; i<commandLength-2;i++ ){
               char inCharRead = inputBuffer[i];
@@ -484,16 +501,16 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               serialStringCommand = "";
               serialPort = "";
             }   
-            else {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
+            if(inputBuffer[0]=="R" || inputBuffer[0]=="r") {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
             
             if(commandLength >= 4) {
-              if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');}
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {}
               if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
               if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {colorState1 = inputBuffer[3]-'0';};
             }
 
             if(commandLength >= 5) {
-              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {door = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');}
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {}
               else {speedState = inputBuffer[4]-'0';} 
             }
 
@@ -504,6 +521,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if(door>=0) {
                 D_command[2] = door;
               }
+              D_command[3] = doorEasingMethod;
+              D_command[4] = doorEasingDuration;
             }
 
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
@@ -581,7 +600,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         switch (D_command[0]) {
           case 1: openDoor(D_command[1],D_command[2]);                                            break;
           case 2: closeDoor(D_command[1],D_command[2]);                                           break;
-          case 3: openAllDoors(D_command[1]);                                                     break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                                                     break;
           case 4: closeAllDoors(D_command[1]);                                                    break;
           case 5: shortCircuit(D_command[1]);                                                     break;
           case 6: allOpenClose(D_command[1]);                                                     break;
@@ -759,29 +778,56 @@ void closeDoor(int servoBoard, int doorpos) {
 }
 
 
-void openAllDoors(int servoBoard) {
+void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx03
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-      setServoEasingMethod(servoBoard);
-      SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK,1500);
+      setServoEasingMethod(servoEasingMethod);
+      SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, servoMovementDuration);
   };
   D_command[0] = '\0';
 }
 
 void setServoEasingMethod(int easingMethod){
   switch(easingMethod){
-    case 1: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseIn);        break;
-    case 2: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseInOut);     break;
-    case 3: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseIn);            break;
-    case 4: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseOut);           break;
+    case 1: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::LinearInterpolation);    break;
+    case 2: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseIn);        break;
+    case 3: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseOut);       break;
+    case 4: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseInOut);     break;
+    case 5: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseOut);           break;
+    case 6: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseInOut);         break;
+    case 7: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseIn);          break;
+    case 8: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseOut);         break;
+    case 9: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseInOut);       break;
+    case 10: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseIn);         break;
+    case 11: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseOut);        break;
+    case 12: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseInOut);      break;
+    case 13: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseIn);            break;
+    case 14: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseOut);           break;
+    case 15: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseInOut);         break;
+    case 16: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);        break;
+    case 17: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseOut);       break;
+    case 18: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseInOut);     break;
+    case 19: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseIn);     break;
+    case 20: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseOut);    break;
+    case 21: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseInOut);  break;
+    case 22: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseIn);         break;
+    case 23: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseOut);        break;
+    case 24: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseInOut);      break;
+    case 25: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseIn);            break;
+    case 26: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseOut);           break;
+    case 27: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseInOut);         break;
+    case 28: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseIn);          break;
+    case 29: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseOut);         break;
+    case 30: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
+
   }
 }
 
-  
+
 void closeAllDoors(int servoBoard) {
   // Command: Dx04
   DBG("Close all Doors\n");
