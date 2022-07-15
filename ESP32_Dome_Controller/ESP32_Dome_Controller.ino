@@ -79,7 +79,7 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
-char* easingMethod[] = {"LinearInterpolation",    //00
+String easingMethod[] = {"LinearInterpolation",    //00
                         "QuadraticEasein",        //01
                         "QuadraticEaseInOut",     //02
                         "CubicEaseIn",            //03
@@ -108,7 +108,8 @@ char* easingMethod[] = {"LinearInterpolation",    //00
                         "BackEaseInOut",          //26
                         "BounceEaseIn",           //27
                         "BounceEaseOut",          //28
-                        "BounceEaseInOut"}        //29
+                        "BounceEaseInOut"         //29
+                        };       
 
 
 
@@ -765,10 +766,19 @@ void openAllDoors(int servoBoard) {
     sendESPNOWCommand("BC","D103");
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::easingMethod[2]);
-    SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK,1500);
+      setServoEasingMethod(servoBoard);
+      SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK,1500);
   };
   D_command[0] = '\0';
+}
+
+void setServoEasingMethod(int easingMethod){
+  switch(easingMethod){
+    case 1: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseIn);        break;
+    case 2: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseInOut);     break;
+    case 3: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseIn);            break;
+    case 4: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseOut);           break;
+  }
 }
 
   
