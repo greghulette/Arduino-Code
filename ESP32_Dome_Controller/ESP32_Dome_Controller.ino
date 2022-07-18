@@ -1,4 +1,3 @@
-#define DEBUG
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
@@ -914,7 +913,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
     case 3: sendESPNOWCommand("BC", stringToSend);     
             DelayCall::schedule([servoMovementDuration] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
