@@ -1133,7 +1133,7 @@ void writeHpSerial(String stringData){
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
- 
+
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
   if (starget == "DS" || starget == "RS" || starget == "HP"){
@@ -1172,41 +1172,30 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-void DBG(char *fmt, ...)
-{
-   va_list ap; /* points to each unnamed arg in turn */
-   char *p, *sval;
-   int ival;
-   double dval;
-   va_start(ap, fmt); /* make ap point to 1st unnamed arg */
-   for (p = fmt; *p; p++) 
-   {
-      if (*p != '%') 
-      {
-         putchar(*p);
-         continue;
+void DBG(char *fmt, ...){
+  va_list ap; /* points to each unnamed arg in turn */
+  char *p, *sval;
+  int ival;
+  double dval;
+  va_start(ap, fmt); /* make ap point to 1st unnamed arg */
+  for (p = fmt; *p; p++) 
+    {
+      if (*p != '%'){
+        putchar(*p);
+        continue;
       }
-      switch (*++p) 
-      {
-         case 'd':
-            ival = va_arg(ap, int);
-            printf("%d", ival);
-            break;
-        case 'f':
-            dval = va_arg(ap, double);
-            printf("%f", dval);
-            break;
-        case 's':
-            for (sval = va_arg(ap, char *); *sval; sval++)
-            putchar(*sval);
-            break;
-        default:
-            putchar(*p);
-            break;
+      switch (*++p){
+        case 'd': ival = va_arg(ap, int); printf("%d", ival); break;
+        case 'f': dval = va_arg(ap, double);printf("%f", dval); break;
+        case 's': for (sval = va_arg(ap, char *); *sval; sval++)
+                    putchar(*sval);  break;
+        default: putchar(*p); break;
       }
-   }
+    }
    va_end(ap); /* clean up when done */
 }
+
+
 //void DBG(char *format, ...) {
 //        if (!debugflag)
 //                return;
@@ -1280,12 +1269,12 @@ void setServoEasingMethod(int easingMethod){
     case 2: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseIn);        break;
     case 3: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseOut);       break;
     case 4: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuadraticEaseInOut);     break;
-    case 5: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseIn);           break;
+    case 5: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseIn);            break;
     case 6: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseOut);           break;
     case 7: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseInOut);         break;
     case 8: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseIn);          break;
     case 9: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseOut);         break;
-    case 10: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseInOut);       break;
+    case 10: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseInOut);      break;
     case 11: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseIn);         break;
     case 12: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseOut);        break;
     case 13: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseInOut);      break;
