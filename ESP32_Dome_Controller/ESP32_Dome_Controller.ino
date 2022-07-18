@@ -804,7 +804,6 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
   // Command: Dx03
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D103%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC",stringToSend);
   }
@@ -820,7 +819,6 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   // Command: Dx04
   DBG("Close all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D104%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC", stringToSend);
   }
@@ -842,7 +840,6 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
   // Command: Dx06
   DBG("Open and Close All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D106%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC", stringToSend);
   }
@@ -858,7 +855,6 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t servoMovem
   // Command: Dx07
   DBG("Open and Close Doors Long\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D107%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC", stringToSend);
   }
@@ -874,7 +870,6 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t servoMovementDur
   // Command: Dx08
   DBG("Flutter All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D108%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC", stringToSend);  
   }
@@ -890,7 +885,6 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
   // Command: Dx09
   DBG("Open and Close All Doors Repeat\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    char stringToSend[20];
     sprintf(stringToSend, "D109%02d%04d", servoEasingMethod, servoMovementDuration);
     sendESPNOWCommand("BC", stringToSend);
   }
@@ -959,7 +953,6 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
 void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx13
   DBG("Marching Ants\n");
-  char stringToSend[20];
   sprintf(stringToSend, "D113%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
@@ -977,7 +970,6 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
 void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx14
   DBG("Panel Alternate\n");
-  char stringToSend[20];
   sprintf(stringToSend, "D114%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
@@ -995,7 +987,6 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t servoMovemen
 void panelDance(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
  // Command: Dx15
   DBG("Panel Dance\n");
-  char stringToSend[20];
   sprintf(stringToSend, "D115%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
@@ -1013,7 +1004,6 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t servoMovementDur
 void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx16
   DBG("Panel Dance Long\n");
-  char stringToSend[20];
   sprintf(stringToSend, "D116%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
@@ -1031,7 +1021,6 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
 void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx17
   DBG("Harlem Shake\n");
-  char stringToSend[20];
   sprintf(stringToSend, "D117%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
