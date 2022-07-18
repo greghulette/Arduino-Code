@@ -67,11 +67,11 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 2,   600, 2400, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
     { 3,   600, 2400, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
     { 4,   600, 2400, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
-    { 5,   600, 2400, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-    { 6,   600, 2400, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 5,   2400, 600, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
+    { 6,   2400, 600, BIG_PANEL },             /* 5: door 6 Big Lower door */
     { 7,   600, 2400, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
     { 8,   600, 2400, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
-    { 9,   600, 2400, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
+    { 9,   2400, 600, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
     { 10,  600, 2400, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
 };
 
@@ -430,18 +430,19 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 if(commandLength >= 8){
                   Serial.println("Door Function Called");
                   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0');
+                  DBG("InputBuffer 8:%c 9:%c 10:%c 11:%c \n",inputBuffer[8],inputBuffer[9],inputBuffer[10],inputBuffer[11]); 
+                  doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
                 } else{
                   doorEasingMethod = 0;
                   doorEasingDuration = 0;
                 }
               }
-              if (doorFunction != 1 || doorFunction != 2) {
+              else if (doorFunction != 1 || doorFunction != 2) {
                  Serial.print("Other Door Function Called ");
                 if (commandLength >=6){
                 Serial.println("with Easing");
                 doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                doorEasingDuration = (inputBuffer[8]-'0')*10+(inputBuffer[7]-'0')*100+(inputBuffer[6]-'0')*1000+(inputBuffer[9]-'0');
+                doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
                 }else{
                   Serial.println("without Easing");
                   doorEasingMethod = 0;
@@ -1161,39 +1162,39 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-void DBG(char *fmt, ...){
-  va_list ap; /* points to each unnamed arg in turn */
-  char *p, *sval;
-  int ival;
-  double dval;
-  va_start(ap, fmt); /* make ap point to 1st unnamed arg */
-  for (p = fmt; *p; p++) 
-    {
-      if (*p != '%'){
-        putchar(*p);
-        continue;
-      }
-      switch (*++p){
-        case 'd': ival = va_arg(ap, int); printf("%d", ival); break;
-        case 'f': dval = va_arg(ap, double);printf("%f", dval); break;
-        case 's': for (sval = va_arg(ap, char *); *sval; sval++)
-                    putchar(*sval);  break;
-        default: putchar(*p); break;
-      }
-    }
-   va_end(ap); /* clean up when done */
+//void DBG(char *fmt, ...){
+//  va_list ap; /* points to each unnamed arg in turn */
+//  char *p, *sval;
+//  int ival;
+//  double dval;
+//  va_start(ap, fmt); /* make ap point to 1st unnamed arg */
+//  for (p = fmt; *p; p++) 
+//    {
+//      if (*p != '%'){
+//        putchar(*p);
+//        continue;
+//      }
+//      switch (*++p){
+//        case 'd': ival = va_arg(ap, int); printf("%d", ival); break;
+//        case 'f': dval = va_arg(ap, double);printf("%f", dval); break;
+//        case 's': for (sval = va_arg(ap, char *); *sval; sval++)
+//                    putchar(*sval);  break;
+//        default: putchar(*p); break;
+//      }
+//    }
+//   va_end(ap); /* clean up when done */
+//}
+
+
+void DBG(char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
 }
 
-
-//void DBG(char *format, ...) {
-//        if (!debugflag)
-//                return;
-//        va_list ap;
-//        va_start(ap, format);
-//        vfprintf(stderr, format, ap);
-//        va_end(ap);
-//}
-//
 
 void DBG_1(char *format, ...) {
         if (!debugflag1)
