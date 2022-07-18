@@ -905,26 +905,16 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
   // Command: Dx10
   DBG("Wave\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: char stringToSend[20];
-            sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);                 
-            break;
-    case 2: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            break;
-    case 3: char stringToSend[20];
-            sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);     
-            setServoEasingMethod(servoEasingMethod);
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK), servoMovementDuration;}, 3000); 
-            break;
-    case 4: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            char stringToSend[20];
-            sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); 
-            break;
+    case 1: sendESPNOWCommand("BC", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -933,26 +923,16 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
   // Command: Dx11  
   DBG("Wave Fast\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: char stringToSend[20];
-            sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);                 
-            break;
-    case 2: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); 
-            break;
-    case 3: char stringToSend[20];
-            sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);     
-            setServoEasingMethod(servoEasingMethod);
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK), servoMovementDuration;}, 3000); 
-            break;
-    case 4: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            char stringToSend[20];
-            sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); 
-            break;
+    case 1: sendESPNOWCommand("BC", stringToSend);  break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
+    case 3: sendESPNOWCommand("BC", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
+            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -961,101 +941,106 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
 void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx12
   DBG("Open Close Wave \n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: char stringToSend[20];
-            sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);                 
-            break;
-    case 2: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            break;
-    case 3: char stringToSend[20];
-            sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
-            sendESPNOWCommand("BC", stringToSend);     
-            setServoEasingMethod(servoEasingMethod);
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK), servoMovementDuration;}, 3000); 
-            break;
-    case 4: setServoEasingMethod(servoEasingMethod);
-            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            char stringToSend[20];
-            sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); 
-            break;
+    case 1: sendESPNOWCommand("BC", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
+    case 3: sendESPNOWCommand("BC", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration)}, 3000); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
+            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void marchingAnts(int servoBoard) {
+void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx13
   DBG("Marching Ants\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D113%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC","D113");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
-    case 3: sendESPNOWCommand("BC","D113"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK); break;
-            sendESPNOWCommand("BC","D113");  break;
+    case 1: sendESPNOWCommand("BC", stringToSend);                                      break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend);
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); 
+            sendESPNOWCommand("BC", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void panelAlternate(int servoBoard) {
+void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx14
   DBG("Panel Alternate\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D114%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC","D114");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
-    case 3: sendESPNOWCommand("BC","D114"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK); break;
-            sendESPNOWCommand("BC","D114"); break;
+    case 1: sendESPNOWCommand("BC", stringToSend));                                    break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend)); 
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
+            sendESPNOWCommand("BC", stringToSend)); break;
   }
   D_command[0]   = '\0';                                             
 }                                                            
 
 
-void panelDance(int servoBoard) {
+void panelDance(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
  // Command: Dx15
   DBG("Panel Dance\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D115%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC","D115");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
-    case 3: sendESPNOWCommand("BC","D115"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK); break;
-            sendESPNOWCommand("BC","D115"); break;
+    case 1: sendESPNOWCommand("BC", stringToSend));                                    break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend)); 
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
+            sendESPNOWCommand("BC", stringToSend)); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void longDisco(int servoBoard) {
+void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx16
   DBG("Panel Dance Long\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D116%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC","D116");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
-    case 3: sendESPNOWCommand("BC","D116"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK);break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK); break;
-            sendESPNOWCommand("BC","D116");break;
+    case 1: sendESPNOWCommand("BC", stringToSend));                                    break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend)); 
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
+            sendESPNOWCommand("BC", stringToSend));break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void longHarlemShake(int servoBoard) {
+void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx17
   DBG("Harlem Shake\n");
+  char stringToSend[20];
+  sprintf(stringToSend, "D117%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC","D117");                                    break;
-    case 2: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
-    case 3: sendESPNOWCommand("BC","D117"); 
-            SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK);break;
-    case 4: SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK); break;
-            sendESPNOWCommand("BC","D117");break;
+    case 1: sendESPNOWCommand("BC", stringToSend));                                    break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend)); 
+            SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
+            sendESPNOWCommand("BC", stringToSend));break;
   }
   D_command[0]   = '\0';                                             
 }                                                       
