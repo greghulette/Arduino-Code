@@ -42,16 +42,16 @@
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
 
-#define SMALL_PANEL_ONE       0x0001 //b0000000001
-#define SMALL_PANEL_TWO       0x0002 //b0000000010
-#define SMALL_PANEL_THREE     0x0004 //b0000000100
-#define MEDIUM_PANEL_PAINTED  0x0008 //b0000001000
-#define MEDIUM_PANEL_SILVER   0x0010 //b0000010000
-#define BIG_PANEL             0x0020 //b0000100000
-#define PIE_PANEL_ONE         0x0040 //b0001000000
-#define PIE_PANEL_TWO         0x0080 //b0010000000
-#define PIE_PANEL_THREE       0x0100 //b0100000000
-#define PIE_PANEL_FOUR        0x0200 //b1000000000
+#define SMALL_PANEL_ONE       0x0001 //b0000 0000 0000 0001
+#define SMALL_PANEL_TWO       0x0002 //b0000 0000 0000 0010
+#define SMALL_PANEL_THREE     0x0004 //b0000 0000 0000 0100
+#define MEDIUM_PANEL_PAINTED  0x0008 //b0000 0000 0000 1000
+#define MEDIUM_PANEL_SILVER   0x0010 //b0000 0000 0001 0000
+#define BIG_PANEL             0x0020 //b0000 0000 0010 0000
+#define PIE_PANEL_ONE         0x0040 //b0000 0000 0100 0000
+#define PIE_PANEL_TWO         0x0080 //b0000 0000 1000 0000
+#define PIE_PANEL_THREE       0x0100 //b0000 0001 0000 0000
+#define PIE_PANEL_FOUR        0x0200 //b0000 0010 0000 0000
 
 #define SMALL_PANELS_MASK     (SMALL_PANEL_ONE|SMALL_PANEL_TWO|SMALL_PANEL_THREE)
 #define MEDIUM_PANELS_MASK    (MEDIUM_PANEL_PAINTED|MEDIUM_PANEL_SILVER)
@@ -912,7 +912,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
     case 1: sendESPNOWCommand("BC", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
+            DelayCall::schedule([servoMovementDuration] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
             DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
@@ -930,9 +930,9 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: sendESPNOWCommand("BC", stringToSend);  break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
     case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
+            DelayCall::schedule([servoMovementDuration] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -948,9 +948,9 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: sendESPNOWCommand("BC", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
     case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration)}, 3000); break;
+            DelayCall::schedule([servoMovementDuration] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            DelayCall::schedule([] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC",stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -1298,34 +1298,3 @@ void setServoEasingMethod(int easingMethod){
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
 }
-        1 kLinearInterpolation =  
-        2 kQuadraticEaseIn =      ,
-        3 kQuadraticEaseOut =      ,
-        4 kQuadraticEaseInOut = 
-        5 kCubicEaseIn = 
-        6 kCubicEaseOut = ,
-        7 kCubicEaseInOut = 
-        8 kQuarticEaseIn = 
-        9 kQuarticEaseOut = 
-        10 kQuarticEaseInOut = 
-        11 kQuinticEaseIn = 10,
-        12 kQuinticEaseOut = 11,
-        13 kQuinticEaseInOut = 12,
-        14 kSineEaseIn = 13,
-        15 kSineEaseOut = 14,
-        16 kSineEaseInOut = 15,
-        17 kCircularEaseIn = 16,
-        18 kCircularEaseOut = 17,
-        19 kCircularEaseInOut = 18,
-        20 kExponentialEaseIn = 19,
-        21 kExponentialEaseOut = 20,
-        22 kExponentialEaseInOut = 21,
-        23 kElasticEaseIn = 22,
-        24 kElasticEaseOut = 23,
-        25 kElasticEaseInOut = 24,
-        26 kBackEaseIn = 25,
-        27 kBackEaseOut = 26,
-        28 kBackEaseInOut = 27,
-        29 kBounceEaseIn = 28,
-        30 kBounceEaseOut = 29,
-        31 kBounceEaseInOut = 30
