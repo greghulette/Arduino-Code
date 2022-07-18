@@ -1,4 +1,3 @@
-#define DEBUG
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
