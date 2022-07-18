@@ -167,12 +167,7 @@ ServoSequencer servoSequencer(servoDispatch);
   
   int colorState1;
   int speedState;
-  // Set some primary and secondary default color values as a fall back in case no colors
-  // are provided in input commands. This makes the ssytem much more user friendly.
-
-    byte defaultPrimaryColorInt     = 5;          //1 Integer color value from list above
-    byte defaultSecondaryColorInt   = 1;          //5 Integer color value from list above
-
+  
   Adafruit_NeoPixel stripCL = Adafruit_NeoPixel(NUM_CAMERA_PIXELS, CAMERA_LENS_DATA_PIN, NEO_GRB + NEO_KHZ800);
 
   boolean countUp=false;
@@ -419,8 +414,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          Serial.print("Command: ");Serial.println(inputBuffer);
-          Serial.print("Command Length: ");Serial.println(commandLength);
+          DBG("Command: %s with a length of %s \n", inputBuffer, commandLength);
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               doorBoard = inputBuffer[1]-'0';
@@ -428,9 +422,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if (doorFunction == 1 || doorFunction == 2){
                 door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
                 if(commandLength >= 8){
-                  Serial.println("Door Function Called");
+                  DBG("Door Function Called \n");
                   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  DBG("InputBuffer 8:%c 9:%c 10:%c 11:%c \n",inputBuffer[8],inputBuffer[9],inputBuffer[10],inputBuffer[11]); 
                   doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
                 } else{
                   doorEasingMethod = 0;
@@ -438,33 +431,35 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 }
               }
               else if (doorFunction != 1 || doorFunction != 2) {
-                 Serial.print("Other Door Function Called ");
+                DBG("Other Door Function Called \n";
                 if (commandLength >=6){
-                Serial.println("with Easing");
-                doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                }else{
-                  Serial.println("without Easing");
+                  DBG("with Easing \n");
+                  doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                  doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                } else {
+                  DBG("without Easing \n");
                   doorEasingMethod = 0;
                   doorEasingDuration = 0;
                 }
               }
-              }                                    
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}
+            }                                    
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
+              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+            }
             if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-                  for (int i=1; i<=commandLength; i++){
-                    char inCharRead = inputBuffer[i];
-                    inputStringCommand += inCharRead;                   // add it to the inputString:
-                  }
-                  DBG("\nFull Command Recieved: %s ",inputStringCommand);
-                  espNowCommandFunctionString = inputStringCommand.substring(0,2);
-                  espNowCommandFunction = espNowCommandFunctionString.toInt();
-                  DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
-                  targetID = inputStringCommand.substring(2,4);
-                  DBG("Target ID: %s\n", targetID);
-                  commandSubString = inputStringCommand.substring(4,commandLength);
-                  DBG("Command to Forward: %s\n", commandSubString);
-                }
+              for (int i=1; i<=commandLength; i++){
+                char inCharRead = inputBuffer[i];
+                inputStringCommand += inCharRead;                   // add it to the inputString:
+              }
+              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              espNowCommandFunctionString = inputStringCommand.substring(0,2);
+              espNowCommandFunction = espNowCommandFunctionString.toInt();
+              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+              targetID = inputStringCommand.substring(2,4);
+              DBG("Target ID: %s\n", targetID);
+              commandSubString = inputStringCommand.substring(4,commandLength);
+              DBG("Command to Forward: %s\n", commandSubString);
+            }
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=3; i<commandLength-2;i++ ){
@@ -483,18 +478,13 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               serialStringCommand = "";
               serialPort = "";
             }   
-            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}              //  Converts Sequence character values into an integer.
-            
-            if(commandLength >= 4) {
-              if(inputBuffer[0]=='D' || inputBuffer[0]=='d' ) {}
-              if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
-              if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {colorState1 = inputBuffer[3]-'0';};
-            }
+            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
+              ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              colorState1 = inputBuffer[3]-'0';
+              speedState = inputBuffer[4]-'0';
+              }              
 
-            if(commandLength >= 5) {
-              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {}
-              else {speedState = inputBuffer[4]-'0';} 
-            }
+
 
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
