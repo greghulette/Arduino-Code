@@ -790,7 +790,7 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t serv
       case 4: Serial.println("Close MEDIUM_PANEL_PAINTED");  SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_PAINTED, servoMovementDuration);break;
       case 5: Serial.println("Close MEDIUM_PANEL_SILVER");   SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_SILVER, servoMovementDuration); break;
       case 6: Serial.println("Close BIG_PANEL");             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, BIG_PANEL, servoMovementDuration);           break;
-      case 7: Serial.println("Close PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_ONE), servoMovementDuration;       break;
+      case 7: Serial.println("Close PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_ONE, servoMovementDuration);       break;
       case 8: Serial.println("Close PIE_PANEL_TWO");         SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_TWO, servoMovementDuration);       break;
       case 9: Serial.println("Close PIE_PANEL_THREE");       SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_THREE, servoMovementDuration);     break;
       case 10: Serial.println("Close PIE_PANEL_FOUR");       SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_FOUR, servoMovementDuration);      break;
