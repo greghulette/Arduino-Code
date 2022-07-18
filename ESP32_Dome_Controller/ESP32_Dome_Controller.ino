@@ -391,7 +391,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
-      closeAllDoors(2);
+      closeAllDoors(2,0,0);
       startUp = false;
       Serial.println("Startup");
   }
@@ -557,19 +557,19 @@ if (millis() - MLMillis >= mainLoopDelayVar){
     if(ESP_command[0]){
       switch (ESP_command[0]){
         case 1: Serial.println("Controller: Dome ESP Controller");   
-                ESP_command[0]   = '\0'; break;
+                ESP_command[0]   = '\0';                                                  break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0'; break;
-        case 3: connectWiFi();  break;
+                ESP_command[0]   = '\0';                                                  break;
+        case 3: connectWiFi();                                                            break;
         case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
         case 8: break;  //reserved for future use
         case 9: break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        case 11: toggleDebug1();  
+        case 10: toggleDebug();                                                           break;
+        case 11: toggleDebug1();                                                          break; 
       }
     }
 
@@ -580,25 +580,25 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       }
       else {
         switch (D_command[0]) {
-          case 1: openDoor(D_command[1],D_command[2]);                                            break;
-          case 2: closeDoor(D_command[1],D_command[2]);                                           break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                           break;
-          case 4: closeAllDoors(D_command[1]);                                                    break;
-          case 5: shortCircuit(D_command[1]);                                                     break;
-          case 6: allOpenClose(D_command[1]);                                                     break;
-          case 7: allOpenCloseLong(D_command[1]);                                                 break;
-          case 8: allFlutter(D_command[1]);                                                       break;
-          case 9: allOpenCloseRepeat(D_command[1]);                                               break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                                                       break;
-          case 11: panelWaveFast(D_command[1]);                                                   break;
-          case 12: openCloseWave(D_command[1]);                                                   break;
-          case 13: marchingAnts(D_command[1]);                                                    break;
-          case 14: panelAlternate(D_command[1]);                                                  break;
-          case 15: panelDance(D_command[1]);                                                      break;
-          case 16: longDisco(D_command[1]);                                                       break;
-          case 17: longHarlemShake(D_command[1]);                                                 break;
-          case 98: closeAllDoors(3);                                                              break;
-          case 99: closeAllDoors(3);                                                              break;
+          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4]);          break;
+          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4]);         break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                   break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4]);                  break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4]);                   break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4]);                   break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                     break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4]);                 break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4]);                 break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4]);                     break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4]);               break;
+          case 98: closeAllDoors(2,0,0);                                                  break;
+          case 99: closeAllDoors(2,0,0);                                                  break;
           default: break;
         }
       }
@@ -606,7 +606,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(CL_command[0]){
       switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);
+        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
       }
@@ -614,7 +614,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(ESPNOW_command[0]){
       switch(ESPNOW_command[0]){
-        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                   break; 
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
       }
