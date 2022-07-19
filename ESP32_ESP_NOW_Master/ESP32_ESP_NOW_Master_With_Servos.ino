@@ -4,37 +4,26 @@
 #include <elegantWebpage.h>
 #include <Hash.h>
 
-//Used for WiFi
+//Used for ESP-NOW
 #include "esp_wifi.h"
+#include <esp_now.h>
 
-//Used for PC9685 - Servo Expansion Board
-#include <Wire.h>
-
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
-
-//ReelTwo libaries
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
+//reeltwo libaries
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
 #include "ServoDispatchPCA9685.h"
 #include "ServoSequencer.h"
-#include "core/Animation.h"
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.                                                   *****///
-///*****                                                                                                       *****///
-///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
-///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
+///*****                            Created by Greg Hulette.  I started with the code from flthymcnsty         *****///
 ///*****                                                                                                       *****///
 ///*****                                     So exactly what does this all do.....?                            *****///
-///*****                       - Controls the Body servos                                                      *****///
-///*****                       - Creates the WiFI network                                                      *****///
+///*****                       - Receives commands via Serial and transmits out via ESP-NOW                    *****///
+///*****                       - Receives commands via ESP-NOW and tranmits out via Serial                     *****///
 ///*****                       - Sends Serial commands to the LED Controller and the Stealth Board             *****///
-///*****                       - Sends Serial commands to the ESP-NOW Master to relay to other Controllers     *****///
 ///*****                                                                                                       *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,23 +67,27 @@ ServoSequencer servoSequencer(servoDispatch);
     
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
+  String inputStringCommand;
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
-
   int commandLength;
-  int paramVar = 9;
-  
   String serialPort;
   String serialStringCommand;
-  
+
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
+  int commandState = 0;
 
+  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+  int espNowCommandFunction = 0;
+  String espNowCommandFunctionString;
+  String tempESPNOWTargetID;
+
+// Flags to enable/disable debugging in runtime
   int debugflag = 0;
-  int debugflag1 = 0;  // Used for debugging params recieved from clients
+  int debugflag1 = 0;  // debugging for params recieved from clients
 
-  //////////////////////////////////////////////////////////////////////
+ //////////////////////////////////////////////////////////////////////
   ///*****   Door Values, Containers, Flags & Timers   *****///
   //////////////////////////////////////////////////////////////////////
 
@@ -124,264 +117,290 @@ ServoSequencer servoSequencer(servoDispatch);
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXEN 15
-  #define TXEN 16 
-  #define RXBL 25
-  #define TXBL 26
-  #define RXST 12
-  #define TXST 14
-  
-  #define enSerial Serial1
-  #define blSerial Serial2
-  SoftwareSerial stSerial;
+  #define RXBC 15
+  #define TXBC 16 
+  #define RXFU 25
+  #define TXFU 26 
+  #define bcSerial Serial1
+  #define fuSerial Serial2
 
-  #define EN_BAUD_RATE 115200
-  #define BL_BAUD_RATE 115200
-  #define ST_BAUD_RATE 9600
+  #define BC_BAUD_RATE 115200
+  #define BC_BAUD_RATE 115200
 
+/////////////////////////////////////////////////////////////////////////
+///*****                  ESP NOW Set Up                         *****///
+/////////////////////////////////////////////////////////////////////////
 
+//  MAC Addresses used in the Droid
+//  ESP-NOW Master =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Dome Controller =       {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Periscope Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
-  //////////////////////////////////////////////////////////////////////
-  ///******      Arduino Mega Reset Pin Specific Setup          *****///
-  //////////////////////////////////////////////////////////////////////
+//    MAC Address of your receivers 
+  uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
-  #define RST 4
+//    MAC Address to broadcast to all senders at once
+  uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-  //////////////////////////////////////////////////////////////////////
+//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
+  uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+
+//  // Define variables to store commands to be sent
+  String senderID;
+  String destinationID;
+  String targetID;
+  String command;
+  String commandSubString;
+    
+//
+
+//  // Define variables to store incoming commands
+  String incomingDestinationID;
+  String incomingTargetID;  
+  String incomingSenderID;
+  String incomingCommand;
+//    
+//  // Variable to store if sending data was successful
+  String success;
+//
+//  //Structure example to send data
+//  //Must match the receiver structure
+  typedef struct struct_message {
+      String structSenderID;
+      String structDestinationID;
+      String structTargetID;  
+      String structCommand;
+  } struct_message;
+//
+//  // Create a struct_message calledcommandsTosend to hold variables that will be sent
+  struct_message commandsToSendtoDome;
+  struct_message commandsToSendtoPeriscope;
+  struct_message commandsToSendtoBroadcast;
+
+//
+//  // Create a struct_message to hold incoming commands from the Dome
+  struct_message commandsToReceiveFromDome;
+  struct_message commandsToReceiveFromPeriscope;
+  struct_message commandsToReceiveFromBroadcast;
+//
+  esp_now_peer_info_t peerInfo;
+
+//  // Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  // Copies the sender mac address to a string
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  DBG("Packet to: %s\n", macStr);
+  status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail";
+  DBG("Send Status:\t %s\n", status);
+}
+
+  // Callback when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  DBG("Bytes received from ESP-NOW Message: %s\n", len);
+  DBG("Sender ID = %s\n",incomingSenderID);
+  DBG("Destination ID= %s\n" ,incomingDestinationID);
+  DBG("Target ID= %s\n", incomingTargetID);
+  DBG("Command = %s\n" , incomingCommand); 
+  if (incomingDestinationID =="Body"){
+    DBG("ESP-NOW Command Accepted\n");
+    DBG("Target ID= %s\n", incomingTargetID);
+    if (incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID =="ST"){
+        DBG("Sending %s out bcSerial\n", incomingCommand);
+        writeBcSerial(incomingCommand);
+    } else if (incomingTargetID == "FU"){
+        DBG("Sending %s out fuSerial\n", incomingCommand);
+        writeFuSerial(incomingCommand)
+    } else if (incomingTargetID == "NM"){
+        DBG("Execute Local Command = %s\n", incomingCommand);
+        inputString = incomingCommand;
+        stringComplete = true; 
+    } else {DBG("Wrong Target ID Sent\n");}
+  }
+  else {DBG("ESP-NOW Message Ignored\n");}
+}
+
+//////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
-
-//Raspberry Pi              192.168.4.100
-//Body Controller ESP       192.168.4.101   ************
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)
-//Dome Controller ESP       192.168.4.111   (Only used for OTA) 
-//Periscope Controller ESP  192.168.4.112   (Only used for OTA)
-//Remote                    192.168.4.107
-//Developer Laptop          192.168.4.125
-
-// IP Address config of local ESP
-IPAddress local_IP(192,168,4,101);
-IPAddress subnet(255,255,255,0);
-IPAddress gateway(192,168,4,100);
-uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
-
-
- ////R2 Control Network Details
-const char* ssid = "R2D2_Control_Network";
-const char* password =  "astromech";
-int channel =  6;
-int broadcastSSID = 0;  //0 for yes, 1 for no
-int maxConnections = 8;
-
-AsyncWebServer server(80);
+  
+  //Raspberry Pi              192.168.4.100
+  //Body Controller ESP       192.168.4.101
+  //ESP-NOW Master ESP        192.168.4.110  
+  //Dome Controller ESP       192.168.4.111  ************
+  //Periscope Controller ESP  192.168.4.112
+  //Remote                    192.168.4.107
+  //Developer Laptop          192.168.4.125
+  
+  // IP Address config of local ESP
+  IPAddress local_IP(192,168,4,110);
+  IPAddress subnet(255,255,255,0);
+  IPAddress gateway(192,168,4,100);
+  
+   ////R2 Control Network Details
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+  
+  AsyncWebServer server(80);
+  
 
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
-  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
-  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
+  bcSerial.begin(BC_BAUD_RATE, SERIAL_8N1, RXBC, TXBC);
+  fuSerial.begin(FU_BAUD_RATE, SERIAL_8N1, RXFU, TXFU);
 
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Periscope Controller");
+  Serial.print("\n\n\n----------------------------------------\n");
+  Serial.print("Booting up the Master ESP-NOW Controller\n");
+
   
-  //Configure the Reset Pins for the arduinoReset() function
-  pinMode(4, OUTPUT);
-  digitalWrite(4,HIGH);
-
   //Initialize I2C for the Servo Expander Board
   Wire.begin();
   
   //Initialize the ReelTwo Library
   SetupEvent::ready();
-
+  
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
 
-  //Initialize the Soft Access Point
-  WiFi.mode(WIFI_AP);
-    Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
-    delay(200);
-    Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
-    delay(200);
-    Serial.print("Soft-AP IP address = ");
-    Serial.println(WiFi.softAPIP());
+  //initialize WiFi for ESP-NOW
+  WiFi.mode(WIFI_AP_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  Serial.print("Local STA MAC address = ");
+  Serial.println(WiFi.macAddress());
 
-    esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
-    delay(2000);
-    Serial.print("Local AP MAC address = ");
-    Serial.println(WiFi.softAPmacAddress());
- 
- //Setup the webpage and accept the GET requests, and parses the variables 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      
-    int paramsNr = request->params();               // Gets the number of parameters sent
-//    DBG_1("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
-    for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-      AsyncWebParameter* p = request->getParam(i);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////                                                                //////////////////////////        
-//////////  These If statements choose where to send the commands         //////////////////////////
-//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-//////////                                                                //////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-        
-    if ((p->name())== "param0" & (p->value()) == "Serial0"){
-        DBG_1("Serial0 Chosen with If Statement\n");
-        paramVar = 0;
-        };
-    if ((p->name())== "param0" & (p->value()) == "enSerial"){
-        DBG_1("Serial 1 Chosen with If Statement\n");
-        paramVar = 1;
-        };
-    if ((p->name())== "param0" & (p->value()) == "blSerial"){
-      DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 2;
-    };
-        if ((p->name())== "param0" & (p->value()) == "stSerial"){
-          DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 3;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ESP"){
-          DBG_1("ESP(Self) Chosen with If Statement\n");
-          paramVar = 4;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-        DBG_1("Reset Only Arduino Chosen with If Statement\n");
-          resetArduino(500);
-        };
-    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
-        ESP.restart();
-        };
-        
-        DBG_1("Param name: %s\n", (p->name()));
-        DBG_1("Param value: %s\n", (p->value()));
+  //Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  return;
+  }
   
-        if (paramVar == 0){
-          DBG_1("Writing to Serial 0\n");      
-          writeSerialString(p->value());
-        };
-        if (paramVar == 1){
-          DBG_1("Writing to enSerial\n"); 
-          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "EnSerial"){
-            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-          } 
-          else {
-            writeEnSerial(p->value());
-          };
-        } ;      
-          if (paramVar == 2){
-          DBG_1("Writing to blSerial\n");      
-          writeBlSerial(p->value());
-        };
-        if (paramVar == 3){
-          DBG_1("Writing to stSerial\n");      
-          writeStSerial(p->value());
-        };
-        if (paramVar == 4){
-          DBG_1("Executing on self\n");      
-          inputString = (p->value());
-          stringComplete = true;  
-        };
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
 
-        DBG_1("------\n");
-//        delay(50);
+  // Register peer configuration
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+
+  // Add peers  
+    memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Dome ESP-NOW peer");
+      return;
     }
 
-    request->send(200, "text/plain", "message received");
-  });
+    memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Periscope ESP-NOW peer");
+      return;
+    }
+    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Broadcast ESP-NOW peer");
+      return;
+    }    
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
   
-  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
-
-  //Initialize the AsycWebServer
-  server.begin();
-
-  //Reset Arudino Mega
-  resetArduino(500);
-
-}
+}   // end of setup
 
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
-    AnimatedEvent::process();
+      MLMillis = millis();
+  
     if(startUp) {
-      closeAllDoors(1,0,0);
       startUp = false;
-      Serial.println("Startup");
-    }
+      Serial.print("Startup complete\nStarting main loop\n\n\n");
+    }  
     if(Serial.available()){serialEvent();}
-    if(blSerial.available()){bcSerialEvent();}
-    if(enSerial.available()){fuSerialEvent();}
+    if(bcSerial.available()){bcSerialEvent();}
+    if(fuSerial.available()){fuSerialEvent();}
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='D'     ||        // Door Designator
-          inputBuffer[0]=='d'     ||        // Door Designator
-          inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'               // Command for sending Serial Strings out Serial ports
-        
-        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+        else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+        if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
+            inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
+            inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
+            inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
-          if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-              doorBoard = inputBuffer[1]-'0';
-              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-              if (doorFunction == 1 || doorFunction == 2){
-                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                if(commandLength >= 8){
-                  DBG("Door Function Called \n");
-                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
-                } else{
-                  doorEasingMethod = 0;
-                  doorEasingDuration = 0;
+
+         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+            DBG("Command Length is: %i\n", commandLength);
+            if(commandLength >= 3) {
+              if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+                doorBoard = inputBuffer[1]-'0';
+                doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                if (doorFunction == 1 || doorFunction == 2){
+                  door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                  if(commandLength >= 8){
+                    DBG("Door Function Called \n");
+                    doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
+                    doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
+                  } else{
+                    doorEasingMethod = 0;
+                    doorEasingDuration = 0;
+                  }
                 }
-              }
-              else if (doorFunction != 1 || doorFunction != 2) {
-                DBG("Other Door Function Called \n");
-                if (commandLength >=6){
-                  DBG("with Easing \n");
-                  doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                  doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                } else {
-                  DBG("without Easing \n");
-                  doorEasingMethod = 0;
-                  doorEasingDuration = 0;
-                }
+                else if (doorFunction != 1 || doorFunction != 2) {
+                  DBG("Other Door Function Called \n");
+                  if (commandLength >=6){
+                    DBG("with Easing \n");
+                    doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                    doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                  } else {
+                    DBG("without Easing \n");
+                    doorEasingMethod = 0;
+                    doorEasingDuration = 0;
+                  }
               }
             }
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              };      
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
+              if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
+                espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              };
+              if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+                for (int i=1; i<=commandLength; i++){
+                  char inCharRead = inputBuffer[i];
+                  inputStringCommand += inCharRead;                   // add it to the inputString:
+                }
+                DBG("\nFull Command Recieved: %s ",inputStringCommand);
+                espNowCommandFunctionString = inputStringCommand.substring(0,2);
+                espNowCommandFunction = espNowespCommandFunctionString.toInt();
+                DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+                targetID = inputStringCommand.substring(2,4);
+                DBG("Target ID: %s\n", targetID);
+                commandSubString = inputStringCommand.substring(4,commandLength);
+                DBG("Command to Forward: %s\n", commandSubString);
               }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-              if (serialPort == "BL"){
-                writeBlSerial(serialStringCommand);
-              } else if (serialPort == "EN"){
-                writeEnSerial(serialStringCommand);
-              } else if (serialPort == "ST"){
-                writeStSerial(serialStringCommand);
-              }
-              serialStringCommand = "";
-              serialPort = "";
+              if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+                serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+                for (int i=3; i<commandLength-2;i++ ){
+                  char inCharRead = inputBuffer[i];
+                  serialStringCommand += inCharRead;  // add it to the inputString:
+                }
+                DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+                if (serialPort == "BC"){
+                  writeBcSerial(serialStringCommand);
+                } else if (serialPort == "FU"){
+                  writeFuSerial(serialStringCommand);
+                } 
+                serialStringCommand = "";
+                serialPort = "";
             } 
-
+              
+              
 
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
@@ -395,48 +414,64 @@ void loop(){
               Serial.println(doorEasingDuration);
             }
 
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
+              if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+                ESP_command[0]   = '\0';                                                            // Flushes Array
+                ESP_command[0] = espCommandFunction;
+              }
+              if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
+                ESPNOW_command[0]   = '\0';                                                            // Flushes Array
+                ESPNOW_command[0] = espNowCommandFunction;
+                tempESPNOWTargetID = targetID;
+              }
             }
           }
-        }
 
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
-
+        
         // reset Local ESP Command Variables
         int espCommandFunction;
+      
+      // reset ESP-NOW variables
+        targetID = "";
+        espNowCommandFunction =0;
 
-        // reset Door Variables
+      // reset Door Variables
         int door = -1;
         int doorFunction;
         int doorBoard;
         int doorEasingMethod;
-        uint32_t doorEasingDuration;
+        uint32_t doorEasingDuration;  
 
       DBG("command Proccessed\n");
+
     }
+
 
     if(ESP_command[0]){
       switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
+        case 1: Serial.println("Controller: Master ESP-NOW Controller");   
+                ESP_command[0]   = '\0';  break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-        case 4: break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9: break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        case 11: toggleDebug1();                                                                break;
-
+                DelayCall::schedule([] {ESP.restart();}, 3000) ; break;
+        case 3: connectWiFi();            break;
+        case 4: ESP.restart();            break;
+        case 5: break;
+        case 6: break;
+        case 7: break;
+        case 8: break;
+        case 9: break;
+        case 10: toggleDebug();           break;
+        case 11: toggleDebugParam();      break;
+      }
+    }
+    if(ESPNOW_command[0]){
+      switch(ESPNOW_command[0]){
+        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use      
       }
     }
 
@@ -470,13 +505,13 @@ void loop(){
         }
       }
     }
-    
     if(isStartUp) {
       isStartUp = false;
       delay(500);
+
     }
   }
-}  // end of main loop
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -834,116 +869,115 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMoveme
   D_command[0]   = '\0';                                             
 }                                                       
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////                                                                                               /////
-/////                             Serial Communication Functions                                    /////
-/////                                                                                               /////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-      /////////////////////////////////////////////////////////
-      ///*****          Serial Event Function          *****///
-      /////////////////////////////////////////////////////////
-      /// This routine is called each loop() runs, so using ///
-      /// delay inside loop can delay response.  Multiple   ///
-      /// bytes of data may be available.                   ///
-      /////////////////////////////////////////////////////////
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Serial & ESP-NOW Communication Functions                          /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//      /////////////////////////////////////////////////////////
+//      ///*****          Serial Event Function          *****///
+//      /////////////////////////////////////////////////////////
+//      /// This routine is run between loop() runs, so using ///
+//      /// delay inside loop can delay response.  Multiple   ///
+//      /// bytes of data may be available.                   ///
+//      /////////////////////////////////////////////////////////
+                                                  
 void serialEvent() {
   while (Serial.available()) {
-    // get the new byte:
     char inChar = (char)Serial.read();
-    // add it to the inputString:
     inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
-  };
-  DBG("InputString: %s \n",inputString);
-};
-
-
-void serialEnEvent() {
-  while (enSerial.available()) {
-    // get the new byte:
-    char inChar = (char)enSerial.read();
-    // add it to the inputString:
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("%s\n", inputString);
+}
+void bcSerialEvent() {
+  while (bcSerial.available()) {
+    char inChar = (char)bcSerial.read();
     inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
-  };
-  DBG("InputString: %s \n",inputString);
-};
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("%s\n", inputString);
+}
 
-
-void serialBlEvent() {
-  while (blSerial.available()) {
-    // get the new byte:
-    char inChar = (char)blSerial.read();
-    // add it to the inputString:
+void fuSerialEvent() {
+  while (fuSerial.available()) {
+    char inChar = (char)fuSerial.read();
     inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
-  };
-  DBG("InputString: %s \n",inputString);
-};
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("%s\n", inputString);
+}
 
 
-void serialStEvent() {
-  while (stSerial.available()) {
-    // get the new byte:
-    char inChar = (char)stSerial.read();
-    // add it to the inputString:
-    inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
-  };
-  DBG("InputString: %s \n",inputString);
-};
 
-  /////////////////////////////////////////////////////////
-  ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-  /// These functions recieve a string and transmits    ///
-  /// one character at a time and adds a '/r' to the    ///
-  /// end of the string.                                ///
-  /////////////////////////////////////////////////////////
+//      /////////////////////////////////////////////////////////
+  //      ///*****          Serial Write Function          *****///
+  //      /////////////////////////////////////////////////////////
+  //      /// These functions recieve a string and transmits    ///
+  //      /// one character at a time and adds a '/r' to the    ///
+  //      /// end of the string.                                ///
+  //      /////////////////////////////////////////////////////////
+
 
 void writeSerialString(String stringData){
   String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-      Serial.write(completeString[i]);
-  };
-};
-
-
-void writeBlSerial(String stringData){
+  for (int i=0; i<completeString.length(); i++)
+  {
+    Serial.write(completeString[i]);
+  }
+}
+void writeBcSerial(String stringData){
   String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    blSerial.write(completeString[i]);
-  };
-};
+  for (int i=0; i<completeString.length(); i++)
+  {
+    bcSerial.write(completeString[i]);
+  }
+}
 
-
-void writeEnSerial(String stringData){
+void writeFuSerial(String stringData){
   String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    enSerial.write(completeString[i]);
-  };
-  DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
-};
+  for (int i=0; i<completeString.length(); i++)
+  {
+    fuSerial.write(completeString[i]);
+  }
+}
 
 
-void writeStSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    stSerial.write(completeString[i]);
-  };
-};
+//////////////////////////////////////////////////////////////////////
+///*****             ESP-NOW Functions                        *****///
+//////////////////////////////////////////////////////////////////////
+
+void sendESPNOWCommand(String starget,String scomm){
+  String sdest;
+  if (starget == "DS" || starget == "RS" || starget == "HP"){
+    sdest = "Dome";
+  } else if (starget == "PC" || starget == "PL"){
+    sdest = "Periscope";
+  }
+  commandsToSendtoBroadcast.structDestinationID = sdest;
+  DBG("sdest: %s\n", sdest);
+  commandsToSendtoBroadcast.structTargetID = starget;
+  commandsToSendtoBroadcast.structSenderID = "Body";
+  commandsToSendtoBroadcast.structCommand = scomm;
+  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+  if (result == ESP_OK) {
+    DBG("Sent with success\n");
+  }
+  else {
+    DBG("Error sending the data\n");
+  }
+  ESPNOW_command[0] = '\0';
+}
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -954,8 +988,9 @@ void writeStSerial(String stringData){
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
-///*****             Debugging Functions                      *****///
+///*****             Debug Functions                          *****///
 //////////////////////////////////////////////////////////////////////
+
 
 void DBG(char *format, ...) {
         if (!debugflag)
@@ -980,7 +1015,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println("Debugging Enabled \n"); 
+    Serial.println("Debugging Enabled \n");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -1001,19 +1036,21 @@ void toggleDebug1(){
 }
 
 
-
 //////////////////////////////////////////////////////////////////////
-///*****    Resets Arduino Mega due to bug in my PCB          *****///
+///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
-
-void resetArduino(int delayperiod){
-  DBG("Opening of reset function");
-  digitalWrite(4,LOW);
-  delay(delayperiod);
-  digitalWrite(4,HIGH);
-  DBG("reset witin function");
-}
-
+void connectWiFi(){
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.begin();
+  while (WiFi.status() != WL_CONNECTED) {
+  delay(1000);
+  Serial.println("Connecting to WiFi..");
+  Serial.println(WiFi.localIP());
+  }
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+  ESP_command[0]   = '\0';
+}   
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
@@ -1053,4 +1090,4 @@ void setServoEasingMethod(int easingMethod){
     case 30: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseOut);         break;
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
-}  
+}
