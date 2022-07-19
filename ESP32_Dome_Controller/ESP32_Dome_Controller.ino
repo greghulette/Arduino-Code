@@ -120,7 +120,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int doorBoard = 0; 
   int doorEasingMethod;
   uint32_t doorEasingDuration;
-  
+
   char stringToSend[20];
   uint32_t servoMovementDurationInDelayCall;
 
@@ -889,7 +889,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
 }
 
 
-void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration){
   // Command: Dx10
   DBG("Wave\n");
   servoMovementDurationInDelayCall = servoMovementDuration;
@@ -899,15 +899,15 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
     case 1: sendESPNOWCommand("BC", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 3: sendESPNOWCommand("BC", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration){
   // Command: Dx11  
   DBG("Wave Fast\n");
   servoMovementDurationInDelayCall = servoMovementDuration;
@@ -917,15 +917,15 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: sendESPNOWCommand("BC", stringToSend);  break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
     case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration) {
   // Command: Dx12
   DBG("Open Close Wave \n");
   servoMovementDurationInDelayCall = servoMovementDuration;
@@ -935,9 +935,9 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: sendESPNOWCommand("BC", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
     case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
