@@ -105,11 +105,10 @@ ServoSequencer servoSequencer(servoDispatch);
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
     
-  int debugflag = 1;
-  int debugflag1 = 1;  // Used for optional level of debuging
+  int debugflag = 0;
+  int debugflag1 = 0;  // Used for optional level of debuging
 
-   char stringToSend[20];
-  uint32_t servoMovementDurationInDelayCall;
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -121,6 +120,9 @@ ServoSequencer servoSequencer(servoDispatch);
   int doorBoard = 0; 
   int doorEasingMethod;
   uint32_t doorEasingDuration;
+  
+  char stringToSend[20];
+  uint32_t servoMovementDurationInDelayCall;
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -431,7 +433,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 }
               }
               else if (doorFunction != 1 || doorFunction != 2) {
-                DBG("Other Door Function Called \n";
+                DBG("Other Door Function Called \n");
                 if (commandLength >=6){
                   DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
