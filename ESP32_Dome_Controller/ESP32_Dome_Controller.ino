@@ -313,315 +313,6 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   AsyncWebServer server(80);
   
 
-
-void setup(){
-  //Initialize the Serial Ports
-  Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
-  hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
-  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
-    
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Periscope Controller");
-
-  //Initialize I2C for the Servo Expander Board
-  Wire.begin();
-  
-  //Initialize the ReelTwo Library
-  SetupEvent::ready();
-
-  //Reserve the inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
-
-  //Initialize the NeoPixel ring for the camera lens/radar eye
-  stripCL.begin();
-  stripCL.show(); // Initialize all pixels to 'off'
-  colorWipe(red, 255); // red during bootup
-  Serial.println("LED Setup Complete");
-
-
-  //initialize WiFi for ESP-NOW
-  WiFi.mode(WIFI_AP_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
-  Serial.print("Local STA MAC address = ");
-  Serial.println(WiFi.macAddress());
-
-//Initialize ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-  return;
-  }
-
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);
-  
-  // Register peer
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-  //  peerInfo.ifidx=WIFI_IF_AP;
-
-  // Add peers  
-    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Body ESP-NOW peer");
-      return;
-    }
-
-    memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Periscope ESP-NOW peer");
-      return;
-    }
-    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Broadcast ESP-NOW peer");
-      return;
-    }  
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
-
-}  // end of Setup
-
-//
-void loop() {
-if (millis() - MLMillis >= mainLoopDelayVar){
-  MLMillis = millis();
-  loopTime = millis();
-  AnimatedEvent::process();
-  if(startUp) {
-      closeAllDoors(2,0,0);
-      startUp = false;
-      Serial.println("Startup");
-  }
-  if(Serial.available()){serialEvent();}
-  if(hpSerial.available()){hpSerialEvent();}
-  if(rsSerial.available()){rsSerialEvent();}
-
-  cameraLED(blue, 5); // blue
-
-  if (stringComplete) {autoComplete=false;}
-  if (stringComplete || autoComplete) {
-    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='D' ||        // Door Designator
-          inputBuffer[0]=='d' ||        // Door Designator
-          inputBuffer[0]=='R' ||        // Radar Eye LED
-          inputBuffer[0]=='r' ||        // Radar Eye LED
-          inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
-
-        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          DBG("Command: %s with a length of %s \n", inputBuffer, commandLength);
-          if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-              doorBoard = inputBuffer[1]-'0';
-              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-              if (doorFunction == 1 || doorFunction == 2){
-                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                if(commandLength >= 8){
-                  DBG("Door Function Called \n");
-                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
-                } else{
-                  doorEasingMethod = 0;
-                  doorEasingDuration = 0;
-                }
-              }
-              else if (doorFunction != 1 || doorFunction != 2) {
-                DBG("Other Door Function Called \n");
-                if (commandLength >=6){
-                  DBG("with Easing \n");
-                  doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                  doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                } else {
-                  DBG("without Easing \n");
-                  doorEasingMethod = 0;
-                  doorEasingDuration = 0;
-                }
-              }
-            }                                    
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-            }
-            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-              for (int i=1; i<=commandLength; i++){
-                char inCharRead = inputBuffer[i];
-                inputStringCommand += inCharRead;                   // add it to the inputString:
-              }
-              DBG("\nFull Command Recieved: %s ",inputStringCommand);
-              espNowCommandFunctionString = inputStringCommand.substring(0,2);
-              espNowCommandFunction = espNowCommandFunctionString.toInt();
-              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
-              targetID = inputStringCommand.substring(2,4);
-              DBG("Target ID: %s\n", targetID);
-              commandSubString = inputStringCommand.substring(4,commandLength);
-              DBG("Command to Forward: %s\n", commandSubString);
-            }
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
-              char inCharRead = inputBuffer[i];
-              serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-              if (serialPort == "HP"){
-                writeHpSerial(serialStringCommand);
-              } else if (serialPort == "RS"){
-                writeRsSerial(serialStringCommand);
-              } else if (serialPort == "DS"){
-                inputString = serialStringCommand;
-                stringComplete = true; 
-              }
-              serialStringCommand = "";
-              serialPort = "";
-            }   
-            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
-              ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              colorState1 = inputBuffer[3]-'0';
-              speedState = inputBuffer[4]-'0';
-              }              
-
-
-
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-              D_command[0]   = '\0';                                                            // Flushes Array
-              D_command[0] = doorFunction;
-              D_command[1] = doorBoard;
-                if(door>=0) {D_command[2] = door;}
-              D_command[3] = doorEasingMethod;
-              D_command[4] = doorEasingDuration;
-              Serial.println(doorFunction);
-              Serial.println(doorEasingMethod);
-              Serial.println(doorEasingDuration);
-            }
-
-            if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
-              CL_command[0]   = '\0';                                                            // Flushes Array
-              CL_command[0] = ledFunction;
-              CL_command[1] = colorState1;
-              CL_command[2] = speedState;
-              CLMillis = millis();
-            }
-                
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
-            }
-
-            if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
-              ESPNOW_command[0]   = '\0';                                                            // Flushes Array
-              ESPNOW_command[0] = espNowCommandFunction;
-              tempESPNOWTargetID = targetID;
-            }
-          }
-        }
-
-      ///***  Clear States and Reset for next command.  ***///
-        stringComplete =false;
-        autoComplete = false;
-        inputBuffer[0] = '\0';
-
-        // reset Local ESP Command Variables
-        int espCommandFunction;
-
-        // reset Camera Variables
-        int ledFunction;
-        int speedState;
-        int colorState1;
-        
-        // reset Door Variables
-        int door = -1;
-        int doorFunction;
-        int doorBoard;
-        int doorEasingMethod;
-        uint32_t doorEasingDuration;
-
-        // reset ESP-NOW Variables
-        inputStringCommand = "";
-        targetID = "";
-    
-      DBG("command taken\n");
-
-    }
-
-    if(ESP_command[0]){
-      switch (ESP_command[0]){
-        case 1: Serial.println("Controller: Dome ESP Controller");   
-                ESP_command[0]   = '\0';                                                  break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                  break;
-        case 3: connectWiFi();                                                            break;
-        case 4: break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9: break;  //reserved for future use
-        case 10: toggleDebug();                                                           break;
-        case 11: toggleDebug1();                                                          break; 
-      }
-    }
-
-    if(D_command[0]) {
-      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-        DBG("Incorrect Door Value Specified, Command Aborted!");
-        D_command[0] = '\0';
-      }
-      else {
-        switch (D_command[0]) {
-          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4]);          break;
-          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4]);         break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                   break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4]);                  break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4]);                   break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4]);                   break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                     break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4]);                 break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4]);                 break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4]);                     break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4]);               break;
-          case 98: closeAllDoors(2,0,0);                                                  break;
-          case 99: closeAllDoors(2,0,0);                                                  break;
-          default: break;
-        }
-      }
-    }
-
-    if(CL_command[0]){
-      switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
-        case 2: break;  //reserved for future use
-        case 3: break;  //reserved for future use
-      }
-    }
-
-    if(ESPNOW_command[0]){
-      switch(ESPNOW_command[0]){
-        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                   break; 
-        case 2: break;  //reserved for future use
-        case 3: break;  //reserved for future use
-      }
-    }
-
-    if(isStartUp) {
-      isStartUp = false;
-      delay(500);
-    }
-  }
-}  //end of main loop
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
@@ -1101,7 +792,7 @@ void writeRsSerial(String stringData){
   {
     rsSerial.write(completeString[i]);
   }
-  Serial.println("Printing to rsSerial");
+  // Serial.println("Printing to rsSerial");
 }
 
 void writeHpSerial(String stringData){
@@ -1109,12 +800,13 @@ void writeHpSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     hpSerial.write(completeString[i]);
   }
-  Serial.println("Printing to hpSerial");
+  // Serial.println("Printing to hpSerial");
 }
 
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
+
 
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
@@ -1280,3 +972,312 @@ void setServoEasingMethod(int easingMethod){
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
 }
+
+
+void setup(){
+  //Initialize the Serial Ports
+  Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
+  hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
+  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
+    
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Periscope Controller");
+
+  //Initialize I2C for the Servo Expander Board
+  Wire.begin();
+  
+  //Initialize the ReelTwo Library
+  SetupEvent::ready();
+
+  //Reserve the inputStrings
+  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(100);
+
+  //Initialize the NeoPixel ring for the camera lens/radar eye
+  stripCL.begin();
+  stripCL.show(); // Initialize all pixels to 'off'
+  colorWipe(red, 255); // red during bootup
+  Serial.println("LED Setup Complete");
+
+
+  //initialize WiFi for ESP-NOW
+  WiFi.mode(WIFI_AP_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  Serial.print("Local STA MAC address = ");
+  Serial.println(WiFi.macAddress());
+
+//Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  return;
+  }
+
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
+  
+  // Register peer
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  //  peerInfo.ifidx=WIFI_IF_AP;
+
+  // Add peers  
+    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Body ESP-NOW peer");
+      return;
+    }
+
+    memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Periscope ESP-NOW peer");
+      return;
+    }
+    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Broadcast ESP-NOW peer");
+      return;
+    }  
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
+
+}  // end of Setup
+
+//
+void loop() {
+if (millis() - MLMillis >= mainLoopDelayVar){
+  MLMillis = millis();
+  loopTime = millis();
+  AnimatedEvent::process();
+  if(startUp) {
+      closeAllDoors(2,0,0);
+      startUp = false;
+      Serial.println("Startup");
+  }
+  if(Serial.available()){serialEvent();}
+  if(hpSerial.available()){hpSerialEvent();}
+  if(rsSerial.available()){rsSerialEvent();}
+
+  cameraLED(blue, 5); // blue
+
+  if (stringComplete) {autoComplete=false;}
+  if (stringComplete || autoComplete) {
+    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+      if( inputBuffer[0]=='D' ||        // Door Designator
+          inputBuffer[0]=='d' ||        // Door Designator
+          inputBuffer[0]=='R' ||        // Radar Eye LED
+          inputBuffer[0]=='r' ||        // Radar Eye LED
+          inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
+
+        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+          DBG("Command: %s with a length of %s \n", inputBuffer, commandLength);
+          if(commandLength >= 3) {
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+              doorBoard = inputBuffer[1]-'0';
+              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+              if (doorFunction == 1 || doorFunction == 2){
+                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                if(commandLength >= 8){
+                  DBG("Door Function Called \n");
+                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
+                  doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
+                } else{
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
+                }
+              }
+              else if (doorFunction != 1 || doorFunction != 2) {
+                DBG("Other Door Function Called \n");
+                if (commandLength >=6){
+                  DBG("with Easing \n");
+                  doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                  doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                } else {
+                  DBG("without Easing \n");
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
+                }
+              }
+            }                                    
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
+              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+            }
+            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+              for (int i=1; i<=commandLength; i++){
+                char inCharRead = inputBuffer[i];
+                inputStringCommand += inCharRead;                   // add it to the inputString:
+              }
+              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              espNowCommandFunctionString = inputStringCommand.substring(0,2);
+              espNowCommandFunction = espNowCommandFunctionString.toInt();
+              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+              targetID = inputStringCommand.substring(2,4);
+              DBG("Target ID: %s\n", targetID);
+              commandSubString = inputStringCommand.substring(4,commandLength);
+              DBG("Command to Forward: %s\n", commandSubString);
+            }
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+              char inCharRead = inputBuffer[i];
+              serialStringCommand += inCharRead;  // add it to the inputString:
+              }
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "HP"){
+                writeHpSerial(serialStringCommand);
+              } else if (serialPort == "RS"){
+                writeRsSerial(serialStringCommand);
+              } else if (serialPort == "DS"){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              }
+              serialStringCommand = "";
+              serialPort = "";
+            }   
+            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
+              ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              colorState1 = inputBuffer[3]-'0';
+              speedState = inputBuffer[4]-'0';
+              }              
+
+
+
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+              D_command[0]   = '\0';                                                            // Flushes Array
+              D_command[0] = doorFunction;
+              D_command[1] = doorBoard;
+                if(door>=0) {D_command[2] = door;}
+              D_command[3] = doorEasingMethod;
+              D_command[4] = doorEasingDuration;
+              Serial.println(doorFunction);
+              Serial.println(doorEasingMethod);
+              Serial.println(doorEasingDuration);
+            }
+
+            if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
+              CL_command[0]   = '\0';                                                            // Flushes Array
+              CL_command[0] = ledFunction;
+              CL_command[1] = colorState1;
+              CL_command[2] = speedState;
+              CLMillis = millis();
+            }
+                
+            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+              ESP_command[0]   = '\0';                                                            // Flushes Array
+              ESP_command[0] = espCommandFunction;
+            }
+
+            if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
+              ESPNOW_command[0]   = '\0';                                                            // Flushes Array
+              ESPNOW_command[0] = espNowCommandFunction;
+              tempESPNOWTargetID = targetID;
+            }
+          }
+        }
+
+      ///***  Clear States and Reset for next command.  ***///
+        stringComplete =false;
+        autoComplete = false;
+        inputBuffer[0] = '\0';
+
+        // reset Local ESP Command Variables
+        int espCommandFunction;
+
+        // reset Camera Variables
+        int ledFunction;
+        int speedState;
+        int colorState1;
+        
+        // reset Door Variables
+        int door = -1;
+        int doorFunction;
+        int doorBoard;
+        int doorEasingMethod;
+        uint32_t doorEasingDuration;
+
+        // reset ESP-NOW Variables
+        inputStringCommand = "";
+        targetID = "";
+    
+      DBG("command taken\n");
+
+    }
+
+    if(ESP_command[0]){
+      switch (ESP_command[0]){
+        case 1: Serial.println("Controller: Dome ESP Controller");   
+                ESP_command[0]   = '\0';                                                  break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0';                                                  break;
+        case 3: connectWiFi();                                                            break;
+        case 4: break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9: break;  //reserved for future use
+        case 10: toggleDebug();                                                           break;
+        case 11: toggleDebug1();                                                          break; 
+      }
+    }
+
+    if(D_command[0]) {
+      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
+        DBG("Incorrect Door Value Specified, Command Aborted!");
+        D_command[0] = '\0';
+      }
+      else {
+        switch (D_command[0]) {
+          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4]);          break;
+          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4]);         break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4]);                   break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4]);                  break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4]);                   break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4]);                   break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                     break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4]);                 break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4]);                 break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4]);                     break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4]);               break;
+          case 98: closeAllDoors(2,0,0);                                                  break;
+          case 99: closeAllDoors(2,0,0);                                                  break;
+          default: break;
+        }
+      }
+    }
+
+    if(CL_command[0]){
+      switch(CL_command[0]){
+        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use
+      }
+    }
+
+    if(ESPNOW_command[0]){
+      switch(ESPNOW_command[0]){
+        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                   break; 
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use
+      }
+    }
+
+    if(isStartUp) {
+      isStartUp = false;
+      delay(500);
+    }
+  }
+}  //end of main loop
