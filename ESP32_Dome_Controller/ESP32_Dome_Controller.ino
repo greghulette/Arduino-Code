@@ -1314,7 +1314,7 @@ void setServoEasingMethod(int easingMethod){
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
 }
-
+ 
 
 void setup(){
   //Initialize the Serial Ports
