@@ -266,28 +266,40 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
-  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
-  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
-  Serial.print("Command = "); Serial.println(incomingCommand); 
+//  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
+//  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
+//  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
+//  Serial.print("Command = "); Serial.println(incomingCommand); 
+  DBG("Bytes received from ESP-NOW Message: %s\n", len);
+  DBG("Sender ID = %s\n",incomingSenderID);
+  DBG("Destination ID= %s\n" ,incomingDestinationID);
+  DBG("Target ID= %s\n", incomingTargetID);
+  DBG("Command = %s\n" , incomingCommand); 
   if (incomingDestinationID =="Dome"){
     DBG("ESP-NOW Command Accepted\n");
-    Serial.print("Target ID= "); Serial.println(incomingTargetID);
+    DBG("ESP-NOW Command Accepted\n");
+    DBG("Target ID= %s\n", incomingTargetID);
+//    Serial.print("Target ID= "); Serial.println(incomingTargetID);
     if (incomingTargetID == "RS"){
-        Serial.println("Sending out rsSerial");
+        DBG("Sending %s out rsSerial\n", incomingCommand);
+//        Serial.println("Sending out rsSerial");
         writeRsSerial(incomingCommand);
     } else if (incomingTargetID == "HP"){
-        Serial.println("Sending out hpSerial");
+        DBG("Sending %s out hpSerial\n", incomingCommand);
+//        Serial.println("Sending out hpSerial");
         writeHpSerial(incomingCommand);
     } else if (incomingTargetID == "DS"){
-        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
+        DBG("Execute Local Command = %s\n", incomingCommand);
+//        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
         inputString = incomingCommand;
         stringComplete = true; 
     } else {
-        Serial.println("Wrong Target ID Sent");
+        DBG("ESP-NOW Message Ignored\n");
+//        Serial.println("Wrong Target ID Sent");
       }
   }
-  else {Serial.println("ESP-NOW Message Ignored");}
+    else {DBG("ESP-NOW Message Ignored\n");}
+//  else {Serial.println("ESP-NOW Message Ignored");}
 }
 
   //////////////////////////////////////////////////////////////////////
@@ -313,7 +325,22 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   
   AsyncWebServer server(80);
   
-
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=3000){
+  // Command: Dx10
+  DBG("Wave\n");
+  servoMovementDurationInDelayCall = servoMovementDuration;
+  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend);
+            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+  }
+  D_command[0]   = '\0';                                             
+}
 
 void setup(){
   //Initialize the Serial Ports
@@ -588,9 +615,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
           case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
           case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                     break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4]);                 break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4]);                 break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4]);        break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5]);    break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5]);    break;
           case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
           case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
           case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
@@ -895,22 +922,22 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
 }
 
 
-void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration){
-  // Command: Dx10
-  DBG("Wave\n");
-  servoMovementDurationInDelayCall = servoMovementDuration;
-  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
-  setServoEasingMethod(servoEasingMethod);
-  switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend); break;
-    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
-  }
-  D_command[0]   = '\0';                                             
-}
+//void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=3000){
+//  // Command: Dx10
+//  DBG("Wave\n");
+//  servoMovementDurationInDelayCall = servoMovementDuration;
+//  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
+//  setServoEasingMethod(servoEasingMethod);
+//  switch(servoBoard){
+//    case 1: sendESPNOWCommand("BS", stringToSend); break;
+//    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+//    case 3: sendESPNOWCommand("BC", stringToSend);
+//            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+//    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+//            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+//  }
+//  D_command[0]   = '\0';                                             
+//}
 
 
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration){
