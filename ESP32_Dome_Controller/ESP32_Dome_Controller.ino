@@ -120,6 +120,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int doorBoard = 0; 
   int doorEasingMethod;
   uint32_t doorEasingDuration;
+  uin32_t delayCallTime;
 
   char stringToSend[20];
   uint32_t servoMovementDurationInDelayCall;
@@ -595,20 +596,20 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
 
 
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=3000){
- // Command: Dx10
- DBG("Wave\n");
- servoMovementDurationInDelayCall = servoMovementDuration;
- sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
- setServoEasingMethod(servoEasingMethod);
- switch(servoBoard){
-   case 1: sendESPNOWCommand("BS", stringToSend); break;
-   case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-   case 3: sendESPNOWCommand("BC", stringToSend);
-           DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-   case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-           DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
- }
- D_command[0]   = '\0';                                             
+  // Command: Dx10
+  DBG("Wave\n");
+  servoMovementDurationInDelayCall = servoMovementDuration;
+  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 3: sendESPNOWCommand("BC", stringToSend);
+            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+  }
+  D_command[0]   = '\0';                                             
 }
 
 
@@ -1092,31 +1093,65 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           DBG("Command: %s with a length of %s \n", inputBuffer, commandLength);
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
-              doorBoard = inputBuffer[1]-'0';
-              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-              if (doorFunction == 1 || doorFunction == 2){
-                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                if(commandLength >= 8){
-                  DBG("Door Function Called \n");
-                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
-                } else{
-                  doorEasingMethod = 0;
-                  doorEasingDuration = 0;
+            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {                                                            // specifies the overall door command
+              doorBoard = inputBuffer[1]-'0';                                                                           // Sets the board to call the command on.
+              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');                                              // Sets the door command to a specific function
+              if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
+                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');                                                    // Sets the specific door to move
+                if (inputBuffer[6] == 'D' || inputBuffer[6] == 'd'){
+                //   DBG("with DelayCall \n");
+                  delayCallTime =  (inputBuffer[7]-'0')*10000+(inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');  // converts 5 digit character to uint32_t
+                  doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
+                  doorEasingDuration = 0;                                                                                                                         // Sets Easing duration to 0-Off
+                } else if (inputBuffer[6] == 'E' ||inputBuffer[6] == 'e'){
+                //   DBG("with Easing \n");
+                  doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
+                  doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
+                  delayCallTime = 0;
+                } else if (inputBuffer[6] == 'B' || inputBuffer[6] == 'b'){
+                //   DBG("with Both Easing and Delay Call \n");
+                  doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
+                  doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
+                  delayCallTime =  (inputBuffer[13]-'0')*10000+(inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
                 }
+                // if(commandLength >= 8){                                                                                 
+                //   DBG("Door Function Called \n");
+                //   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
+                //   doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
+                // } else{
+                //   doorEasingMethod = 0;
+                //   doorEasingDuration = 0;
+                // }
               }
               else if (doorFunction != 1 || doorFunction != 2) {
                 DBG("Other Door Function Called \n");
-                if (commandLength >=6){
-                  DBG("with Easing \n");
-                  doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                  doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                } else {
-                  DBG("without Easing \n");
+                if (inputBuffer[4] == 'D' || inputBuffer[4] == 'd'){
+                //   DBG("with DelayCall \n");
+                  delayCallTime =  (inputBuffer[5]-'0')*10000+(inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
                   doorEasingMethod = 0;
                   doorEasingDuration = 0;
+                } else if (inputBuffer[4] == 'E' ||inputBuffer[4] == 'e'){
+                //   DBG("with Easing \n");
+                  doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                  doorEasingDuration = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                  delayCallTime = 0;
+                } else if (inputBuffer[4] == 'B' || inputBuffer[4] == 'b'){
+                //   DBG("with Both Easing and Delay Call \n");
+                  doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                  doorEasingDuration = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');   
+                  delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
+             
                 }
+                // if (commandLength >=6){
+                //   DBG("with Easing \n");
+                //   doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
+                //   doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                //   if (commandLength >= )
+                // } else {
+                //   DBG("without Easing \n");
+                //   doorEasingMethod = 0;
+                //   doorEasingDuration = 0;
+                // }
               }
             }                                    
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
@@ -1169,6 +1204,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 if(door>=0) {D_command[2] = door;}
               D_command[3] = doorEasingMethod;
               D_command[4] = doorEasingDuration;
+              D_command[5] = delayCallTime;
+
               Serial.println(doorFunction);
               Serial.println(doorEasingMethod);
               Serial.println(doorEasingDuration);
@@ -1214,6 +1251,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         int doorBoard;
         int doorEasingMethod;
         uint32_t doorEasingDuration;
+        uint32_t delayCallTime;
 
         // reset ESP-NOW Variables
         inputStringCommand = "";
@@ -1258,9 +1296,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
           case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
           case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4]);                     break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4]);                 break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4]);                 break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5]);        break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5]);    break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5]);    break;
           case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
           case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
           case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
