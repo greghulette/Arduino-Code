@@ -69,7 +69,7 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 4,   600, 2400, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
     { 5,   2400, 600, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
     { 6,   2400, 600, BIG_PANEL },             /* 5: door 6 Big Lower door */
-    { 7,   600, 2400, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
+    { 7,   2400, 600, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
     { 8,   600, 2400, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
     { 9,   2400, 600, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
     { 10,  600, 2400, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
@@ -164,8 +164,9 @@ ServoSequencer servoSequencer(servoDispatch);
   int dim = 75;
   unsigned long CLMillis;
   byte CLSpeed = 50;
-  
-  byte CL_command[4] = {0,0,0,0};
+  unsigned long startMillis;
+  unsigned long currentMillis;
+  byte CL_command[6] = {0,0,0,0,0,0};
   
   int colorState1;
   int speedState;
@@ -321,7 +322,7 @@ void setup(){
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
     
   Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Periscope Controller");
+  Serial.println("Booting up the Dome Controller");
 
   //Initialize I2C for the Servo Expander Board
   Wire.begin();
@@ -336,9 +337,9 @@ void setup(){
   //Initialize the NeoPixel ring for the camera lens/radar eye
   stripCL.begin();
   stripCL.show(); // Initialize all pixels to 'off'
-  colorWipe(red, 255); // red during bootup
+  colorWipe(red, 6); // red during bootup
   Serial.println("LED Setup Complete");
-
+  startMillis = millis();  //initial start time
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_AP_STA);
@@ -482,8 +483,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             }   
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
               ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              colorState1 = inputBuffer[3]-'0';
-              speedState = inputBuffer[4]-'0';
+              colorState1 = (inputBuffer[3]-'0');
+              speedState = (inputBuffer[4]-'0');
+              printf("Buffer 0:%c 1:%c 2:%c 3:%c 4:%c \n", inputBuffer[0], inputBuffer[1], inputBuffer[2], inputBuffer[3], inputBuffer[4]);
+              printf("Function: %d , Color: %d, Speed: %d \n", ledFunction, colorState1, speedState);
               }              
 
 
@@ -505,7 +508,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               CL_command[0] = ledFunction;
               CL_command[1] = colorState1;
               CL_command[2] = speedState;
-              CLMillis = millis();
+              printf("CL_Command 0: %d, 1: %d, 2:%d \n", CL_command[0], CL_command[1], CL_command[2]);
+//              CLMillis = millis();
             }
                 
             if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
@@ -601,7 +605,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(CL_command[0]){
       switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
+        case 1: cameraLED(basicColors[CL_command[1]], CL_command[2]);                     break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
       }
@@ -633,14 +637,15 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 void cameraLED(uint32_t color, int CLSpeed){
   int CLRLow = 1;
   int CLRHigh = 50;
+
+  currentMillis = millis();
       CLSpeed = map(CLSpeed, 0, 9, 1, 250);
-      if (millis() - CLMillis >= CLSpeed){
-        CLMillis = millis();
+      if (currentMillis - startMillis >= CLSpeed){
       if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
       
           dim=dim - random(CLRLow, CLRHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
                                               //adding a random causes a less smooth transition which makes it look a little better
-          colorWipe(color, dim);              // Set the LEDs to the color and brightness using the colorWheel function
+          colorWipe(color, dim);              // Set the LEDs to the color and brightness using the colorWipe function
           }
       
         if(dim <= 10){                        //Check to see if the brightness is at or below 20.  Modifying the "20" will
@@ -661,6 +666,7 @@ void cameraLED(uint32_t color, int CLSpeed){
                                               //dim random number to allow a small flicker without being too annoying.
             countUp = false;                  // if the dim variable is at or above "235", change the countUp flag to false
           }
+          startMillis = currentMillis; 
       }
       
   }
@@ -700,27 +706,27 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t servo
     switch (doorpos){
       case 1: DBG("Open Top Utility Arm\n");
               sprintf(stringToSend, "D10101%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Open Bottom Utility Arm\n");
               sprintf(stringToSend, "D10102%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Open Large Left Door\n");
               sprintf(stringToSend, "D10103%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Open Large Right Door\n");
               sprintf(stringToSend, "D10104%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Open Charge Bay Indicator Door\n");
               sprintf(stringToSend, "D10105%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Open Data Panel Door\n");
               sprintf(stringToSend, "D10106%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
   };
@@ -750,27 +756,27 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t serv
     switch(doorpos){
       case 1: DBG("Close Top Utility Arm\n");             
               sprintf(stringToSend, "D10201%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Close Bottom Utility Arm\n");              
               sprintf(stringToSend, "D10202%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Close Large Left Door\n");
               sprintf(stringToSend, "D10203%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Close Large Right Door\n");
               sprintf(stringToSend, "D10204%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Close Charge Bay Indicator Door\n");
               sprintf(stringToSend, "D10205%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Close Data Panel Door\n");
               sprintf(stringToSend, "D10206%02d%04d", servoEasingMethod, servoMovementDuration);
-              sendESPNOWCommand("BC", stringToSend);                                        
+              sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
   };
@@ -798,7 +804,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D103%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC",stringToSend);
+    sendESPNOWCommand("BS",stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       setServoEasingMethod(servoEasingMethod);
@@ -813,7 +819,7 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   DBG("Close all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D104%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC", stringToSend);
+    sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
@@ -834,7 +840,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
   DBG("Open and Close All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D106%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC", stringToSend);
+    sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
@@ -849,7 +855,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t servoMovem
   DBG("Open and Close Doors Long\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D107%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC", stringToSend);
+    sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
@@ -864,7 +870,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t servoMovementDur
   DBG("Flutter All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D108%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC", stringToSend);  
+    sendESPNOWCommand("BS", stringToSend);  
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
@@ -879,7 +885,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
   DBG("Open and Close All Doors Repeat\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D109%02d%04d", servoEasingMethod, servoMovementDuration);
-    sendESPNOWCommand("BC", stringToSend);
+    sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
@@ -896,12 +902,12 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
   sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend); break;
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend);
+    case 3: sendESPNOWCommand("BS", stringToSend);
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BS", stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -914,12 +920,12 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);  break;
+    case 1: sendESPNOWCommand("BS", stringToSend);  break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
+    case 3: sendESPNOWCommand("BS", stringToSend);     
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BS", stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -932,12 +938,12 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend); break;
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
+    case 3: sendESPNOWCommand("BS", stringToSend);     
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, 2000); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BS", stringToSend);}, 2000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -949,12 +955,12 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t servoMovementD
   sprintf(stringToSend, "D113%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);                                      break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend);
+    case 3: sendESPNOWCommand("BS", stringToSend);
             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); 
-            sendESPNOWCommand("BC", stringToSend); break;
+            sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -966,12 +972,12 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t servoMovemen
   sprintf(stringToSend, "D114%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend); 
+    case 3: sendESPNOWCommand("BS", stringToSend); 
             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
-            sendESPNOWCommand("BC", stringToSend); break;
+            sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }                                                            
@@ -983,12 +989,12 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t servoMovementDur
   sprintf(stringToSend, "D115%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend); 
+    case 3: sendESPNOWCommand("BS", stringToSend); 
             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
-            sendESPNOWCommand("BC", stringToSend); break;
+            sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -1000,12 +1006,12 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
   sprintf(stringToSend, "D116%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend); 
+    case 3: sendESPNOWCommand("BS", stringToSend); 
             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
-            sendESPNOWCommand("BC", stringToSend);break;
+            sendESPNOWCommand("BS", stringToSend);break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -1017,12 +1023,12 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMoveme
   sprintf(stringToSend, "D117%02d%04d", servoEasingMethod, servoMovementDuration);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend); 
+    case 3: sendESPNOWCommand("BS", stringToSend); 
             SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
-            sendESPNOWCommand("BC", stringToSend);break;
+            sendESPNOWCommand("BS", stringToSend);break;
   }
   D_command[0]   = '\0';                                             
 }                                                       
@@ -1122,7 +1128,7 @@ void sendESPNOWCommand(String starget,String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"){
+  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
   
