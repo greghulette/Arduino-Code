@@ -8,6 +8,9 @@
 #include "esp_wifi.h"
 #include <esp_now.h>
 
+//Used for PC9685 - Servo Expansion Board
+#include <Wire.h>
+
 //reeltwo libaries
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
@@ -862,7 +865,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
 }
 
 
-void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration,) {
   // Command: Dx17
   DBG("Harlem Shake\n");
   sprintf(stringToSend, "D217%02d%04d", servoEasingMethod, servoMovementDuration);
@@ -966,13 +969,37 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
+// void sendESPNOWCommand(String starget,String scomm){
+//   String sdest;
+//   if (starget == "DS" || starget == "RS" || starget == "HP"){
+//     sdest = "Dome";
+//   } else if (starget == "PC" || starget == "PL"){
+//     sdest = "Periscope";
+//   }
+//   commandsToSendtoBroadcast.structDestinationID = sdest;
+//   DBG("sdest: %s\n", sdest);
+//   commandsToSendtoBroadcast.structTargetID = starget;
+//   commandsToSendtoBroadcast.structSenderID = "Body";
+//   commandsToSendtoBroadcast.structCommand = scomm;
+//   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+//   if (result == ESP_OK) {
+//     DBG("Sent with success\n");
+//   }
+//   else {
+//     DBG("Error sending the data\n");
+//   }
+//   ESPNOW_command[0] = '\0';
+// }
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
+  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"){
+    sdest = "Body";
   }
+  
   commandsToSendtoBroadcast.structDestinationID = sdest;
   DBG("sdest: %s\n", sdest);
   commandsToSendtoBroadcast.structTargetID = starget;
@@ -987,8 +1014,6 @@ void sendESPNOWCommand(String starget,String scomm){
   }
   ESPNOW_command[0] = '\0';
 }
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
