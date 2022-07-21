@@ -327,7 +327,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 //  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
 //  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
 //  Serial.print("Command = "); Serial.println(incomingCommand); 
-  DBG("Bytes received from ESP-NOW Message: %s\n", len);
+  DBG("Bytes received from ESP-NOW Message: %i\n", len);
   DBG("Sender ID = %s\n",incomingSenderID);
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);

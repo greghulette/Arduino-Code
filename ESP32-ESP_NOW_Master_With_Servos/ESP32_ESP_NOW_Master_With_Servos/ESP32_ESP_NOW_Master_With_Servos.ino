@@ -190,16 +190,25 @@ ServoSequencer servoSequencer(servoDispatch);
   esp_now_peer_info_t peerInfo;
 
 //  // Callback when data is sent
+//void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+//  char macStr[18];
+//  // Copies the sender mac address to a string
+//  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+//            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+//  DBG("Packet to: %s\n", macStr);
+//  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+////  DBG("Send Status:\t %s\n", status);
+//}
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  char macStr[18];
-  // Copies the sender mac address to a string
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  DBG("Packet to: %s\n", macStr);
+  Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-//  DBG("Send Status:\t %s\n", status);
+  if (status ==0){
+    success = "Delivery Success :)";
+  }
+  else{
+    success = "Delivery Fail :(";
+  }
 }
-
   // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
@@ -207,7 +216,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %s\n", len);
+  DBG("Bytes received from ESP-NOW Message: %i\n", len);
   DBG("Sender ID = %s\n",incomingSenderID);
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
@@ -753,9 +762,9 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
     case 1: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 2: sendESPNOWCommand("DS", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration);
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
+            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
     case 4: sendESPNOWCommand("DS", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -771,9 +780,9 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 2: sendESPNOWCommand("DS", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
+            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
     case 4: sendESPNOWCommand("DS", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -789,9 +798,9 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
     case 1: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); break;
     case 2: sendESPNOWCommand("DS", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
+            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, 2000); break;
     case 4: sendESPNOWCommand("DS", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, 3000); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -865,7 +874,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
 }
 
 
-void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration,) {
+void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
   // Command: Dx17
   DBG("Harlem Shake\n");
   sprintf(stringToSend, "D217%02d%04d", servoEasingMethod, servoMovementDuration);
@@ -969,37 +978,13 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-// void sendESPNOWCommand(String starget,String scomm){
-//   String sdest;
-//   if (starget == "DS" || starget == "RS" || starget == "HP"){
-//     sdest = "Dome";
-//   } else if (starget == "PC" || starget == "PL"){
-//     sdest = "Periscope";
-//   }
-//   commandsToSendtoBroadcast.structDestinationID = sdest;
-//   DBG("sdest: %s\n", sdest);
-//   commandsToSendtoBroadcast.structTargetID = starget;
-//   commandsToSendtoBroadcast.structSenderID = "Body";
-//   commandsToSendtoBroadcast.structCommand = scomm;
-//   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-//   if (result == ESP_OK) {
-//     DBG("Sent with success\n");
-//   }
-//   else {
-//     DBG("Error sending the data\n");
-//   }
-//   ESPNOW_command[0] = '\0';
-// }
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"){
-    sdest = "Body";
   }
-  
   commandsToSendtoBroadcast.structDestinationID = sdest;
   DBG("sdest: %s\n", sdest);
   commandsToSendtoBroadcast.structTargetID = starget;
@@ -1014,6 +999,8 @@ void sendESPNOWCommand(String starget,String scomm){
   }
   ESPNOW_command[0] = '\0';
 }
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
@@ -1026,7 +1013,7 @@ void sendESPNOWCommand(String starget,String scomm){
 //////////////////////////////////////////////////////////////////////
 
 
-void DBG(char *format, ...) {
+void DBG(const char *format, ...) {
         if (!debugflag)
                 return;
         va_list ap;
@@ -1036,7 +1023,7 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
+void DBG_1(const char *format, ...) {
         if (!debugflag1)
                 return;
         va_list ap;
@@ -1049,7 +1036,7 @@ void DBG_1(char *format, ...) {
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println("Debugging Enabled \n");
+    Serial.println("Debugging Enabled");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -1061,10 +1048,10 @@ void toggleDebug(){
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled \n");
+    Serial.println("Parameter Debugging Enabled");
     }
   else{
-    Serial.println("Parameter Debugging Disabled\n");
+    Serial.println("Parameter Debugging Disabled");
   }
     ESP_command[0]   = '\0';
 }
