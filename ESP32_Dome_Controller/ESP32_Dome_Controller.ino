@@ -120,7 +120,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int doorBoard = 0; 
   int doorEasingMethod;
   uint32_t doorEasingDuration;
-  uin32_t delayCallTime;
+  uint32_t delayCallTime;
 
   char stringToSend[20];
   uint32_t servoMovementDurationInDelayCall;
@@ -251,13 +251,14 @@ uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  char macStr[18];
-  // Copies the sender mac address to a string
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  DBG("Packet to: %s\n", macStr);
+  Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-//  DBG("Send Status:\t %s\n", status);
+  if (status ==0){
+    success = "Delivery Success :)";
+  }
+  else{
+    success = "Delivery Fail :(";
+  }
 }
 
 //   Callback when data is received
@@ -278,7 +279,6 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   DBG("Command = %s\n" , incomingCommand); 
   if (incomingDestinationID =="Dome"){
     DBG("ESP-NOW Command Accepted\n");
-    DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
 //    Serial.print("Target ID= "); Serial.println(incomingTargetID);
     if (incomingTargetID == "RS"){
@@ -295,7 +295,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         inputString = incomingCommand;
         stringComplete = true; 
     } else {
-        DBG("ESP-NOW Message Ignored\n");
+        DBG("Wrong Target ID Sent\n");
 //        Serial.println("Wrong Target ID Sent");
       }
   }
@@ -595,7 +595,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMov
 }
 
 
-void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=3000){
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=2125){
   // Command: Dx10
   DBG("Wave\n");
   servoMovementDurationInDelayCall = servoMovementDuration;
@@ -604,10 +604,10 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend);
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -622,10 +622,10 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);  break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);
+            DelayCall::schedule([] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -640,10 +640,10 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
-            DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+            DelayCall::schedule([] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -759,7 +759,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-  DBG("%s\n", inputString);
+  DBG("Received %s\n", inputString);
 }
 
 
@@ -771,7 +771,7 @@ void hpSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("%s\n", inputString);
+  DBG("Recieved %s\n", inputString);
 }
 
 
@@ -783,7 +783,7 @@ void rsSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("%s\n", inputString);
+  DBG("Received %s\n", inputString);
 }
 
  /////////////////////////////////////////////////////////
@@ -807,7 +807,7 @@ void writeRsSerial(String stringData){
   {
     rsSerial.write(completeString[i]);
   }
-  // Serial.println("Printing to rsSerial");
+  DBG("Printing to rsSerial\n");
 }
 
 void writeHpSerial(String stringData){
@@ -815,7 +815,7 @@ void writeHpSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     hpSerial.write(completeString[i]);
   }
-  // Serial.println("Printing to hpSerial");
+  DBG("Printing to hpSerial\n");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -829,18 +829,18 @@ void sendESPNOWCommand(String starget,String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
+  }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
   
   commandsToSendtoBroadcast.structDestinationID = sdest;
-  DBG("sdest: %s\n", sdest);
+  DBG("Setting sdest to: %s \n", sdest);
   commandsToSendtoBroadcast.structTargetID = starget;
   commandsToSendtoBroadcast.structSenderID = "Dome";
   commandsToSendtoBroadcast.structCommand = scomm;
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent with success\n");
+    DBG("Sent with success \n");
   }
   else {
     DBG("Error sending the data\n");
@@ -861,31 +861,7 @@ void sendESPNOWCommand(String starget,String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-//void DBG(char *fmt, ...){
-//  va_list ap; /* points to each unnamed arg in turn */
-//  char *p, *sval;
-//  int ival;
-//  double dval;
-//  va_start(ap, fmt); /* make ap point to 1st unnamed arg */
-//  for (p = fmt; *p; p++) 
-//    {
-//      if (*p != '%'){
-//        putchar(*p);
-//        continue;
-//      }
-//      switch (*++p){
-//        case 'd': ival = va_arg(ap, int); printf("%d", ival); break;
-//        case 'f': dval = va_arg(ap, double);printf("%f", dval); break;
-//        case 's': for (sval = va_arg(ap, char *); *sval; sval++)
-//                    putchar(*sval);  break;
-//        default: putchar(*p); break;
-//      }
-//    }
-//   va_end(ap); /* clean up when done */
-//}
-
-
-void DBG(char *format, ...) {
+void DBG(const char *format, ...) {
         if (!debugflag)
                 return;
         va_list ap;
@@ -895,7 +871,7 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
+void DBG_1(const char *format, ...) {
         if (!debugflag1)
                 return;
         va_list ap;
@@ -1091,7 +1067,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          DBG("Command: %s with a length of %s \n", inputBuffer, commandLength);
+          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
           if(commandLength >= 3) {
             if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {                                                            // specifies the overall door command
               doorBoard = inputBuffer[1]-'0';                                                                           // Sets the board to call the command on.
@@ -1099,20 +1075,24 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
                 door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');                                                    // Sets the specific door to move
                 if (inputBuffer[6] == 'D' || inputBuffer[6] == 'd'){
-                //   DBG("with DelayCall \n");
+                   DBG("with DelayCall \n");
                   delayCallTime =  (inputBuffer[7]-'0')*10000+(inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');  // converts 5 digit character to uint32_t
                   doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
                   doorEasingDuration = 0;                                                                                                                         // Sets Easing duration to 0-Off
                 } else if (inputBuffer[6] == 'E' ||inputBuffer[6] == 'e'){
-                //   DBG("with Easing \n");
+                   DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
                   doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
                   delayCallTime = 0;
                 } else if (inputBuffer[6] == 'B' || inputBuffer[6] == 'b'){
-                //   DBG("with Both Easing and Delay Call \n");
+                   DBG("with Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
                   doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
                   delayCallTime =  (inputBuffer[13]-'0')*10000+(inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
+                }else{
+                  delayCallTime = 0;
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
                 }
                 // if(commandLength >= 8){                                                                                 
                 //   DBG("Door Function Called \n");
@@ -1126,21 +1106,28 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               else if (doorFunction != 1 || doorFunction != 2) {
                 DBG("Other Door Function Called \n");
                 if (inputBuffer[4] == 'D' || inputBuffer[4] == 'd'){
-                //   DBG("with DelayCall \n");
+                   DBG("with DelayCall \n");
                   delayCallTime =  (inputBuffer[5]-'0')*10000+(inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
                   doorEasingMethod = 0;
                   doorEasingDuration = 0;
                 } else if (inputBuffer[4] == 'E' ||inputBuffer[4] == 'e'){
-                //   DBG("with Easing \n");
+                   DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
                   doorEasingDuration = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
                   delayCallTime = 0;
                 } else if (inputBuffer[4] == 'B' || inputBuffer[4] == 'b'){
-                //   DBG("with Both Easing and Delay Call \n");
+                   DBG("with Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
                   doorEasingDuration = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');   
                   delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
              
+                }else{
+                  int doorEasingMethod;
+                  uint32_t doorEasingDuration;
+                  uint32_t delayCallTime;
+//                  delayCallTime = 0;
+//                  doorEasingMethod = 0;
+//                  doorEasingDuration = 0;
                 }
                 // if (commandLength >=6){
                 //   DBG("with Easing \n");
@@ -1162,14 +1149,14 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 char inCharRead = inputBuffer[i];
                 inputStringCommand += inCharRead;                   // add it to the inputString:
               }
-              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+//              DBG("\nFull Command Recieved: %s ",inputStringCommand);
               espNowCommandFunctionString = inputStringCommand.substring(0,2);
               espNowCommandFunction = espNowCommandFunctionString.toInt();
-              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+//              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
               targetID = inputStringCommand.substring(2,4);
-              DBG("Target ID: %s\n", targetID);
+//              DBG("Target ID: %s\n", targetID);
               commandSubString = inputStringCommand.substring(4,commandLength);
-              DBG("Command to Forward: %s\n", commandSubString);
+//              DBG("Command to Forward: %s\n", commandSubString);
             }
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1177,7 +1164,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               char inCharRead = inputBuffer[i];
               serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+//              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
               if (serialPort == "HP"){
                 writeHpSerial(serialStringCommand);
               } else if (serialPort == "RS"){
@@ -1206,9 +1193,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               D_command[4] = doorEasingDuration;
               D_command[5] = delayCallTime;
 
-              Serial.println(doorFunction);
-              Serial.println(doorEasingMethod);
-              Serial.println(doorEasingDuration);
+              DBG("Door Function Called: %d\n",doorFunction);
+              DBG("Easing Method: %d \n",doorEasingMethod);
+              DBG("Easing Duratoin: %d\n",doorEasingDuration);
+              DBG("DelayCall Duration: %d\n",delayCallTime);
             }
 
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
@@ -1257,7 +1245,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         inputStringCommand = "";
         targetID = "";
     
-      DBG("command taken\n");
+//      DBG("command taken\n");
 
     }
 
@@ -1282,7 +1270,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(D_command[0]) {
       if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-        DBG("Incorrect Door Value Specified, Command Aborted!");
+//        DBG("Incorrect Door Value Specified, Command Aborted!");
         D_command[0] = '\0';
       }
       else {
