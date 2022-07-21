@@ -175,6 +175,60 @@ ServoSequencer servoSequencer(servoDispatch);
   Adafruit_NeoPixel stripCL = Adafruit_NeoPixel(NUM_CAMERA_PIXELS, CAMERA_LENS_DATA_PIN, NEO_GRB + NEO_KHZ800);
 
   boolean countUp=false;
+///////////////////////////////////////////////////////////////////////
+///*****                 Auto Sequence Settings                *****///
+///*****                                                       *****///
+///*****  When enabled, each display will automatically        *****///
+///*****  trigger random display sequences. This setting can   *****///
+///*****  be overridden by sending the following display       *****///
+///*****  Display Commands to the appropriate display device.  *****///
+///*****                                                       *****///
+///*****     98 - Auto Off Trigger Command                     *****///
+///*****     99 - Auto On Trigger  Command                     *****///
+///*****                                                       *****///
+///*****     1 = enabled   0 = disable                         *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+   byte enableCLAuto   = 1;   //1
+  
+//////////////////////////////////////////////////////////////////////
+///*****             Auto Mode Interval Settings               *****///
+///*****                                                       *****///
+///*****  Each display enabled by auto mode neeed 4 values.    *****///
+///*****  The first two values of each category below are      *****///
+///*****  the min and max range that determine the run time    *****///
+///*****  of each display sequence.  Run times will be chosen  *****///
+///*****  from with in this range.                             *****///
+///*****                                                       *****///
+///*****  Likewise, the second two values of each category     *****///
+///*****  determine the range from which the interval between  *****///
+///*****  display sequences will be randomly chosen.           *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+
+  // Coin Slots
+   unsigned const int CLAutoIntMin    = 300000;
+   unsigned const int CLAutoIntMax    = 300000;
+   unsigned const int CLAutoPauseMin  = 1;
+   unsigned const int CLAutoPauseMax  = 1;
+   unsigned int CLAutoPause;
+   unsigned int CLAutoInt;
+
+///////////////////////////////////////////////////////////////////////
+///*****               Auto Sequence Assignments               *****///
+///*****                                                       *****///
+///*****   You can choose which sequences will be available    *****///
+///*****  to each auto function. Simply add the command value  *****///
+///*****  for each desired sequence to the string array below. *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+  String CLautoCommands[] = {
+                            "R01055"        // Pulse Blue at medium speed
+                            };
+
+  int CLautoCommandsCount = sizeof(CLautoCommands) / sizeof(CLautoCommands[ 0 ]);     // Determins the # of Commands in List
+
+  unsigned long CLAutoTimer;
 
   //////////////////////////////////////////////////////////////////////
   ///******       Serial Ports Specific Setup                   *****///
@@ -376,6 +430,13 @@ void colorWipe(uint32_t c, int brightness) {
   for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
     stripCL.setBrightness(brightness);
     stripCL.setPixelColor(i, c);
+    stripCL.show();
+  }
+};
+
+void clearCL() {
+  for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
+    stripCL.setPixelColor(i, off);
     stripCL.show();
   }
 };
@@ -1212,7 +1273,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               CL_command[0] = ledFunction;
               CL_command[1] = colorState1;
               CL_command[2] = speedState;
-              CLMillis = millis();
+              if(!autoComplete) {enableCLAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
             }
                 
             if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
@@ -1312,6 +1373,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
+        case 99: CL_command[0] = '\0'; 
+                  clearCL();
+                  enableCLAuto = 1;                                                   
+                                                                            break;
       }
     }
 
@@ -1322,10 +1387,30 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 3: break;  //reserved for future use
       }
     }
+f(!stringComplete && inputString) {
+    if(enableCLAuto == 1) {CLAuto();}
 
+  }
     if(isStartUp) {
       isStartUp = false;
       delay(500);
     }
   }
 }  //end of main loop
+
+     void CLAuto () {
+       if(millis() - CLAutoTimer >= CLAutoInt*1000) {       // and the timer has reached the set interval
+        if(millis() - CLAutoTimer >= (CLAutoInt+CLAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
+          if(!autoComplete) {
+           CLAutoTimer = millis();
+           CLAutoPause = random(CLAutoPauseMin,CLAutoPauseMax);
+           CLAutoInt = random(CLAutoIntMin,CLAutoIntMax);
+           autoInputString = CLautoCommands[random((CLautoCommandsCount-1))];
+           autoComplete = true;
+          }
+         }
+        else {
+           CL_command[0] = 99;
+        }                                                             // and set flag so new command is processes at beginning of loop
+      }
+     }

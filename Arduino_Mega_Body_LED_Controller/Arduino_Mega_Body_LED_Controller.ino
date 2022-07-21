@@ -870,7 +870,7 @@ void mainLoop() {
          inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
          inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
          inputBuffer[0]=='P'           // Programming variables remotely instead of trimpots
-         ) {
+        ) {
             commandLength = (sizeof(inputBuffer) / sizeof(inputBuffer[0]));                     //  Determines length of command character array.
             //if(inputBuffer[commandLength-1] == '\r') {commandLength = commandLength-1;}
 
@@ -884,8 +884,8 @@ void mainLoop() {
                   else {typeState = inputBuffer[3]-'0';}                   //  Check to see if command contains a type value, and if so convert it to integer.
                 }
                 else {
-                   if(inputBuffer[0]=='U' || inputBuffer[0]=='U') {}
-                   else {typeState = 0;}
+                  if(inputBuffer[0]=='U' || inputBuffer[0]=='U') {}
+                  else {typeState = 0;}
                 }
 
                 if(commandLength >= 5) {
@@ -899,7 +899,7 @@ void mainLoop() {
 
                 if(colorState1 < 0 || colorState1 > 9) {
                     colorState1 = defaultPrimaryColorInt;
-                 }
+                }
 
                 if(commandLength >= 6) {
                   if(inputBuffer[0]=='P') {varNameNum3 = inputBuffer[5]-'0';}
@@ -911,8 +911,8 @@ void mainLoop() {
                 }
 
                 if(colorState2 < 0 || colorState2 > 9) {
-                     colorState2 = defaultSecondaryColorInt;
-                 }
+                    colorState2 = defaultSecondaryColorInt;
+                }
 
                 if(inputBuffer[0]=='C' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Y' || inputBuffer[0]=='E') {
                   CS_command[0]   = '\0';                                                            // Flushes Array
