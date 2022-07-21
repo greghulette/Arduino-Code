@@ -3495,29 +3495,29 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
             else if (type == 5) {
               if(CSCount>=252) { CSCount = 0; }
             }
-         }
-         if(type == 2) {c = basicColors[CSCount+1];}
-         else if(type == 3 || type == 4) {
-           if(type == 3) {
-             if(CSCount == 0) {c=red;}
-             else {c = blue;}
-           }
-           else if (type = 4) {
-             if(CSCount == 0) {c=green;}
-             else {c = yellow;}
-           }
-         }
-         if(type == 5) {c = colorWheel(CSCount);}
-         if (frame >= CS_PIXELS) {dir = -1; frame = (CS_PIXELS-1)-(frame - (CS_PIXELS));count++;}
-         else {dir = 1;}
-
-         for (int i = 0; i<CS_PIXELS; i++) {
-           if(i == frame) {stripCS1.setPixelColor(i,c);stripCS2.setPixelColor(i,c);}
-           else if(i == (frame-1) && i >0 && dir > 0) {stripCS1.setPixelColor(i, dimColor(c, 4));stripCS2.setPixelColor(i, dimColor(c, 4));}
-           else if(i == (frame+1) && i <= CS_PIXELS && dir < 0) {stripCS1.setPixelColor(i, dimColor(c, 8));stripCS2.setPixelColor(i, dimColor(c, 8)); }
-           else {stripCS1.setPixelColor(i,off);stripCS2.setPixelColor(i,off);}
+        }
+        if(type == 2) {c = basicColors[CSCount+1];}
+        else if(type == 3 || type == 4) {
+          if(type == 3) {
+            if(CSCount == 0) {c=red;}
+            else {c = blue;}
           }
-          if(elapsed>=interval) {showCS();}
+          else if (type = 4) {
+            if(CSCount == 0) {c=green;}
+            else {c = yellow;}
+          }
+        }
+        if(type == 5) {c = colorWheel(CSCount);}
+        if (frame >= CS_PIXELS) {dir = -1; frame = (CS_PIXELS-1)-(frame - (CS_PIXELS));count++;}
+        else {dir = 1;}
+
+        for (int i = 0; i<CS_PIXELS; i++) {
+          if(i == frame) {stripCS1.setPixelColor(i,c);stripCS2.setPixelColor(i,c);}
+          else if(i == (frame-1) && i >0 && dir > 0) {stripCS1.setPixelColor(i, dimColor(c, 4));stripCS2.setPixelColor(i, dimColor(c, 4));}
+          else if(i == (frame+1) && i <= CS_PIXELS && dir < 0) {stripCS1.setPixelColor(i, dimColor(c, 8));stripCS2.setPixelColor(i, dimColor(c, 8)); }
+          else {stripCS1.setPixelColor(i,off);stripCS2.setPixelColor(i,off);}
+        }
+        if(elapsed>=interval) {showCS();}
       }
 
 
