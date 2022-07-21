@@ -120,7 +120,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int doorBoard = 0; 
   int doorEasingMethod;
   uint32_t doorEasingDuration;
-  uin32_t delayCallTime;
+  uint32_t delayCallTime;
 
   char stringToSend[20];
   uint32_t servoMovementDurationInDelayCall;
@@ -604,10 +604,10 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDura
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 3: sendESPNOWCommand("BC", stringToSend);
+    case 3: sendESPNOWCommand("BS", stringToSend);
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+            DelayCall::schedule([stringToSend]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -622,10 +622,10 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);  break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
+    case 3: sendESPNOWCommand("BS", stringToSend);     
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration); break;
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -640,10 +640,10 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovement
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
-    case 3: sendESPNOWCommand("BC", stringToSend);     
+    case 3: sendESPNOWCommand("BS", stringToSend);     
             DelayCall::schedule([servoMovementDurationInDelayCall] {SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
-            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;
+            DelayCall::schedule([stringToSend] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
@@ -829,7 +829,7 @@ void sendESPNOWCommand(String starget,String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
+  }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
   
@@ -1113,6 +1113,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
                   doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
                   delayCallTime =  (inputBuffer[13]-'0')*10000+(inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
+                }else{
+                  delayCallTime = 0;
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
                 }
                 // if(commandLength >= 8){                                                                                 
                 //   DBG("Door Function Called \n");
@@ -1141,6 +1145,14 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   doorEasingDuration = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');   
                   delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
              
+                }
+                else{
+                  int doorEasingMethod;
+                  uint32_t doorEasingDuration;
+                  uint32_t delayCallTime;
+                  // delayCallTime = 0;
+                  // doorEasingMethod = 0;
+                  // doorEasingDuration = 0;
                 }
                 // if (commandLength >=6){
                 //   DBG("with Easing \n");
