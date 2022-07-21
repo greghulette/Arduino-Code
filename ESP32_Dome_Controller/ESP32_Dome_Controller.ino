@@ -223,7 +223,8 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****                                                       *****///
 ///////////////////////////////////////////////////////////////////////
   String CLautoCommands[] = {
-                            "R01055"        // Pulse Blue at medium speed
+                            "R0155",        // Pulse Blue at medium speed
+                            "R0155"        // Pulse Blue at medium speed
                             };
 
   int CLautoCommandsCount = sizeof(CLautoCommands) / sizeof(CLautoCommands[ 0 ]);     // Determins the # of Commands in List
@@ -388,12 +389,12 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void cameraLED(uint32_t color, int CLSpeed){
+void cameraLED(uint32_t color, int CLSpeed1){
   int CLRLow = 1;
   int CLRHigh = 50;
 
   currentMillis = millis();
-      CLSpeed = map(CLSpeed, 0, 9, 1, 250);
+      CLSpeed = map(CLSpeed1, 1, 9, 1, 250);
       if (currentMillis - startMillis >= CLSpeed){
       if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
       
@@ -1110,7 +1111,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}
 
-  cameraLED(blue, 5); // blue
+//  cameraLED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
@@ -1155,14 +1156,6 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   doorEasingMethod = 0;
                   doorEasingDuration = 0;
                 }
-                // if(commandLength >= 8){                                                                                 
-                //   DBG("Door Function Called \n");
-                //   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                //   doorEasingDuration = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');
-                // } else{
-                //   doorEasingMethod = 0;
-                //   doorEasingDuration = 0;
-                // }
               }
               else if (doorFunction != 1 || doorFunction != 2) {
                 DBG("Other Door Function Called \n");
@@ -1183,31 +1176,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
              
                 }else{
-                  int doorEasingMethod;
-                  uint32_t doorEasingDuration;
-                  uint32_t delayCallTime;
-//                  delayCallTime = 0;
-//                  doorEasingMethod = 0;
-//                  doorEasingDuration = 0;
+                  delayCallTime = 0;
+                  doorEasingMethod = 0;
+                  doorEasingDuration = 0;
                 }
-                else{
-                  int doorEasingMethod;
-                  uint32_t doorEasingDuration;
-                  uint32_t delayCallTime;
-                  // delayCallTime = 0;
-                  // doorEasingMethod = 0;
-                  // doorEasingDuration = 0;
-                }
-                // if (commandLength >=6){
-                //   DBG("with Easing \n");
-                //   doorEasingMethod = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');
-                //   doorEasingDuration = (inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                //   if (commandLength >= )
-                // } else {
-                //   DBG("without Easing \n");
-                //   doorEasingMethod = 0;
-                //   doorEasingDuration = 0;
-                // }
               }
             }                                    
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
@@ -1247,8 +1219,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             }   
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
               ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              colorState1 = inputBuffer[3]-'0';
-              speedState = inputBuffer[4]-'0';
+              colorState1 = (inputBuffer[3]-'0');
+              speedState = (inputBuffer[4]-'0');
               }              
 
 
@@ -1274,6 +1246,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               CL_command[1] = colorState1;
               CL_command[2] = speedState;
               if(!autoComplete) {enableCLAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
+              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",ledFunction, colorState1, basicColors[colorState1], speedState);
+              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",CL_command[0], CL_command[1], basicColors[CL_command[1]], CL_command[2]);
             }
                 
             if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
@@ -1370,13 +1344,17 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(CL_command[0]){
       switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[2]], CL_command[3]);                     break;
+        case 1: cameraLED(basicColors[CL_command[1]], CL_command[2]);                     break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
-        case 99: CL_command[0] = '\0'; 
+        case 96: enableCLAuto = 0;                                                                               break;     // Disable Auto Mode
+        case 97: enableCLAuto = 1;                                                                               break;     // Enables Auto Mode
+        case 98:  CL_command[0] = '\0'; 
                   clearCL();
-                  enableCLAuto = 1;                                                   
-                                                                            break;
+                  enableCLAuto = 0; break;
+        case 99:  CL_command[0] = '\0'; 
+                  clearCL();
+                  enableCLAuto = 1; break;
       }
     }
 
@@ -1387,10 +1365,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 3: break;  //reserved for future use
       }
     }
-f(!stringComplete && inputString) {
-    if(enableCLAuto == 1) {CLAuto();}
-
-  }
+      if(!stringComplete && inputString) {
+          if(enableCLAuto == 1) {CLAuto();}
+      
+        }
     if(isStartUp) {
       isStartUp = false;
       delay(500);
