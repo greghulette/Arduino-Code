@@ -131,6 +131,9 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t varSpeedMin;
   uint32_t varSpeedMax;
   char stringToSend[20];
+  uint32_t fVarSpeedMin;
+  uint32_t fVarSpeedMax;
+
   uint32_t servoMovementDurationInDelayCall;
 
 //////////////////////////////////////////////////////////////////////
@@ -471,33 +474,33 @@ void clearCL() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t servoMovementDuration) {
+void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   //Command: Dx01zz
   DBG("Open Specific Door\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: DBG("Open Top Utility Arm\n");
-              sprintf(stringToSend, "D10101%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10101%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Open Bottom Utility Arm\n");
-              sprintf(stringToSend, "D10102%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10102%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Open Large Left Door\n");
-              sprintf(stringToSend, "D10103%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10103%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Open Large Right Door\n");
-              sprintf(stringToSend, "D10104%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10104%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Open Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10105%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10105%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Open Data Panel Door\n");
-              sprintf(stringToSend, "D10106%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10106%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -505,49 +508,49 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t servo
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
     switch (doorpos){
-      case 1: Serial.println("Open SMALL_PANEL_ONE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_ONE, servoMovementDuration);     break;
-      case 2: Serial.println("Open SMALL_PANEL_TWO");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_TWO, servoMovementDuration);     break;
-      case 3: Serial.println("Open SMALL_PANEL_THREE");     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_THREE, servoMovementDuration);   break;
-      case 4: Serial.println("Open MEDIUM_PANEL_PAINTED");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_PAINTED, servoMovementDuration);break;
-      case 5: Serial.println("Open MEDIUM_PANEL_SILVER");   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_SILVER, servoMovementDuration); break;
-      case 6: Serial.println("Open BIG_PANEL");             SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, BIG_PANEL, servoMovementDuration);           break;
-      case 7: Serial.println("Open PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_ONE, servoMovementDuration);       break;
-      case 8: Serial.println("Open PIE_PANEL_TWO");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_TWO, servoMovementDuration);       break;
-      case 9: Serial.println("Open PIE_PANEL_THREE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_THREE, servoMovementDuration);     break;
-      case 10: Serial.println("Open PIE_PANEL_FOUR");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_FOUR, servoMovementDuration);      break;
+      case 1: Serial.println("Open SMALL_PANEL_ONE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_ONE, varSpeedMin, varSpeedMax);     break;
+      case 2: Serial.println("Open SMALL_PANEL_TWO");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_TWO, varSpeedMin, varSpeedMax);     break;
+      case 3: Serial.println("Open SMALL_PANEL_THREE");     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SMALL_PANEL_THREE, varSpeedMin, varSpeedMax);   break;
+      case 4: Serial.println("Open MEDIUM_PANEL_PAINTED");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_PAINTED, varSpeedMin, varSpeedMax);break;
+      case 5: Serial.println("Open MEDIUM_PANEL_SILVER");   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, MEDIUM_PANEL_SILVER, varSpeedMin, varSpeedMax); break;
+      case 6: Serial.println("Open BIG_PANEL");             SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, BIG_PANEL, varSpeedMin, varSpeedMax);           break;
+      case 7: Serial.println("Open PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_ONE, varSpeedMin, varSpeedMax);       break;
+      case 8: Serial.println("Open PIE_PANEL_TWO");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_TWO, varSpeedMin, varSpeedMax);       break;
+      case 9: Serial.println("Open PIE_PANEL_THREE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_THREE, varSpeedMin, varSpeedMax);     break;
+      case 10: Serial.println("Open PIE_PANEL_FOUR");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, PIE_PANEL_FOUR, varSpeedMin, varSpeedMax);      break;
 
     }
   };
   D_command[0]   = '\0';
 };
 
-void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t servoMovementDuration) {
+void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx02zz
   DBG("Close Specific Door");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch(doorpos){
       case 1: DBG("Close Top Utility Arm\n");             
-              sprintf(stringToSend, "D10201%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10201%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Close Bottom Utility Arm\n");              
-              sprintf(stringToSend, "D10202%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10202%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Close Large Left Door\n");
-              sprintf(stringToSend, "D10203%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10203%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Close Large Right Door\n");
-              sprintf(stringToSend, "D10204%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10204%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Close Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10205%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10205%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Close Data Panel Door\n");
-              sprintf(stringToSend, "D10206%02d%04d", servoEasingMethod, servoMovementDuration);
+              sprintf(stringToSend, "D10206%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -555,16 +558,16 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t serv
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
     switch (doorpos){
-      case 1: Serial.println("Close SMALL_PANEL_ONE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_ONE, servoMovementDuration);     break;
-      case 2: Serial.println("Close SMALL_PANEL_TWO");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_TWO, servoMovementDuration);     break;
-      case 3: Serial.println("Close SMALL_PANEL_THREE");     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_THREE, servoMovementDuration);   break;
-      case 4: Serial.println("Close MEDIUM_PANEL_PAINTED");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_PAINTED, servoMovementDuration);break;
-      case 5: Serial.println("Close MEDIUM_PANEL_SILVER");   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_SILVER, servoMovementDuration); break;
-      case 6: Serial.println("Close BIG_PANEL");             SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, BIG_PANEL, servoMovementDuration);           break;
-      case 7: Serial.println("Close PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_ONE, servoMovementDuration);       break;
-      case 8: Serial.println("Close PIE_PANEL_TWO");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_TWO, servoMovementDuration);       break;
-      case 9: Serial.println("Close PIE_PANEL_THREE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_THREE, servoMovementDuration);     break;
-      case 10: Serial.println("Close PIE_PANEL_FOUR");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_FOUR, servoMovementDuration);      break;
+      case 1: Serial.println("Close SMALL_PANEL_ONE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_ONE, varSpeedMin, varSpeedMax);     break;
+      case 2: Serial.println("Close SMALL_PANEL_TWO");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_TWO, varSpeedMin, varSpeedMax);     break;
+      case 3: Serial.println("Close SMALL_PANEL_THREE");     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SMALL_PANEL_THREE, varSpeedMin, varSpeedMax);   break;
+      case 4: Serial.println("Close MEDIUM_PANEL_PAINTED");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_PAINTED, varSpeedMin, varSpeedMax);break;
+      case 5: Serial.println("Close MEDIUM_PANEL_SILVER");   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, MEDIUM_PANEL_SILVER, varSpeedMin, varSpeedMax); break;
+      case 6: Serial.println("Close BIG_PANEL");             SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, BIG_PANEL, varSpeedMin, varSpeedMax);           break;
+      case 7: Serial.println("Close PIE_PANEL_ONE");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_ONE, varSpeedMin, varSpeedMax);       break;
+      case 8: Serial.println("Close PIE_PANEL_TWO");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_TWO, varSpeedMin, varSpeedMax);       break;
+      case 9: Serial.println("Close PIE_PANEL_THREE");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_THREE, varSpeedMin, varSpeedMax);     break;
+      case 10: Serial.println("Close PIE_PANEL_FOUR");       SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, PIE_PANEL_FOUR, varSpeedMin, varSpeedMax);      break;
     }
   };
   D_command[0]   = '\0';
@@ -580,226 +583,232 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       setServoEasingMethod(servoEasingMethod);
-      SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, servoMovementDuration);
+      SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0] = '\0';
 }
 
 
-void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx04
   DBG("Close all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D104%02d%04d", servoEasingMethod, servoMovementDuration);
+    sprintf(stringToSend, "D104%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, servoMovementDuration);
+    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0] = '\0';
 }
 
 
-void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx05
   // add sequence for this routine.  
 }
 
 
-void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
   // Command: Dx06
   DBG("Open and Close All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D106%02d%04d", servoEasingMethod, servoMovementDuration);
+    sprintf(stringToSend, "D106%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, servoMovementDuration);
+    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0]   = '\0';                                           
 }
 
 
-void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
   // Command: Dx07
   DBG("Open and Close Doors Long\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D107%02d%04d", servoEasingMethod, servoMovementDuration);
+    sprintf(stringToSend, "D107%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, servoMovementDuration);
+    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0]   = '\0';                                                 
 }
 
 
-void allFlutter(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
   // Command: Dx08
   DBG("Flutter All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D108%02d%04d", servoEasingMethod, servoMovementDuration);
+    sprintf(stringToSend, "D108%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);  
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, servoMovementDuration);
+    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0]   = '\0';   
 }
 
 
-void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration){
+void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
   // Command: Dx09
   DBG("Open and Close All Doors Repeat\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D109%02d%04d", servoEasingMethod, servoMovementDuration);
+    sprintf(stringToSend, "D109%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, servoMovementDuration);
+    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   };
   D_command[0]   = '\0';             
 }
 
 
-void panelWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration=2125){
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration=2125){
   // Command: Dx10
   DBG("Wave\n");
-  servoMovementDurationInDelayCall = servoMovementDuration;
-  sprintf(stringToSend, "D110%02d%04d", servoEasingMethod, servoMovementDuration);
+  // servoMovementDurationInDelayCall = servoMovementDuration;
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  sprintf(stringToSend, "D110%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend);
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, servoMovementDuration); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration){
+void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx11  
   DBG("Wave Fast\n");
-  servoMovementDurationInDelayCall = servoMovementDuration;
-  sprintf(stringToSend, "D111%02d%04d", servoEasingMethod, servoMovementDuration);
+  // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  sprintf(stringToSend, "D111%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);  break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);  break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
     case 3: sendESPNOWCommand("BS", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, servoMovementDuration);
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
             DelayCall::schedule([] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration, uint32_t delayCallDuration) {
+void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx12
   DBG("Open Close Wave \n");
-  servoMovementDurationInDelayCall = servoMovementDuration;
-  sprintf(stringToSend, "D112%02d%04d", servoEasingMethod, servoMovementDuration);
+  // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  sprintf(stringToSend, "D112%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration);  break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
     case 3: sendESPNOWCommand("BS", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDurationInDelayCall);}, delayCallDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, servoMovementDuration); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([] {sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx13
   DBG("Marching Ants\n");
-  sprintf(stringToSend, "D113%02d%04d", servoEasingMethod, servoMovementDuration);
+  sprintf(stringToSend, "D113%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend);
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, servoMovementDuration); 
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx14
   DBG("Panel Alternate\n");
-  sprintf(stringToSend, "D114%02d%04d", servoEasingMethod, servoMovementDuration);
+  sprintf(stringToSend, "D114%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, servoMovementDuration); break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
             sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }                                                            
 
 
-void panelDance(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
  // Command: Dx15
   DBG("Panel Dance\n");
-  sprintf(stringToSend, "D115%02d%04d", servoEasingMethod, servoMovementDuration);
+  sprintf(stringToSend, "D115%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, servoMovementDuration); break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
             sendESPNOWCommand("BS", stringToSend); break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void longDisco(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx16
   DBG("Panel Dance Long\n");
-  sprintf(stringToSend, "D116%02d%04d", servoEasingMethod, servoMovementDuration);
+  sprintf(stringToSend, "D116%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, servoMovementDuration); break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
             sendESPNOWCommand("BS", stringToSend);break;
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t servoMovementDuration) {
+void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx17
   DBG("Harlem Shake\n");
-  sprintf(stringToSend, "D117%02d%04d", servoEasingMethod, servoMovementDuration);
+  sprintf(stringToSend, "D117%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, servoMovementDuration); break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
             sendESPNOWCommand("BS", stringToSend);break;
   }
   D_command[0]   = '\0';                                             
@@ -1121,7 +1130,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
-      closeAllDoors(2,0,0);
+      closeAllDoors(2,0,0,0);
       startUp = false;
       Serial.println("Startup");
   }
@@ -1155,18 +1164,18 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
                 door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');                                                    // Sets the specific door to move
                 if (inputBuffer[6] == 'D' || inputBuffer[6] == 'd'){
-                   DBG("with DelayCall \n");
+                  DBG("with DelayCall \n");
                   delayCallTime =  (inputBuffer[7]-'0')*10000+(inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');  // converts 5 digit character to uint32_t
                   doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
                   cVarSpeedMin = 0;
                   cVarSpeedMax = 0;                                                                                                                        // Sets Easing duration to 0-Off
                 } else if (inputBuffer[6] == 'E' ||inputBuffer[6] == 'e'){
-                   DBG("with Easing \n");
+                  DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
                   doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
                   delayCallTime = 0;
                 } else if (inputBuffer[6] == 'B' || inputBuffer[6] == 'b'){
-                   DBG("with Both Easing and Delay Call \n");
+                  DBG("with Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
                   cVarSpeedMin = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
                   cVarSpeedMax = (inputBuffer[13]-'0')*1000+(inputBuffer[14]-'0')*100+(inputBuffer[15]-'0')*10+(inputBuffer[16]-'0');
@@ -1216,14 +1225,14 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 char inCharRead = inputBuffer[i];
                 inputStringCommand += inCharRead;                   // add it to the inputString:
               }
-//              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              DBG("\nFull Command Recieved: %s ",inputStringCommand);
               espNowCommandFunctionString = inputStringCommand.substring(0,2);
               espNowCommandFunction = espNowCommandFunctionString.toInt();
-//              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
               targetID = inputStringCommand.substring(2,4);
-//              DBG("Target ID: %s\n", targetID);
+              DBG("Target ID: %s\n", targetID);
               commandSubString = inputStringCommand.substring(4,commandLength);
-//              DBG("Command to Forward: %s\n", commandSubString);
+              DBG("Command to Forward: %s\n", commandSubString);
             }
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1231,7 +1240,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               char inCharRead = inputBuffer[i];
               serialStringCommand += inCharRead;  // add it to the inputString:
               }
-//              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
               if (serialPort == "HP"){
                 writeHpSerial(serialStringCommand);
               } else if (serialPort == "RS"){
@@ -1316,7 +1325,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         inputStringCommand = "";
         targetID = "";
     
-//      DBG("command taken\n");
+        // DBG("command taken\n");
 
     }
 
@@ -1346,25 +1355,25 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       }
       else {
         switch (D_command[0]) {
-          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4]);          break;
-          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4]);         break;
+          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
+          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);         break;
           case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4]);                  break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4]);                   break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4]);                   break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4]);               break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4]);                     break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4]);             break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[6]);        break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[6]);    break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[6]);    break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4]);                  break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4]);                break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4]);                    break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4]);                     break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4]);               break;
-          case 98: closeAllDoors(2,0,0);                                                  break;
-          case 99: closeAllDoors(2,0,0);                                                  break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                  break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5]);               break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5]);             break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);    break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);    break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5]);                  break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5]);               break;
+          case 98: closeAllDoors(2,0,0,0);                                                  break;
+          case 99: closeAllDoors(2,0,0,0);                                                  break;
           default: break;
         }
       }
