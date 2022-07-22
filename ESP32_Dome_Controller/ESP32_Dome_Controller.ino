@@ -1,8 +1,11 @@
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
-#include <elegantWebpage.h>
-#include <Hash.h>
+//#include <elegantWebpage.h>
+#include <AsyncTCP.h>
+#include <WiFi.h>
+
+//#include <Hash.h>
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
@@ -364,8 +367,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   
 //Raspberry Pi              192.168.4.100
 //Body Controller ESP       192.168.4.101   
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA) ************
-//Dome Controller ESP       192.168.4.111   (Only used for OTA) 
+//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA) 
+//Dome Controller ESP       192.168.4.111   (Only used for OTA) ************
 //Periscope Controller ESP  192.168.4.112   (Only used for OTA)
 //Remote                    192.168.4.107
 //Developer Laptop          192.168.4.125
@@ -373,7 +376,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   // IP Address config of local ESP
   IPAddress local_IP(192,168,4,111);
   IPAddress subnet(255,255,255,0);
-  IPAddress gateway(192,168,4,100);
+  IPAddress gateway(192,168,4,101);
   
   ////R2 Control Network Details
   const char* ssid = "R2D2_Control_Network";
@@ -974,14 +977,21 @@ void toggleDebug1(){
 
 void connectWiFi(){
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.begin();
+  WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
-  delay(1000);
-  Serial.println("Connecting to WiFi..");
-  Serial.println(WiFi.localIP());
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
   }
+  Serial.println(WiFi.localIP());
+  Serial.println(WiFi.SSID());
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to  update to upload file");
+  });
+
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
+
   ESP_command[0]   = '\0';
 }
 
@@ -1054,11 +1064,11 @@ void setup(){
 
 
   //initialize WiFi for ESP-NOW
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
   esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
-
+   
 //Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
@@ -1094,9 +1104,10 @@ void setup(){
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
 
+ 
 }  // end of Setup
 
-//
+
 void loop() {
 if (millis() - MLMillis >= mainLoopDelayVar){
   MLMillis = millis();
