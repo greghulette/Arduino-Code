@@ -190,15 +190,6 @@ ServoSequencer servoSequencer(servoDispatch);
   esp_now_peer_info_t peerInfo;
 
 //  // Callback when data is sent
-//void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-//  char macStr[18];
-//  // Copies the sender mac address to a string
-//  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-//            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-//  DBG("Packet to: %s\n", macStr);
-//  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-////  DBG("Send Status:\t %s\n", status);
-//}
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -209,6 +200,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     success = "Delivery Fail :(";
   }
 }
+
   // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
@@ -245,9 +237,9 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   
   //Raspberry Pi              192.168.4.100
   //Body Controller ESP       192.168.4.101
-  //ESP-NOW Master ESP        192.168.4.110  
-  //Dome Controller ESP       192.168.4.111  ************
-  //Periscope Controller ESP  192.168.4.112
+  //ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)  ************
+  //Dome Controller ESP       192.168.4.111   (Only used for OTA)  
+  //Periscope Controller ESP  192.168.4.112   (Only used for OTA)
   //Remote                    192.168.4.107
   //Developer Laptop          192.168.4.125
   
