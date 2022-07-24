@@ -670,7 +670,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
 }
 
 
-void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration=2125){
+void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx10
   DBG("Wave\n");
   // servoMovementDurationInDelayCall = servoMovementDuration;
@@ -1199,17 +1199,30 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 } else if (inputBuffer[4] == 'E' ||inputBuffer[4] == 'e'){
                   DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
-                  cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
-                  cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');                
+                  if (commandLength >= 13){
+                    DBG("Variable Speed Selected\n");
+                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');  
+                  } else {
+                    DBG("No Variable Speed selected\n");
+                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMax = cVarSpeedMin; 
+                  }              
                   delayCallTime = 0;
                 } else if (inputBuffer[4] == 'B' || inputBuffer[4] == 'b'){
-                  DBG("with Both Easing and Delay Call \n");
+                  DBG("Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
-                  cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
-                  cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');
-                  delayCallTime =  (inputBuffer[15]-'0')*10000+(inputBuffer[16]-'0')*1000+(inputBuffer[17]-'0')*100+(inputBuffer[18]-'0')*10+(inputBuffer[19]-'0');
+                  if (commandLength >= 17){
+                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');
+                    delayCallTime =  (inputBuffer[15]-'0')*10000+(inputBuffer[16]-'0')*1000+(inputBuffer[17]-'0')*100+(inputBuffer[18]-'0')*10+(inputBuffer[19]-'0');
+                  } else {
+                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMax = cVarSpeedMin;
+                    delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
+                  }
                 }else{
-                  DBG("No easing or Delay time specified \n");
+                  DBG("No easing or DelayCall time specified \n");
                   delayCallTime = 0;
                   doorEasingMethod = 0;
                   cVarSpeedMin = 0;
