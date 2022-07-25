@@ -712,7 +712,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-//    sprintf(stringToSend, "D203%s%02i%04i%04i ", easing, servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D203E%02i%04i%04i ", servoEasingMethod, varSpeedMin, varSpeedMax);
     DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
     sendESPNOWCommand("DS", "D2033015001500");  
   };
