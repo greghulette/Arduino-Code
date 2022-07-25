@@ -571,7 +571,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   // Command: Dx03
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D103%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS",stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
