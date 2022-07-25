@@ -87,7 +87,7 @@ ServoSequencer servoSequencer(servoDispatch);
   String tempESPNOWTargetID;
 
 // Flags to enable/disable debugging in runtime
-  int debugflag = 0;
+  int debugflag = 1;
   int debugflag1 = 0;  // debugging for params recieved from clients
 
  //////////////////////////////////////////////////////////////////////
@@ -108,7 +108,7 @@ ServoSequencer servoSequencer(servoDispatch);
   // variables for individual functions
   uint32_t varSpeedMin;
   uint32_t varSpeedMax;
-  char stringToSend[20];
+  char stringToSend[25];
   uint32_t fVarSpeedMin;
   uint32_t fVarSpeedMax;
   
@@ -354,7 +354,7 @@ void loop(){
 
 
          ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            DBG("Command Length is: %i\n", commandLength);
+          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
             if(commandLength >= 3) {
                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {                                                            // specifies the overall door command
               doorBoard = inputBuffer[1]-'0';                                                                           // Sets the board to call the command on.
@@ -436,7 +436,7 @@ void loop(){
                   char inCharRead = inputBuffer[i];
                   inputStringCommand += inCharRead;                   // add it to the inputString:
                 }
-                DBG("\nFull Command Recieved: %s ",inputStringCommand);
+//                DBG("\nFull Command Recieved: %s ",inputStringCommand);
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
@@ -616,28 +616,29 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
     switch (doorpos){
       case 1: DBG("Open SMALL_PANEL_ONE\n");      
               sprintf(stringToSend, "D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+//             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", "D201001E0100010001");  break;
       case 2: DBG("Open SMALL_PANEL_TWO\n");      
               sprintf(stringToSend, "D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 3: DBG("Open SMALL_PANEL_THREE\n");    
               sprintf(stringToSend, "D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); 
               sprintf(stringToSend, "D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  
               sprintf(stringToSend, "D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 6: DBG("Open BIG_PANEL\n");            
               sprintf(stringToSend, "D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 7: DBG("Open PIE_PANEL_ONE\n");         
               sprintf(stringToSend, "D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 8: DBG("Open PIE_PANEL_TWO\n");        
               sprintf(stringToSend, "D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 9: DBG("Open PIE_PANEL_THREE\n");      
               sprintf(stringToSend, "D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
              sendESPNOWCommand("DS", stringToSend);  break;
@@ -704,14 +705,16 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx03
+  String easing = "E";
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend);  
+//    sprintf(stringToSend, "D203%s%02i%04i%04i ", easing, servoEasingMethod, varSpeedMin, varSpeedMax);
+    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
+    sendESPNOWCommand("DS", "D2033015001500");  
   };
   D_command[0] = '\0';
 }
@@ -726,7 +729,8 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0] = '\0';
 }
@@ -747,7 +751,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0]   = '\0';                                           
 }
@@ -762,7 +766,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0]   = '\0';                                                 
 }
@@ -964,7 +968,7 @@ void serialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("%s\n", inputString);
+//  DBG("%s\ n", inputString);
 }
 void bcSerialEvent() {
   while (bcSerial.available()) {
@@ -1027,8 +1031,11 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void sendESPNOWCommand(String starget,String scomm){
+void sendESPNOWCommand(String starget, String scomm){
   String sdest;
+  DBG("Desitation is %s\n", starget);
+  DBG("Recieved the command: %s from the door function\n", scomm);
+  
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -1042,6 +1049,7 @@ void sendESPNOWCommand(String starget,String scomm){
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
     DBG("Sent with success\n");
+//    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm);
   }
   else {
     DBG("Error sending the data\n");

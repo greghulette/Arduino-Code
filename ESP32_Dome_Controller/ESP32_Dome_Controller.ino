@@ -572,6 +572,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
     sendESPNOWCommand("BS",stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -833,7 +834,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-  DBG("Received %s\n", inputString);
+//  DBG("Received %s\n", inputString);
 }
 
 
@@ -899,6 +900,8 @@ void writeHpSerial(String stringData){
 
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
+    DBG("Recieved the command: %s from the door function\n", scomm);
+
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -1381,8 +1384,6 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         // reset ESP-NOW Variables
         inputStringCommand = "";
         targetID = "";
-    
-        DBG("command taken\n");
   }
 
     if(ESP_command[0]){

@@ -76,7 +76,7 @@
   #define fuSerial Serial2
 
   #define BC_BAUD_RATE 115200
-  #define BC_BAUD_RATE 115200
+  #define FU_BAUD_RATE 115200
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
@@ -168,7 +168,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         writeBcSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
         DBG("Sending %s out fuSerial\n", incomingCommand);
-        writeFuSerial(incomingCommand)
+        writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "NM"){
         DBG("Execute Local Command = %s\n", incomingCommand);
         inputString = incomingCommand;
