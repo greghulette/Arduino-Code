@@ -134,8 +134,6 @@ ServoSequencer servoSequencer(servoDispatch);
   uint32_t fVarSpeedMin;
   uint32_t fVarSpeedMax;
 
-  uint32_t servoMovementDurationInDelayCall;
-
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
 //////////////////////////////////////////////////////////////////////
@@ -217,13 +215,12 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****                                                       *****///
 ///////////////////////////////////////////////////////////////////////
 
-  // Coin Slots
-   unsigned const int CLAutoIntMin    = 300000;
-   unsigned const int CLAutoIntMax    = 300000;
-   unsigned const int CLAutoPauseMin  = 1;
-   unsigned const int CLAutoPauseMax  = 1;
-   unsigned int CLAutoPause;
-   unsigned int CLAutoInt;
+  unsigned const int CLAutoIntMin    = 300000;
+  unsigned const int CLAutoIntMax    = 300000;
+  unsigned const int CLAutoPauseMin  = 1;
+  unsigned const int CLAutoPauseMax  = 1;
+  unsigned int CLAutoPause;
+  unsigned int CLAutoInt;
 
 ///////////////////////////////////////////////////////////////////////
 ///*****               Auto Sequence Assignments               *****///
@@ -336,10 +333,6 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-//  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
-//  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
-//  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
-//  Serial.print("Command = "); Serial.println(incomingCommand); 
   DBG("Bytes received from ESP-NOW Message: %i\n", len);
   DBG("Sender ID = %s\n",incomingSenderID);
   DBG("Destination ID= %s\n" ,incomingDestinationID);
@@ -1051,7 +1044,58 @@ void setServoEasingMethod(int easingMethod){
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
 }
- 
+
+
+void scan_i2c(){
+    unsigned nDevices = 0;
+    for (byte address = 1; address < 127; address++){
+      String name = "<unknown>";
+      Wire.beginTransmission(address);
+      byte error = Wire.endTransmission();
+      if (address == 0x70){
+          // All call address for PCA9685
+        name = "PCA9685:all";
+      }
+      if (address == 0x40){
+        // Adafruit PCA9685
+        name = "PCA9685";
+      }
+      if (address == 0x14){
+        // IA-Parts magic panel
+        name = "IA-Parts Magic Panel";
+      }
+      if (address == 0x20){
+        // IA-Parts periscope
+        name = "IA-Parts Periscope";
+      }
+      if (address == 0x16){
+        // PSIPro
+        name = "PSIPro";
+      }
+
+      if (error == 0){
+        Serial.print("I2C device found at address 0x");
+        if (address < 16)
+          Serial.print("0");
+          Serial.print(address, HEX);
+          Serial.print(" ");
+          Serial.println(name);
+          nDevices++;
+      }
+        else if (error == 4){
+          Serial.print("Unknown error at address 0x");
+          if (address < 16)
+            Serial.print("0");
+            Serial.println(address, HEX);
+        }
+    }
+    if (nDevices == 0)
+        Serial.println("No I2C devices found\n");
+    else
+        Serial.println("done\n");
+}
+
+/////////////////////  END OF FUNCTIONS  ////////////////////////////
 
 void setup(){
   //Initialize the Serial Ports
@@ -1084,7 +1128,7 @@ void setup(){
   esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
-   
+
 //Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
@@ -1338,26 +1382,25 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         inputStringCommand = "";
         targetID = "";
     
-        // DBG("command taken\n");
-
-    }
+        DBG("command taken\n");
+  }
 
     if(ESP_command[0]){
       switch (ESP_command[0]){
         case 1: Serial.println("Controller: Dome ESP Controller");   
-                ESP_command[0]   = '\0';                                                  break;
+                ESP_command[0]   = '\0';                                                                break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                  break;
-        case 3: connectWiFi();                                                            break;
+                ESP_command[0]   = '\0';                                                                break;
+        case 3: connectWiFi();                                                                          break;
         case 4: break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
         case 8: break;  //reserved for future use
-        case 9: break;  //reserved for future use
-        case 10: toggleDebug();                                                           break;
-        case 11: toggleDebug1();                                                          break; 
+        case 9: scan_i2c(); ESP_command[0]='\0';                                                        break;  //Used for scanning I2C
+        case 10: toggleDebug();                                                                         break;
+        case 11: toggleDebug1();                                                                        break; 
       }
     }
 
@@ -1368,25 +1411,25 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       }
       else {
         switch (D_command[0]) {
-          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
-          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);         break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                  break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5]);               break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5]);             break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);    break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);    break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5]);                  break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5]);               break;
-          case 98: closeAllDoors(2,0,0,0);                                                  break;
-          case 99: closeAllDoors(2,0,0,0);                                                  break;
+          case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);           break;
+          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5]);              break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5]);                 break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
+          case 98: closeAllDoors(2,0,0,0);                                                              break;
+          case 99: closeAllDoors(2,0,0,0);                                                              break;
           default: break;
         }
       }
@@ -1394,17 +1437,17 @@ if (millis() - MLMillis >= mainLoopDelayVar){
 
     if(CL_command[0]){
       switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[1]], CL_command[2]);                     break;
+        case 1: cameraLED(basicColors[CL_command[1]], CL_command[2]);                                   break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
-        case 96: enableCLAuto = 0;                                                                               break;     // Disable Auto Mode
-        case 97: enableCLAuto = 1;                                                                               break;     // Enables Auto Mode
+        case 96: enableCLAuto = 0;                                                                      break;     // Disable Auto Mode
+        case 97: enableCLAuto = 1;                                                                      break;     // Enables Auto Mode
         case 98:  CL_command[0] = '\0'; 
                   clearCL();
-                  enableCLAuto = 0; break;
+                  enableCLAuto = 0;                                                                     break;
         case 99:  CL_command[0] = '\0'; 
                   clearCL();
-                  enableCLAuto = 1; break;
+                  enableCLAuto = 1;                                                                     break;
       }
     }
 
