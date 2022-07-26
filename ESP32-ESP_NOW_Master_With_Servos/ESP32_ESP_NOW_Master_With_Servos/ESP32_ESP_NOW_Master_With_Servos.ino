@@ -1058,9 +1058,11 @@ void sendESPNOWCommand(String starget, String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
+  }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+    sdest = "Body";
   }
 
-  setupSendStruct(senderId, sdest, starget,scomm);
+  setupSendStruct(senderID, sdest, starget,scomm);
   // commandsToSendtoBroadcast.structDestinationID = sdest;
   // DBG("sdest: %s\n", sdest);
   // commandsToSendtoBroadcast.structTargetID = starget;
