@@ -277,7 +277,7 @@ uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 // Define variables to store commands to be sent
   String senderID;
   String destinationID;
-  String targetID;
+//  String targetID;
   String command;
   String commandSubString;
 
@@ -293,12 +293,20 @@ uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 
 //Structure example to send data
 //Must match the receiver structure
-  typedef struct struct_message {
-      String structSenderID;
-      String structDestinationID;
-      String structTargetID;  
-      String structCommand;
+typedef struct struct_message {
+      char structSenderID[15];
+      char structDestinationID[15];
+      char structTargetID[5];
+      char structCommand[220];
   } struct_message;
+
+
+  // typedef struct struct_message {
+  //     String structSenderID;
+  //     String structDestinationID;
+  //     String structTargetID;  
+  //     String structCommand;
+  // } struct_message;
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToSendtoBody;
@@ -328,7 +336,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  // memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  // incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  // incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+  // incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  // incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  struct_message* msg = (struct_message*)incomingData;
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
@@ -473,11 +486,11 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: DBG("Open Top Utility Arm\n");
-              sprintf(stringToSend, "D10101%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Open Bottom Utility Arm\n");
-              sprintf(stringToSend, "D10102%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Open Large Left Door\n");
@@ -572,7 +585,6 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
     sendESPNOWCommand("BS",stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -834,7 +846,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-//  DBG("Received %s\n", inputString);
+  DBG("Received %s\n", inputString);
 }
 
 
@@ -897,11 +909,18 @@ void writeHpSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
+void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+{
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
+}
+
 
 void sendESPNOWCommand(String starget,String scomm){
   String sdest;
-    DBG("Recieved the command: %s from the door function\n", scomm);
-
+  String senderID = "Dome";
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -909,12 +928,12 @@ void sendESPNOWCommand(String starget,String scomm){
   }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
-  
-  commandsToSendtoBroadcast.structDestinationID = sdest;
-  DBG("Setting sdest to: %s \n", sdest);
-  commandsToSendtoBroadcast.structTargetID = starget;
-  commandsToSendtoBroadcast.structSenderID = "Dome";
-  commandsToSendtoBroadcast.structCommand = scomm;
+  setupSendStruct(senderID, sdest, starget, scomm);
+  // commandsToSendtoBroadcast.structDestinationID = sdest;
+  // DBG("Setting sdest to: %s \n", sdest);
+  // commandsToSendtoBroadcast.structTargetID = starget;
+  // commandsToSendtoBroadcast.structSenderID = "Dome";
+  // commandsToSendtoBroadcast.structCommand = scomm;
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
     DBG("Sent with success \n");
@@ -1384,6 +1403,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         // reset ESP-NOW Variables
         inputStringCommand = "";
         targetID = "";
+    
+        DBG("command taken\n");
   }
 
     if(ESP_command[0]){
