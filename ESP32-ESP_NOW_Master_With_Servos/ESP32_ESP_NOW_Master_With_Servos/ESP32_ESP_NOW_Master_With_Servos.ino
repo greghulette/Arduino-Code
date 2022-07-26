@@ -108,7 +108,7 @@ ServoSequencer servoSequencer(servoDispatch);
   // variables for individual functions
   uint32_t varSpeedMin;
   uint32_t varSpeedMax;
-  char stringToSend[20];
+  char stringToSend[25];
   uint32_t fVarSpeedMin;
   uint32_t fVarSpeedMax;
   
@@ -176,12 +176,19 @@ ServoSequencer servoSequencer(servoDispatch);
 //
 //  //Structure example to send data
 //  //Must match the receiver structure
-  typedef struct struct_message {
-      String structSenderID;
-      String structDestinationID;
-      String structTargetID;  
-      String structCommand;
+typedef struct struct_message {
+      char structSenderID[15];
+      char structDestinationID[15];
+      char structTargetID[5];
+      char structCommand[220];
   } struct_message;
+
+//   typedef struct struct_message {
+  //     String structSenderID;
+  //     String structDestinationID;
+  //     String structTargetID;  
+  //     String structCommand;
+  // } struct_message;
 //
 //  // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToSendtoDome;
@@ -212,7 +219,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
   // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  // memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  // incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  // incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+  // incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  // incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  struct_message* msg = (struct_message*)incomingData;
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
@@ -221,18 +233,18 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   DBG("Sender ID = %s\n",incomingSenderID);
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand); 
+  DBG("Command = %s\n" , incomingCommand.c_str()); 
   if (incomingDestinationID =="Body"){
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
     if (incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID =="ST"){
-        DBG("Sending %s out bcSerial\n", incomingCommand);
+        DBG("Sending %s out bcSerial\n", incomingCommand.c_str());
         writeBcSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
-        DBG("Sending %s out fuSerial\n", incomingCommand);
+        DBG("Sending %s out fuSerial\n", incomingCommand.c_str());
         writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "BS"){
-        DBG("Execute Local Command = %s\n", incomingCommand);
+        DBG("Execute Local Command = %s\n", incomingCommand.c_str());
         inputString = incomingCommand;
         stringComplete = true; 
     } else {DBG("Wrong Target ID Sent\n");}
@@ -354,7 +366,7 @@ void loop(){
 
 
          ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            DBG("Command Length is: %i\n", commandLength);
+            DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
             if(commandLength >= 3) {
                if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {                                                            // specifies the overall door command
               doorBoard = inputBuffer[1]-'0';                                                                           // Sets the board to call the command on.
@@ -616,28 +628,29 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
     switch (doorpos){
       case 1: DBG("Open SMALL_PANEL_ONE\n");      
               sprintf(stringToSend, "D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+//             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", "D201001E0100010001");  break;
       case 2: DBG("Open SMALL_PANEL_TWO\n");      
               sprintf(stringToSend, "D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 3: DBG("Open SMALL_PANEL_THREE\n");    
               sprintf(stringToSend, "D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); 
               sprintf(stringToSend, "D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  
               sprintf(stringToSend, "D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 6: DBG("Open BIG_PANEL\n");            
               sprintf(stringToSend, "D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 7: DBG("Open PIE_PANEL_ONE\n");         
               sprintf(stringToSend, "D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 8: DBG("Open PIE_PANEL_TWO\n");        
               sprintf(stringToSend, "D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-             sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DS", stringToSend);  break;
       case 9: DBG("Open PIE_PANEL_THREE\n");      
               sprintf(stringToSend, "D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
              sendESPNOWCommand("DS", stringToSend);  break;
@@ -710,8 +723,9 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
     SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend);  
+    sprintf(stringToSend, "D203E%02i%04i%04i", servoEasingMethod, varSpeedMin, varSpeedMax);
+    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
+    sendESPNOWCommand("DS", stringToSend);  
   };
   D_command[0] = '\0';
 }
@@ -726,7 +740,8 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0] = '\0';
 }
@@ -747,7 +762,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0]   = '\0';                                           
 }
@@ -762,7 +777,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend); 
+    sendESPNOWCommand("DS", stringToSend); 
   };
   D_command[0]   = '\0';                                                 
 }
@@ -777,7 +792,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
     sprintf(stringToSend, "D208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-   sendESPNOWCommand("DS", stringToSend);  
+    sendESPNOWCommand("DS", stringToSend);  
   };
   D_command[0]   = '\0';   
 }
@@ -1027,21 +1042,34 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void sendESPNOWCommand(String starget,String scomm){
+void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+{
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
+}
+
+void sendESPNOWCommand(String starget, String scomm){
   String sdest;
+  String senderID = "Body";
+  DBG("Recieved the command: %s from the door function\n", scomm);
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
   }
-  commandsToSendtoBroadcast.structDestinationID = sdest;
-  DBG("sdest: %s\n", sdest);
-  commandsToSendtoBroadcast.structTargetID = starget;
-  commandsToSendtoBroadcast.structSenderID = "Body";
-  commandsToSendtoBroadcast.structCommand = scomm;
+
+  setupSendStruct(senderId, sdest, starget,scomm);
+  // commandsToSendtoBroadcast.structDestinationID = sdest;
+  // DBG("sdest: %s\n", sdest);
+  // commandsToSendtoBroadcast.structTargetID = starget;
+  // commandsToSendtoBroadcast.structSenderID = "Body";
+  // commandsToSendtoBroadcast.structCommand = scomm;
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
     DBG("Sent with success\n");
+    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
     DBG("Error sending the data\n");
