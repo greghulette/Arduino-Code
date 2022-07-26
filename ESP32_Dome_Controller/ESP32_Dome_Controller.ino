@@ -108,7 +108,7 @@ ServoSequencer servoSequencer(servoDispatch);
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
     
-  int debugflag = 0;
+  int debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
   int debugflag1 = 0;  // Used for optional level of debuging
 
 
@@ -336,12 +336,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-  // incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
-  // incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-  // incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-  // incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-//   commandsToReceiveFromBroadcast msg = (struct_message*)incomingData;
+  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
@@ -354,27 +349,21 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   if (incomingDestinationID =="Dome"){
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
-//    Serial.print("Target ID= "); Serial.println(incomingTargetID);
     if (incomingTargetID == "RS"){
         DBG("Sending %s out rsSerial\n", incomingCommand);
-//        Serial.println("Sending out rsSerial");
         writeRsSerial(incomingCommand);
     } else if (incomingTargetID == "HP"){
         DBG("Sending %s out hpSerial\n", incomingCommand);
-//        Serial.println("Sending out hpSerial");
         writeHpSerial(incomingCommand);
     } else if (incomingTargetID == "DS"){
         DBG("Execute Local Command = %s\n", incomingCommand);
-//        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
         inputString = incomingCommand;
         stringComplete = true; 
     } else {
         DBG("Wrong Target ID Sent\n");
-//        Serial.println("Wrong Target ID Sent");
       }
   }
     else {DBG("ESP-NOW Message Ignored\n");}
-//  else {Serial.println("ESP-NOW Message Ignored");}
 }
 
   //////////////////////////////////////////////////////////////////////
@@ -462,12 +451,30 @@ void clearCL() {
 };
 
 
+void CLAuto () {
+  if(millis() - CLAutoTimer >= CLAutoInt*1000) {       // and the timer has reached the set interval
+    if(millis() - CLAutoTimer >= (CLAutoInt+CLAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
+      if(!autoComplete) {
+        CLAutoTimer = millis();
+        CLAutoPause = random(CLAutoPauseMin,CLAutoPauseMax);
+        CLAutoInt = random(CLAutoIntMin,CLAutoIntMax);
+        autoInputString = CLautoCommands[random((CLautoCommandsCount-1))];
+        autoComplete = true;
+      }
+    }
+    else {
+      CL_command[0] = 99;
+    }                                                             // and set flag so new command is processes at beginning of loop
+  }
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
 ///////                                       Door Functions                                          /////
 ///////                                                                                               /////
-///////                           Door Command Stucture: Dxyyzz                                       /////
+///////                           Door Command Stucture: Dxyyzzabbccccddddeeeee                       /////
 ///////                             D = Door Command                                                  /////
 ///////                             x = Servo Board                                                   /////
 ///////                               1 = Body Only                                                   /////
@@ -476,6 +483,14 @@ void clearCL() {
 ///////                               4 = Both, starting with the dome                                /////
 ///////                             yy = Door Function                                                /////
 ///////                             zz = Door Specified (Only used for Dx01 & Dx02)                   /////
+///////                             a = Specify easing/delayCall options (B,E,D)                      /////
+///////                               B = use both Easing and Delay Call Optoins                      /////
+///////                                 bb = Easing Method (1-31)                                     /////
+///////                                 cccc = time for easing to happen 0000-9999 (0-9 sec)          /////
+///////                                 dddd = if called, varSpeedMax and cccc=varSpeedMin 0000-9999 (0-9 sec)           /////
+///////                                 eeeee = DelayCall Duration 00000-99999(0sec - 99 sec)         /////
+
+
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -580,7 +595,7 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 }
 
 
-void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
   DBG("Open all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
@@ -589,7 +604,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
       setServoEasingMethod(servoEasingMethod);
-      SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
+      DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax)},delayCallDuration);
   };
   D_command[0] = '\0';
 }
@@ -846,7 +861,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-  DBG("Received %s\n", inputString);
+  // DBG("Received %s\n", inputString);
 }
 
 
@@ -919,8 +934,7 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
 
 void sendESPNOWCommand(String starget, String scomm){
   String sdest;
-  String senderID = "Dome";
-  DBG("Recieved the command: %s from the door function\n", scomm.c_str());
+  String senderID = "Dome";   // change to match location (Dome, Body, Periscope)
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -928,18 +942,9 @@ void sendESPNOWCommand(String starget, String scomm){
   }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
-
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
-  // commandsToSendtoBroadcast.structDestinationID = sdest;
-  // DBG("sdest: %s\n", sdest);
-  // commandsToSendtoBroadcast.structTargetID = starget;
-  // commandsToSendtoBroadcast.structSenderID = "Body";
-  // commandsToSendtoBroadcast.structCommand = scomm;
-  DBG("Size of ESP-NOW Message: %d\n", sizeof(commandsToSendtoBroadcast));
-
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent with success\n");
     DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
@@ -1121,7 +1126,14 @@ void scan_i2c(){
         Serial.println("done\n");
 }
 
-/////////////////////  END OF FUNCTIONS  ////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             END OF FUNCTIONS                                          /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 void setup(){
   //Initialize the Serial Ports
@@ -1439,7 +1451,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         switch (D_command[0]) {
           case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);           break;
           case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);       break;
           case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
           case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
           case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
@@ -1495,19 +1507,4 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   }
 }  //end of main loop
 
-     void CLAuto () {
-       if(millis() - CLAutoTimer >= CLAutoInt*1000) {       // and the timer has reached the set interval
-        if(millis() - CLAutoTimer >= (CLAutoInt+CLAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
-          if(!autoComplete) {
-           CLAutoTimer = millis();
-           CLAutoPause = random(CLAutoPauseMin,CLAutoPauseMax);
-           CLAutoInt = random(CLAutoIntMin,CLAutoIntMax);
-           autoInputString = CLautoCommands[random((CLautoCommandsCount-1))];
-           autoComplete = true;
-          }
-         }
-        else {
-           CL_command[0] = 99;
-        }                                                             // and set flag so new command is processes at beginning of loop
-      }
-     }
+
