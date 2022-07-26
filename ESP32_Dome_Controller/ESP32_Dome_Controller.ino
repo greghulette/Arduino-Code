@@ -277,7 +277,7 @@ uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 // Define variables to store commands to be sent
   String senderID;
   String destinationID;
-//  String targetID;
+  String targetID;
   String command;
   String commandSubString;
 
@@ -297,7 +297,7 @@ typedef struct struct_message {
       char structSenderID[15];
       char structDestinationID[15];
       char structTargetID[5];
-      char structCommand[220];
+      char structCommand[100];
   } struct_message;
 
 
@@ -336,12 +336,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  // memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   // incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   // incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   // incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   // incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  struct_message* msg = (struct_message*)incomingData;
+//   commandsToReceiveFromBroadcast msg = (struct_message*)incomingData;
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
@@ -494,19 +494,19 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Open Large Left Door\n");
-              sprintf(stringToSend, "D10103%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Open Large Right Door\n");
-              sprintf(stringToSend, "D10104%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Open Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10105%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Open Data Panel Door\n");
-              sprintf(stringToSend, "D10106%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -536,27 +536,27 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch(doorpos){
       case 1: DBG("Close Top Utility Arm\n");             
-              sprintf(stringToSend, "D10201%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Close Bottom Utility Arm\n");              
-              sprintf(stringToSend, "D10202%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Close Large Left Door\n");
-              sprintf(stringToSend, "D10203%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Close Large Right Door\n");
-              sprintf(stringToSend, "D10204%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Close Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10205%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Close Data Panel Door\n");
-              sprintf(stringToSend, "D10206%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D10206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -599,7 +599,7 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   // Command: Dx04
   DBG("Close all Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D104%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -620,7 +620,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   // Command: Dx06
   DBG("Open and Close All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D106%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -635,7 +635,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   // Command: Dx07
   DBG("Open and Close Doors Long\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D107%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -650,7 +650,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   // Command: Dx08
   DBG("Flutter All Doors\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D108%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);  
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
@@ -665,7 +665,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
   // Command: Dx09
   DBG("Open and Close All Doors Repeat\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D109%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+    sprintf(stringToSend, "D109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS", stringToSend);
   }
   if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
@@ -682,7 +682,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   // servoMovementDurationInDelayCall = servoMovementDuration;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D110%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
@@ -702,7 +702,7 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D111%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D111E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);  break;
@@ -722,7 +722,7 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D112%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D112E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
@@ -739,7 +739,7 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx13
   DBG("Marching Ants\n");
-  sprintf(stringToSend, "D113%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D113E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
@@ -756,7 +756,7 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
 void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx14
   DBG("Panel Alternate\n");
-  sprintf(stringToSend, "D114%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D114E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
@@ -773,7 +773,7 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
 void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
  // Command: Dx15
   DBG("Panel Dance\n");
-  sprintf(stringToSend, "D115%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D115E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
@@ -790,7 +790,7 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
 void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx16
   DBG("Panel Dance Long\n");
-  sprintf(stringToSend, "D116%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D116E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
@@ -807,7 +807,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
 void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx17
   DBG("Harlem Shake\n");
-  sprintf(stringToSend, "D117%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  sprintf(stringToSend, "D117E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
@@ -917,10 +917,10 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 
-
-void sendESPNOWCommand(String starget,String scomm){
+void sendESPNOWCommand(String starget, String scomm){
   String sdest;
   String senderID = "Dome";
+  DBG("Recieved the command: %s from the door function\n", scomm.c_str());
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -928,15 +928,19 @@ void sendESPNOWCommand(String starget,String scomm){
   }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
-  setupSendStruct(senderID, sdest, starget, scomm);
+
+  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   // commandsToSendtoBroadcast.structDestinationID = sdest;
-  // DBG("Setting sdest to: %s \n", sdest);
+  // DBG("sdest: %s\n", sdest);
   // commandsToSendtoBroadcast.structTargetID = starget;
-  // commandsToSendtoBroadcast.structSenderID = "Dome";
+  // commandsToSendtoBroadcast.structSenderID = "Body";
   // commandsToSendtoBroadcast.structCommand = scomm;
+  DBG("Size of ESP-NOW Message: %d\n", sizeof(commandsToSendtoBroadcast));
+
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent with success \n");
+    DBG("Sent with success\n");
+    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
     DBG("Error sending the data\n");

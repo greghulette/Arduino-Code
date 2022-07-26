@@ -180,7 +180,7 @@ typedef struct struct_message {
       char structSenderID[15];
       char structDestinationID[15];
       char structTargetID[5];
-      char structCommand[220];
+      char structCommand[100];
   } struct_message;
 
 //   typedef struct struct_message {
@@ -219,12 +219,12 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
   // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  // memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   // incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   // incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   // incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   // incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  struct_message* msg = (struct_message*)incomingData;
+//  struct_message* msg = (struct_message*)incomingData;
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
@@ -1053,19 +1053,23 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
 void sendESPNOWCommand(String starget, String scomm){
   String sdest;
   String senderID = "Body";
-  DBG("Recieved the command: %s from the door function\n", scomm);
+  DBG("Recieved the command: %s from the door function\n", scomm.c_str());
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
+  }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+    sdest = "Body";
   }
 
-  setupSendStruct(senderId, sdest, starget,scomm);
+  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   // commandsToSendtoBroadcast.structDestinationID = sdest;
   // DBG("sdest: %s\n", sdest);
   // commandsToSendtoBroadcast.structTargetID = starget;
   // commandsToSendtoBroadcast.structSenderID = "Body";
   // commandsToSendtoBroadcast.structCommand = scomm;
+  DBG("Size of ESP-NOW: %d\n", sizeof(commandsToSendtoBroadcast));
+
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
     DBG("Sent with success\n");
