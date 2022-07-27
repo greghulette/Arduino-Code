@@ -111,7 +111,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
   int debugflag1 = 0;  // Used for optional level of debuging
 
-
+  int defaultESPNOWSendDuration = 50;
 
 //////////////////////////////////////////////////////////////////////
 ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -297,7 +297,7 @@ typedef struct struct_message {
       char structSenderID[15];
       char structDestinationID[15];
       char structTargetID[5];
-      char structCommand[100];
+      char structCommand[25];
   } struct_message;
 
 
@@ -501,27 +501,27 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: DBG("Open Top Utility Arm\n");
-              sprintf(stringToSend, "D10101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Open Bottom Utility Arm\n");
-              sprintf(stringToSend, "D10102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Open Large Left Door\n");
-              sprintf(stringToSend, "D10103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Open Large Right Door\n");
-              sprintf(stringToSend, "D10104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Open Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Open Data Panel Door\n");
-              sprintf(stringToSend, "D10106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -551,27 +551,27 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch(doorpos){
       case 1: DBG("Close Top Utility Arm\n");             
-              sprintf(stringToSend, "D10201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 2: DBG("Close Bottom Utility Arm\n");              
-              sprintf(stringToSend, "D10202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 3: DBG("Close Large Left Door\n");
-              sprintf(stringToSend, "D10203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 4: DBG("Close Large Right Door\n");
-              sprintf(stringToSend, "D10204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 5: DBG("Close Charge Bay Indicator Door\n");
-              sprintf(stringToSend, "D10205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
       case 6: DBG("Close Data Panel Door\n");
-              sprintf(stringToSend, "D10206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              snprintf(stringToSend, sizeof(stringToSend), "D10206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
     }
@@ -598,96 +598,125 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
   DBG("Open all Doors\n");
-  if (delayCallDuration == 0){delayCallDuration = 50;}
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS",stringToSend);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),"D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
-  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-      setServoEasingMethod(servoEasingMethod);
-      DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax)},delayCallDuration);
-  };
   D_command[0] = '\0';
 }
 
 
-void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx04
   DBG("Close all Doors\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS", stringToSend);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
-  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  };
   D_command[0] = '\0';
 }
 
 
-void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx05
   // add sequence for this routine.  
 }
 
 
-void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
+void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx06
   DBG("Open and Close All Doors\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS", stringToSend);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
-  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  };
   D_command[0]   = '\0';                                           
 }
 
 
-void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
+void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx07
   DBG("Open and Close Doors Long\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS", stringToSend);
-  }
-  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  };
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
+  }  
   D_command[0]   = '\0';                                                 
 }
 
 
-void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
+void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx08
   DBG("Flutter All Doors\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS", stringToSend);  
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
-  if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  };
   D_command[0]   = '\0';   
 }
 
 
-void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax){
+void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx09
   DBG("Open and Close All Doors Repeat\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-    sendESPNOWCommand("BS", stringToSend);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
   }
-  if (servoBoard == 2 || servoBoard == 3  || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  };
   D_command[0]   = '\0';             
 }
 
@@ -695,15 +724,15 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx10
   DBG("Wave\n");
-  // servoMovementDurationInDelayCall = servoMovementDuration;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend), "D110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
     case 3: sendESPNOWCommand("BS", stringToSend);
+            if (delayCallDuration == 0){delayCallDuration = 2125;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
@@ -715,10 +744,9 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx11  
   DBG("Wave Fast\n");
-  // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D111E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend), "D111E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);  break;
@@ -735,10 +763,9 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx12
   DBG("Open Close Wave \n");
-  // servoMovementDurationInDelayCall = varSpeedMin, varSpeedMax;
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  sprintf(stringToSend, "D112E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend), "D112E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend); break;
@@ -752,89 +779,105 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 }
 
 
-void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx13
   DBG("Marching Ants\n");
-  sprintf(stringToSend, "D113E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D113E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 3: sendESPNOWCommand("BS", stringToSend);
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            sendESPNOWCommand("BS", stringToSend); break;
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;    
   }
   D_command[0]   = '\0';                                             
 }
 
 
-void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx14
   DBG("Panel Alternate\n");
-  sprintf(stringToSend, "D114E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D114E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-            sendESPNOWCommand("BS", stringToSend); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;    
   }
   D_command[0]   = '\0';                                             
 }                                                            
 
 
-void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
  // Command: Dx15
   DBG("Panel Dance\n");
-  sprintf(stringToSend, "D115E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D115E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-            sendESPNOWCommand("BS", stringToSend); break;
-  }
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;    
+  } 
   D_command[0]   = '\0';                                             
-}
+};
 
 
-void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+
+void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx16
-  DBG("Panel Dance Long\n");
-  sprintf(stringToSend, "D116E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  DBG("Panel Dance Long Disco\n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D116E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
+    case 1: sendESPNOWCommand("BS", stringToSend);                                      break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-            sendESPNOWCommand("BS", stringToSend);break;
-  }
-  D_command[0]   = '\0';                                             
-}
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;    
+  } 
+  D_command[0]  = '\0';                                     
+};
 
 
-void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
+void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx17
   DBG("Harlem Shake\n");
-  sprintf(stringToSend, "D117E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend), "D117E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend);                                    break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 3: sendESPNOWCommand("BS", stringToSend); 
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
-            sendESPNOWCommand("BS", stringToSend);break;
-  }
-  D_command[0]   = '\0';                                             
-}                                                       
+    case 1: sendESPNOWCommand("BS", stringToSend);                                                                                                                            break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);                                                  break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration);  break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration);                                                                               break;    
+  }   
+  D_command[0]  = '\0';                                             
+};                                                    
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1213,7 +1256,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
-      closeAllDoors(2,0,0,0);
+      closeAllDoors(2,0,0,0,0);
       startUp = false;
       Serial.println("Startup");
   }
@@ -1453,22 +1496,22 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);           break;
           case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
           case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);       break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5]);              break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);      break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);              break;
           case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
           case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
           case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5]);                 break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
-          case 98: closeAllDoors(2,0,0,0);                                                              break;
-          case 99: closeAllDoors(2,0,0,0);                                                              break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                   break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                 break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 98: closeAllDoors(2,0,0,0,0);                                                              break;
+          case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;
         }
       }
