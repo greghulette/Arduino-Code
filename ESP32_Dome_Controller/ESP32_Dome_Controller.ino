@@ -474,23 +474,23 @@ void CLAuto () {
 ///////                                                                                               /////
 ///////                                       Door Functions                                          /////
 ///////                                                                                               /////
-///////                           Door Command Stucture: Dxyyzzabbccccddddeeeee                       /////
-///////                             D = Door Command                                                  /////
-///////                             x = Servo Board                                                   /////
-///////                               1 = Body Only                                                   /////
-///////                               2 = Dome Only                                                   /////
-///////                               3 = Both, starting with the body                                /////
-///////                               4 = Both, starting with the dome                                /////
-///////                             yy = Door Function                                                /////
-///////                             zz = Door Specified (Only used for Dx01 & Dx02)                   /////
-///////                             a = Specify easing/delayCall options (B,E,D)                      /////
-///////                               B = use both Easing and Delay Call Optoins                      /////
-///////                                 bb = Easing Method (1-31)                                     /////
-///////                                 cccc = time for easing to happen 0000-9999 (0-9 sec)          /////
-///////                                 dddd = if called, varSpeedMax and cccc=varSpeedMin 0000-9999 (0-9 sec)           /////
-///////                                 eeeee = DelayCall Duration 00000-99999(0sec - 99 sec)         /////
-
-
+///////              Door Command Stucture: Dxyyzzabbccccddddeeeee                                    /////
+///////                 D = Door Command                                                              /////
+///////                 x = Servo Board                                                               /////
+///////                   1 = Body Only                                                               /////
+///////                   2 = Dome Only                                                               /////
+///////                   3 = Both, starting with the body                                            /////
+///////                   4 = Both, starting with the dome                                            /////
+///////                 yy = Door Function                                                            /////
+///////                 zz = Door Specified (Only used for Dx01 & Dx02)                               /////
+///////                 a = Specify easing/delayCall options (B,E,D)                                  /////
+///////                   B = Use Easing and Delay Call                                               /////
+///////                   E = Easing Only (if VarSpeed is not needed, don't input dddd)               /////
+///////                   D = Delay Call Only (don't input bbccccdddd)                                /////
+///////                 bb = Easing Method (only needed if B or E was selected)
+///////                 cccc = Easing Method Duration (only needed if B or E was selected)
+///////                 dddd = Easing Method VarSpeedMax(only needed if B or E was selected and VARSPEED wanted)
+///////                 eeeee = Delay Call Duration (only needed if B or D was selected)
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -598,6 +598,7 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
   DBG("Open all Doors\n");
+  if (delayCallDuration == 0){delayCallDuration = 50;}
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     sprintf(stringToSend, "D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
     sendESPNOWCommand("BS",stringToSend);
