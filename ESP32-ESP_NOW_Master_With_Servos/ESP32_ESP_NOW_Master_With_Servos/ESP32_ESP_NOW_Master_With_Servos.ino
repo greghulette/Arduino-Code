@@ -1052,7 +1052,7 @@ void loop(){
       AnimatedEvent::process();
 
     if(startUp) {
-      closeAllDoors(1,0,0,0);
+      closeAllDoors(1,0,0,0,0);
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
     }  
@@ -1272,23 +1272,23 @@ void loop(){
         switch (D_command[0]) {
 case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);                     break;
           case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5]);                    break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5]);              break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                   break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);              break;
           case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
           case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
           case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5]);                   break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5]);                 break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5]);                     break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5]);                      break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5]);                break;
-          case 98: closeAllDoors(2,0,0,0);                                                              break;
-          case 99: closeAllDoors(2,0,0,0);                                                              break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                   break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                 break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 98: closeAllDoors(2,0,0,0,0);                                                              break;
+          case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;
         }
       }
@@ -1300,5 +1300,3 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
     }
   }
 }
-
-
