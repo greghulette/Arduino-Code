@@ -856,9 +856,10 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 ///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
+
 void connectWiFi(){
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.begin();
+  WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
   delay(1000);
   Serial.println("Connecting to WiFi..");

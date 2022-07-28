@@ -130,14 +130,18 @@ ServoSequencer servoSequencer(servoDispatch);
   #define TXBL 26
   #define RXST 12
   #define TXST 14
+  #define RXMP 17
+  #define TXMP 18
   
   #define enSerial Serial1
   #define blSerial Serial2
   SoftwareSerial stSerial;
+  SoftwareSerial mpSerial;
 
   #define EN_BAUD_RATE 115200
   #define BL_BAUD_RATE 115200
   #define ST_BAUD_RATE 9600
+  #define MP_BAUD_RATE 9600
 
 
 
@@ -181,6 +185,7 @@ void setup(){
   enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
+  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
 
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body ESP Controller");
@@ -320,6 +325,8 @@ void loop(){
     if(blSerial.available()){serialBlEvent();}
     if(enSerial.available()){serialEnEvent();}
     if(stSerial.available()){serialStEvent();}
+    if(mpSerial.available()){serialMpEvent();}
+
     
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
@@ -433,7 +440,7 @@ void loop(){
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
+        case 8: testSound();  break;  //TESTING   reserved for future use
         case 9: break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;
@@ -906,6 +913,20 @@ void serialStEvent() {
   DBG("InputString: %s \n",inputString);
 };
 
+
+void serialMpEvent() {
+  while (mpSerial.available()) {
+    String testString;
+    // get the new byte:
+    char inChar = (char)MpSerial.read();
+    // add it to the testString:
+    testString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+    };
+  };
+  DBG("InputString: %s \n",testString);
+};
+
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
   /////////////////////////////////////////////////////////
@@ -1094,3 +1115,10 @@ void setServoEasingMethod(int easingMethod){
     case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
   }
 }  
+
+
+
+void testSound(){
+  mpSerial.print('t');
+  mpSerial.write(2);
+}
