@@ -322,9 +322,6 @@ void loop(){
                 mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
                 DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
                 mp3Trigger(mp3Comm,mp3Track);
-//                mpSerial.print("t");
-//                mpSerial.write(mp3Track);
-//                writeMpSerial(serialSubStringCommand);
                 DBG("Sending out MP Serial\n ");
               } else { DBG("No valid Serial identified\n");}
               serialStringCommand = "";
