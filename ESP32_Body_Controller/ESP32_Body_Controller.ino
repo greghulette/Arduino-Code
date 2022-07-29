@@ -266,6 +266,9 @@ void setup(){
   //Reset Arudino Mega
   resetArduino(500);
 
+  // Play Startup Sound
+  mp3Trigger("t",255);
+
 }
 
 void loop(){
