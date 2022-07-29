@@ -125,7 +125,6 @@ IPAddress subnet(255,255,255,0);
 IPAddress gateway(192,168,4,100);
 uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
 
-
  ////R2 Control Network Details
 const char* ssid = "R2D2_Control_Network";
 const char* password =  "astromech";
@@ -365,7 +364,7 @@ void loop(){
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
-        case 8: break;  //TESTING   reserved for future use
+        case 8: break;  //reserved for future use
         case 9:  break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;

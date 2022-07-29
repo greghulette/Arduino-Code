@@ -3,6 +3,7 @@
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <Hash.h>
+#include <WiFi.h>
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
@@ -158,6 +159,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
   uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x10};
 
 //  // Define variables to store commands to be sent
   String senderID;
@@ -310,34 +312,34 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: DBG("Open SMALL_PANEL_ONE\n");      
-              snprintf(stringToSend, sizeof(stringToSend), "D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 2: DBG("Open SMALL_PANEL_TWO\n");      
-              snprintf(stringToSend, sizeof(stringToSend), "D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 3: DBG("Open SMALL_PANEL_THREE\n");    
-              snprintf(stringToSend, sizeof(stringToSend), "D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 4: DBG("Open MEDIUM_PANEL_PAINTED\n"); 
-              snprintf(stringToSend, sizeof(stringToSend), "D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 5: DBG("Open MEDIUM_PANEL_SILVER\n");  
-              snprintf(stringToSend, sizeof(stringToSend), "D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 6: DBG("Open BIG_PANEL\n");            
-              snprintf(stringToSend, sizeof(stringToSend), "D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 7: DBG("Open PIE_PANEL_ONE\n");         
-              snprintf(stringToSend, sizeof(stringToSend), "D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 8: DBG("Open PIE_PANEL_TWO\n");        
-              snprintf(stringToSend, sizeof(stringToSend), "D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 9: DBG("Open PIE_PANEL_THREE\n");      
-              snprintf(stringToSend, sizeof(stringToSend), "D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 10:  DBG("Open PIE_PANEL_FOUR\n");      
-                snprintf(stringToSend, sizeof(stringToSend), "D20110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+                sprintf(stringToSend, "D20110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
                 sendESPNOWCommand("DS", stringToSend);  break;
     }
   };
@@ -362,34 +364,34 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: DBG("Close SMALL_PANEL_ONE\n");     
-              snprintf(stringToSend, sizeof(stringToSend), "D20201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 2: DBG("Close SMALL_PANEL_TWO\n");      
-              snprintf(stringToSend, sizeof(stringToSend), "D20202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 3: DBG("Close SMALL_PANEL_THREE\n");   
-              snprintf(stringToSend, sizeof(stringToSend), "D20203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 4: DBG("Close MEDIUM_PANEL_PAINTED\n"); 
-              snprintf(stringToSend, sizeof(stringToSend), "D20204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 5: DBG("Close MEDIUM_PANEL_SILVER\n");  
-              snprintf(stringToSend, sizeof(stringToSend), "D20205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 6: DBG("Close BIG_PANEL\n");            
-              snprintf(stringToSend, sizeof(stringToSend), "D20206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 7: DBG("Close PIE_PANEL_ON\nE");        
-              snprintf(stringToSend, sizeof(stringToSend), "D20207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 8: DBG("Close PIE_PANEL_TWO\n");        
-              snprintf(stringToSend, sizeof(stringToSend), "D20208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 9: DBG("Close PIE_PANEL_THREE\n");      
-              snprintf(stringToSend, sizeof(stringToSend), "D20209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, "D20209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 10:  DBG("Close PIE_PANEL_FOUR\n");      
-                snprintf(stringToSend, sizeof(stringToSend), "D20210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+                sprintf(stringToSend, "D20210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
                 sendESPNOWCommand("DS", stringToSend);  break;
     }
   };
@@ -406,7 +408,8 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   snprintf(stringToSend, sizeof(stringToSend),"D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
 switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            writeBcSerial("SMPt001");  break;
     case 2: sendESPNOWCommand("DS", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
@@ -856,16 +859,26 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 ///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
-
 void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
   WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
   delay(1000);
   Serial.println("Connecting to WiFi..");
   }
-  Serial.println(WiFi.localIP());
-  Serial.println(WiFi.SSID());
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Please go to  update to upload file");
@@ -990,7 +1003,9 @@ void setup(){
   Serial.begin(115200);
   bcSerial.begin(BC_BAUD_RATE, SERIAL_8N1, RXBC, TXBC);
   fuSerial.begin(FU_BAUD_RATE, SERIAL_8N1, RXFU, TXFU);
-
+  
+  delay(500);
+  
   Serial.print("\n\n\n----------------------------------------\n");
   Serial.print("Booting up the Master ESP-NOW Controller\n");
 
