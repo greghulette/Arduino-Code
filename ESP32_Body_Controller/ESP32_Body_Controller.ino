@@ -54,6 +54,9 @@
   
   String serialPort;
   String serialStringCommand;
+  String serialSubStringCommand;
+  int mp3Track;
+  String mp3Comm;
   
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
@@ -277,7 +280,7 @@ void loop(){
     if(blSerial.available()){serialBlEvent();}
     if(enSerial.available()){serialEnEvent();}
     if(stSerial.available()){serialStEvent();}
-//    if(mpSerial.available()){serialMpEvent();}
+    if(mpSerial.available()){serialMpEvent();}
 
     
     if (stringComplete) {autoComplete=false;}
@@ -296,21 +299,38 @@ void loop(){
               espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               };      
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
+              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=1; i<commandLength;i++ ){
                 char inCharRead = inputBuffer[i];
                 serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              DBG("Full Serial Command Captured: %s\n", serialStringCommand);
+              serialPort = serialStringCommand.substring(0,2);
+              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+               DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand, serialPort);
               if (serialPort == "BL"){
-                writeBlSerial(serialStringCommand);
+                writeBlSerial(serialSubStringCommand);
+                DBG("Sending out BL Serial\n");
               } else if (serialPort == "EN"){
-                writeEnSerial(serialStringCommand);
+                writeEnSerial(serialSubStringCommand);
+                DBG("Sending out EN Serial\n");
               } else if (serialPort == "ST"){
-                writeStSerial(serialStringCommand);
-              }
+                writeStSerial(serialSubStringCommand);
+                DBG("Sending out ST Serial\n");
+              }else if (serialPort == "MP"){
+                mp3Comm = serialStringCommand.substring(2,3);
+                mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
+                mp3Trigger(mp3Comm,mp3Track);
+//                mpSerial.print("t");
+//                mpSerial.write(mp3Track);
+//                writeMpSerial(serialSubStringCommand);
+                DBG("Sending out MP Serial\n ");
+              } else { DBG("No valid Serial identified\n");}
               serialStringCommand = "";
               serialPort = "";
+              serialSubStringCommand = "";
+              int mp3Track;
             } 
 
 
@@ -345,8 +365,8 @@ void loop(){
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
-        case 8: testSound();  break;  //TESTING   reserved for future use
-        case 9: testSound1(); break;  //reserved for future use
+        case 8: break;  //TESTING   reserved for future use
+        case 9:  break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;
 
@@ -434,18 +454,17 @@ void serialStEvent() {
   DBG("InputString: %s \n",inputString);
 };
 
-String testString;
+String mp3TriggerResponseString;
 
 void serialMpEvent() {
   while (mpSerial.available()) {
-    // get the new byte:
     char inChar = (char)mpSerial.read();
-    // add it to the testString:
-    testString += inChar;
+    mp3TriggerResponseString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
     };
   };
-  DBG("InputString: %s \n",testString);
+  DBG("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
+  mp3TriggerResponseString = "";
 };
 
   /////////////////////////////////////////////////////////
@@ -485,6 +504,13 @@ void writeStSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     stSerial.write(completeString[i]);
+  };
+};
+
+void writeMpSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    mpSerial.write(completeString[i]);
   };
 };
 
@@ -559,19 +585,7 @@ void resetArduino(int delayperiod){
 }
 
 
-
-
-void testSound(){
-  mpSerial.print("t");
-  mpSerial.write(2);
-  ESP_command[0]   = '\0';  
-  DBG("Called MP3\n");
-}
-
-
-void testSound1(){
-  blSerial.print("t");
-  blSerial.write(2);
-  ESP_command[0]   = '\0';  
-  DBG("Called MP3 1\n");
+void mp3Trigger(String comm, int track){
+  mpSerial.print(comm);
+  mpSerial.write(track);
 }
