@@ -95,7 +95,7 @@
   SoftwareSerial mpSerial;
 
   #define EN_BAUD_RATE 115200
-  #define BL_BAUD_RATE 9600
+  #define BL_BAUD_RATE 115200
   #define ST_BAUD_RATE 9600
   #define MP_BAUD_RATE 9600
 
@@ -504,14 +504,6 @@ void writeStSerial(String stringData){
   };
 };
 
-void writeMpSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    mpSerial.write(completeString[i]);
-  };
-};
-
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -566,7 +558,6 @@ void toggleDebug1(){
   }
     ESP_command[0]   = '\0';
 }
-
 
 
 //////////////////////////////////////////////////////////////////////
