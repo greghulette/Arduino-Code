@@ -905,28 +905,30 @@ void setServoEasingMethod(int easingMethod){
     case 7: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CubicEaseInOut);         break;
     case 8: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseIn);          break;
     case 9: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseOut);         break;
-    case 10: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseInOut);      break;
-    case 11: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseIn);         break;
-    case 12: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseOut);        break;
-    case 13: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseInOut);      break;
-    case 14: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseIn);            break;
-    case 15: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseOut);           break;
-    case 16: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseInOut);         break;
-    case 17: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);        break;
-    case 18: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseOut);       break;
-    case 19: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseInOut);     break;
-    case 20: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseIn);     break;
-    case 21: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseOut);    break;
-    case 22: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseInOut);  break;
-    case 23: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseIn);         break;
-    case 24: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseOut);        break;
-    case 25: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseInOut);      break;
-    case 26: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseIn);            break;
-    case 27: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseOut);           break;
-    case 28: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseInOut);         break;
-    case 29: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseIn);          break;
-    case 30: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseOut);         break;
-    case 31: servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
+    case 10:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuarticEaseInOut);      break;
+    case 11:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseIn);         break;
+    case 12:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseOut);        break;
+    case 13:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::QuinticEaseInOut);      break;
+    case 14:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseIn);            break;
+    case 15:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseOut);           break;
+    case 16:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::SineEaseInOut);         break;
+    case 17:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseIn);        break;
+    case 18:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseOut);       break;
+    case 19:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::CircularEaseInOut);     break;
+    case 20:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseIn);     break;
+    case 21:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseOut);    break;
+    case 22:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ExponentialEaseInOut);  break;
+    case 23:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseIn);         break;
+    case 24:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseOut);        break;
+    case 25:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::ElasticEaseInOut);      break;
+    case 26:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseIn);            break;
+    case 27:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseOut);           break;
+    case 28:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BackEaseInOut);         break;
+    case 29:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseIn);          break;
+    case 30:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseOut);         break;
+    case 31:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
+    default:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::LinearInterpolation); 
+              DBG("No Easing Method Selected\n");                                                  break;
   }
 }
 
@@ -1059,6 +1061,7 @@ void setup(){
     }    
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
+
   
 }   // end of setup
 
@@ -1068,6 +1071,7 @@ void loop(){
       AnimatedEvent::process();
 
     if(startUp) {
+      writeBcSerial("SMPt003");
       closeAllDoors(1,0,0,0,0);
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
@@ -1173,14 +1177,14 @@ void loop(){
                   char inCharRead = inputBuffer[i];
                   inputStringCommand += inCharRead;                   // add it to the inputString:
                 }
-                DBG("\nFull Command Recieved: %s ",inputStringCommand);
+                DBG("\nFull Command Recieved: %s ",inputStringCommand.c_str());
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
                 targetID = inputStringCommand.substring(2,4);
                 DBG("Target ID: %s\n", targetID);
                 commandSubString = inputStringCommand.substring(4,commandLength);
-                DBG("Command to Forward: %s\n", commandSubString);
+                DBG("Command to Forward: %s\n", commandSubString.c_str());
               }
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
                 serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1188,7 +1192,7 @@ void loop(){
                   char inCharRead = inputBuffer[i];
                   serialStringCommand += inCharRead;  // add it to the inputString:
                 }
-                DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+                DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand.c_str(), serialPort);
                 if (serialPort == "BC"){
                   writeBcSerial(serialStringCommand);
                 } else if (serialPort == "FU"){
@@ -1259,7 +1263,8 @@ void loop(){
         case 1: Serial.println("Controller: Master ESP-NOW Controller");   
                 ESP_command[0]   = '\0';                                                                break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000) ;                                        break;
+                DelayCall::schedule([] {ESP.restart();}, 3000) ;                                        
+                ESP_command[0]   = '\0';                                                                break;
         case 3: connectWiFi();                                                                          break;
         case 4: ESP.restart();                                                                          break;
         case 5: break;

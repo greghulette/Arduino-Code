@@ -177,7 +177,7 @@ void setup(){
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
     int paramsNr = request->params();               // Gets the number of parameters sent
-//    DBG_1("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+//    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
       AsyncWebParameter* p = request->getParam(i);
 
@@ -218,7 +218,7 @@ void setup(){
         };
         
         DBG_1("Param name: %s\n", (p->name()));
-        DBG_1("Param value: %s\n", (p->value()));
+        DBG_1("Param value: %s\n", (p->value()).c_str());
   
         if (paramVar == 0){
           DBG_1("Writing to Serial 0\n");      
@@ -227,7 +227,7 @@ void setup(){
         if (paramVar == 1){
           DBG_1("Writing to enSerial\n"); 
 //          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "EnSerial"){
+        if ((p->name())== "param0" & (p->value()) == "enSerial"){
             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
           } 
           else {
@@ -252,7 +252,7 @@ void setup(){
 //        delay(50);
     }
 
-    request->send(200, "text/plain", "message received");
+    request->send(200, "text/plain", "Message Received on Body Controller");
   });
   
   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
@@ -265,8 +265,6 @@ void setup(){
   //Reset Arudino Mega
   resetArduino(500);
 
-  // Play Startup Sound
-  mp3Trigger("t",255);
 
 }
 
@@ -277,6 +275,11 @@ void loop(){
     if(startUp) {
       startUp = false;
       Serial.println("Startup");
+      // Play Startup Sound
+      mp3Trigger("v",16);
+      mp3Trigger("t",1);
+      mp3Trigger("v",0);
+
     }
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
@@ -306,10 +309,10 @@ void loop(){
                 char inCharRead = inputBuffer[i];
                 serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("Full Serial Command Captured: %s\n", serialStringCommand);
+              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
               serialPort = serialStringCommand.substring(0,2);
               serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-               DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand, serialPort);
+               DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
               if (serialPort == "BL"){
                 writeBlSerial(serialSubStringCommand);
                 DBG("Sending out BL Serial\n");
