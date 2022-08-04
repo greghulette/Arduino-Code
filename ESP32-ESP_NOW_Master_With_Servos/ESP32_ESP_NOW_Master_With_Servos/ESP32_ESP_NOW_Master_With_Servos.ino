@@ -268,13 +268,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   IPAddress local_IP(192,168,4,110);
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,101);
-  
+  uint8_t oldMacAddress[6];
    ////R2 Control Network Details
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
   
   AsyncWebServer server(80);
   
+ String webPage = "<!DOCTYPE html>\
+                  <html>\
+                  <body>\
+                  <h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
+                  </body>\
+                  </html>";
 
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -860,6 +866,17 @@ void toggleDebug1(){
 ///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
 void connectWiFi(){
+//
+//  String webPage = "<!DOCTYPE html>\
+//<html>\
+//<body>\
+//<h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
+//</body>\
+//</html>";
+
+
+
+  
   esp_now_deinit();
   WiFi.disconnect();
   WiFi.mode(WIFI_OFF);
@@ -881,8 +898,10 @@ void connectWiFi(){
   Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to  update to upload file");
+    request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
+//    request->send(200, "text/html", webPage);
   });
+  
   
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
@@ -998,7 +1017,6 @@ void scan_i2c()
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 void setup(){
   //Initialize the Serial Ports

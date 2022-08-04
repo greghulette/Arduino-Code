@@ -273,6 +273,7 @@ uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
 uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};
 
 // Define variables to store commands to be sent
   String senderID;
@@ -1060,25 +1061,48 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
+//
+//  String webPage = "<!DOCTYPE html>\
+//<html>\
+//<body>\
+//<h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
+//</body>\
+//</html>";
+
+
+
+  
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
   WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
+  delay(1000);
+  Serial.println("Connecting to WiFi..");
   }
-  Serial.println(WiFi.localIP());
-  Serial.println(WiFi.SSID());
-
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to  update to upload file");
+    request->send(200, "text/plain", "Please go to http://192.168.4.111/update to upload file");
+//    request->send(200, "text/html", webPage);
   });
-
+  
+  
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
   ESP_command[0]   = '\0';
-}
-
+}   
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
