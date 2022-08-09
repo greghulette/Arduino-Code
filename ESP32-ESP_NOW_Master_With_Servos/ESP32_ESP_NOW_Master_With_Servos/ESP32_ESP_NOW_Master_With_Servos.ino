@@ -866,17 +866,6 @@ void toggleDebug1(){
 ///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
 void connectWiFi(){
-//
-//  String webPage = "<!DOCTYPE html>\
-//<html>\
-//<body>\
-//<h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
-//</body>\
-//</html>";
-
-
-
-  
   esp_now_deinit();
   WiFi.disconnect();
   WiFi.mode(WIFI_OFF);
@@ -899,10 +888,8 @@ void connectWiFi(){
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
-//    request->send(200, "text/html", webPage);
   });
-  
-  
+    
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
@@ -1195,10 +1182,10 @@ void loop(){
                   char inCharRead = inputBuffer[i];
                   inputStringCommand += inCharRead;                   // add it to the inputString:
                 }
-                DBG("\nFull Command Recieved: %s ",inputStringCommand.c_str());
+                DBG("Full Command Recieved: %s ",inputStringCommand.c_str());
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
-                DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+                DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
                 targetID = inputStringCommand.substring(2,4);
                 DBG("Target ID: %s\n", targetID);
                 commandSubString = inputStringCommand.substring(4,commandLength);
