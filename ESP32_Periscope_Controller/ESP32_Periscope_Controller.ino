@@ -79,7 +79,7 @@
   #define plSerial Serial1
   #define fuSerial Serial2
   
-  #define PL_BAUD_RATE 9600
+  #define PL_BAUD_RATE 115200
   #define FU_BAUD_RATE 115200
 
 
@@ -101,6 +101,7 @@
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
     uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+    uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
 
 //  // Define variables to store commands to be sent
     String senderID;
@@ -144,14 +145,16 @@
 
 //  // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  char macStr[18];
-//  String status;
-  // Copies the sender mac address to a string
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  DBG("Packet to: %s\n", macStr);
-  status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail";
-  DBG("Send Status:\t %s\n", status);
+  if (debugflag == 1){
+    Serial.print("\r\nLast Packet Send Status:\t");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    if (status ==0){
+      success = "Delivery Success :)";
+    }
+    else{
+      success = "Delivery Fail :(";
+    }
+  }
 }
 
 // Callback when data is received
@@ -161,28 +164,29 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  Serial.print("Bytes recieved from ESP-NOW Message: ");Serial.println(len);
-  Serial.print("Sender ID = "); Serial.println(incomingSenderID);
-  Serial.print("Destination ID= ");Serial.println(incomingDestinationID);
-  Serial.print("Command = "); Serial.println(incomingCommand); 
+  DBG("Bytes received from ESP-NOW Message: %i\n", len);
+  DBG("Sender ID = %s\n",incomingSenderID);
+  DBG("Destination ID= %s\n" ,incomingDestinationID);
+  DBG("Target ID= %s\n", incomingTargetID);
+  DBG("Command = %s\n" , incomingCommand.c_str());  
   if (incomingDestinationID =="Periscope"){
-    Serial.println("ESP-NOW Command Accepted");
-    Serial.print("Target ID= "); Serial.println(incomingTargetID);
+    DBG("ESP-NOW Command Accepted\n");
+    DBG("Target ID= %s\n",incomingTargetID);
     if (incomingTargetID == "PL"){
-        Serial.println("Sending out plSerial");
+        DBG("Sending out plSerial\n");
         writePlSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
-        Serial.println("Sending out fuSerial");
+        DBG("Sending out fuSerial\n");
         writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "PC"){
-        Serial.print("Execute Local Command = "); Serial.println(incomingCommand);
+        DBG("Execute Local Command = \n", incomingCommand);
         inputString = incomingCommand;
         stringComplete = true; 
     } else {
-        Serial.println("Wrong Target ID Sent");
+        DBG("Wrong Target ID Sent\n");
       }
   }
-  else {Serial.println("ESP-NOW Message Ignored");}
+  else {DBG("ESP-NOW Message Ignored\n");}
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -288,7 +292,7 @@ void loop(){
           inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          DBG("Command Length is: %s\n" , commandLength);
+          DBG("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
             if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
@@ -299,7 +303,7 @@ void loop(){
               DBG("\nFull Command Recieved: %s ",inputStringCommand);
               espNowCommandFunctionString = inputStringCommand.substring(0,2);
               espNowCommandFunction = espNowCommandFunctionString.toInt();
-              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
+              DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
               targetID = inputStringCommand.substring(2,4);
               DBG("Target ID: %s\n", targetID);
               commandSubString = inputStringCommand.substring(4,commandLength);
@@ -348,7 +352,7 @@ void loop(){
 
       if(ESP_command[0]){
         switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
+        case 1: Serial.println("Periscope ESP Controller");   
                 ESP_command[0]   = '\0';                                                        break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
@@ -503,7 +507,7 @@ void sendESPNOWCommand(String starget,String scomm){
 //////////////////////////////////////////////////////////////////////
 
 
-void DBG(char *format, ...) {
+void DBG(const char *format, ...) {
         if (!debugflag)
                 return;
         va_list ap;
@@ -513,7 +517,7 @@ void DBG(char *format, ...) {
 }
 
 
-void DBG_1(char *format, ...) {
+void DBG_1(const char *format, ...) {
         if (!debugflag1)
                 return;
         va_list ap;
@@ -553,14 +557,91 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.begin();
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
+  WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
+  delay(1000);
+  Serial.println("Connecting to WiFi..");
   }
-  Serial.println(WiFi.localIP());
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to  update to upload file");
+  });
+  
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
+
   ESP_command[0]   = '\0';
+}   
+
+
+void scan_i2c()
+{
+    unsigned nDevices = 0;
+    for (byte address = 1; address < 127; address++)
+    {
+        String name = "<unknown>";
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+        if (address == 0x70)
+        {
+            // All call address for PCA9685
+            name = "PCA9685:all";
+        }
+        if (address == 0x40)
+        {
+            // Adafruit PCA9685
+            name = "PCA9685";
+        }
+        if (address == 0x14)
+        {
+            // IA-Parts magic panel
+            name = "IA-Parts Magic Panel";
+        }
+        if (address == 0x20)
+        {
+            // IA-Parts periscope
+            name = "IA-Parts Periscope";
+        }
+        if (address == 0x16)
+        {
+            // PSIPro
+            name = "PSIPro";
+        }
+
+        if (error == 0)
+        {
+            Serial.print("I2C device found at address 0x");
+            if (address < 16)
+                Serial.print("0");
+            Serial.print(address, HEX);
+            Serial.print(" ");
+            Serial.println(name);
+            nDevices++;
+        }
+        else if (error == 4)
+        {
+            Serial.print("Unknown error at address 0x");
+            if (address < 16)
+                Serial.print("0");
+            Serial.println(address, HEX);
+        }
+    }
+    if (nDevices == 0)
+        Serial.println("No I2C devices found\n");
+    else
+        Serial.println("done\n");
 }
