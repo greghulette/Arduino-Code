@@ -1190,6 +1190,8 @@ void loop(){
                 DBG("Target ID: %s\n", targetID);
                 commandSubString = inputStringCommand.substring(4,commandLength);
                 DBG("Command to Forward: %s\n", commandSubString.c_str());
+                inputStringCommand=""; 
+
               }
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
                 serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1202,7 +1204,7 @@ void loop(){
                   writeBcSerial(serialStringCommand);
                 } else if (serialPort == "FU"){
                   writeFuSerial(serialStringCommand);
-                } 
+                }
                 serialStringCommand = "";
                 serialPort = "";
             } 

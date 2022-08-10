@@ -498,7 +498,7 @@ void writeEnSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     enSerial.write(completeString[i]);
   };
-  DBG("String to Send over ESPNOW Serial: %s \n" , completeString);
+  DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
 };
 
 

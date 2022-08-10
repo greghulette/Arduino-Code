@@ -52,7 +52,7 @@
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
 
-  int debugflag = 0;
+  int debugflag = 1;
   int debugflag1 = 0;  // Used for optional level of debuging
 
 
@@ -79,7 +79,7 @@
   #define plSerial Serial1
   #define fuSerial Serial2
   
-  #define PL_BAUD_RATE 115200
+  #define PL_BAUD_RATE 9600
   #define FU_BAUD_RATE 115200
 
 
@@ -123,12 +123,12 @@
 //
 //  //Structure example to send data
 //  //Must match the receiver structure
-    typedef struct struct_message {
-        String structSenderID;
-        String structDestinationID;
-        String structTargetID;  
-        String structCommand;
-    } struct_message;
+typedef struct struct_message {
+      char structSenderID[15];
+      char structDestinationID[15];
+      char structTargetID[5];
+      char structCommand[100];
+  } struct_message;
 //
 //  // Create a struct_message calledcommandsTosend to hold variables that will be sent
     struct_message commandsToSendtoDome;
@@ -159,6 +159,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  Serial.println("ESPNOW Received");
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
@@ -227,7 +228,7 @@ void setup(){
   autoInputString.reserve(100);
 
   //initialize WiFi for ESP-NOW
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
   esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
@@ -471,21 +472,28 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
-void sendESPNOWCommand(String starget,String scomm){
+
+void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+{
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
+}
+void sendESPNOWCommand(String starget, String scomm){
   String sdest;
+  String senderID = "Periscope";     // change to match location (Dome, Body, Periscope)
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  };
-  commandsToSendtoBroadcast.structDestinationID = sdest;
-  DBG("sdest: %s\n", sdest);
-  commandsToSendtoBroadcast.structTargetID = starget;
-  commandsToSendtoBroadcast.structSenderID = "Body";
-  commandsToSendtoBroadcast.structCommand = scomm;
+  }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+    sdest = "Body";
+  }
+  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent with success\n");
+    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
     DBG("Error sending the data\n");
