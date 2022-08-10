@@ -238,13 +238,18 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
     if (incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID =="ST"){
+
         DBG("Sending %s out bcSerial\n", incomingCommand.c_str());
         writeBcSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
         DBG("Sending %s out fuSerial\n", incomingCommand.c_str());
         writeFuSerial(incomingCommand);
-    } else if (incomingTargetID == "DS"){
+    } else if (incomingTargetID == "BS"){
         DBG("Execute Local Command = %s\n", incomingCommand.c_str());
+//        String ic = incomingCommand.c_str();
+        if (incomingCommand == "PCONLINE"){
+          DBG("Periscope Controller Online\n");
+        }
         inputString = incomingCommand;
         stringComplete = true; 
     } else {DBG("Wrong Target ID Sent\n");}
@@ -268,19 +273,13 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   IPAddress local_IP(192,168,4,110);
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,101);
-  uint8_t oldMacAddress[6];
+  
    ////R2 Control Network Details
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
   
   AsyncWebServer server(80);
   
- String webPage = "<!DOCTYPE html>\
-                  <html>\
-                  <body>\
-                  <h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
-                  </body>\
-                  </html>";
 
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -887,9 +886,9 @@ void connectWiFi(){
   Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
+    request->send(200, "text/plain", "Please go to  update to upload file");
   });
-    
+  
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
@@ -1004,6 +1003,7 @@ void scan_i2c()
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 void setup(){
   //Initialize the Serial Ports
@@ -1182,7 +1182,7 @@ void loop(){
                   char inCharRead = inputBuffer[i];
                   inputStringCommand += inCharRead;                   // add it to the inputString:
                 }
-                DBG("Full Command Recieved: %s ",inputStringCommand.c_str());
+                DBG("\nFull Command Recieved: %s ",inputStringCommand.c_str());
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
@@ -1190,8 +1190,7 @@ void loop(){
                 DBG("Target ID: %s\n", targetID);
                 commandSubString = inputStringCommand.substring(4,commandLength);
                 DBG("Command to Forward: %s\n", commandSubString.c_str());
-                inputStringCommand=""; 
-
+                inputStringCommand="";
               }
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
                 serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1204,7 +1203,8 @@ void loop(){
                   writeBcSerial(serialStringCommand);
                 } else if (serialPort == "FU"){
                   writeFuSerial(serialStringCommand);
-                }
+                } 
+                
                 serialStringCommand = "";
                 serialPort = "";
             } 
@@ -1286,7 +1286,7 @@ void loop(){
     if(ESPNOW_command[0]){
       switch(ESPNOW_command[0]){
         case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                                 break; 
-        case 2: break;  //reserved for future use
+        case 2: sendESPNOWCommand("PC","Status");                                                       break;  //reserved for future use
         case 3: break;  //reserved for future use      
       }
     }

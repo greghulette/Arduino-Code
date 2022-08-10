@@ -101,7 +101,6 @@
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
     uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-    uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
 
 //  // Define variables to store commands to be sent
     String senderID;
@@ -135,12 +134,11 @@ typedef struct struct_message {
     struct_message commandsToSendtoPeriscope;
     struct_message commandsToSendtoBroadcast;
 
-//
-//  // Create a struct_message to hold incoming commands from the Dome
-    struct_message commandsToReceiveFromDome;
-    struct_message commandsToReceiveFromPeriscope;
-    struct_message commandsToReceiveFromBroadcast;
-//
+// Create a struct_message to hold incoming commands from the Dome
+  struct_message commandsToReceiveFromDome;
+  struct_message commandsToReceiveFromPeriscope;
+  struct_message commandsToReceiveFromBroadcast;
+
   esp_now_peer_info_t peerInfo;
 
 //  // Callback when data is sent
@@ -159,7 +157,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  Serial.println("ESPNOW Received");
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
@@ -181,9 +178,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "PC"){
         DBG("Execute Local Command = \n", incomingCommand);
+        if (incomingCommand == "Status"){
+          DBG("Status is good\n");                                                                                                                                       
+          sendESPNOWCommand("BS","PCONLINE");
+        }else if(incomingCommand != "Status"){
         inputString = incomingCommand;
         stringComplete = true; 
-    } else {
+        }
+      }
+     else {
         DBG("Wrong Target ID Sent\n");
       }
   }
@@ -472,7 +475,6 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
-
 void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
 {
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
@@ -480,9 +482,10 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
+
 void sendESPNOWCommand(String starget, String scomm){
   String sdest;
-  String senderID = "Periscope";     // change to match location (Dome, Body, Periscope)
+  String senderID = "Body";     // change to match location (Dome, Body, Periscope)
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
@@ -565,91 +568,14 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
-
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
-  
-  delay(500);
-  
-  WiFi.begin(ssid,password);
+  WiFi.begin();
   while (WiFi.status() != WL_CONNECTED) {
-  delay(1000);
-  Serial.println("Connecting to WiFi..");
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
   }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to  update to upload file");
-  });
-  
+  Serial.println(WiFi.localIP());
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
-
   ESP_command[0]   = '\0';
-}   
-
-
-void scan_i2c()
-{
-    unsigned nDevices = 0;
-    for (byte address = 1; address < 127; address++)
-    {
-        String name = "<unknown>";
-        Wire.beginTransmission(address);
-        byte error = Wire.endTransmission();
-        if (address == 0x70)
-        {
-            // All call address for PCA9685
-            name = "PCA9685:all";
-        }
-        if (address == 0x40)
-        {
-            // Adafruit PCA9685
-            name = "PCA9685";
-        }
-        if (address == 0x14)
-        {
-            // IA-Parts magic panel
-            name = "IA-Parts Magic Panel";
-        }
-        if (address == 0x20)
-        {
-            // IA-Parts periscope
-            name = "IA-Parts Periscope";
-        }
-        if (address == 0x16)
-        {
-            // PSIPro
-            name = "PSIPro";
-        }
-
-        if (error == 0)
-        {
-            Serial.print("I2C device found at address 0x");
-            if (address < 16)
-                Serial.print("0");
-            Serial.print(address, HEX);
-            Serial.print(" ");
-            Serial.println(name);
-            nDevices++;
-        }
-        else if (error == 4)
-        {
-            Serial.print("Unknown error at address 0x");
-            if (address < 16)
-                Serial.print("0");
-            Serial.println(address, HEX);
-        }
-    }
-    if (nDevices == 0)
-        Serial.println("No I2C devices found\n");
-    else
-        Serial.println("done\n");
 }
