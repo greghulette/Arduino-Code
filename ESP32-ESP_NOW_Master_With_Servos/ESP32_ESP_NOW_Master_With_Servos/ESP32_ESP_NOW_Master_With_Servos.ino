@@ -883,15 +883,15 @@ void connectWiFi(){
   
   WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
-  delay(1000);
-  Serial.println("Connecting to WiFi..");
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
   }
   Serial.print("SSID: \t");Serial.println(WiFi.SSID());
   Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
   Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to  update to upload file");
+    request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
   });
   
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
@@ -943,6 +943,9 @@ void setServoEasingMethod(int easingMethod){
 }
 
 
+//////////////////////////////////////////////////////////////////////
+///*****          Scan I2C for devices                        *****///
+//////////////////////////////////////////////////////////////////////
 
 void scan_i2c()
 {
@@ -1002,6 +1005,9 @@ void scan_i2c()
         Serial.println("done\n");
 }
 
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
   // KeepAlive Message to show status on website.
   int keepAliveDuration= 5000;  // 5 seconds
   int keepAliveMillis;

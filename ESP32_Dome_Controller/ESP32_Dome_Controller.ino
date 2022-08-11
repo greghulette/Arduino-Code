@@ -1139,7 +1139,10 @@ void setServoEasingMethod(int easingMethod){
   }
 }
 
-// Scan I2C for devices.  Used for troubleshooting only.
+//////////////////////////////////////////////////////////////////////
+///*****          Scan I2C for devices                        *****///
+//////////////////////////////////////////////////////////////////////
+
 void scan_i2c(){
     unsigned nDevices = 0;
     for (byte address = 1; address < 127; address++){
@@ -1189,8 +1192,11 @@ void scan_i2c(){
         Serial.println("done\n");
 }
 
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
   // KeepAlive Message to show status on website.
-  int keepAliveDuration= 10000;  // 10 seconds
+  int keepAliveDuration= 5000;  // 5 seconds
   uint32_t keepAliveMillis;
 
 void keepAlive(){
@@ -1257,26 +1263,25 @@ void setup(){
   //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
-    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Body ESP-NOW peer");
-      return;
-    }
+  memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Body ESP-NOW peer");
+    return;
+  }
 
-    memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Periscope ESP-NOW peer");
-      return;
-    }
-    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Broadcast ESP-NOW peer");
-      return;
-    }  
+  memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Periscope ESP-NOW peer");
+    return;
+  }
+  memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }  
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
-
- 
+  
 }  // end of Setup
 
 

@@ -93,36 +93,37 @@
 //  Periscope Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
 //    MAC Address of your receivers - Not really used but have it in case it's needed.
-    uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-    uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  uint8_t domePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
 //    MAC Address to broadcast to all senders at once - Mainly Used in my code
-    uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-    uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
 
 //  // Define variables to store commands to be sent
-    String senderID;
-    String destinationID;
-    String targetID;
-    String command;
-    String commandSubString;
-    
+  String senderID;
+  String destinationID;
+  String targetID;
+  String command;
+  String commandSubString;
+  
 //
 
 //  // Define variables to store incoming commands
-    String incomingDestinationID;
-    String incomingTargetID;  
-    String incomingSenderID;
-    String incomingCommand;
+  String incomingDestinationID;
+  String incomingTargetID;  
+  String incomingSenderID;
+  String incomingCommand;
 //    
 //  // Variable to store if sending data was successful
-    String success;
+  String success;
 //
 //  //Structure example to send data
 //  //Must match the receiver structure
-typedef struct struct_message {
+  typedef struct struct_message {
       char structSenderID[15];
       char structDestinationID[15];
       char structTargetID[5];
@@ -130,9 +131,9 @@ typedef struct struct_message {
   } struct_message;
 //
 //  // Create a struct_message calledcommandsTosend to hold variables that will be sent
-    struct_message commandsToSendtoDome;
-    struct_message commandsToSendtoPeriscope;
-    struct_message commandsToSendtoBroadcast;
+  struct_message commandsToSendtoDome;
+  struct_message commandsToSendtoPeriscope;
+  struct_message commandsToSendtoBroadcast;
 
 // Create a struct_message to hold incoming commands from the Dome
   struct_message commandsToReceiveFromDome;
@@ -399,17 +400,39 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.begin();
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
+  WiFi.begin(ssid,password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi..");
   }
-  Serial.println(WiFi.localIP());
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+  });
+  
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
+
   ESP_command[0]   = '\0';
-}
+} 
+
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
   // KeepAlive Message to show status on website.
   int keepAliveDuration= 5000;  // 5 seconds
   int keepAliveMillis;
@@ -467,22 +490,22 @@ void setup(){
   peerInfo.encrypt = false;
 
   // Add peers  
-    memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Dome ESP-NOW peer");
-      return;
-    }
+  memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Dome ESP-NOW peer");
+    return;
+  }
 
-    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Body ESP-NOW peer");
-      return;
-    }
-    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Broadcast ESP-NOW peer");
-      return;
-    }    
+  memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Body ESP-NOW peer");
+    return;
+  }
+  memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }    
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
   

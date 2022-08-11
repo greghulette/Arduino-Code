@@ -67,6 +67,7 @@
 
   int debugflag = 1;
   int debugflag1 = 0;  // Used for debugging params recieved from clients
+  int debugflag2 = 0;
 
   boolean periscopeControllerStatus = false;
   boolean domeControllerStatus = false;
@@ -313,6 +314,15 @@ void DBG_1(const char *format, ...) {
         va_end(ap);
 }
 
+void DBG_2(const char *format, ...) {
+        if (!debugflag2)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
 
 void toggleDebug(){
   debugflag = !debugflag;
@@ -333,6 +343,16 @@ void toggleDebug1(){
     }
   else{
     Serial.println("Parameter Debugging Disabled\n");
+  }
+    ESP_command[0]   = '\0';
+}
+void toggleDebug2(){
+  debugflag2 = !debugflag2;
+  if (debugflag2 == 1){
+    Serial.println("Debug 2 Debugging Enabled \n");
+    }
+  else{
+    Serial.println("Debug 2 Debugging Disabled\n");
   }
     ESP_command[0]   = '\0';
 }
@@ -665,6 +685,7 @@ void loop(){
         case 9:  break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;
+        case 12: toggleDebug2();                                                                break;
 
       }
     }
