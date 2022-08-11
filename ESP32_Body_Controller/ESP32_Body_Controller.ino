@@ -58,13 +58,28 @@
   int mp3Track;
   String mp3Comm;
   
+  String infofunction;
+  String infoCommandString;
+  String infoCommandSubString;
+
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
 
   int debugflag = 1;
   int debugflag1 = 0;  // Used for debugging params recieved from clients
 
-  
+  boolean periscopeControllerStatus = false;
+  boolean domeControllerStatus = false;
+  boolean bodyServoControllerStatus  = false;
+
+  int keepAliveTimeOut = 15000;
+  unsigned long dckeepAliveAge;
+  unsigned long dckeepaliveAgeMillis;
+  unsigned long pckeepAliveAge;
+  unsigned long pckeepaliveAgeMillis;
+  unsigned long bskeepAliveAge;
+  unsigned long bskeepaliveAgeMillis;
+
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -134,256 +149,14 @@ int maxConnections = 8;
 
 AsyncWebServer server(80);
 
-void setup(){
-  //Initialize the Serial Ports
-  Serial.begin(115200);
-  enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
-  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
-  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
-  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
 
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Body ESP Controller");
-  
-  //Configure the Reset Pins for the arduinoReset() function
-  pinMode(4, OUTPUT);
-  digitalWrite(4,HIGH);
-
-  //Initialize I2C for the Servo Expander Board
-  Wire.begin();
-  
-  //Initialize the ReelTwo Library
-  SetupEvent::ready();
-
-  //Reserve the inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
-
-  //Initialize the Soft Access Point
-  WiFi.mode(WIFI_AP);
-  Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
-  delay(200);
-  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
-  delay(200);
-  Serial.print("Soft-AP IP address = ");
-  Serial.println(WiFi.softAPIP());
-
-  esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
-  delay(2000);
-  Serial.print("Local AP MAC address = ");
-  Serial.println(WiFi.softAPmacAddress());
- 
- //Setup the webpage and accept the GET requests, and parses the variables 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      
-    int paramsNr = request->params();               // Gets the number of parameters sent
-//    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
-    for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-      AsyncWebParameter* p = request->getParam(i);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////                                                                //////////////////////////        
-//////////  These If statements choose where to send the commands         //////////////////////////
-//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-//////////                                                                //////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-        
-    if ((p->name())== "param0" & (p->value()) == "Serial0"){
-        DBG_1("Serial0 Chosen with If Statement\n");
-        paramVar = 0;
-        };
-    if ((p->name())== "param0" & (p->value()) == "enSerial"){
-        DBG_1("Serial 1 Chosen with If Statement\n");
-        paramVar = 1;
-        };
-    if ((p->name())== "param0" & (p->value()) == "blSerial"){
-      DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 2;
-    };
-        if ((p->name())== "param0" & (p->value()) == "stSerial"){
-          DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 3;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ESP"){
-          DBG_1("ESP(Self) Chosen with If Statement\n");
-          paramVar = 4;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-        DBG_1("Reset Only Arduino Chosen with If Statement\n");
-          resetArduino(500);
-        };
-    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
-        ESP.restart();
-        };
-        
-        DBG_1("Param name: %s\n", (p->name()));
-        DBG_1("Param value: %s\n", (p->value()).c_str());
-  
-        if (paramVar == 0){
-          DBG_1("Writing to Serial 0\n");      
-          writeSerialString(p->value());
-        };
-        if (paramVar == 1){
-          DBG_1("Writing to enSerial\n"); 
-//          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "enSerial"){
-            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-          } 
-          else {
-            writeEnSerial(p->value());
-          };
-        } ;      
-          if (paramVar == 2){
-          DBG_1("Writing to blSerial\n");      
-          writeBlSerial(p->value());
-        };
-        if (paramVar == 3){
-          DBG_1("Writing to stSerial\n");      
-          writeStSerial(p->value());
-        };
-        if (paramVar == 4){
-          DBG_1("Executing on self\n");      
-          inputString = (p->value());
-          stringComplete = true;  
-        };
-
-        DBG_1("------\n");
-//        delay(50);
-    }
-
-    request->send(200, "text/plain", "Message Received on Body Controller");
-  });
-  
-  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
-
-  //Initialize the AsycWebServer
-  server.begin();
-
-  //Reset Arudino Mega
-  resetArduino(500);
-
-
-}
-
-void loop(){
-  if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
-    AnimatedEvent::process();
-    if(startUp) {
-      startUp = false;
-      Serial.println("Startup");
-      // Play Startup Sound
-      mp3Trigger("v",16);
-      mp3Trigger("t",1);
-      mp3Trigger("v",0);
-
-    }
-    if(Serial.available()){serialEvent();}
-    if(blSerial.available()){serialBlEvent();}
-    if(enSerial.available()){serialEnEvent();}
-    if(stSerial.available()){serialStEvent();}
-    if(mpSerial.available()){serialMpEvent();}
-
-    
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'               // Command for sending Serial Strings out Serial ports
-        
-        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
-
-          if(commandLength >= 3) {
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              };      
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=1; i<commandLength;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
-              serialPort = serialStringCommand.substring(0,2);
-              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-               DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
-              if (serialPort == "BL"){
-                writeBlSerial(serialSubStringCommand);
-                DBG("Sending out BL Serial\n");
-              } else if (serialPort == "EN"){
-                writeEnSerial(serialSubStringCommand);
-                DBG("Sending out EN Serial\n");
-              } else if (serialPort == "ST"){
-                writeStSerial(serialSubStringCommand);
-                DBG("Sending out ST Serial\n");
-              }else if (serialPort == "MP"){
-                mp3Comm = serialStringCommand.substring(2,3);
-                mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
-                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
-                mp3Trigger(mp3Comm,mp3Track);
-                DBG("Sending out MP Serial\n ");
-              } else { DBG("No valid Serial identified\n");}
-              serialStringCommand = "";
-              serialPort = "";
-              serialSubStringCommand = "";
-              int mp3Track;
-            } 
-
-
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
-            }
-          }
-        }
-
-      ///***  Clear States and Reset for next command.  ***///
-        stringComplete =false;
-        autoComplete = false;
-        inputBuffer[0] = '\0';
-
-        // reset Local ESP Command Variables
-        int espCommandFunction;
-
-
-      DBG("command Proccessed\n");
-    }
-
-    if(ESP_command[0]){
-      switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-        case 4: break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9:  break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        case 11: toggleDebug1();                                                                break;
-
-      }
-    }
-
-
-    
-    if(isStartUp) {
-      isStartUp = false;
-      delay(500);
-    }
-  }
-}  // end of main loop
-
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             Start OF FUNCTIONS                                        /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -571,14 +344,337 @@ void toggleDebug1(){
 
 void resetArduino(int delayperiod){
   DBG("Opening of reset function");
-  digitalWrite(4,LOW);
+  digitalWrite(RST,LOW);
   delay(delayperiod);
-  digitalWrite(4,HIGH);
+  digitalWrite(RST,HIGH);
   DBG("reset witin function");
 }
 
-
+//////////////////////////////////////////////////////////////////////
+///*****         Function for MP3 Trigger                     *****///
+//////////////////////////////////////////////////////////////////////
 void mp3Trigger(String comm, int track){
   mpSerial.print(comm);
   mpSerial.write(track);
 }
+
+
+//////////////////////////////////////////////////////////////////////
+///*****    Checks the age of the Status Variables            *****///
+//////////////////////////////////////////////////////////////////////
+
+void checkAgeofkeepAlive(){    //checks for the variable's age
+  if (domeControllerStatus==true){
+    if (millis()-dckeepAliveAge>=keepAliveTimeOut){
+      domeControllerStatus=false;
+      DBG("Dome Controller Offline\n");
+    }
+  }
+  if (periscopeControllerStatus==true){
+    if (millis()-pckeepAliveAge>=keepAliveTimeOut){
+      periscopeControllerStatus=false;
+      DBG("Periscope Controller Offline\n");
+    }
+  }
+  if (bodyServoControllerStatus==true){
+    if (millis()-bskeepAliveAge>=keepAliveTimeOut){
+      bodyServoControllerStatus=false;
+      DBG("Body Servo Controller Offline\n");
+    }
+  }
+}
+
+void printKeepaliveStatus(){
+  Serial.println(domeControllerStatus);
+  Serial.println(periscopeControllerStatus);
+  Serial.println(bodyServoControllerStatus);
+  DBG("Dome Controller Status: %s\n", formatBool(domeControllerStatus));
+  DBG("Body Servo Controller Status: %s\n", formatBool(bodyServoControllerStatus));
+  DBG("Periscope Controller Status: %s\n", formatBool(periscopeControllerStatus));
+  ESP_command[0]   = '\0';
+
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             END OF FUNCTIONS                                          /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void setup(){
+  //Initialize the Serial Ports
+  Serial.begin(115200);
+  enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
+  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
+  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
+  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
+
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Body ESP Controller");
+  
+  //Configure the Reset Pins for the arduinoReset() function
+  pinMode(4, OUTPUT);
+  digitalWrite(4,HIGH);
+
+  //Initialize I2C for the Servo Expander Board
+  Wire.begin();
+  
+  //Initialize the ReelTwo Library
+  SetupEvent::ready();
+
+  //Reserve the inputStrings
+  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(100);
+
+  //Initialize the Soft Access Point
+  WiFi.mode(WIFI_AP);
+  Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
+  delay(200);
+  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
+  delay(200);
+  Serial.print("Soft-AP IP address = ");
+  Serial.println(WiFi.softAPIP());
+
+  esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
+  delay(2000);
+  Serial.print("Local AP MAC address = ");
+  Serial.println(WiFi.softAPmacAddress());
+ 
+ //Setup the webpage and accept the GET requests, and parses the variables 
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      
+    int paramsNr = request->params();               // Gets the number of parameters sent
+//    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+    for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
+      AsyncWebParameter* p = request->getParam(i);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////                                                                //////////////////////////        
+//////////  These If statements choose where to send the commands         //////////////////////////
+//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
+//////////                                                                //////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+        
+    if ((p->name())== "param0" & (p->value()) == "Serial0"){
+        DBG_1("Serial0 Chosen with If Statement\n");
+        paramVar = 0;
+        };
+    if ((p->name())== "param0" & (p->value()) == "enSerial"){
+        DBG_1("Serial 1 Chosen with If Statement\n");
+        paramVar = 1;
+        };
+    if ((p->name())== "param0" & (p->value()) == "blSerial"){
+      DBG_1("Serial 2 Chosen with If Statement\n");
+          paramVar = 2;
+    };
+        if ((p->name())== "param0" & (p->value()) == "stSerial"){
+          DBG_1("Serial 2 Chosen with If Statement\n");
+          paramVar = 3;
+    };
+    if ((p->name())== "param0" & (p->value()) == "ESP"){
+          DBG_1("ESP(Self) Chosen with If Statement\n");
+          paramVar = 4;
+    };
+    if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
+        DBG_1("Reset Only Arduino Chosen with If Statement\n");
+          resetArduino(500);
+        };
+    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
+        DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
+        ESP.restart();
+        };
+        
+        DBG_1("Param name: %s\n", (p->name()));
+        DBG_1("Param value: %s\n", (p->value()).c_str());
+  
+        if (paramVar == 0){
+          DBG_1("Writing to Serial 0\n");      
+          writeSerialString(p->value());
+        };
+        if (paramVar == 1){
+          DBG_1("Writing to enSerial\n"); 
+//          delay(100);     
+        if ((p->name())== "param0" & (p->value()) == "enSerial"){
+            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+          } 
+          else {
+            writeEnSerial(p->value());
+          };
+        } ;      
+          if (paramVar == 2){
+          DBG_1("Writing to blSerial\n");      
+          writeBlSerial(p->value());
+        };
+        if (paramVar == 3){
+          DBG_1("Writing to stSerial\n");      
+          writeStSerial(p->value());
+        };
+        if (paramVar == 4){
+          DBG_1("Executing on self\n");      
+          inputString = (p->value());
+          stringComplete = true;  
+        };
+
+        DBG_1("------\n");
+//        delay(50);
+    }
+
+    request->send(200, "text/plain", "Message Received on Body Controller");
+  });
+  
+  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
+
+  //Initialize the AsycWebServer
+  server.begin();
+
+  //Reset Arudino Mega
+  resetArduino(500);
+
+
+}  //end of Setup
+
+
+void loop(){
+  if (millis() - MLMillis >= mainLoopDelayVar){
+    MLMillis = millis();
+    AnimatedEvent::process();
+    if(startUp) {
+      startUp = false;
+      Serial.println("Startup");
+      // Play Startup Sound
+      mp3Trigger("v",16);
+      mp3Trigger("t",1);
+      mp3Trigger("v",0);
+
+    }
+    checkAgeofkeepAlive();
+    if(Serial.available()){serialEvent();}
+    if(blSerial.available()){serialBlEvent();}
+    if(enSerial.available()){serialEnEvent();}
+    if(stSerial.available()){serialStEvent();}
+    if(mpSerial.available()){serialMpEvent();}
+
+    
+    if (stringComplete) {autoComplete=false;}
+    if (stringComplete || autoComplete) {
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+      if( inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'     ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='I'     ||        // Command for receiving status/info from other boards
+          inputBuffer[0]=='i'               // Command for receiving status/info from other boards
+        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+
+          if(commandLength >= 3) {
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
+              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              }; 
+
+            if(inputBuffer[0]=='I' || inputBuffer[0]=='i'){
+              for (int i=1; i<commandLength;i++ ){
+                char inCharRead = inputBuffer[i];
+                infoCommandString += inCharRead;  // add it to the inputString:
+              }
+              if(infoCommandString=="PC"){
+                periscopeControllerStatus=true;
+                pckeepAliveAge = millis();
+                DBG("Periscope Controller Keepalive Received\n")
+              }
+              if(infoCommandString=="BS"){
+                bodyServoControllerStatus=true;
+                bskeepAliveAge = millis();
+                DBG("Body Servo Controller Keepalive Received\n")
+              }
+              if(infoCommandString=="DC"){
+                periscopeControllerStatus=true;
+                dckeepAliveAge = millis();
+                DBG("Dome Controller Keepalive Received\n")
+              }
+            }     
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=1; i<commandLength;i++ ){
+                char inCharRead = inputBuffer[i];
+                serialStringCommand += inCharRead;  // add it to the inputString:
+              }
+              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
+              serialPort = serialStringCommand.substring(0,2);
+              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
+              if (serialPort == "BL"){
+                writeBlSerial(serialSubStringCommand);
+                DBG("Sending out BL Serial\n");
+              } else if (serialPort == "EN"){
+                writeEnSerial(serialSubStringCommand);
+                DBG("Sending out EN Serial\n");
+              } else if (serialPort == "ST"){
+                writeStSerial(serialSubStringCommand);
+                DBG("Sending out ST Serial\n");
+              }else if (serialPort == "MP"){
+                mp3Comm = serialStringCommand.substring(2,3);
+                mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
+                mp3Trigger(mp3Comm,mp3Track);
+                DBG("Sending out MP Serial\n ");
+              } else { DBG("No valid Serial identified\n");}
+              serialStringCommand = "";
+              serialPort = "";
+              serialSubStringCommand = "";
+              int mp3Track;
+            } 
+            
+
+
+            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+              ESP_command[0]   = '\0';                                                            // Flushes Array
+              ESP_command[0] = espCommandFunction;
+            }
+          }
+        }
+
+      ///***  Clear States and Reset for next command.  ***///
+        stringComplete =false;
+        autoComplete = false;
+        inputBuffer[0] = '\0';
+
+        // reset Local ESP Command Variables
+        int espCommandFunction;
+
+
+      DBG("command Proccessed\n");
+    }
+
+    if(ESP_command[0]){
+      switch (ESP_command[0]){
+        case 1: Serial.println("Body ESP Controller");   
+                ESP_command[0]   = '\0';                                                        break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0';                                                        break;
+        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+        case 4: printKeepaliveStatus();break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9:  break;  //reserved for future use
+        case 10: toggleDebug();                                                                 break;
+        case 11: toggleDebug1();                                                                break;
+
+      }
+    }
+
+
+    
+    if(isStartUp) {
+      isStartUp = false;
+      delay(500);
+    }
+  }
+}  // end of main loop
+

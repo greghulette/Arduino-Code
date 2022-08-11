@@ -167,7 +167,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
   DBG("Command = %s\n" , incomingCommand.c_str());  
-  if (incomingDestinationID =="Periscope"){
+  sendESPNOWCommand("BS","PC-ONLINE");
+  if (incomingDestinationID == "Periscope"){
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n",incomingTargetID);
     if (incomingTargetID == "PL"){
@@ -180,7 +181,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         DBG("Execute Local Command = \n", incomingCommand);
         if (incomingCommand == "Status"){
           DBG("Status is good\n");                                                                                                                                       
-          sendESPNOWCommand("BS","PCONLINE");
+          sendESPNOWCommand("BS","PC-ONLINE");
         }else if(incomingCommand != "Status"){
         inputString = incomingCommand;
         stringComplete = true; 
@@ -216,177 +217,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   
   AsyncWebServer server(80);
   
-void setup(){
 
-
-  Serial.begin(115200);
-  plSerial.begin(PL_BAUD_RATE,SERIAL_8N1,RXPL,TXPL);
-  fuSerial.begin(FU_BAUD_RATE,SERIAL_8N1,RXFU,TXFU);
-
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Periscope Controller");
-
-  //Reserve the inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
-
-  //initialize WiFi for ESP-NOW
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
-  Serial.print("Local STA MAC address = ");
-  Serial.println(WiFi.macAddress());
-
-  
-//Initialize ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-  return;
-  }
-  
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);
-
-  // Register peer configuration
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-
-  // Add peers  
-    memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Dome ESP-NOW peer");
-      return;
-    }
-
-    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Body ESP-NOW peer");
-      return;
-    }
-    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.println("Failed to add Broadcast ESP-NOW peer");
-      return;
-    }    
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
-  
-}   // end of setup
-
-void loop(){
-  if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
-    if(startUp) {
-      startUp = false;
-      Serial.print("Startup complete\nStarting main loop\n\n\n");
-    }
-    // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
-    if(Serial.available()){serialEvent();}
-    if(plSerial.available()){plSerialEvent();}
-    if(fuSerial.available()){fuSerialEvent();}
-
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
-        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          DBG("Command Length is: %i\n" , commandLength);
-          if(commandLength >= 3) {
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
-            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-              for (int i=1; i<=commandLength; i++){
-                char inCharRead = inputBuffer[i];
-                inputStringCommand += inCharRead;                   // add it to the inputString:
-              }
-              DBG("\nFull Command Recieved: %s ",inputStringCommand);
-              espNowCommandFunctionString = inputStringCommand.substring(0,2);
-              espNowCommandFunction = espNowCommandFunctionString.toInt();
-              DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
-              targetID = inputStringCommand.substring(2,4);
-              DBG("Target ID: %s\n", targetID);
-              commandSubString = inputStringCommand.substring(4,commandLength);
-              DBG("Command to Forward: %s\n", commandSubString);
-            }
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
-              if (serialPort == "PL"){
-                writePlSerial(serialStringCommand);
-              } else if (serialPort == "FU"){
-                writeFuSerial(serialStringCommand);
-              } else if (serialPort == "PC"){
-                inputString = serialStringCommand;
-                stringComplete = true; 
-              }
-              serialStringCommand = "";
-              serialPort = "";
-            } 
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
-            }
-          }
-        }
-
-      ///***  Clear States and Reset for next command.  ***///
-        stringComplete =false;
-        autoComplete = false;
-        inputBuffer[0] = '\0';
-      
-        // reset Local ESP Command Variables
-        int espCommandFunction;
-
-              // reset ESP-NOW Variables
-        inputStringCommand = "";
-        targetID = "";
-
-      DBG("command Proccessed\n");
-
-    }  
-
-      if(ESP_command[0]){
-        switch (ESP_command[0]){
-        case 1: Serial.println("Periscope ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: connectWiFi(); break;        
-        case 4: break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9: break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        case 11: toggleDebug1();                                                                break;
-
-      }
-    }
-    if(ESPNOW_command[0]){
-      switch(ESPNOW_command[0]){
-        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
-        case 2: break;  //reserved for future use
-        case 3: break;  //reserved for future use      
-      }
-    }
-  if(isStartUp) {
-      isStartUp = false;
-      delay(500);
-
-    }
-  }
-}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -579,3 +410,196 @@ void connectWiFi(){
   server.begin();
   ESP_command[0]   = '\0';
 }
+  // KeepAlive Message to show status on website.
+  int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveMillis;
+
+void keepAlive(){
+  if (millis() = keepAliveMillis >= keepAliveDuration){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("BC","IPC");
+  } 
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             END OF FUNCTIONS                                          /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+void setup(){
+
+
+  Serial.begin(115200);
+  plSerial.begin(PL_BAUD_RATE,SERIAL_8N1,RXPL,TXPL);
+  fuSerial.begin(FU_BAUD_RATE,SERIAL_8N1,RXFU,TXFU);
+
+  Serial.println("\n\n\n----------------------------------------");
+  Serial.println("Booting up the Periscope Controller");
+
+  //Reserve the inputStrings
+  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(100);
+
+  //initialize WiFi for ESP-NOW
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  Serial.print("Local STA MAC address = ");
+  Serial.println(WiFi.macAddress());
+
+  
+//Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  return;
+  }
+  
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
+
+  // Register peer configuration
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+
+  // Add peers  
+    memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Dome ESP-NOW peer");
+      return;
+    }
+
+    memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Body ESP-NOW peer");
+      return;
+    }
+    memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add Broadcast ESP-NOW peer");
+      return;
+    }    
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
+  
+}   // end of setup
+
+void loop(){
+  if (millis() - MLMillis >= mainLoopDelayVar){
+    MLMillis = millis();
+    if(startUp) {
+      startUp = false;
+      Serial.print("Startup complete\nStarting main loop\n\n\n");
+    }
+    // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
+    if(Serial.available()){serialEvent();}
+    if(plSerial.available()){plSerialEvent();}
+    if(fuSerial.available()){fuSerialEvent();}
+
+    if (stringComplete) {autoComplete=false;}
+    if (stringComplete || autoComplete) {
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+      if( inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
+          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
+        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+          DBG("Command Length is: %i\n" , commandLength);
+          if(commandLength >= 3) {
+            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');};
+            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
+              for (int i=1; i<=commandLength; i++){
+                char inCharRead = inputBuffer[i];
+                inputStringCommand += inCharRead;                   // add it to the inputString:
+              }
+              DBG("\nFull Command Recieved: %s ",inputStringCommand);
+              espNowCommandFunctionString = inputStringCommand.substring(0,2);
+              espNowCommandFunction = espNowCommandFunctionString.toInt();
+              DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
+              targetID = inputStringCommand.substring(2,4);
+              DBG("Target ID: %s\n", targetID);
+              commandSubString = inputStringCommand.substring(4,commandLength);
+              DBG("Command to Forward: %s\n", commandSubString);
+            }
+            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+              for (int i=3; i<commandLength-2;i++ ){
+                char inCharRead = inputBuffer[i];
+                serialStringCommand += inCharRead;  // add it to the inputString:
+              }
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              if (serialPort == "PL"){
+                writePlSerial(serialStringCommand);
+              } else if (serialPort == "FU"){
+                writeFuSerial(serialStringCommand);
+              } else if (serialPort == "PC"){
+                inputString = serialStringCommand;
+                stringComplete = true; 
+              }
+              serialStringCommand = "";
+              serialPort = "";
+            } 
+            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+              ESP_command[0]   = '\0';                                                            // Flushes Array
+              ESP_command[0] = espCommandFunction;
+            }
+          }
+        }
+
+      ///***  Clear States and Reset for next command.  ***///
+        stringComplete =false;
+        autoComplete = false;
+        inputBuffer[0] = '\0';
+      
+        // reset Local ESP Command Variables
+        int espCommandFunction;
+
+              // reset ESP-NOW Variables
+        inputStringCommand = "";
+        targetID = "";
+
+      DBG("command Proccessed\n");
+
+    }  
+
+      if(ESP_command[0]){
+        switch (ESP_command[0]){
+        case 1: Serial.println("Periscope ESP Controller");   
+                ESP_command[0]   = '\0';                                                        break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000);
+                ESP_command[0]   = '\0';                                                        break;
+        case 3: connectWiFi(); break;        
+        case 4: break;  //reserved for future use
+        case 5: break;  //reserved for future use
+        case 6: break;  //reserved for future use
+        case 7: break;  //reserved for future use
+        case 8: break;  //reserved for future use
+        case 9: break;  //reserved for future use
+        case 10: toggleDebug();                                                                 break;
+        case 11: toggleDebug1();                                                                break;
+
+      }
+    }
+    if(ESPNOW_command[0]){
+      switch(ESPNOW_command[0]){
+        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString); break; 
+        case 2: break;  //reserved for future use
+        case 3: break;  //reserved for future use      
+      }
+    }
+  if(isStartUp) {
+      isStartUp = false;
+      delay(500);
+
+    }
+  }
+}
+

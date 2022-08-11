@@ -80,7 +80,7 @@ ServoSequencer servoSequencer(servoDispatch);
   String serialStringCommand;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
+  int espCommandFunction = 0;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
@@ -92,6 +92,10 @@ ServoSequencer servoSequencer(servoDispatch);
   int debugflag1 = 0;  // Used for optional level of debuging
 
   int defaultESPNOWSendDuration = 50;
+
+  int periscopeControllerStatus;
+  int domeControllerStatus;
+  int bodyControllerStatus = 1;
 
 
  //////////////////////////////////////////////////////////////////////
@@ -185,16 +189,10 @@ typedef struct struct_message {
       char structSenderID[15];
       char structDestinationID[15];
       char structTargetID[5];
-      char structCommand[25];
+      char structCommand[100];
   } struct_message;
 
-//   typedef struct struct_message {
-  //     String structSenderID;
-  //     String structDestinationID;
-  //     String structTargetID;  
-  //     String structCommand;
-  // } struct_message;
-//
+
 //  // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToSendtoDome;
   struct_message commandsToSendtoPeriscope;
@@ -238,7 +236,6 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
     if (incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID =="ST"){
-
         DBG("Sending %s out bcSerial\n", incomingCommand.c_str());
         writeBcSerial(incomingCommand);
     } else if (incomingTargetID == "FU"){
@@ -246,16 +243,23 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         writeFuSerial(incomingCommand);
     } else if (incomingTargetID == "BS"){
         DBG("Execute Local Command = %s\n", incomingCommand.c_str());
-//        String ic = incomingCommand.c_str();
-        if (incomingCommand == "PCONLINE"){
+        if (incomingCommand == "PC-ONLINE"){
           DBG("Periscope Controller Online\n");
-        }
-        inputString = incomingCommand;
-        stringComplete = true; 
-    } else {DBG("Wrong Target ID Sent\n");}
+          periscopeControllerStatus = 1;
+          writeBcSerial("E07")
+        } else if (incomingCommand == "DC-ONLINE"){
+          DBG("Dome Controller Online\n");
+          domeControllerStatus = 1;
+          writeBcSerial("E06");
+        } else {
+          inputString = incomingCommand;
+          stringComplete = true; 
+      } else {DBG("Wrong Target ID Sent\n");}
+    }
   }
   else {DBG("ESP-NOW Message Ignored\n");}
 }
+
 
 //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -792,7 +796,8 @@ void sendESPNOWCommand(String starget, String scomm){
     sdest = "Periscope";
   }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
-  }
+  } else if(starget =="ALL"){sdest="ALL"};
+
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
@@ -996,6 +1001,18 @@ void scan_i2c()
     else
         Serial.println("done\n");
 }
+
+  // KeepAlive Message to show status on website.
+  int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveMillis;
+
+void keepAlive(){
+  if (millis() = keepAliveMillis >= keepAliveDuration){
+    keepAliveMillis = millis();
+    writeBcSerial("IBS");
+  } 
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1286,7 +1303,7 @@ void loop(){
     if(ESPNOW_command[0]){
       switch(ESPNOW_command[0]){
         case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                                 break; 
-        case 2: sendESPNOWCommand("PC","Status");                                                       break;  //reserved for future use
+        case 2: sendESPNOWCommand("ALL","ALL");                                                       break;  //reserved for future use
         case 3: break;  //reserved for future use      
       }
     }

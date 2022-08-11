@@ -347,7 +347,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
   DBG("Command = %s\n" , incomingCommand); 
-  if (incomingDestinationID =="Dome"){
+  if (incomingDestinationID =="Dome" || incomingTargetID == "ALL"){
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);
     if (incomingTargetID == "RS"){
@@ -356,10 +356,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else if (incomingTargetID == "HP"){
         DBG("Sending %s out hpSerial\n", incomingCommand);
         writeHpSerial(incomingCommand);
-    } else if (incomingTargetID == "DS"){
+    } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
         DBG("Execute Local Command = %s\n", incomingCommand);
+ if (incomingCommand == "Status"){
+          DBG("Status is good\n");                                                                                                                                       
+          sendESPNOWCommand("BS","DCONLINE");
+        }else if(incomingCommand != "Status"){
         inputString = incomingCommand;
         stringComplete = true; 
+        }
     } else {
         DBG("Wrong Target ID Sent\n");
       }
@@ -986,7 +991,8 @@ void sendESPNOWCommand(String starget, String scomm){
     sdest = "Periscope";
   }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
-  }
+  } else if(starget =="ALL"){sdest="ALL"};
+
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
@@ -1061,17 +1067,6 @@ void toggleDebug1(){
 //////////////////////////////////////////////////////////////////////
 
 void connectWiFi(){
-//
-//  String webPage = "<!DOCTYPE html>\
-//<html>\
-//<body>\
-//<h1>Please go <a href=\"http://192.168.4.110/update\">here</a> to upload a file</h1>\
-//</body>\
-//</html>";
-
-
-
-  
   esp_now_deinit();
   WiFi.disconnect();
   WiFi.mode(WIFI_OFF);
@@ -1094,9 +1089,7 @@ void connectWiFi(){
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Please go to http://192.168.4.111/update to upload file");
-//    request->send(200, "text/html", webPage);
   });
-  
   
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
@@ -1146,7 +1139,7 @@ void setServoEasingMethod(int easingMethod){
   }
 }
 
-
+// Scan I2C for devices.  Used for troubleshooting only.
 void scan_i2c(){
     unsigned nDevices = 0;
     for (byte address = 1; address < 127; address++){
@@ -1194,6 +1187,17 @@ void scan_i2c(){
         Serial.println("No I2C devices found\n");
     else
         Serial.println("done\n");
+}
+
+  // KeepAlive Message to show status on website.
+  int keepAliveDuration= 10000;  // 10 seconds
+  uint32_t keepAliveMillis;
+
+void keepAlive(){
+  if (millis() = keepAliveMillis >= keepAliveDuration){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("BC","IPC");
+  } 
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1562,7 +1566,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
     if(ESPNOW_command[0]){
       switch(ESPNOW_command[0]){
         case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                   break; 
-        case 2: break;  //reserved for future use
+        case 2: sendESPNOWCommand("ALL","ALL");   break;  //reserved for future use
         case 3: break;  //reserved for future use
       }
     }
