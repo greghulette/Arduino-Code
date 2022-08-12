@@ -13,6 +13,9 @@
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
+#include "AsyncJson.h"
+#include "ArduinoJson.h"
+
 //ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
@@ -69,9 +72,9 @@
   int debugflag1 = 0;  // Used for debugging params recieved from clients
   int debugflag2 = 0;
 
-  boolean periscopeControllerStatus = false;
-  boolean domeControllerStatus = false;
-  boolean bodyServoControllerStatus  = false;
+  String periscopeControllerStatus = "Offline";
+  String domeControllerStatus = "Offline";
+  String bodyServoControllerStatus  = "Offline";
 
   int keepAliveTimeOut = 15000;
   unsigned long dckeepAliveAge;
@@ -148,7 +151,25 @@ int channel =  6;
 int broadcastSSID = 0;  //0 for yes, 1 for no
 int maxConnections = 8;
 
+//const char * html = "<p>Periscope Status: %pStatus%</p>";
+
 AsyncWebServer server(80);
+//
+//StaticJsonBuffer<200> jsonBuffer;
+//JsonObject& ESPStatus = jsonBuffer.createObject();
+//char JSONmessageBuffer[200];
+//String processor(const String& var)
+//{
+// 
+//  Serial.println(var);
+// 
+//  if(var == "pStatus")
+//    ESPStatus["Periscope"] = periscopeControllerStatus;
+// 
+//  return String();
+//}
+
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -384,33 +405,31 @@ void mp3Trigger(String comm, int track){
 //////////////////////////////////////////////////////////////////////
 
 void checkAgeofkeepAlive(){    //checks for the variable's age
-  if (domeControllerStatus==true){
+  if (domeControllerStatus=="Online"){
     if (millis()-dckeepAliveAge>=keepAliveTimeOut){
-      domeControllerStatus=false;
+      domeControllerStatus="Offline";
       DBG("Dome Controller Offline\n");
     }
   }
-  if (periscopeControllerStatus==true){
+  if (periscopeControllerStatus=="Online"){
     if (millis()-pckeepAliveAge>=keepAliveTimeOut){
-      periscopeControllerStatus=false;
+      periscopeControllerStatus="Offline";
       DBG("Periscope Controller Offline\n");
     }
   }
-  if (bodyServoControllerStatus==true){
+  if (bodyServoControllerStatus=="Online"){
     if (millis()-bskeepAliveAge>=keepAliveTimeOut){
-      bodyServoControllerStatus=false;
+      bodyServoControllerStatus="Offline";
       DBG("Body Servo Controller Offline\n");
     }
   }
 }
 
 void printKeepaliveStatus(){
-  Serial.println(domeControllerStatus);
-  Serial.println(periscopeControllerStatus);
-  Serial.println(bodyServoControllerStatus);
-  DBG("Dome Controller Status: %s\n", domeControllerStatus ? "true" : "false");
-  DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus ? "true" : "false");
-  DBG("Periscope Controller Status: %s\n", periscopeControllerStatus ? "true" : "false");
+
+  DBG("Dome Controller Status: %s\n", domeControllerStatus);
+  DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
+  DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
   ESP_command[0]   = '\0';
 
 }
@@ -542,6 +561,23 @@ void setup(){
 
     request->send(200, "text/plain", "Message Received on Body Controller");
   });
+
+//  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
+//    request->send_P(200, "text/html", html, processor);
+//  });
+//  
+
+server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+      AsyncResponseStream *response = request->beginResponseStream("application/json");
+      DynamicJsonDocument json(1024);
+      json["BodyController"] = "Online";
+      json["BodyServo"] = bodyServoControllerStatus;
+      json["Dome"] = domeControllerStatus;
+      json["Periscope"] = periscopeControllerStatus;
+      serializeJson(json, *response);
+      request->send(response);
+  });
+
   
   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
@@ -604,17 +640,17 @@ void loop(){
               }
               DBG("I Command Proccessing: %s \n", infoCommandString.c_str());
               if(infoCommandString == "PC"){
-                periscopeControllerStatus=true;
+                periscopeControllerStatus="Online";
                 pckeepAliveAge = millis();
                 DBG("Periscope Controller Keepalive Received\n");
               }
               if(infoCommandString == "BS"){
-                bodyServoControllerStatus=true;
+                bodyServoControllerStatus="Online";
                 bskeepAliveAge = millis();
                 DBG("Body Servo Controller Keepalive Received\n");
               }
               if(infoCommandString == "DC"){
-                domeControllerStatus=true;
+                domeControllerStatus="Online";
                 dckeepAliveAge = millis();
                 DBG("Dome Controller Keepalive Received\n");
               }
