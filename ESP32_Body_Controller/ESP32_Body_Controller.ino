@@ -571,6 +571,7 @@ void loop(){
 
     }
     checkAgeofkeepAlive();
+    
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
     if(enSerial.available()){serialEnEvent();}

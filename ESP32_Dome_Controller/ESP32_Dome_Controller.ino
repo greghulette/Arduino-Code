@@ -1281,7 +1281,7 @@ void setup(){
   }  
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
-  
+
 }  // end of Setup
 
 
@@ -1295,6 +1295,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       startUp = false;
       Serial.println("Startup");
   }
+  keepAlive();
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}

@@ -518,6 +518,8 @@ void loop(){
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
     }
+
+    keepAlive();
     // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
     if(Serial.available()){serialEvent();}
     if(plSerial.available()){plSerialEvent();}

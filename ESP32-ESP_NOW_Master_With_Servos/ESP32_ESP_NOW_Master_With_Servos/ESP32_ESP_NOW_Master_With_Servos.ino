@@ -1104,6 +1104,7 @@ void loop(){
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
     }  
+    keepAlive();
     if(Serial.available()){serialEvent();}
     if(bcSerial.available()){bcSerialEvent();}
     if(fuSerial.available()){fuSerialEvent();}
