@@ -989,9 +989,9 @@ void sendESPNOWCommand(String starget, String scomm){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
-  } else if(starget =="ALL"){sdest="ALL"};
+  } 
 
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
@@ -1200,9 +1200,9 @@ void scan_i2c(){
   uint32_t keepAliveMillis;
 
 void keepAlive(){
-  if (millis() = keepAliveMillis >= keepAliveDuration){
+  if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("BC","IPC");
+    sendESPNOWCommand("BC","IDC");
   } 
 }
 

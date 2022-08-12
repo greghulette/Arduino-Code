@@ -408,9 +408,9 @@ void printKeepaliveStatus(){
   Serial.println(domeControllerStatus);
   Serial.println(periscopeControllerStatus);
   Serial.println(bodyServoControllerStatus);
-  DBG("Dome Controller Status: %s\n", formatBool(domeControllerStatus));
-  DBG("Body Servo Controller Status: %s\n", formatBool(bodyServoControllerStatus));
-  DBG("Periscope Controller Status: %s\n", formatBool(periscopeControllerStatus));
+  DBG("Dome Controller Status: %s\n", domeControllerStatus ? "true" : "false");
+  DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus ? "true" : "false");
+  DBG("Periscope Controller Status: %s\n", periscopeControllerStatus ? "true" : "false");
   ESP_command[0]   = '\0';
 
 }
@@ -601,20 +601,21 @@ void loop(){
                 char inCharRead = inputBuffer[i];
                 infoCommandString += inCharRead;  // add it to the inputString:
               }
+              DBG("I Command Proccessing\n");
               if(infoCommandString=="PC"){
                 periscopeControllerStatus=true;
                 pckeepAliveAge = millis();
-                DBG("Periscope Controller Keepalive Received\n")
+                DBG("Periscope Controller Keepalive Received\n");
               }
               if(infoCommandString=="BS"){
                 bodyServoControllerStatus=true;
                 bskeepAliveAge = millis();
-                DBG("Body Servo Controller Keepalive Received\n")
+                DBG("Body Servo Controller Keepalive Received\n");
               }
               if(infoCommandString=="DC"){
                 periscopeControllerStatus=true;
                 dckeepAliveAge = millis();
-                DBG("Dome Controller Keepalive Received\n")
+                DBG("Dome Controller Keepalive Received\n");
               }
             }     
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
@@ -699,4 +700,3 @@ void loop(){
     }
   }
 }  // end of main loop
-

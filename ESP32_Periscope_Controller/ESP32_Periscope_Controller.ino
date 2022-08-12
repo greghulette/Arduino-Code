@@ -317,12 +317,12 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
 
 void sendESPNOWCommand(String starget, String scomm){
   String sdest;
-  String senderID = "Body";     // change to match location (Dome, Body, Periscope)
+  String senderID = "Periscope";     // change to match location (Dome, Body, Periscope)
   if (starget == "DS" || starget == "RS" || starget == "HP"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
-  }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
   }
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
@@ -438,7 +438,7 @@ void connectWiFi(){
   int keepAliveMillis;
 
 void keepAlive(){
-  if (millis() = keepAliveMillis >= keepAliveDuration){
+  if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
     sendESPNOWCommand("BC","IPC");
   } 
@@ -627,4 +627,3 @@ void loop(){
     }
   }
 }
-

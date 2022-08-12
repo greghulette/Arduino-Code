@@ -246,16 +246,16 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         if (incomingCommand == "PC-ONLINE"){
           DBG("Periscope Controller Online\n");
           periscopeControllerStatus = 1;
-          writeBcSerial("E07")
+          writeBcSerial("IPC");
         } else if (incomingCommand == "DC-ONLINE"){
           DBG("Dome Controller Online\n");
           domeControllerStatus = 1;
-          writeBcSerial("E06");
+          writeBcSerial("IDC");
         } else {
           inputString = incomingCommand;
           stringComplete = true; 
-      } else {DBG("Wrong Target ID Sent\n");}
-    }
+      } 
+    }else {DBG("Wrong Target ID Sent\n");}
   }
   else {DBG("ESP-NOW Message Ignored\n");}
 }
@@ -796,7 +796,7 @@ void sendESPNOWCommand(String starget, String scomm){
     sdest = "Periscope";
   }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
     sdest = "Body";
-  } else if(starget =="ALL"){sdest="ALL"};
+  }
 
   setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
@@ -1013,7 +1013,7 @@ void scan_i2c()
   int keepAliveMillis;
 
 void keepAlive(){
-  if (millis() = keepAliveMillis >= keepAliveDuration){
+  if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
     writeBcSerial("IBS");
   } 
