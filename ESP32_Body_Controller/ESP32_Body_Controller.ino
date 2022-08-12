@@ -590,6 +590,7 @@ void loop(){
           inputBuffer[0]=='I'     ||        // Command for receiving status/info from other boards
           inputBuffer[0]=='i'               // Command for receiving status/info from other boards
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
           if(commandLength >= 3) {
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
@@ -597,26 +598,27 @@ void loop(){
               }; 
 
             if(inputBuffer[0]=='I' || inputBuffer[0]=='i'){
-              for (int i=1; i<commandLength;i++ ){
+              for (int i=1; i<commandLength-1;i++ ){
                 char inCharRead = inputBuffer[i];
                 infoCommandString += inCharRead;  // add it to the inputString:
               }
-              DBG("I Command Proccessing\n");
-              if(infoCommandString=="PC"){
+              DBG("I Command Proccessing: %s \n", infoCommandString.c_str());
+              if(infoCommandString == "PC"){
                 periscopeControllerStatus=true;
                 pckeepAliveAge = millis();
                 DBG("Periscope Controller Keepalive Received\n");
               }
-              if(infoCommandString=="BS"){
+              if(infoCommandString == "BS"){
                 bodyServoControllerStatus=true;
                 bskeepAliveAge = millis();
                 DBG("Body Servo Controller Keepalive Received\n");
               }
-              if(infoCommandString=="DC"){
-                periscopeControllerStatus=true;
+              if(infoCommandString == "DC"){
+                domeControllerStatus=true;
                 dckeepAliveAge = millis();
                 DBG("Dome Controller Keepalive Received\n");
               }
+              infoCommandString="";
             }     
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
