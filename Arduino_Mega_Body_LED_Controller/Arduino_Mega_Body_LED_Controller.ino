@@ -112,43 +112,7 @@
 #include <Average.h>                           // Source: https://github.com/MajenkoLibraries/Average
 //#include <MemoryFree.h>                        // Source: https://github.com/maniacbug/MemoryFree
 #include <avr/pgmspace.h>
-
-/////////////////////////////////////////////////////////////////////////
-///*****                                                         *****///
-///*****              Servo Breakout Board Set Up                *****///
-///*****                                                         *****///
-///*****    This sytem utilizes Adafruit 16-Channel 12-bit       *****///
-///*****    PWM/Servo Driver Breakout boards. Each board is      *****///
-///*****    capable of controlling up to 16 different servos.    *****///
-///*****     Additional boards can be daisy chained.  This       *****///
-///*****    allows the number of servos to easly expand as       *****///
-///*****    needed. Additional boards can be added by simply     *****///
-///*****    assigning each subsequent board with a unique        *****///
-///*****   address.  This is done by solder pads on the board.   *****///
-///*****    These address need to be entered below.              *****///
-///*****                                                         *****///
-///*****     By default, this sketch utilizes two boards.        *****///
-///*****   The first being used for the Utility Arm, Paw and     *****///
-///*****     Door Hinge Control.  The second being used for      *****///
-///*****   Gadget control such as CPU Arm, Hyperdrive Arm, etc.  *****///
-///*****                                                         *****///
-///*****   Board Info: https://www.adafruit.com/product/815      *****///
-///*****                                                         *****///
-/////////////////////////////////////////////////////////////////////////
-//Servos servos0(0x40);          // Utility Arms, Paws and Front Body Doors
-//Servos servos1(0x41);          // Gadget Control
-
-
-
-/////////////////////////////////////////////////////////////////////////
-///*****                Assign IC2 Address Below                 *****///
-///*****                                                         *****///
-///*****     An I2C address of 38 has been standardized for      *****///
-///*****   this device in the R-Series documentation to avoid    *****///
-///*****  conflics.  However, it can be changed here if needed.  *****///
-///*****                                                         *****///
-/////////////////////////////////////////////////////////////////////////
-   byte I2CAddress = 0x26;
+#include "ArduinoJson.h"
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -162,78 +126,45 @@
     ///*****            Digital Pin Assignment Values             *****///
     ///////////////////////////////////// /////////////////////////////////
 
-    //DotStar Digital Pin Assignment
-      #define MAINT_DATA_PIN   30     //New to the sketch
-      #define MAINT_CLOCK_PIN  32     //New to the sketch
-      #define LDP_DATA_PIN     34     //34
-      #define LDP_CLOCK_PIN    36     //36
-      #define CS1_DATA_PIN     38     //38
-      #define CS1_CLOCK_PIN    40     //40
-      #define CS2_DATA_PIN     42     //42
-      #define CS2_CLOCK_PIN    44     //44
-      #define VU1_DATA_PIN     46     //46
-      #define VU1_CLOCK_PIN    48     //48
-      #define VU2_DATA_PIN     50     //52
-      #define VU2_CLOCK_PIN    52     //50
+  //DotStar Digital Pin Assignment
+  #define MAINT_DATA_PIN   30     //New to the sketch
+  #define MAINT_CLOCK_PIN  32     //New to the sketch
+  #define LDP_DATA_PIN     34     //34
+  #define LDP_CLOCK_PIN    36     //36
+  #define CS1_DATA_PIN     38     //38
+  #define CS1_CLOCK_PIN    40     //40
+  #define CS2_DATA_PIN     42     //42
+  #define CS2_CLOCK_PIN    44     //44
+  #define VU1_DATA_PIN     46     //46
+  #define VU1_CLOCK_PIN    48     //48
+  #define VU2_DATA_PIN     50     //52
+  #define VU2_CLOCK_PIN    52     //50
 
 
 
-      //VU Strobe and Reset (MSGEQ7 Graphic Equalizer IC)
-      #define VU_STROBE         12    //12
-      #define VU_RESET          13    //13
+  //VU Strobe and Reset (MSGEQ7 Graphic Equalizer IC)
+  #define VU_STROBE         12    //12
+  #define VU_RESET          13    //13
 
-      //MAX7219/MAX7221 Pin Assignments
-      
-      #define DATAIN_PIN 3
-      #define CLOCK_PIN  4
-      #define LOAD_PIN   5
-//      #define DP_DATAIN_PIN     3    //3
-//      #define DP_CLOCK_PIN      4    //4
-//      #define DP_LOAD_PIN       5    //5
+  //MAX7219/MAX7221 Pin Assignments
+  #define DATAIN_PIN 3
+  #define CLOCK_PIN  4
+  #define LOAD_PIN   5
 
-      //RC Input Pins for Utility Arms and Paws
-      #define ARMPIN            7    //7
-      #define PAWPIN            6    //6
-      #define AUXRC1PIN         9    //9
-      #define AUXRC2PIN         8    //8
+  //Trigger Digital Pin Assignment
+  uint8_t triggerpins[10]  = {23,25,27,29,31,33,35,37,39,41};
 
-      //Adafruit 16ch I2C Servo Controller
-      #define OEPIN 2   // This is the pin used to send a signal to turn power to the servos off and on.
-                        // This allows us to only power the servos when they are moving, helping with much of the annoying hum issues.
+//////////////////////////////////////////////////////////////////////
+///*****             Analog Pin Assignment Values             *****///
+//////////////////////////////////////////////////////////////////////
 
-      //Trigger Digital Pin Assignment
-      uint8_t triggerpins[10]  = {23,25,27,29,31,33,35,37,39,41};
+// Spectrum Analyzer
+#define SPECTRUM_LEFT_PIN     1
+#define SPECTRUM_RIGHT_PIN    0
 
-
-      //Trigger Digital Pin Assignment
-      uint8_t jumperpins[5]  = {53,51,49,47,45};
-
-
-    //////////////////////////////////////////////////////////////////////
-    ///*****             Analog Pin Assignment Values             *****///
-    //////////////////////////////////////////////////////////////////////
-
-      // Spectrum Analyzer
-      #define SPECTRUM_LEFT_PIN     1
-      #define SPECTRUM_RIGHT_PIN    0
-
-      // Analog Sensors
-      #define EXTERNAL_MIC_PIN      8
-      #define VOLTAGE_SENSOR_PIN    7
-      #define AUX1_PIN              10
-      #define AUX2_PIN              8
-      #define AUX3_PIN              9
-//      #define AUX4_PIN             10
-      #define analoginput 10
-
-//      int trimpins[5]  = {2,3,4,5,6};
-      // Trimpots
-      #define TRIM1                2
-      #define TRIM2                3
-      #define TRIM3                4
-      #define TRIM4                5
-      #define TRIM5                6
-
+// Analog Sensors
+#define EXTERNAL_MIC_PIN      8
+#define VOLTAGE_SENSOR_PIN    7
 
 
 //////////////////////////////////////////////////////////////////////
@@ -331,8 +262,6 @@
 //////////////////////////////////////////////////////////////////////
    int BatLevMax  = 1300;       // Voltage (X100) when Battery is considered full
    int BatLevMin  = 1200;       // Voltage (X100) when Battery is considered empty
-
-
 
 
 
@@ -521,6 +450,10 @@ byte CBI_command = 0;
 byte DP_command = 0;
 int commandLength;
 
+  int debugflag = 1;
+  int debugflag1 = 0;  // Used for debugging params recieved from clients
+  int debugflag2 = 0;
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****           Spectrum Analyzer Variable Containers      *****///
@@ -698,24 +631,18 @@ int saveButtonState;             // the current reading from the Save Button Pin
 int lastSaveButtonState = LOW;   // the previous reading from the Save Button Pin
 long lastDebounceTime = 0;       // the last time the output pin was toggled
 long debounceDelay = 2000;       // the debounce time; Save Button Must be Held Down for 2 Seconds
-
-#define SDA_PIN 21
-#define SCL_PIN 22
-#define I2C_SLAVE_ADDR 0x04
-
+  unsigned long MLMillis;
+  byte mainLoopDelayVar = 5;
 void setup()
 {
 
     //***  COMMUNICATION SET UP ***///
-   Serial.begin(9600);                                                                   // Initialize Serial Connection at 9600:
-   Serial1.begin(9600);
+   Serial.begin(115200);                                                                   // Initialize Serial Connection at 9600:
+   Serial1.begin(115200);
    Serial2.begin(9600);
    
-   Wire.begin(I2CAddress);                                                               // Start I2C Bus as Slave I2C Address
-   Wire.onReceive(i2cEvent);                                                             // register event so when we receive something we jump to receiveEvent();
-
-
-   Serial.print("READY");
+ 
+   Serial.println("READY");
 
    getDPPSettings();
    getCBISettings();
@@ -804,79 +731,45 @@ void setup()
     pinMode(triggerpins[i], INPUT);
    }
 //
-   for(int i=0;i<5;i++) {
-    pinMode(jumperpins[i], INPUT);
-   }
-//   CBISequenceMode = digitalRead(jumperpins[4]);    // Jumper Pin 5: ON = ESB Mode; OFF = Line Mode Mode
-   getBoardMode();
 
 }
 
 
 void loop() {
-  switch(boardmode) {
-    case  0: mainLoop();                   break;
-    case  1: setLEDbrightness();           break;
-    case  2: readSpectrum();
-             setIntVUSesitivity();         break;
-    case  3: readExternalAudio();
-             setExtVUSesitivity();         break;
-//    case  4: setDPPTiming();               break;
-//    case  5: setCBITiming();               break;
-    case  6: setDefaultColors();           break;
-    case  7: setDefaultRLDSpeed();         break;
-    case  8: setDefaultFLDSpeed();         break;
-    case 15: clearEEPROMSettings();        break;
-    //case  6: getBatLevel();
-             //batteryLDP();
-             //batteryCS();
-            // batteryVU();                break;
 
+  if (millis() - MLMillis >= mainLoopDelayVar){
+    MLMillis = millis();
+  if(startUp) {
+      startUp = false;
   }
-}
 
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////                                                                                               /////
-/////                        Main Loop for Running the System in Normal Mode                        /////
-/////                                                                                               /////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-void mainLoop() {
-   if(startUp) {
-       startUp = false;
-   }
-
-
-   if(getExtVol) {readExternalAudio();}
-   if(getIntVol) {readSpectrum();}
+  if(getExtVol) {readExternalAudio();}
+  if(getIntVol) {readSpectrum();}
 
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
     if(stringComplete) {inputString.toCharArray(inputBuffer, 10);inputString="";}
-     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
-     if(inputBuffer[0]=='S') {inputBuffer[0]='E';}
-     if( inputBuffer[0]=='C' ||        // Coin Slots Designator
-         inputBuffer[0]=='L' ||        // LDP Designator
-         inputBuffer[0]=='M' ||        // //New to sketch Maintenece Lights Designator
-         inputBuffer[0]=='V' ||        // VU Designator
-         inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU
-         inputBuffer[0]=='I' ||        // CBI Designator
-         inputBuffer[0]=='D' ||        // Data Port Panel Designator
-         inputBuffer[0]=='B' ||        // Both CBI & Data Port Panel Designator
-         inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, CBI & Data Port Panel Logicis Designator
-         inputBuffer[0]=='X' ||        // Coin Slots & LDP Designator
-         inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
-         inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
-         inputBuffer[0]=='P'           // Programming variables remotely instead of trimpots
-        ) {
-            commandLength = (sizeof(inputBuffer) / sizeof(inputBuffer[0]));                     //  Determines length of command character array.
-            //if(inputBuffer[commandLength-1] == '\r') {commandLength = commandLength-1;}
+    else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
+      if(inputBuffer[0]=='S') {inputBuffer[0]='E';}
+      if( inputBuffer[0]=='C' ||        // Coin Slots Designator
+          inputBuffer[0]=='L' ||        // LDP Designator
+          inputBuffer[0]=='M' ||        // //New to sketch Maintenece Lights Designator
+          inputBuffer[0]=='V' ||        // VU Designator
+          inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU
+          inputBuffer[0]=='I' ||        // CBI Designator
+          inputBuffer[0]=='D' ||        // Data Port Panel Designator
+          inputBuffer[0]=='B' ||        // Both CBI & Data Port Panel Designator
+          inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, CBI & Data Port Panel Logicis Designator
+          inputBuffer[0]=='X' ||        // Coin Slots & LDP Designator
+          inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
+          inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
+          inputBuffer[0]=='P'           // Programming variables remotely instead of trimpots
+        ) {commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+            DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
             if(commandLength >= 3) {
                 if(inputBuffer[0]=='P') {varName = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0'); }             //  Converts 2 Door Sequence Indentifier Characters to Integer
-                else if (inputBuffer[0]=='G') {}     //  Converts 2 Gadget Sequence Indentifier Characters to Integer
                 else {displayState = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');}                        //  Converts Sequence character values into an integer.
             
                 if(commandLength >= 4) {
@@ -1006,14 +899,13 @@ void mainLoop() {
 
     if(Prog_command[0]) {
       switch (Prog_command[0]) {                                                                                   //  Determine what sequence function to execute.
-        case 1:  changeLDPBrightness(varNameNum1, varNameNum2, varNameNum3);
-                                                       break;
-        case 2:  changeMAINTBrightness(varNameNum1, varNameNum2, varNameNum3);                   break;
-        case 3:  changeCSBrightness(varNameNum1, varNameNum2, varNameNum3);                      break;
-        case 4:  changeVUBrightness(varNameNum1, varNameNum2, varNameNum3);                      break;
-        case 5: changetIntVUOffset(varNameNum1, varNameNum2, varNameNum3);                       break;
-        case 6: changetIntVUBaseline(varNameNum1, varNameNum2, varNameNum3);                     break;
-        case 7: break;  //ext vu offset
+        case 1:  changeLDPBrightness(varNameNum1, varNameNum2, varNameNum3);                      break;
+        case 2:  changeMAINTBrightness(varNameNum1, varNameNum2, varNameNum3);                    break;
+        case 3:  changeCSBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
+        case 4:  changeVUBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
+        case 5: changetIntVUOffset(varNameNum1, varNameNum2, varNameNum3);                        break;
+        case 6: changetIntVUBaseline(varNameNum1, varNameNum2, varNameNum3);                      break;
+        case 7: sendUpdates();                                                                    break;  //ext vu offset
         case 8: break;  //ext vu baseline
         case 9:  clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
         };
@@ -1106,12 +998,12 @@ void mainLoop() {
         case 97: enableLDPAuto = 1;                                                                              break;     // Enables Auto Mode
         case 98: LDP_command[0] = '\0';
                  clearLDP();                                                                                     // Clear Large data Port and Disables Auto Mode
-                 enableLDPAuto = 0;
-                 break;
-        case 99: LDP_command[0] = '\0';
-                 clearLDP();                                                                                     // Clear Large Data Port and Enables Auto Mode
-                 enableLDPAuto = 1;
-                 break;
+                  enableLDPAuto = 0;
+                  break;
+        case 99:  LDP_command[0] = '\0';
+                clearLDP();                                                                                     // Clear Large Data Port and Enables Auto Mode
+                  enableLDPAuto = 1;
+                  break;
         default: LDP_command[0] = '\0'; clearLDP();  break;
        }
   }
@@ -1286,6 +1178,7 @@ void mainLoop() {
         delay(500);
 //        digitalWrite(OEPIN, HIGH);
     }
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1307,184 +1200,184 @@ void mainLoop() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//      /////////////////////////////////////////////////////////
-//      ///****           Set Display Brightness          ****///
-//      /////////////////////////////////////////////////////////
-        void setLEDbrightness() {
-            for(int i=0; i < 3; i++) {stripCS1.setPixelColor(i,basicColors[defaultPrimaryColorInt]);stripCS2.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
-            for(int i=3; i < 6; i++) {stripCS1.setPixelColor(i,basicColors[defaultSecondaryColorInt]);stripCS2.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
-            for(int i=0; i < 9; i++) {stripVU1.setPixelColor(i,basicColors[defaultPrimaryColorInt]);stripVU2.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
-            for(int i=0; i < 16; i++) {stripLDP.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
-            for(int i=16; i < 32; i++) {stripLDP.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
-            for(int i=0; i < 12; i++) {stripMAINT.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
-            for(int i=12; i < 24; i++) {stripMAINT.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
-            solidDP();
-            solidCBI();
-            int trim1 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
-            LDP_bright = map(trim1, 1023, 0, 220, 20);                            // Maps Reading to 20-220
-            stripLDP.setBrightness(LDP_bright);                                       // Sets LDP Brightenss
-            int trim11 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
-            MAINT_bright = map(trim11, 1023, 0, 220, 20);                            // Maps Reading to 20-220
-            stripMAINT.setBrightness(MAINT_bright);                                //Sets Maintenece LEDs Brightness
-            int trim2 = analogRead(TRIM2);                                         // Gets Trim 2 Reading
-            CS_bright = map(trim2, 1023, 0, 220, 20);                              // Maps Reading to 20-220
-            stripCS1.setBrightness(CS_bright);                                     // Sets CS1 Brightenss
-            stripCS2.setBrightness(CS_bright);                                     // Sets CS2 Brightenss
-            int trim3 = analogRead(TRIM3);                                         // Gets Trim 3 Reading
-            VU_bright = map(trim3, 1023, 0, 220, 20);                              // Maps Reading to 20-220
-            stripVU1.setBrightness(VU_bright);                                     // Sets VU1 Brightenss
-            stripVU2.setBrightness(VU_bright);                                     // Sets VU2 Brightenss
-            stripLDP.show();                                                       // Shows LDP to Change Brightenss
-            stripMAINT.show();
-            stripCS1.show();                                                       // Shows CS1 to Change Brightenss
-            stripCS2.show();                                                       // Shows CS2 to Change Brightenss
-            stripVU1.show();                                                       // Shows VU1 to Change Brightenss
-            stripVU2.show();                                                       // Shows VU2 to Change Brightenss
-//            int trim4 = analogRead(TRIM4);                                         // Gets Trim 4 Reading
-//            DATAPORTINTENSITY = map(trim4, 1023, 0, 15, 1);                        // Maps Reading to 0-15
-//            lc.setIntensity(DATAPORT,DATAPORTINTENSITY);                           // Sets Data Port Panel Brightenss
-//            int trim5 = analogRead(TRIM5);                                         // Gets Trim 5 Reading
-//            CBIINTENSITY = map(trim5, 1023, 0, 15, 1);                             // Maps Reading to 0-15
-//            lc.setIntensity(CBI,CBIINTENSITY);                                     // Sets CBI Brightenss
-
-            byte arr[] = {LDP_bright,MAINT_bright,CS_bright,VU_bright,DATAPORTINTENSITY,CBIINTENSITY };
-            saveToEEPROM(arr,6,0);
-        }
+////      /////////////////////////////////////////////////////////
+////      ///****           Set Display Brightness          ****///
+////      /////////////////////////////////////////////////////////
+//        void setLEDbrightness() {
+//            for(int i=0; i < 3; i++) {stripCS1.setPixelColor(i,basicColors[defaultPrimaryColorInt]);stripCS2.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
+//            for(int i=3; i < 6; i++) {stripCS1.setPixelColor(i,basicColors[defaultSecondaryColorInt]);stripCS2.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
+//            for(int i=0; i < 9; i++) {stripVU1.setPixelColor(i,basicColors[defaultPrimaryColorInt]);stripVU2.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
+//            for(int i=0; i < 16; i++) {stripLDP.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
+//            for(int i=16; i < 32; i++) {stripLDP.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
+//            for(int i=0; i < 12; i++) {stripMAINT.setPixelColor(i,basicColors[defaultPrimaryColorInt]);}
+//            for(int i=12; i < 24; i++) {stripMAINT.setPixelColor(i,basicColors[defaultSecondaryColorInt]);}
+//            solidDP();
+//            solidCBI();
+//            int trim1 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
+//            LDP_bright = map(trim1, 1023, 0, 220, 20);                            // Maps Reading to 20-220
+//            stripLDP.setBrightness(LDP_bright);                                       // Sets LDP Brightenss
+//            int trim11 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
+//            MAINT_bright = map(trim11, 1023, 0, 220, 20);                            // Maps Reading to 20-220
+//            stripMAINT.setBrightness(MAINT_bright);                                //Sets Maintenece LEDs Brightness
+//            int trim2 = analogRead(TRIM2);                                         // Gets Trim 2 Reading
+//            CS_bright = map(trim2, 1023, 0, 220, 20);                              // Maps Reading to 20-220
+//            stripCS1.setBrightness(CS_bright);                                     // Sets CS1 Brightenss
+//            stripCS2.setBrightness(CS_bright);                                     // Sets CS2 Brightenss
+//            int trim3 = analogRead(TRIM3);                                         // Gets Trim 3 Reading
+//            VU_bright = map(trim3, 1023, 0, 220, 20);                              // Maps Reading to 20-220
+//            stripVU1.setBrightness(VU_bright);                                     // Sets VU1 Brightenss
+//            stripVU2.setBrightness(VU_bright);                                     // Sets VU2 Brightenss
+//            stripLDP.show();                                                       // Shows LDP to Change Brightenss
+//            stripMAINT.show();
+//            stripCS1.show();                                                       // Shows CS1 to Change Brightenss
+//            stripCS2.show();                                                       // Shows CS2 to Change Brightenss
+//            stripVU1.show();                                                       // Shows VU1 to Change Brightenss
+//            stripVU2.show();                                                       // Shows VU2 to Change Brightenss
+////            int trim4 = analogRead(TRIM4);                                         // Gets Trim 4 Reading
+////            DATAPORTINTENSITY = map(trim4, 1023, 0, 15, 1);                        // Maps Reading to 0-15
+////            lc.setIntensity(DATAPORT,DATAPORTINTENSITY);                           // Sets Data Port Panel Brightenss
+////            int trim5 = analogRead(TRIM5);                                         // Gets Trim 5 Reading
+////            CBIINTENSITY = map(trim5, 1023, 0, 15, 1);                             // Maps Reading to 0-15
+////            lc.setIntensity(CBI,CBIINTENSITY);                                     // Sets CBI Brightenss
 //
+//            byte arr[] = {LDP_bright,MAINT_bright,CS_bright,VU_bright,DATAPORTINTENSITY,CBIINTENSITY };
+//            saveToEEPROM(arr,6,0);
+//        }
+////
+////
+////
+////      /////////////////////////////////////////////////////////
+////      ///****      Set Internal Volume Sesitivity       ****///
+////      /////////////////////////////////////////////////////////
+//        void setIntVUSesitivity() {
+//           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
+//           vuBaselineInt = map(trim1, 1023, 0, 254, 1);                            // Maps Reading to 0-255
+//           int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
+//           vuOffsetInt = map(trim2, 1023, 0, 1, 15);                               // Maps Reading to 0-15
 //
+//           getVU(1,off,off);
+//           getVU_CS(1,off,off);
+//           getVU_LDP(1,off,off);
 //
-//      /////////////////////////////////////////////////////////
-//      ///****      Set Internal Volume Sesitivity       ****///
-//      /////////////////////////////////////////////////////////
-        void setIntVUSesitivity() {
-           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
-           vuBaselineInt = map(trim1, 1023, 0, 254, 1);                            // Maps Reading to 0-255
-           int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
-           vuOffsetInt = map(trim2, 1023, 0, 1, 15);                               // Maps Reading to 0-15
-
-           getVU(1,off,off);
-           getVU_CS(1,off,off);
-           getVU_LDP(1,off,off);
-
-           byte arr[] = { vuOffsetInt,vuBaselineInt };
-           saveToEEPROM(arr,2,6);
-        }
-
-//
-//      /////////////////////////////////////////////////////////
-//      ///****      Set External Volume Sesitivity       ****///
-//      ///////////////////////////////////////////////////////
-        void setExtVUSesitivity() {
-           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
-           vuBaselineExt = map(trim1, 1023, 0, 50, 1);                             // Maps Reading to 0-255
-           int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
-           vuOffsetExt = map(trim2,1023, 0, 6, 1);                                 // Maps Reading to 0-15
-
-           getExtVU(1,off,off);
-           getExtVU_CS(1,off,off);
-           getExtVU_LDP(1,off,off);
-           getExtVU_MAINT(1,off,off);
-
-           byte arr[] = { vuOffsetExt, vuBaselineExt };
-           saveToEEPROM(arr,2,8);
-        }
-//
-//      /////////////////////////////////////////////////////////
-//      ///****    Set Data Port Panel Display Timing     ****///
-//      /////////////////////////////////////////////////////////
-//        void setDPPTiming() {
-//          int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
-//          TopBlockSpeed = map(trim1, 1023, 0, 25, 1);                             // Maps Reading to 0-255
-//          int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
-//          BottomLedSpeed = map(trim2, 1023, 0, 25, 1);                            // Maps Reading to 0-255
-//          int trim3 = analogRead(TRIM3);                                          // Gets Trim 2 Reading
-//          RedLedSpeed = map(trim3, 1023, 0, 25, 1);                               // Maps Reading to 0-255
-//          int trim4 = analogRead(TRIM4);                                          // Gets Trim 2 Reading
-//          BlueLedSpeed = map(trim4, 1023, 0, 25, 1);                              // Maps Reading to 0-255
-//          int trim5 = analogRead(TRIM5);                                          // Gets Trim 2 Reading
-//          BarGraphSpeed = map(trim5, 1023, 0, 25, 1);                             // Maps Reading to 0-255
-//
-//          updateTopBlocks();
-//          bargraphDisplay(0);
-//          updatebottomLEDs();
-//          updateRedLEDs();
-//          #ifndef BLUELEDTRACKGRAPH
-//            updateBlueLEDs();
-//          #endif
-//////
-//          byte arr[] = { TopBlockSpeed,BottomLedSpeed,RedLedSpeed,BlueLedSpeed,BarGraphSpeed };
-//          saveToEEPROM(arr,5,10);
+//           byte arr[] = { vuOffsetInt,vuBaselineInt };
+//           saveToEEPROM(arr,2,6);
 //        }
 //
-//      /////////////////////////////////////////////////////////
-//      ///****    Set Data Port Panel Display Timing     ****///
-//      /////////////////////////////////////////////////////////
-        void setCBITiming() {
-          int trim1 = analogRead(TRIM1);                                           // Gets Trim 1 Reading
-          CBIInterval = map(trim1, 1023, 0, 120, 1);                               // Maps Reading to 0-255
-
-          if (CBISequenceMode == 1) ESBoperatingSEQ();
-          else operatingSEQ();
-
-          byte arr[] = {CBIInterval};
-          saveToEEPROM(arr,1,15);
-        }
-
-
-//      /////////////////////////////////////////////////////////
-//      ///****             Set Default Colors            ****///
-//      /////////////////////////////////////////////////////////
-        void setDefaultColors() {
-            int trim1 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
-            int color1 = map(trim1, 1023, 0, 8, 1);                                // Maps Reading to 0-255
-            int trim2 = analogRead(TRIM2);                                         // Gets Trim 2 Reading
-            int color2 = map(trim2, 1023, 0, 8, 1);                                // Maps Reading to 0-255
-
-            for(int i=0; i < 3; i++) {stripCS1.setPixelColor(i,basicColors[color1]);stripCS2.setPixelColor(i,basicColors[color1]);}
-            for(int i=3; i < 6; i++) {stripCS1.setPixelColor(i,basicColors[color2]);stripCS2.setPixelColor(i,basicColors[color2]);}
-            for(int i=0; i < 9; i++) {stripVU1.setPixelColor(i,basicColors[color1]);stripVU2.setPixelColor(i,basicColors[color2]);}
-            for(int i=0; i < 16; i++) {stripLDP.setPixelColor(i,basicColors[color1]);}
-            for(int i=16; i < 32; i++) {stripLDP.setPixelColor(i,basicColors[color2]);}
-            for(int i=0; i < 9; i++) {stripMAINT.setPixelColor(i,basicColors[color1]);}
-            for(int i=9; i < 18; i++) {stripMAINT.setPixelColor(i,basicColors[color2]);}
-            stripLDP.show();                                                       // Shows LDP to Change Color
-            stripMAINT.show();                                                     // Shows Maintenece to Change Color
-            stripCS1.show();                                                       // Shows CS1 to Change Color
-            stripCS2.show();                                                       // Shows CS2 to Change Color
-            stripVU1.show();                                                       // Shows VU1 to Change Color
-            stripVU2.show();                                                       // Shows VU2 to Change Color
-
-
-            byte arr[] = {color1,color2};
-            saveToEEPROM(arr,2,16);
-        }
-
-//      /////////////////////////////////////////////////////////
-//      ///****      Set RLDSpeed Mimic Speed       ****///
-//      /////////////////////////////////////////////////////////
-        void setDefaultRLDSpeed() {
-           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
-           RLDSpeed = map(trim1, 1023, 0, 200, 20);                            // Maps Reading to 20-200
-           RLDLDP();
-           RLDCS();
-           RLDVU();
-           byte arr[] = { RLDSpeed };
-           saveToEEPROM(arr,1,17);
-        }
+////
+////      /////////////////////////////////////////////////////////
+////      ///****      Set External Volume Sesitivity       ****///
+////      ///////////////////////////////////////////////////////
+//        void setExtVUSesitivity() {
+//           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
+//           vuBaselineExt = map(trim1, 1023, 0, 50, 1);                             // Maps Reading to 0-255
+//           int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
+//           vuOffsetExt = map(trim2,1023, 0, 6, 1);                                 // Maps Reading to 0-15
 //
-//      /////////////////////////////////////////////////////////
-//      ///****      Set FLDSpeed Mimic Speed       ****///
-//      /////////////////////////////////////////////////////////
-        void setDefaultFLDSpeed() {
-           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
-           FLDSpeed = map(trim1, 1023, 0, 200, 20);                                // Maps Reading to 20-200
-           FLDLDP();
-           FLDCS();
-           FLDVU();
-           byte arr[] = { FLDSpeed };
-           saveToEEPROM(arr,1,18);
-        }
-
+//           getExtVU(1,off,off);
+//           getExtVU_CS(1,off,off);
+//           getExtVU_LDP(1,off,off);
+//           getExtVU_MAINT(1,off,off);
+//
+//           byte arr[] = { vuOffsetExt, vuBaselineExt };
+//           saveToEEPROM(arr,2,8);
+//        }
+////
+////      /////////////////////////////////////////////////////////
+////      ///****    Set Data Port Panel Display Timing     ****///
+////      /////////////////////////////////////////////////////////
+////        void setDPPTiming() {
+////          int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
+////          TopBlockSpeed = map(trim1, 1023, 0, 25, 1);                             // Maps Reading to 0-255
+////          int trim2 = analogRead(TRIM2);                                          // Gets Trim 2 Reading
+////          BottomLedSpeed = map(trim2, 1023, 0, 25, 1);                            // Maps Reading to 0-255
+////          int trim3 = analogRead(TRIM3);                                          // Gets Trim 2 Reading
+////          RedLedSpeed = map(trim3, 1023, 0, 25, 1);                               // Maps Reading to 0-255
+////          int trim4 = analogRead(TRIM4);                                          // Gets Trim 2 Reading
+////          BlueLedSpeed = map(trim4, 1023, 0, 25, 1);                              // Maps Reading to 0-255
+////          int trim5 = analogRead(TRIM5);                                          // Gets Trim 2 Reading
+////          BarGraphSpeed = map(trim5, 1023, 0, 25, 1);                             // Maps Reading to 0-255
+////
+////          updateTopBlocks();
+////          bargraphDisplay(0);
+////          updatebottomLEDs();
+////          updateRedLEDs();
+////          #ifndef BLUELEDTRACKGRAPH
+////            updateBlueLEDs();
+////          #endif
+////////
+////          byte arr[] = { TopBlockSpeed,BottomLedSpeed,RedLedSpeed,BlueLedSpeed,BarGraphSpeed };
+////          saveToEEPROM(arr,5,10);
+////        }
+////
+////      /////////////////////////////////////////////////////////
+////      ///****    Set Data Port Panel Display Timing     ****///
+////      /////////////////////////////////////////////////////////
+//        void setCBITiming() {
+//          int trim1 = analogRead(TRIM1);                                           // Gets Trim 1 Reading
+//          CBIInterval = map(trim1, 1023, 0, 120, 1);                               // Maps Reading to 0-255
+//
+//          if (CBISequenceMode == 1) ESBoperatingSEQ();
+//          else operatingSEQ();
+//
+//          byte arr[] = {CBIInterval};
+//          saveToEEPROM(arr,1,15);
+//        }
+//
+//
+////      /////////////////////////////////////////////////////////
+////      ///****             Set Default Colors            ****///
+////      /////////////////////////////////////////////////////////
+//        void setDefaultColors() {
+//            int trim1 = analogRead(TRIM1);                                         // Gets Trim 1 Reading
+//            int color1 = map(trim1, 1023, 0, 8, 1);                                // Maps Reading to 0-255
+//            int trim2 = analogRead(TRIM2);                                         // Gets Trim 2 Reading
+//            int color2 = map(trim2, 1023, 0, 8, 1);                                // Maps Reading to 0-255
+//
+//            for(int i=0; i < 3; i++) {stripCS1.setPixelColor(i,basicColors[color1]);stripCS2.setPixelColor(i,basicColors[color1]);}
+//            for(int i=3; i < 6; i++) {stripCS1.setPixelColor(i,basicColors[color2]);stripCS2.setPixelColor(i,basicColors[color2]);}
+//            for(int i=0; i < 9; i++) {stripVU1.setPixelColor(i,basicColors[color1]);stripVU2.setPixelColor(i,basicColors[color2]);}
+//            for(int i=0; i < 16; i++) {stripLDP.setPixelColor(i,basicColors[color1]);}
+//            for(int i=16; i < 32; i++) {stripLDP.setPixelColor(i,basicColors[color2]);}
+//            for(int i=0; i < 9; i++) {stripMAINT.setPixelColor(i,basicColors[color1]);}
+//            for(int i=9; i < 18; i++) {stripMAINT.setPixelColor(i,basicColors[color2]);}
+//            stripLDP.show();                                                       // Shows LDP to Change Color
+//            stripMAINT.show();                                                     // Shows Maintenece to Change Color
+//            stripCS1.show();                                                       // Shows CS1 to Change Color
+//            stripCS2.show();                                                       // Shows CS2 to Change Color
+//            stripVU1.show();                                                       // Shows VU1 to Change Color
+//            stripVU2.show();                                                       // Shows VU2 to Change Color
+//
+//
+//            byte arr[] = {color1,color2};
+//            saveToEEPROM(arr,2,16);
+//        }
+//
+////      /////////////////////////////////////////////////////////
+////      ///****      Set RLDSpeed Mimic Speed       ****///
+////      /////////////////////////////////////////////////////////
+//        void setDefaultRLDSpeed() {
+//           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
+//           RLDSpeed = map(trim1, 1023, 0, 200, 20);                            // Maps Reading to 20-200
+//           RLDLDP();
+//           RLDCS();
+//           RLDVU();
+//           byte arr[] = { RLDSpeed };
+//           saveToEEPROM(arr,1,17);
+//        }
+////
+////      /////////////////////////////////////////////////////////
+////      ///****      Set FLDSpeed Mimic Speed       ****///
+////      /////////////////////////////////////////////////////////
+//        void setDefaultFLDSpeed() {
+//           int trim1 = analogRead(TRIM1);                                          // Gets Trim 1 Reading
+//           FLDSpeed = map(trim1, 1023, 0, 200, 20);                                // Maps Reading to 20-200
+//           FLDLDP();
+//           FLDCS();
+//           FLDVU();
+//           byte arr[] = { FLDSpeed };
+//           saveToEEPROM(arr,1,18);
+//        }
+//
 
 //      /////////////////////////////////////////////////////////
 //      ///****      Set Variables Remotely               ****///
@@ -5776,30 +5669,10 @@ uint8_t splitColor ( uint32_t c, char value )
 
 
 
-
-
-
-
-
-
-
-
-
-void getBoardMode() {
-      boardmode = 0;
-      for(int i=0;i<4;i++) {
-       if(digitalRead(jumperpins[i])==1 && i==0) {boardmode += 1;}
-       if(digitalRead(jumperpins[i])==1 && i==1) {boardmode += 2;}
-       if(digitalRead(jumperpins[i])==1 && i==2) {boardmode += 4;}
-       if(digitalRead(jumperpins[i])==1 && i==3) {boardmode += 8;}
-      }
-}
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
-/////                             Serial & I2C Communication Functions                              /////
+/////                             Serial Communication Functions & Debug                            /////
 /////                                                                                               /////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5848,31 +5721,74 @@ void getBoardMode() {
           }
         }
       }
-      
-      /////////////////////////////////////////////////////////
-      ///*****            I2C Event Function           *****///
-      /////////////////////////////////////////////////////////
-      ///  This routine is run when an onRecieve event is   ///
-      ///     triggered.  Multiple bytes of data may be     ///
-      ///                    available.                     ///
-      /////////////////////////////////////////////////////////
 
-   void i2cEvent(int howMany)
-      {  
-         inputString = "";
-         int receiveByte = 0;
-         while(Wire.available())                                     // loop through all incoming bytes
-         {
-           char inChar = (char)Wire.read();                               // receive byte as a character
-           if(inChar != '!') {
-             inputString += inChar;
-             receiveByte++;
-           }
-         }
-         if(receiveByte>=3) {
-            stringComplete = true;                             // Once done, set a flag so the main loop can do something about it.
-         }       
-      }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+///*****             Debugging Functions                      *****///
+//////////////////////////////////////////////////////////////////////
+
+void DBG(const char *format, ...) {
+        if (!debugflag)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+void DBG_1(const char *format, ...) {
+        if (!debugflag1)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_2(const char *format, ...) {
+        if (!debugflag2)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+void toggleDebug(){
+  debugflag = !debugflag;
+  if (debugflag == 1){
+    Serial.println("Debugging Enabled \n"); 
+    }
+  else{
+    Serial.println("Debugging Disabled");
+  }
+      Prog_command[0]   = '\0';
+
+}
+
+
+void toggleDebug1(){
+  debugflag1 = !debugflag1;
+  if (debugflag1 == 1){
+    Serial.println("Parameter Debugging Enabled \n");
+    }
+  else{
+    Serial.println("Parameter Debugging Disabled\n");
+  }
+    Prog_command[0]   = '\0';
+}
+void toggleDebug2(){
+  debugflag2 = !debugflag2;
+  if (debugflag2 == 1){
+    Serial.println("Debug 2 Debugging Enabled \n");
+    }
+  else{
+    Serial.println("Debug 2 Debugging Disabled\n");
+  }
+    Prog_command[0]   = '\0';
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5931,3 +5847,20 @@ void getBoardMode() {
     byte temp;
     temp = EEPROM.read(19);   if(temp != 255) {FLDSpeed = temp;}
   }
+
+
+void sendUpdates(){
+  Serial.println("Executing JSON");
+  DynamicJsonDocument doc(1024);
+  doc["LDPBright"] = LDP_bright;
+  doc["MaintBright"] = MAINT_bright;
+  doc["VUBright"] = VU_bright;
+  doc["CoinBright"] = CS_bright;
+  doc["VUIntBaseline"] = vuBaselineInt;
+  doc["VUIntOffset"] = vuOffsetInt;
+  doc["VUExtBaseline"] = vuBaselineExt;
+  doc["VUExtOffset"] = vuOffsetExt;
+  
+  serializeJson(doc, Serial2);
+  Prog_command[0] = '0';
+}

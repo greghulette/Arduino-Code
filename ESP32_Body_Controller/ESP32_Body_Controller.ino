@@ -114,7 +114,7 @@
   SoftwareSerial mpSerial;
 
   #define EN_BAUD_RATE 115200
-  #define BL_BAUD_RATE 115200
+  #define BL_BAUD_RATE 9600
   #define ST_BAUD_RATE 9600
   #define MP_BAUD_RATE 9600
 
@@ -227,6 +227,34 @@ void serialEnEvent() {
 void serialBlEvent() {
   while (blSerial.available()) {
     // get the new byte:
+    StaticJsonDocument<300> doc;
+
+    // Read the JSON document from the "link" serial port
+    DeserializationError err = deserializeJson(doc, blSerial);
+
+    if (err == DeserializationError::Ok) 
+    {
+      // Print the values
+      // (we must use as<T>() to resolve the ambiguity)
+      Serial.print("LDP Brightness = "); Serial.println(doc["LDPBright"].as<int>());
+      Serial.print("Maint Brightness = "); Serial.println(doc["MaintBright"].as<int>());
+      Serial.print("VU Brightness = "); Serial.println(doc["VUBright"].as<int>());
+      Serial.print("Coin Slots Brightness = "); Serial.println(doc["CoinBright"].as<int>());
+      Serial.print("Spectrum Int Offset = "); Serial.println(doc["VUIntOffset"].as<int>());
+      Serial.print("Spectrum Int Baseline = "); Serial.println(doc["VUIntBaseline"].as<int>());
+      Serial.print("Spectrum Ext Offset = "); Serial.println(doc["VUExtOffset"].as<int>());
+      Serial.print("Spectrum Ext Baseline = "); Serial.println(doc["VUExtBaseline"].as<int>());
+    } 
+    else 
+    {
+      // Print error to the "debug" serial port
+      Serial.print("deserializeJson() returned ");
+      Serial.println(err.c_str());
+  
+      // Flush all bytes in the "link" serial port buffer
+      while (blSerial.available() > 0)
+        blSerial.read();
+    }
     char inChar = (char)blSerial.read();
     // add it to the inputString:
     inputString += inChar;
@@ -234,7 +262,10 @@ void serialBlEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  DBG("InputString: %s \n",inputString);
+//  DynamicJsonDocument doc(1024);
+//  deserializeJson(doc, inputString);
+//  Serial.println(doc.LDPBright);
+//  DBG("InputString: %s \n",inputString);
 };
 
 
@@ -542,8 +573,18 @@ void setup(){
           };
         } ;      
           if (paramVar == 2){
-          DBG_1("Writing to blSerial\n");      
-          writeBlSerial(p->value());
+          DBG_1("Writing to blSerial\n");   
+
+         if ((p->name())== "param0" & (p->value()) == "blSerial"){
+            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+          } 
+          else {
+            writeBlSerial(p->value());
+          };
+//          writeBlSerial(p->value());
+        
+        
+        
         };
         if (paramVar == 3){
           DBG_1("Writing to stSerial\n");      
@@ -556,7 +597,7 @@ void setup(){
         };
 
         DBG_1("------\n");
-//        delay(50);
+        delay(50);
     }
 
     request->send(200, "text/plain", "Message Received on Body Controller");
