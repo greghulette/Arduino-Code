@@ -75,6 +75,17 @@
   String periscopeControllerStatus = "Offline";
   String domeControllerStatus = "Offline";
   String bodyServoControllerStatus  = "Offline";
+  int BL_LDP_Bright;
+  int BL_MAINT_Bright;
+  int BL_VU_Bright;
+  int BL_CS_Bright;
+  int BL_vuOffsetInt;
+  int BL_vuBaselineInt;
+  int BL_vuOffsetExt;
+  int BL_vuBaselineExt;
+  int BL_BatteryVoltage;
+  int BL_BatteryPercentage;
+
 
   int keepAliveTimeOut = 15000;
   unsigned long dckeepAliveAge;
@@ -234,6 +245,17 @@ void serialBlEvent() {
 
     if (err == DeserializationError::Ok) 
     {
+
+      BL_LDP_Bright = doc["LDPBright"].as<int>();
+      BL_MAINT_Bright = doc["MaintBright"].as<int>();
+      BL_VU_Bright = doc["VUBright"].as<int>();
+      BL_CS_Bright = doc["CoinBright"].as<int>();
+      BL_vuOffsetInt = doc["VUIntOffset"].as<int>();
+      BL_vuBaselineInt = doc["VUIntBaseline"].as<int>();
+      BL_vuOffsetExt = doc["VUExtOffset"].as<int>();
+      BL_vuBaselineExt = doc["VUExtBaseline"].as<int>();
+      BL_BatteryVoltage = doc["BatteryVoltage"].as<int>();
+      BL_BatteryPercentage = doc["BatteryPercent"].as<int>();
       // Print the values
       // (we must use as<T>() to resolve the ambiguity)
       Serial.print("LDP Brightness = "); Serial.println(doc["LDPBright"].as<int>());
@@ -243,6 +265,7 @@ void serialBlEvent() {
       Serial.print("Spectrum Int Offset = "); Serial.println(doc["VUIntOffset"].as<int>());
       Serial.print("Spectrum Int Baseline = "); Serial.println(doc["VUIntBaseline"].as<int>());
       Serial.print("Spectrum Ext Offset = "); Serial.println(doc["VUExtOffset"].as<int>());
+
       Serial.print("Battery Voltage = "); Serial.println(doc["BatteryVoltage"].as<float>());
       Serial.print("Battery Percentage = "); Serial.println(doc["BatteryPercent"].as<int>());
     } 
@@ -615,7 +638,17 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BodyController"] = "Online";
       json["BodyServo"] = bodyServoControllerStatus;
       json["Dome"] = domeControllerStatus;
-      json["Periscope"] = periscopeControllerStatus;
+      json["LDPBright"] = BL_LDP_Bright;
+      json["MaintBright"] = BL_MAINT_Bright;
+      json["VUBright"] = BL_VU_Bright;
+      json["CoinBright"] = BL_CS_Bright;
+      json["VUIntOffset"] = BL_vuOffsetInt;
+      json["VUIntBaseline"] = BL_vuBaselineInt;
+      json["VUExtOffset"] = BL_vuOffsetExt;
+      json["VUExtBaseline"] = BL_vuBaselineExt;
+      json["BatteryVoltage"] = BL_BatteryVoltage;
+      json["BatteryPercent"] = BL_BatteryPercentage;
+
       serializeJson(json, *response);
       request->send(response);
   });

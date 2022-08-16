@@ -164,7 +164,7 @@
 
 // Analog Sensors
 #define EXTERNAL_MIC_PIN      8
-#define VOLTAGE_SENSOR_PIN    10
+#define VOLTAGE_SENSOR_PIN    7
 
 
 //////////////////////////////////////////////////////////////////////
