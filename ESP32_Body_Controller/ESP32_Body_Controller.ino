@@ -243,7 +243,8 @@ void serialBlEvent() {
       Serial.print("Spectrum Int Offset = "); Serial.println(doc["VUIntOffset"].as<int>());
       Serial.print("Spectrum Int Baseline = "); Serial.println(doc["VUIntBaseline"].as<int>());
       Serial.print("Spectrum Ext Offset = "); Serial.println(doc["VUExtOffset"].as<int>());
-      Serial.print("Spectrum Ext Baseline = "); Serial.println(doc["VUExtBaseline"].as<int>());
+      Serial.print("Battery Voltage = "); Serial.println(doc["BatteryVoltage"].as<float>());
+      Serial.print("Battery Percentage = "); Serial.println(doc["BatteryPercent"].as<int>());
     } 
     else 
     {

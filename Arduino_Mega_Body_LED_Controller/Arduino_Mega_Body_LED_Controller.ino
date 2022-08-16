@@ -164,7 +164,7 @@
 
 // Analog Sensors
 #define EXTERNAL_MIC_PIN      8
-#define VOLTAGE_SENSOR_PIN    7
+#define VOLTAGE_SENSOR_PIN    10
 
 
 //////////////////////////////////////////////////////////////////////
@@ -241,8 +241,8 @@
     
     // For 15volts: R1=47k, R2=24k
     // For 30volts: R1=47k, R2=9.4k
-    #define R1 47000.0     // >> resistance of R1 in ohms << the more accurate these values are
-    #define R2 24000.0     // >> resistance of R2 in ohms << the more accurate the measurement will be
+    #define R1 57000.0     // >> resistance of R1 in ohms << the more accurate these values are
+    #define R2 22000.0     // >> resistance of R2 in ohms << the more accurate the measurement will be
 
     float vout = 0.0;       // for voltage out measured analog input
     int value = 0;          // used to hold the analog value coming out of the voltage divider
@@ -260,8 +260,8 @@
 //////////////////////////////////////////////////////////////////////
 ///*****              Battery Voltage Range Config            *****///
 //////////////////////////////////////////////////////////////////////
-   int BatLevMax  = 1300;       // Voltage (X100) when Battery is considered full
-   int BatLevMin  = 1200;       // Voltage (X100) when Battery is considered empty
+   int BatLevMax  = 2280;       // Voltage (X100) when Battery is considered full
+   int BatLevMin  = 1330;       // Voltage (X100) when Battery is considered empty
 
 
 
@@ -633,6 +633,9 @@ long lastDebounceTime = 0;       // the last time the output pin was toggled
 long debounceDelay = 2000;       // the debounce time; Save Button Must be Held Down for 2 Seconds
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
+
+  unsigned long getBattMillis;
+  int getBattDelay = 2000;
 void setup()
 {
 
@@ -743,7 +746,10 @@ void loop() {
       startUp = false;
   }
 
-
+  if (millis()-getBattMillis >= getBattDelay){
+    getBattMillis = millis();
+    getBatLevel();
+  }
   if(getExtVol) {readExternalAudio();}
   if(getIntVol) {readSpectrum();}
 
@@ -2524,16 +2530,23 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
       ///*****       Battery Level Read Function       *****///
       /////////////////////////////////////////////////////////
        void getBatLevel() {
-          BatAve.push(analogRead(VOLTAGE_SENSOR_PIN));
-          BatVal = BatAve.mean();
-          BatVal = map(BatVal, 0,1023, 0, 2500);
-          BatVal = map(BatVal, BatLevMin,  BatLevMax,  0,  100);
+        Serial.println("------------------");
+        BatAve.push(analogRead(VOLTAGE_SENSOR_PIN));
+        BatVal = BatAve.mean();
+        vout = (BatVal*4.8)/1023;
+        Serial.print("Measured Voltage: ");Serial.println(vout);
+        vin = vout/(R2/(R1+R2))+1;
+        Serial.print("Actual Voltage: ");Serial.println(vin);
+        BatVal = map(BatVal, 0,1023, 0, 2500);
+        Serial.print("Battery Val 1:");Serial.println(BatVal);
+        BatVal = map(BatVal, BatLevMin,  BatLevMax,  0,  100);
 
-
-         if (BatVal >= 40) {batColor = green;l23on();l22off();l21off();}
-         else if (BatVal >= 20) {batColor = yellow;l23off();l22on();l21off();}
-         else if (BatVal >= 5)  {batColor = red;l23off();l22off();l21on();}
-         else {batColor = off;}
+        Serial.print("Battery Val 2:");Serial.println(BatVal);
+//        DBG("Battery Level: %d \n",BatVal);
+        if (BatVal >= 40) {batColor = green;l23on();l22off();l21off();}
+        else if (BatVal >= 20) {batColor = yellow;l23off();l22on();l21off();}
+        else if (BatVal >= 5)  {batColor = red;l23off();l22off();l21on();}
+        else {batColor = off;}
        }
 
       /////////////////////////////////////////////////////////
@@ -2694,6 +2707,8 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
 
       void batteryMAINT()
       {
+//      getBatLevel();
+
         if (BatVal < 5) { FlashMAINT(2,red); return;}                                 //  Start Flash Sequence, Color: Red
         else {
           batCells = (MAINT_PIXELS*BatVal)/100;
@@ -5860,6 +5875,8 @@ void sendUpdates(){
   doc["VUIntOffset"] = vuOffsetInt;
   doc["VUExtBaseline"] = vuBaselineExt;
   doc["VUExtOffset"] = vuOffsetExt;
+  doc["BatteryVoltage"] = vin;
+  doc["BatteryPercent"] = BatVal;
   
   serializeJson(doc, Serial2);
   Prog_command[0] = '0';
