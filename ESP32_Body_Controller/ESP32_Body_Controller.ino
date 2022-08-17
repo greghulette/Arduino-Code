@@ -13,7 +13,7 @@
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
-#include "AsyncJson.h"
+//#include "AsyncJson.h"
 #include "ArduinoJson.h"
 
 //ReelTwo libaries
@@ -83,7 +83,7 @@
   int BL_vuBaselineInt;
   int BL_vuOffsetExt;
   int BL_vuBaselineExt;
-  int BL_BatteryVoltage;
+  float BL_BatteryVoltage;
   int BL_BatteryPercentage;
 
 
@@ -254,7 +254,7 @@ void serialBlEvent() {
       BL_vuBaselineInt = doc["VUIntBaseline"].as<int>();
       BL_vuOffsetExt = doc["VUExtOffset"].as<int>();
       BL_vuBaselineExt = doc["VUExtBaseline"].as<int>();
-      BL_BatteryVoltage = doc["BatteryVoltage"].as<int>();
+      BL_BatteryVoltage = doc["BatteryVoltage"].as<float>();
       BL_BatteryPercentage = doc["BatteryPercent"].as<int>();
       // Print the values
       // (we must use as<T>() to resolve the ambiguity)
@@ -638,6 +638,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BodyController"] = "Online";
       json["BodyServo"] = bodyServoControllerStatus;
       json["Dome"] = domeControllerStatus;
+      json["Periscope"] = periscopeControllerStatus;
       json["LDPBright"] = BL_LDP_Bright;
       json["MaintBright"] = BL_MAINT_Bright;
       json["VUBright"] = BL_VU_Bright;

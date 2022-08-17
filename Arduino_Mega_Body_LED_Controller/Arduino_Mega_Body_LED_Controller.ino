@@ -745,10 +745,11 @@ void loop() {
   if(startUp) {
       startUp = false;
   }
-
-  if (millis()-getBattMillis >= getBattDelay){
-    getBattMillis = millis();
     getBatLevel();
+
+  if (millis()-getBattMillis >= 15000){
+    getBattMillis = millis();
+    sendUpdates();
   }
   if(getExtVol) {readExternalAudio();}
   if(getIntVol) {readSpectrum();}
@@ -2530,18 +2531,18 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
       ///*****       Battery Level Read Function       *****///
       /////////////////////////////////////////////////////////
        void getBatLevel() {
-        Serial.println("------------------");
+//        Serial.println("------------------");
         BatAve.push(analogRead(VOLTAGE_SENSOR_PIN));
         BatVal = BatAve.mean();
         vout = (BatVal*4.8)/1023;
-        Serial.print("Measured Voltage: ");Serial.println(vout);
+//        Serial.print("Measured Voltage: ");Serial.println(vout);
         vin = vout/(R2/(R1+R2))+1;
-        Serial.print("Actual Voltage: ");Serial.println(vin);
+//        Serial.print("Actual Voltage: ");Serial.println(vin);
         BatVal = map(BatVal, 0,1023, 0, 2500);
-        Serial.print("Battery Val 1:");Serial.println(BatVal);
+//        Serial.print("Battery Val 1:");Serial.println(BatVal);
         BatVal = map(BatVal, BatLevMin,  BatLevMax,  0,  100);
 
-        Serial.print("Battery Val 2:");Serial.println(BatVal);
+//        Serial.print("Battery Val 2:");Serial.println(BatVal);
 //        DBG("Battery Level: %d \n",BatVal);
         if (BatVal >= 40) {batColor = green;l23on();l22off();l21off();}
         else if (BatVal >= 20) {batColor = yellow;l23off();l22on();l21off();}
@@ -5865,7 +5866,7 @@ void toggleDebug2(){
 
 
 void sendUpdates(){
-  Serial.println("Executing JSON");
+//  Serial.println("Executing JSON");
   DynamicJsonDocument doc(1024);
   doc["LDPBright"] = LDP_bright;
   doc["MaintBright"] = MAINT_bright;
