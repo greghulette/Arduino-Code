@@ -630,6 +630,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncResponseStream *response = request->beginResponseStream("application/json");
       DynamicJsonDocument json(2048);
       json["BL_Status"] = "Online";
+      json["BodyController"] = "Online";
       json["BodyServo"] = bodyServoControllerStatus;
       json["Dome"] = domeControllerStatus;
       json["Periscope"] = periscopeControllerStatus;
