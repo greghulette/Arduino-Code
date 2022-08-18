@@ -13,7 +13,6 @@
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
-//#include "AsyncJson.h"
 #include "ArduinoJson.h"
 
 //ReelTwo libaries
@@ -75,6 +74,8 @@
   String periscopeControllerStatus = "Offline";
   String domeControllerStatus = "Offline";
   String bodyServoControllerStatus  = "Offline";
+  String bodyLEDControllerStatus  = "Offline";
+  
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
@@ -85,6 +86,7 @@
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
+  String BL_Status = "Offline";
 
 
   int keepAliveTimeOut = 15000;
@@ -94,6 +96,8 @@
   unsigned long pckeepaliveAgeMillis;
   unsigned long bskeepAliveAge;
   unsigned long bskeepaliveAgeMillis;
+  unsigned long blkeepAliveAge;
+  unsigned long blkeepaliveAgeMillis;
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -158,30 +162,12 @@ uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
  ////R2 Control Network Details
 const char* ssid = "R2D2_Control_Network";
 const char* password =  "astromech";
-int channel =  6;
+int channel =  8;
 int broadcastSSID = 0;  //0 for yes, 1 for no
 int maxConnections = 8;
 
-//const char * html = "<p>Periscope Status: %pStatus%</p>";
 
 AsyncWebServer server(80);
-//
-//StaticJsonBuffer<200> jsonBuffer;
-//JsonObject& ESPStatus = jsonBuffer.createObject();
-//char JSONmessageBuffer[200];
-//String processor(const String& var)
-//{
-// 
-//  Serial.println(var);
-// 
-//  if(var == "pStatus")
-//    ESPStatus["Periscope"] = periscopeControllerStatus;
-// 
-//  return String();
-//}
-
-
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -231,21 +217,26 @@ void serialEnEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  DBG("InputString: %s \n",inputString);
+  DBG_2("InputString: %s \n",inputString);
 };
 
 
 void serialBlEvent() {
   while (blSerial.available()) {
     // get the new byte:
-    StaticJsonDocument<300> doc;
+    StaticJsonDocument<2048> doc;
 
     // Read the JSON document from the "link" serial port
     DeserializationError err = deserializeJson(doc, blSerial);
 
     if (err == DeserializationError::Ok) 
     {
-
+      BL_Status = doc["BL_Status"].as<String>();
+      if (BL_Status == "Online"){
+        BL_Status="Online";
+        blkeepAliveAge = millis();
+        DBG_2("Body LED Controler Keepalive Received \n");
+        }
       BL_LDP_Bright = doc["LDPBright"].as<int>();
       BL_MAINT_Bright = doc["MaintBright"].as<int>();
       BL_VU_Bright = doc["VUBright"].as<int>();
@@ -258,38 +249,29 @@ void serialBlEvent() {
       BL_BatteryPercentage = doc["BatteryPercent"].as<int>();
       // Print the values
       // (we must use as<T>() to resolve the ambiguity)
-      Serial.print("LDP Brightness = "); Serial.println(doc["LDPBright"].as<int>());
-      Serial.print("Maint Brightness = "); Serial.println(doc["MaintBright"].as<int>());
-      Serial.print("VU Brightness = "); Serial.println(doc["VUBright"].as<int>());
-      Serial.print("Coin Slots Brightness = "); Serial.println(doc["CoinBright"].as<int>());
-      Serial.print("Spectrum Int Offset = "); Serial.println(doc["VUIntOffset"].as<int>());
-      Serial.print("Spectrum Int Baseline = "); Serial.println(doc["VUIntBaseline"].as<int>());
-      Serial.print("Spectrum Ext Offset = "); Serial.println(doc["VUExtOffset"].as<int>());
-
-      Serial.print("Battery Voltage = "); Serial.println(doc["BatteryVoltage"].as<float>());
-      Serial.print("Battery Percentage = "); Serial.println(doc["BatteryPercent"].as<int>());
+      DBG_2("Body LED Controller Status = %s\n", BL_Status); //Serial.println(doc["BL_Status"].as<String>());
+      DBG_2("LDP Brightness = %i\n", BL_LDP_Bright); //Serial.println(doc["LDPBright"].as<int>());
+      DBG_2("Maint Brightness = %i\n", BL_MAINT_Bright); //Serial.println(doc["MaintBright"].as<int>());
+      DBG_2("VU Brightness = %i\n", BL_VU_Bright); //Serial.println(doc["VUBright"].as<int>());
+      DBG_2("Coin Slots Brightness = %i\n",BL_CS_Bright); //Serial.println(doc["CoinBright"].as<int>());
+      DBG_2("Spectrum Int Offset = %i\n",BL_vuOffsetInt); //Serial.println(doc["VUIntOffset"].as<int>());
+      DBG_2("Spectrum Int Baseline = %i\n",BL_vuBaselineInt); //Serial.println(doc["VUIntBaseline"].as<int>());
+      DBG_2("Spectrum Ext Offset = %i\n",BL_vuOffsetExt); //Serial.println(doc["VUExtOffset"].as<int>());
+      DBG_2("Spectrum Ext Baseline = %i\n",BL_vuBaselineExt); //Serial.println(doc["VUExtOffset"].as<int>());
+      DBG_2("Battery Voltage = %.2f\n",BL_BatteryVoltage); //Serial.println(doc["BatteryVoltage"].as<float>());
+      DBG_2("Battery Percentage = %i\n",BL_BatteryPercentage);//Serial.println(doc["BatteryPercent"].as<int>());
     } 
     else 
     {
       // Print error to the "debug" serial port
       Serial.print("deserializeJson() returned ");
       Serial.println(err.c_str());
-  
+    
       // Flush all bytes in the "link" serial port buffer
-      while (blSerial.available() > 0)
-        blSerial.read();
+//      while (blSerial.available() > 0)
+//        blSerial.read();
     }
-    char inChar = (char)blSerial.read();
-    // add it to the inputString:
-    inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
   };
-//  DynamicJsonDocument doc(1024);
-//  deserializeJson(doc, inputString);
-//  Serial.println(doc.LDPBright);
-//  DBG("InputString: %s \n",inputString);
 };
 
 
@@ -439,11 +421,10 @@ void toggleDebug2(){
 //////////////////////////////////////////////////////////////////////
 
 void resetArduino(int delayperiod){
-  DBG("Opening of reset function");
+  DBG("Body LED Controller Reset Function\n");
   digitalWrite(RST,LOW);
   delay(delayperiod);
   digitalWrite(RST,HIGH);
-  DBG("reset witin function");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -463,21 +444,32 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
   if (domeControllerStatus=="Online"){
     if (millis()-dckeepAliveAge>=keepAliveTimeOut){
       domeControllerStatus="Offline";
-      DBG("Dome Controller Offline\n");
+      DBG_2("Dome Controller Offline\n");
     }
   }
   if (periscopeControllerStatus=="Online"){
     if (millis()-pckeepAliveAge>=keepAliveTimeOut){
       periscopeControllerStatus="Offline";
-      DBG("Periscope Controller Offline\n");
+      DBG_2("Periscope Controller Offline\n");
     }
   }
   if (bodyServoControllerStatus=="Online"){
     if (millis()-bskeepAliveAge>=keepAliveTimeOut){
       bodyServoControllerStatus="Offline";
-      DBG("Body Servo Controller Offline\n");
+      DBG_2("Body Servo Controller Offline\n");
     }
   }
+    if (BL_Status=="Online"){
+    if (millis()-blkeepAliveAge>=keepAliveTimeOut){
+      BL_Status="Offline";
+      DBG_2("Body LED Controller Offline\n");
+    }
+  }
+}
+
+void checkAgeofBLKeepAlive(){
+  if (BL_LDP_Bright > 0){
+    }
 }
 
 void printKeepaliveStatus(){
@@ -485,6 +477,8 @@ void printKeepaliveStatus(){
   DBG("Dome Controller Status: %s\n", domeControllerStatus);
   DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
   DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
+  DBG("Body LED Controller Status: %s\n", BL_Status);
+
   ESP_command[0]   = '\0';
 
 }
@@ -634,8 +628,8 @@ void setup(){
 
 server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncResponseStream *response = request->beginResponseStream("application/json");
-      DynamicJsonDocument json(1024);
-      json["BodyController"] = "Online";
+      DynamicJsonDocument json(2048);
+      json["BL_Status"] = "Online";
       json["BodyServo"] = bodyServoControllerStatus;
       json["Dome"] = domeControllerStatus;
       json["Periscope"] = periscopeControllerStatus;
@@ -714,21 +708,21 @@ void loop(){
                 char inCharRead = inputBuffer[i];
                 infoCommandString += inCharRead;  // add it to the inputString:
               }
-              DBG("I Command Proccessing: %s \n", infoCommandString.c_str());
+              DBG_2("I Command Proccessing: %s \n", infoCommandString.c_str());
               if(infoCommandString == "PC"){
                 periscopeControllerStatus="Online";
                 pckeepAliveAge = millis();
-                DBG("Periscope Controller Keepalive Received\n");
+                DBG_2("Periscope Controller Keepalive Received\n");
               }
               if(infoCommandString == "BS"){
                 bodyServoControllerStatus="Online";
                 bskeepAliveAge = millis();
-                DBG("Body Servo Controller Keepalive Received\n");
+                DBG_2("Body Servo Controller Keepalive Received\n");
               }
               if(infoCommandString == "DC"){
                 domeControllerStatus="Online";
                 dckeepAliveAge = millis();
-                DBG("Dome Controller Keepalive Received\n");
+                DBG_2("Dome Controller Keepalive Received\n");
               }
               infoCommandString="";
             }     
@@ -782,7 +776,6 @@ void loop(){
         int espCommandFunction;
 
 
-      DBG("command Proccessed\n");
     }
 
     if(ESP_command[0]){

@@ -747,7 +747,7 @@ void loop() {
   }
     getBatLevel();
 
-  if (millis()-getBattMillis >= 15000){
+  if (millis()-getBattMillis >= 5000){
     getBattMillis = millis();
     sendUpdates();
   }
@@ -5868,6 +5868,7 @@ void toggleDebug2(){
 void sendUpdates(){
 //  Serial.println("Executing JSON");
   DynamicJsonDocument doc(1024);
+  doc["BL_Status"] = "Online";
   doc["LDPBright"] = LDP_bright;
   doc["MaintBright"] = MAINT_bright;
   doc["VUBright"] = VU_bright;
