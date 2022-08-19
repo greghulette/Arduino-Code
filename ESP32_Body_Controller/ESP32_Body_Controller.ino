@@ -462,6 +462,8 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
     if (BL_Status=="Online"){
     if (millis()-blkeepAliveAge>=keepAliveTimeOut){
       BL_Status="Offline";
+      BL_BatteryPercentage = 0;
+      BL_BatteryVoltage = 0.0;
       DBG_2("Body LED Controller Offline\n");
     }
   }
