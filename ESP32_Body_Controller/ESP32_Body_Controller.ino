@@ -114,8 +114,8 @@
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXEN 15
-  #define TXEN 16 
+  #define RXBS 15
+  #define TXBS 16 
   #define RXBL 25
   #define TXBL 26
   #define RXST 12
@@ -123,12 +123,12 @@
   #define RXMP 17
   #define TXMP 18
   
-  #define enSerial Serial1
+  #define bsSerial Serial1
   #define blSerial Serial2
   SoftwareSerial stSerial;
   SoftwareSerial mpSerial;
 
-  #define EN_BAUD_RATE 115200
+  #define BS_BAUD_RATE 115200
   #define BL_BAUD_RATE 9600
   #define ST_BAUD_RATE 9600
   #define MP_BAUD_RATE 9600
@@ -207,10 +207,10 @@ void serialEvent() {
 };
 
 
-void serialEnEvent() {
-  while (enSerial.available()) {
+void serialBsEvent() {
+  while (bsSerial.available()) {
     // get the new byte:
-    char inChar = (char)enSerial.read();
+    char inChar = (char)bsSerial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
@@ -325,10 +325,10 @@ void writeBlSerial(String stringData){
 };
 
 
-void writeEnSerial(String stringData){
+void writeBsSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
-    enSerial.write(completeString[i]);
+    bsSerial.write(completeString[i]);
   };
   DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
 };
@@ -495,7 +495,7 @@ void printKeepaliveStatus(){
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  enSerial.begin(EN_BAUD_RATE,SERIAL_8N1,RXEN,TXEN);
+  bsSerial.begin(BS_BAUD_RATE,SERIAL_8N1,RXBS,TXBS);
   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
@@ -550,7 +550,7 @@ void setup(){
         DBG_1("Serial0 Chosen with If Statement\n");
         paramVar = 0;
         };
-    if ((p->name())== "param0" & (p->value()) == "enSerial"){
+    if ((p->name())== "param0" & (p->value()) == "bsSerial"){
         DBG_1("Serial 1 Chosen with If Statement\n");
         paramVar = 1;
         };
@@ -583,13 +583,13 @@ void setup(){
           writeSerialString(p->value());
         };
         if (paramVar == 1){
-          DBG_1("Writing to enSerial\n"); 
+          DBG_1("Writing to bsSerial\n"); 
 //          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "enSerial"){
+        if ((p->name())== "param0" & (p->value()) == "bsSerial"){
             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
           } 
           else {
-            writeEnSerial(p->value());
+            writeBsSerial(p->value());
           };
         } ;      
           if (paramVar == 2){
@@ -683,7 +683,7 @@ void loop(){
     
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
-    if(enSerial.available()){serialEnEvent();}
+    if(bsSerial.available()){serialBsEvent();}
     if(stSerial.available()){serialStEvent();}
     if(mpSerial.available()){serialMpEvent();}
 
@@ -743,7 +743,7 @@ void loop(){
                 writeBlSerial(serialSubStringCommand);
                 DBG("Sending out BL Serial\n");
               } else if (serialPort == "EN"){
-                writeEnSerial(serialSubStringCommand);
+                writeBsSerial(serialSubStringCommand);
                 DBG("Sending out EN Serial\n");
               } else if (serialPort == "ST"){
                 writeStSerial(serialSubStringCommand);
