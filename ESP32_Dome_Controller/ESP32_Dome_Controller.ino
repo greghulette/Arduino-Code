@@ -169,7 +169,7 @@ ServoSequencer servoSequencer(servoDispatch);
     const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
   #define NUM_CAMERA_PIXELS 12
-  #define CAMERA_LENS_DATA_PIN 12
+  #define CAMERA_LENS_DATA_PIN 27
   //#define CAMERA_LENS_CLOCK_PIN 13
   int dim = 75;
   unsigned long CLMillis;
@@ -243,10 +243,12 @@ ServoSequencer servoSequencer(servoDispatch);
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
   
-  #define RXHP 19
-  #define TXHP 18 
+  #define RXHP 15
+  #define TXHP 16 
   #define RXRS 25
-  #define TXRS 27 
+  #define TXRS 26
+  #define RXFU 12
+  #define TXFU 14 
   
   #define hpSerial Serial1
   #define rsSerial Serial2
@@ -260,20 +262,19 @@ ServoSequencer servoSequencer(servoDispatch);
 /////////////////////////////////////////////////////////////////////////
 
 //  MAC Addresses used in the Droid
-//  ESP-NOW Master =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-//  Dome Controller =       {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-//  Periscope Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
-//  MAC Address of the receivers (Not Currenlty needed but have this in the code for future use)
-uint8_t bodyPeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-uint8_t periscopePeerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 
 //    MAC Address to broadcast to all senders at once
 uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
 uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
 
 // Define variables to store commands to be sent
   String senderID;

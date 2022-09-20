@@ -58,7 +58,7 @@
 ///*****                                                                                                                                                           *****///
 ///*****                                                                                                                                                           *****///
 ///*****    EEPROM Address Assignment Reference:                              Sheild Operation Modes:                    Dipswitch Settings:                       *****///
-///*****       0: LDP Brightness                                                                                                                                   *****///
+///*****       0: LDP Brightness                      m                                                                                                             *****///
 ///*****       1: Coin Slots Brightness                                                                                        1 2 3 4                             *****///
 ///*****       2: VU (Dual Vertical Slots) Brightness                           0 - Normal Mode                             ON - - - -                             *****///
 ///*****       3: Data Port Panel Brightness                                                                                   # # # #                             *****///
@@ -140,7 +140,10 @@
   #define VU2_DATA_PIN     50     //52
   #define VU2_CLOCK_PIN    52     //50
 
-
+  //Battery Monitor LEDs
+  #define GREEN_LED        53
+  #define YELLOW_LED       51
+  #define RED_LED          49
 
   //VU Strobe and Reset (MSGEQ7 Graphic Equalizer IC)
   #define VU_STROBE         12    //12
@@ -152,7 +155,7 @@
   #define LOAD_PIN   5
 
   //Trigger Digital Pin Assignment
-  uint8_t triggerpins[10]  = {23,25,27,29,31,33,35,37,39,41};
+  uint8_t triggerpins[10]  = {29,31,33,35,37,39,41,43,45,47};
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Analog Pin Assignment Values             *****///
@@ -163,8 +166,8 @@
 #define SPECTRUM_RIGHT_PIN    0
 
 // Analog Sensors
-#define EXTERNAL_MIC_PIN      8
-#define VOLTAGE_SENSOR_PIN    7
+#define EXTERNAL_MIC_PIN      2
+#define VOLTAGE_SENSOR_PIN    3
 
 
 //////////////////////////////////////////////////////////////////////
