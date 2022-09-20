@@ -88,19 +88,20 @@
 /////////////////////////////////////////////////////////////////////////
 
 //  MAC Addresses used in the Droid
-//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+
 
 
 //    MAC Address to broadcast to all senders at once - Mainly Used in my code
   uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-  uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};
+  uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x15};
 
 //  // Define variables to store commands to be sent
   String senderID;
@@ -489,17 +490,6 @@ void setup(){
   peerInfo.encrypt = false;
 
   // Add peers  
-  memcpy(peerInfo.peer_addr, domePeerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Dome ESP-NOW peer");
-    return;
-  }
-
-  memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Body ESP-NOW peer");
-    return;
-  }
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");

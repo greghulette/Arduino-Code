@@ -7,8 +7,6 @@
 //Used for WiFi
 #include "esp_wifi.h"
 
-//Used for PC9685 - Servo Expansion Board
-#include <Wire.h>
 
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
@@ -20,9 +18,7 @@
 //#define USE_SERVO_DEBUG
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
-#include "ServoDispatchPCA9685.h"
-#include "ServoSequencer.h"
-#include "core/Animation.h"
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,6 +59,12 @@
   String infofunction;
   String infoCommandString;
   String infoCommandSubString;
+
+  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+  int espNowCommandFunction = 0;
+  String espNowCommandFunctionString;
+  String tempESPNOWTargetID;
+
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
@@ -141,31 +143,171 @@
 
   #define RST 4
 
+
+/////////////////////////////////////////////////////////////////////////
+///*****                  ESP NOW Set Up                         *****///
+/////////////////////////////////////////////////////////////////////////
+
+//  MAC Addresses used in the Droid
+//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+
+
+
+//    MAC Address to broadcast to all senders at once
+uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
+uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
+
+// Define variables to store commands to be sent
+  String senderID;
+  String destinationID;
+  String targetID;
+  String command;
+  String commandSubString;
+
+
+// Define variables to store incoming commands
+  String incomingDestinationID;
+  String incomingTargetID;  
+  String incomingSenderID;
+  String incomingCommand;
+  
+// Variable to store if sending data was successful
+  String success;
+
+//Structure example to send data
+//Must match the receiver structure
+typedef struct struct_message {
+      char structSenderID[15];
+      char structDestinationID[15];
+      char structTargetID[5];
+      char structCommand[25];
+  } struct_message;
+
+
+  // typedef struct struct_message {
+  //     String structSenderID;
+  //     String structDestinationID;
+  //     String structTargetID;  
+  //     String structCommand;
+  // } struct_message;
+
+// Create a struct_message calledcommandsTosend to hold variables that will be sent
+  struct_message commandsToSendtoBody;
+  struct_message commandsToSendtoPeriscope;
+  struct_message commandsToSendtoBroadcast;
+
+// Create a struct_message to hold incoming commands from the Body
+  struct_message commandsToReceiveFromBody;
+  struct_message commandsToReceiveFromPeriscope;
+  struct_message commandsToReceiveFromBroadcast;
+
+  esp_now_peer_info_t peerInfo;
+
+// Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (debugflag == 1){
+    Serial.print("\r\nLast Packet Send Status:\t");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    if (status ==0){
+      success = "Delivery Success :)";
+    }
+    else{
+      success = "Delivery Fail :(";
+    }
+  }
+}
+
+//   Callback when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+  DBG("Bytes received from ESP-NOW Message: %i\n", len);
+  DBG("Sender ID = %s\n",incomingSenderID);
+  DBG("Destination ID= %s\n" ,incomingDestinationID);
+  DBG("Target ID= %s\n", incomingTargetID);
+  DBG("Command = %s\n" , incomingCommand); 
+  if(incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID == "ST" || incomingTargetID == "MT" || incomingTargetID == "ALL"){
+    if (incomingTargetID=="BC"){
+      inputString = incomingCommand;
+      stringComplete = true; 
+      }
+    else if (incomingTargetID == "BL"){
+      DBG("Sending command to Body LED Controller");
+        writeBlSerial(incomingCommand);
+    }
+    else  if (incomingTargetID == "ST"){
+      DBG("Sending command to Body LED Controller");
+        writeStSerial(incomingCommand);
+    }
+    else if (incomingTargetID == "MT"){
+      DBG("Sending command to Body LED Controller");
+        writeMpSerial(incomingCommand);
+    } else {
+      DBG("Command Ignored");
+    }
+    else {
+      DBG("Command Ignored");
+    } 
+  }
+};
+//   if (incomingDestinationID =="Body" || incomingTargetID == "ALL"){
+//     DBG("ESP-NOW Command Accepted\n");
+//     DBG("Target ID= %s\n", incomingTargetID);
+//     if (incomingTargetID == "RS"){
+//         DBG("Sending %s out rsSerial\n", incomingCommand);
+//         writeRsSerial(incomingCommand);
+//     } else if (incomingTargetID == "HP"){
+//         DBG("Sending %s out hpSerial\n", incomingCommand);
+//         writeHpSerial(incomingCommand);
+//     } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
+//         DBG("Execute Local Command = %s\n", incomingCommand);
+//  if (incomingCommand == "Status"){
+//           DBG("Status is good\n");                                                                                                                                       
+//           sendESPNOWCommand("BS","DCONLINE");
+//         }else if(incomingCommand != "Status"){
+//         inputString = incomingCommand;
+//         stringComplete = true; 
+//         }
+//     } else {
+//         DBG("Wrong Target ID Sent\n");
+//       }
+//   }
+//     else {DBG("ESP-NOW Message Ignored\n");}
+// }
+
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
-
-//Raspberry Pi              192.168.4.100
-//Body Controller ESP       192.168.4.101   ************
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA)
-//Dome Controller ESP       192.168.4.111   (Only used for OTA) 
-//Periscope Controller ESP  192.168.4.112   (Only used for OTA)
-//Remote                    192.168.4.107
+//LoRa Remote ESP           192.168.4.101   
+//LoRa Droid ESP            192.168.4.108    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Periscope Controller ESP  192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.113
+//Remote Raspberry Pi       192.168.4.114
 //Developer Laptop          192.168.4.125
 
 // IP Address config of local ESP
-IPAddress local_IP(192,168,4,101);
+IPAddress local_IP(192,168,4,109);
 IPAddress subnet(255,255,255,0);
 IPAddress gateway(192,168,4,100);
 uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
 
  ////R2 Control Network Details
-const char* ssid = "R2D2_Control_Network";
+const char* ssid = "R2D2_Remote";
 const char* password =  "astromech";
 int channel =  8;
-int broadcastSSID = 0;  //0 for yes, 1 for no
-int maxConnections = 8;
-
 
 AsyncWebServer server(80);
 
@@ -518,146 +660,162 @@ void setup(){
   autoInputString.reserve(100);
 
   //Initialize the Soft Access Point
-  WiFi.mode(WIFI_AP);
-  Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
-  delay(200);
-  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
-  delay(200);
-  Serial.print("Soft-AP IP address = ");
-  Serial.println(WiFi.softAPIP());
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  Serial.print("Local STA MAC address = ");
+  Serial.println(WiFi.macAddress());
 
-  esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
-  delay(2000);
-  Serial.print("Local AP MAC address = ");
-  Serial.println(WiFi.softAPmacAddress());
- 
+ //Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  return;
+  }
+
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
+  
+  // Register peer
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  //  peerInfo.ifidx=WIFI_IF_AP;
+
+  // Add peers  
+  memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }  
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
+
  //Setup the webpage and accept the GET requests, and parses the variables 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+//   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
-    int paramsNr = request->params();               // Gets the number of parameters sent
-//    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
-    for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-      AsyncWebParameter* p = request->getParam(i);
+//     int paramsNr = request->params();               // Gets the number of parameters sent
+// //    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+//     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
+//       AsyncWebParameter* p = request->getParam(i);
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////                                                                //////////////////////////        
-//////////  These If statements choose where to send the commands         //////////////////////////
-//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-//////////                                                                //////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////////
+// //////////                                                                //////////////////////////        
+// //////////  These If statements choose where to send the commands         //////////////////////////
+// //////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
+// //////////                                                                //////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////////
         
-    if ((p->name())== "param0" & (p->value()) == "Serial0"){
-        DBG_1("Serial0 Chosen with If Statement\n");
-        paramVar = 0;
-        };
-    if ((p->name())== "param0" & (p->value()) == "bsSerial"){
-        DBG_1("Serial 1 Chosen with If Statement\n");
-        paramVar = 1;
-        };
-    if ((p->name())== "param0" & (p->value()) == "blSerial"){
-      DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 2;
-    };
-        if ((p->name())== "param0" & (p->value()) == "stSerial"){
-          DBG_1("Serial 2 Chosen with If Statement\n");
-          paramVar = 3;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ESP"){
-          DBG_1("ESP(Self) Chosen with If Statement\n");
-          paramVar = 4;
-    };
-    if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-        DBG_1("Reset Only Arduino Chosen with If Statement\n");
-          resetArduino(500);
-        };
-    if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-        DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
-        ESP.restart();
-        };
+//     if ((p->name())== "param0" & (p->value()) == "Serial0"){
+//         DBG_1("Serial0 Chosen with If Statement\n");
+//         paramVar = 0;
+//         };
+//     if ((p->name())== "param0" & (p->value()) == "bsSerial"){
+//         DBG_1("Serial 1 Chosen with If Statement\n");
+//         paramVar = 1;
+//         };
+//     if ((p->name())== "param0" & (p->value()) == "blSerial"){
+//       DBG_1("Serial 2 Chosen with If Statement\n");
+//           paramVar = 2;
+//     };
+//         if ((p->name())== "param0" & (p->value()) == "stSerial"){
+//           DBG_1("Serial 2 Chosen with If Statement\n");
+//           paramVar = 3;
+//     };
+//     if ((p->name())== "param0" & (p->value()) == "ESP"){
+//           DBG_1("ESP(Self) Chosen with If Statement\n");
+//           paramVar = 4;
+//     };
+//     if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
+//         DBG_1("Reset Only Arduino Chosen with If Statement\n");
+//           resetArduino(500);
+//         };
+//     if ((p->name())== "param0" & (p->value()) == "ESPReset"){
+//         DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
+//         ESP.restart();
+//         };
         
-        DBG_1("Param name: %s\n", (p->name()));
-        DBG_1("Param value: %s\n", (p->value()).c_str());
+//         DBG_1("Param name: %s\n", (p->name()));
+//         DBG_1("Param value: %s\n", (p->value()).c_str());
   
-        if (paramVar == 0){
-          DBG_1("Writing to Serial 0\n");      
-          writeSerialString(p->value());
-        };
-        if (paramVar == 1){
-          DBG_1("Writing to bsSerial\n"); 
-//          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "bsSerial"){
-            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-          } 
-          else {
-            writeBsSerial(p->value());
-          };
-        } ;      
-          if (paramVar == 2){
-          DBG_1("Writing to blSerial\n");   
+//         if (paramVar == 0){
+//           DBG_1("Writing to Serial 0\n");      
+//           writeSerialString(p->value());
+//         };
+//         if (paramVar == 1){
+//           DBG_1("Writing to bsSerial\n"); 
+// //          delay(100);     
+//         if ((p->name())== "param0" & (p->value()) == "bsSerial"){
+//             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+//           } 
+//           else {
+//             writeBsSerial(p->value());
+//           };
+//         } ;      
+//           if (paramVar == 2){
+//           DBG_1("Writing to blSerial\n");   
 
-         if ((p->name())== "param0" & (p->value()) == "blSerial"){
-            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-          } 
-          else {
-            writeBlSerial(p->value());
-          };
-//          writeBlSerial(p->value());
+//          if ((p->name())== "param0" & (p->value()) == "blSerial"){
+//             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+//           } 
+//           else {
+//             writeBlSerial(p->value());
+//           };
+// //          writeBlSerial(p->value());
         
         
         
-        };
-        if (paramVar == 3){
-          DBG_1("Writing to stSerial\n");      
-          writeStSerial(p->value());
-        };
-        if (paramVar == 4){
-          DBG_1("Executing on self\n");      
-          inputString = (p->value());
-          stringComplete = true;  
-        };
+//         };
+//         if (paramVar == 3){
+//           DBG_1("Writing to stSerial\n");      
+//           writeStSerial(p->value());
+//         };
+//         if (paramVar == 4){
+//           DBG_1("Executing on self\n");      
+//           inputString = (p->value());
+//           stringComplete = true;  
+//         };
 
-        DBG_1("------\n");
-        delay(50);
-    }
+//         DBG_1("------\n");
+//         delay(50);
+//     }
 
-    request->send(200, "text/plain", "Message Received on Body Controller");
-  });
+//     request->send(200, "text/plain", "Message Received on Body Controller");
+//   });
 
-//  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
-//    request->send_P(200, "text/html", html, processor);
-//  });
-//  
+// //  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
+// //    request->send_P(200, "text/html", html, processor);
+// //  });
+// //  
 
-server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      AsyncResponseStream *response = request->beginResponseStream("application/json");
-      DynamicJsonDocument json(2048);
-      json["BL_Status"] = "Online";
-      json["BodyController"] = "Online";
-      json["BodyServo"] = bodyServoControllerStatus;
-      json["Dome"] = domeControllerStatus;
-      json["Periscope"] = periscopeControllerStatus;
-      json["LDPBright"] = BL_LDP_Bright;
-      json["MaintBright"] = BL_MAINT_Bright;
-      json["VUBright"] = BL_VU_Bright;
-      json["CoinBright"] = BL_CS_Bright;
-      json["VUIntOffset"] = BL_vuOffsetInt;
-      json["VUIntBaseline"] = BL_vuBaselineInt;
-      json["VUExtOffset"] = BL_vuOffsetExt;
-      json["VUExtBaseline"] = BL_vuBaselineExt;
-      json["BatteryVoltage"] = BL_BatteryVoltage;
-      json["BatteryPercent"] = BL_BatteryPercentage;
+// server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+//       AsyncResponseStream *response = request->beginResponseStream("application/json");
+//       DynamicJsonDocument json(2048);
+//       json["BL_Status"] = "Online";
+//       json["BodyController"] = "Online";
+//       json["BodyServo"] = bodyServoControllerStatus;
+//       json["Dome"] = domeControllerStatus;
+//       json["Periscope"] = periscopeControllerStatus;
+//       json["LDPBright"] = BL_LDP_Bright;
+//       json["MaintBright"] = BL_MAINT_Bright;
+//       json["VUBright"] = BL_VU_Bright;
+//       json["CoinBright"] = BL_CS_Bright;
+//       json["VUIntOffset"] = BL_vuOffsetInt;
+//       json["VUIntBaseline"] = BL_vuBaselineInt;
+//       json["VUExtOffset"] = BL_vuOffsetExt;
+//       json["VUExtBaseline"] = BL_vuBaselineExt;
+//       json["BatteryVoltage"] = BL_BatteryVoltage;
+//       json["BatteryPercent"] = BL_BatteryPercentage;
 
-      serializeJson(json, *response);
-      request->send(response);
-  });
+//       serializeJson(json, *response);
+//       request->send(response);
+//   });
 
   
-  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
+//   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
+//   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  // AsyncElegantOTA.begin(&server);    // Start ElegantOTA
 
   //Initialize the AsycWebServer
-  server.begin();
+  // server.begin();
 
   //Reset Arudino Mega
   resetArduino(500);
