@@ -60,6 +60,15 @@
   String infoCommandString;
   String infoCommandSubString;
 
+  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+  int espNowCommandFunction = 0;
+  String espNowCommandFunctionString;
+  String tempESPNOWTargetID;
+
+  String LoRaDataTarget;
+  String LoRaDataCommand;
+  int LoRaDataCommandLength;
+
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
 
@@ -121,8 +130,8 @@
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define TXLD 23
-  #define RXLD 27 
+  #define TXDL 23
+  #define RXDL 27 
 
   #define dlSerial Serial1
 
@@ -254,10 +263,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     DBG("Target ID= %s\n", incomingTargetID);
     if (incomingTargetID == "RS"){
         DBG("Sending %s out rsSerial\n", incomingCommand);
-        writeRsSerial(incomingCommand);
+        // writeRsSerial(incomingCommand);
     } else if (incomingTargetID == "HP"){
         DBG("Sending %s out hpSerial\n", incomingCommand);
-        writeHpSerial(incomingCommand);
+        // writeHpSerial(incomingCommand);
     } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
         DBG("Execute Local Command = %s\n", incomingCommand);
  if (incomingCommand == "Status"){
@@ -425,6 +434,20 @@ void LoRaSend(String stringData123){
   LoRa.print(stringData123);
   LoRa.endPacket();
   
+}
+
+
+void displayOLEDString(String StringtoDisplay){
+   display.clear();
+    display.setFont(ArialMT_Plain_16);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(64,0,"Droid");
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(0,25,"Network: " + WiFi.SSID());
+    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
+    display.drawString(0,45, StringtoDisplay);
+    display.display();
 }
 
 // void writeBlSerial(String stringData){
@@ -672,7 +695,7 @@ void connectWiFi(){
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  ldSerial.begin(LD_BAUD_RATE,SERIAL_8N1,RXLD,TXLD);
+  dlSerial.begin(DL_BAUD_RATE,SERIAL_8N1,RXDL,TXDL);
 //   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
 //   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
 //   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
@@ -688,7 +711,7 @@ void setup(){
   Wire.begin();
   
   //Initialize the ReelTwo Library
-  SetupEvent::ready();
+//  SetupEvent::ready();
 
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
@@ -760,17 +783,7 @@ void setup(){
   //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
-  memcpy(peerInfo.peer_addr, bodyPeerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Body ESP-NOW peer");
-    return;
-  }
 
-  memcpy(peerInfo.peer_addr, periscopePeerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Periscope ESP-NOW peer");
-    return;
-  }
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
@@ -797,11 +810,11 @@ void setup(){
     display.clear();
     display.setFont(ArialMT_Plain_16);
     display.setTextAlignment(TEXT_ALIGN_CENTER);
-    display.drawString(64,0,"Remote");
+    display.drawString(64,0,"Droid");
     display.setFont(ArialMT_Plain_10);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0,25,"Network: R2_Remote");
-    display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
+    display.drawString(0,25,"Network: " + WiFi.SSID());
+    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
     display.display();
  
  
@@ -819,6 +832,11 @@ void loop(){
     while (LoRa.available()) {
       String LoRaData = LoRa.readString();
       Serial.print(LoRaData); 
+      LoRaDataCommandLength = LoRaData.length();
+      LoRaDataTarget= LoRaData.substring(0,2);
+      LoRaDataCommand = LoRaData.substring(2,LoRaDataCommandLength);
+      sendESPNOWCommand(LoRaDataTarget,LoRaDataCommand);
+      displayOLEDString(LoRaDataCommand);
     }
 
     // print RSSI of packet

@@ -309,7 +309,7 @@ void displayOLEDString(String StringtoDisplay){
     display.drawString(64,0,"Remote");
     display.setFont(ArialMT_Plain_10);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0,25,"Network: " + WiFi.SSID().toString());
+    display.drawString(0,25,"Network: " + WiFi.SSID());
     display.drawString(0,35, "IP:" + WiFi.localIP().toString());
     display.drawString(0,45, StringtoDisplay);
     display.display();
@@ -550,7 +550,7 @@ LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
     display.clear();
     display.setFont(ArialMT_Plain_16);
     display.setTextAlignment(TEXT_ALIGN_CENTER);
-    display.drawString(64,0,"Remote's LoRa");
+    display.drawString(64,0,"R2 Remote");
     display.setFont(ArialMT_Plain_10);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
     display.drawString(0,25,"Network: R2_Remote");
