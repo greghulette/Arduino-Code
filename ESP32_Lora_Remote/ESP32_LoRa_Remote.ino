@@ -302,6 +302,18 @@ void LoRaSend(String loRaData){
   
 }
 
+void displayOLEDString(String StringtoDisplay){
+   display.clear();
+    display.setFont(ArialMT_Plain_16);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(64,0,"Remote");
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(0,25,"Network: " + WiFi.SSID().toString());
+    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
+    display.drawString(0,45, StringtoDisplay);
+    display.display();
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -655,12 +667,12 @@ void loop(){
       LoRa.endPacket();
 
     }
-  if(millis() - LMillis >= LoraDelay){
-    LMillis = millis();
-    LoRa.beginPacket();
-    LoRa.print("Remote: ");
-    LoRa.endPacket();
-  }
+  // if(millis() - LMillis >= LoraDelay){
+  //   LMillis = millis();
+  //   LoRa.beginPacket();
+  //   LoRa.print("");
+  //   LoRa.endPacket();
+  // }
     
     if(Serial.available()){serialEvent();}
 
