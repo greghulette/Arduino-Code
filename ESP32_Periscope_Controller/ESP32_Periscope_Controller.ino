@@ -440,7 +440,7 @@ void connectWiFi(){
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("BC","IPC");
+    sendESPNOWCommand("RL","PCKA");
   } 
 }
 

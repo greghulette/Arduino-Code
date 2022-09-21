@@ -48,6 +48,7 @@
 
   int commandLength;
   int paramVar = 9;
+  String paramVarString;
   
   String serialPort;
   String serialStringCommand;
@@ -300,6 +301,38 @@ void LoRaSend(String loRaData){
   LoRa.print(loRaData);
   LoRa.endPacket();
   
+}
+
+void readLoRa(){
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    // received a packet
+    Serial.print("Received packet ");
+    // read packet
+    while (LoRa.available()) {
+      String LoRaData = LoRa.readString();
+      Serial.print(LoRaData); 
+      LoRaDataCommandLength = LoRaData.length();
+      String LoRaStatusTarget= LoRaData.substring(0,2);
+      String LoRaStatusCommand = LoRaData.substring(2,4);
+      String LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
+      if (LoRaStatusTarget == "BC" & LoRaCommand == "KA"){
+        bodyControllerStatus = "Online";
+        bcKeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "BS" & LoRaCommand == "KA"){
+        bodyServoControllerStatus = "Online";
+        bsKeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "DC" & LoRaCommand == "KA"){
+        domeControllerStatus = "Online";
+        bsKeepAliveAge = millis();
+      }else if (LoRaStatusTarget == "PC" & LoRaCommand == "KA"){
+        periscopeControllerStatus = "Online";
+        pcKeepAliveAge = millis();
+      }
+
+
+      displayOLEDString(LoRaDataCommand);
+    }
 }
 
 void displayOLEDString(String StringtoDisplay){
@@ -653,6 +686,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       int counter123 = 1;
 
 void loop(){
+  readLoRa();
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();

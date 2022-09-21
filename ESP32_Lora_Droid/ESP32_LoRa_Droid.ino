@@ -172,19 +172,19 @@ AsyncWebServer server(80);
 /////////////////////////////////////////////////////////////////////////
 
 //  MAC Addresses used in the Droid
-//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
 
 //    MAC Address to broadcast to all senders at once
 uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x15};
+uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};
 
 // Define variables to store commands to be sent
   String senderID;
@@ -258,6 +258,21 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
   DBG("Command = %s\n" , incomingCommand); 
+  if (incomingTargetID == "DL" ||incomingTargetID == "RL" || incomingTargetID == "Status"){
+    if(incomingTargetID == "DL"){
+      inputString = incomingCommand;
+      stringComplete = true; 
+    } else if (incomingTargetID == "RL"){
+      LoRaSend(incomingCommand);
+    } else if (incomingTargetID == "Status") {
+      if(incomingCommand == "BC"){
+        bodyControllerStatus = "Online";
+        bcKeepAliveAge = milli
+      }
+    }
+
+
+  }
   if (incomingDestinationID =="Dome" || incomingTargetID == "ALL"){
     DBG("ESP-NOW Command Accepted\n");
     DBG("Target ID= %s\n", incomingTargetID);

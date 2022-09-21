@@ -6,6 +6,7 @@
 
 //Used for WiFi
 #include "esp_wifi.h"
+#include <esp_now.h>
 
 
 // Used for Software Serial to allow more useful naming
@@ -89,7 +90,17 @@
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
   String BL_Status = "Offline";
-
+  
+  String LB;
+  String MB;
+  String VB;
+  String VB;
+  String OI;
+  String BI;
+  String OE;
+  String BE;
+  String BV;
+  String BP;
 
   int keepAliveTimeOut = 15000;
   unsigned long dckeepAliveAge;
@@ -251,15 +262,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     }
     else if (incomingTargetID == "MT"){
       DBG("Sending command to Body LED Controller");
-        writeMpSerial(incomingCommand);
+//        writeMpSerial(incomingCommand);
     } else {
       DBG("Command Ignored");
     }
-    else {
+
+  }    else {
       DBG("Command Ignored");
     } 
-  }
-};
+}
 //   if (incomingDestinationID =="Body" || incomingTargetID == "ALL"){
 //     DBG("ESP-NOW Command Accepted\n");
 //     DBG("Target ID= %s\n", incomingTargetID);
@@ -615,7 +626,21 @@ void checkAgeofBLKeepAlive(){
   if (BL_LDP_Bright > 0){
     }
 }
-
+void keepAliveBC(){
+  if (millis() - keepAliveMillis >= keepAliveDuration){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("RL","BCKA");
+  } 
+}
+String LBF;
+void keepAliveBL(){
+  if (millis() - BLkeepAliveMillis >= BLkeepAliveDuration){
+    BLkeepAliveMillis = millis();
+    LB = String(BL_LDP_Bright);
+    LBF = "BL" + LB;
+    sendESPNOWCommand("RL", LBF);
+  } 
+}
 void printKeepaliveStatus(){
 
   DBG("Dome Controller Status: %s\n", domeControllerStatus);
@@ -650,10 +675,10 @@ void setup(){
   digitalWrite(4,HIGH);
 
   //Initialize I2C for the Servo Expander Board
-  Wire.begin();
+//  Wire.begin();
   
   //Initialize the ReelTwo Library
-  SetupEvent::ready();
+//  SetupEvent::ready();
 
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
