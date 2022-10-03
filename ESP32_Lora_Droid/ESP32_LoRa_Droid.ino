@@ -267,34 +267,34 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else if (incomingTargetID == "Status") {
       if(incomingCommand == "BC"){
         bodyControllerStatus = "Online";
-        bcKeepAliveAge = milli
+        // bcKeepAliveAge = milli
       }
     }
 
 
   }
-  if (incomingDestinationID =="Dome" || incomingTargetID == "ALL"){
-    DBG("ESP-NOW Command Accepted\n");
-    DBG("Target ID= %s\n", incomingTargetID);
-    if (incomingTargetID == "RS"){
-        DBG("Sending %s out rsSerial\n", incomingCommand);
-        // writeRsSerial(incomingCommand);
-    } else if (incomingTargetID == "HP"){
-        DBG("Sending %s out hpSerial\n", incomingCommand);
-        // writeHpSerial(incomingCommand);
-    } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
-        DBG("Execute Local Command = %s\n", incomingCommand);
- if (incomingCommand == "Status"){
-          DBG("Status is good\n");                                                                                                                                       
-          sendESPNOWCommand("BS","DCONLINE");
-        }else if(incomingCommand != "Status"){
-        inputString = incomingCommand;
-        stringComplete = true; 
-        }
-    } else {
-        DBG("Wrong Target ID Sent\n");
-      }
-  }
+//   if (incomingDestinationID =="Dome" || incomingTargetID == "ALL"){
+//     DBG("ESP-NOW Command Accepted\n");
+//     DBG("Target ID= %s\n", incomingTargetID);
+//     if (incomingTargetID == "RS"){
+//         DBG("Sending %s out rsSerial\n", incomingCommand);
+//         // writeRsSerial(incomingCommand);
+//     } else if (incomingTargetID == "HP"){
+//         DBG("Sending %s out hpSerial\n", incomingCommand);
+//         // writeHpSerial(incomingCommand);
+//     } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
+//         DBG("Execute Local Command = %s\n", incomingCommand);
+//  if (incomingCommand == "Status"){
+//           DBG("Status is good\n");                                                                                                                                       
+//           sendESPNOWCommand("BS","DCONLINE");
+//         }else if(incomingCommand != "Status"){
+//         inputString = incomingCommand;
+//         stringComplete = true; 
+//         }
+//     } else {
+//         DBG("Wrong Target ID Sent\n");
+//       }
+//   }
     else {DBG("ESP-NOW Message Ignored\n");}
 }
 

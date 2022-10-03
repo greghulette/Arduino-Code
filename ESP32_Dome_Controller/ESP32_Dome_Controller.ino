@@ -358,7 +358,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else if (incomingTargetID == "HP"){
         DBG("Sending %s out hpSerial\n", incomingCommand);
         writeHpSerial(incomingCommand);
-    } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
+    } else if (incomingTargetID == "DC" || incomingTargetID == "ALL"){
         DBG("Execute Local Command = %s\n", incomingCommand);
  if (incomingCommand == "Status"){
           DBG("Status is good\n");                                                                                                                                       
@@ -1204,7 +1204,7 @@ void scan_i2c(){
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("BC","IDC");
+    sendESPNOWCommand("Status","DC");
   } 
 }
 

@@ -101,9 +101,10 @@
   unsigned long pckeepaliveAgeMillis;
   unsigned long bskeepAliveAge;
   unsigned long bskeepaliveAgeMillis;
-  unsigned long blkeepAliveAge;
-  unsigned long blkeepaliveAgeMillis;
-
+  unsigned long bckeepAliveAge;
+  unsigned long bckeepaliveAgeMillis;
+  unsigned long dlkeepAliveAge;
+  unsigned long dlkeepaliveAgeMillis;
   //declare OLED 
   OLED_CLASS_OBJ display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
 
@@ -302,7 +303,10 @@ void LoRaSend(String loRaData){
   LoRa.endPacket();
   
 }
-
+int LoRaDataCommandLength;
+  String LoRaStatusTarget;
+  String LoRaStatusCommand ;
+  String LoRaStatusVariable;
 void readLoRa(){
   int packetSize = LoRa.parsePacket();
   if (packetSize) {
@@ -313,28 +317,28 @@ void readLoRa(){
       String LoRaData = LoRa.readString();
       Serial.print(LoRaData); 
       LoRaDataCommandLength = LoRaData.length();
-      String LoRaStatusTarget= LoRaData.substring(0,2);
-      String LoRaStatusCommand = LoRaData.substring(2,4);
-      String LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
-      if (LoRaStatusTarget == "BC" & LoRaCommand == "KA"){
+      LoRaStatusTarget= LoRaData.substring(0,2);
+      LoRaStatusCommand = LoRaData.substring(2,4);
+      LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
+      if (LoRaStatusTarget == "BC" & LoRaStatusCommand == "KA"){
         bodyControllerStatus = "Online";
-        bcKeepAliveAge = millis();
-      } else if (LoRaStatusTarget == "BS" & LoRaCommand == "KA"){
+        bckeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "BS" & LoRaStatusCommand == "KA"){
         bodyServoControllerStatus = "Online";
-        bsKeepAliveAge = millis();
-      } else if (LoRaStatusTarget == "DC" & LoRaCommand == "KA"){
+        bskeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "DC" & LoRaStatusCommand == "KA"){
         domeControllerStatus = "Online";
-        bsKeepAliveAge = millis();
-      }else if (LoRaStatusTarget == "PC" & LoRaCommand == "KA"){
+        bskeepAliveAge = millis();
+      }else if (LoRaStatusTarget == "PC" & LoRaStatusCommand == "KA"){
         periscopeControllerStatus = "Online";
-        pcKeepAliveAge = millis();
+        pckeepAliveAge = millis();
       }
 
 
       displayOLEDString(LoRaDataCommand);
     }
 }
-
+}
 void displayOLEDString(String StringtoDisplay){
    display.clear();
     display.setFont(ArialMT_Plain_16);
@@ -447,7 +451,7 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
     }
   }
     if (bodyLEDControllerStatus=="Online"){
-    if (millis()-blkeepAliveAge>=keepAliveTimeOut){
+    if (millis()-bckeepAliveAge>=keepAliveTimeOut){
       bodyLEDControllerStatus="Offline";
       BL_BatteryPercentage = 0;
       BL_BatteryVoltage = 0.0;
@@ -580,15 +584,16 @@ LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
         display.display();
   delay(1000);
 
-    display.clear();
-    display.setFont(ArialMT_Plain_16);
-    display.setTextAlignment(TEXT_ALIGN_CENTER);
-    display.drawString(64,0,"R2 Remote");
-    display.setFont(ArialMT_Plain_10);
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0,25,"Network: R2_Remote");
-    display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
-    display.display();
+  displayOLEDString("Bootup Complete");
+    // display.clear();
+    // display.setFont(ArialMT_Plain_16);
+    // display.setTextAlignment(TEXT_ALIGN_CENTER);
+    // display.drawString(64,0,"R2 Remote");
+    // display.setFont(ArialMT_Plain_10);
+    // display.setTextAlignment(TEXT_ALIGN_LEFT);
+    // display.drawString(0,25,"Network: R2_Remote");
+    // display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
+    // display.display();
  
  //Setup the webpage and accept the GET requests, and parses the variables 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -631,7 +636,7 @@ LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
           DBG_1("Sending out LoRa Link\n"); 
 //          delay(100);     
         if ((p->name())== "param0" & (p->value()) == "LD"){
-            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+            DBG_1("Skipping param 0 in the Lora Message\n");
           } 
           else {
             LoRaSend(p->value());
@@ -642,7 +647,7 @@ LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
         delay(50);
     }
 
-    request->send(200, "text/plain", "Message Received on Body Controller");
+    request->send(200, "text/plain", "Message Received on Remote LoRa Controller");
   });
 
 server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -686,7 +691,37 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       int counter123 = 1;
 
 void loop(){
-  readLoRa();
+  // readLoRa();
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    // received a packet
+    Serial.print("Received packet ");
+    // read packet
+    while (LoRa.available()) {
+      String LoRaData = LoRa.readString();
+      Serial.print(LoRaData); 
+      LoRaDataCommandLength = LoRaData.length();
+      LoRaStatusTarget= LoRaData.substring(0,2);
+      LoRaStatusCommand = LoRaData.substring(2,4);
+      LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
+      if (LoRaStatusTarget == "BC" & LoRaStatusCommand == "KA"){
+        bodyControllerStatus = "Online";
+        bckeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "BS" & LoRaStatusCommand == "KA"){
+        bodyServoControllerStatus = "Online";
+        bskeepAliveAge = millis();
+      } else if (LoRaStatusTarget == "DC" & LoRaStatusCommand == "KA"){
+        domeControllerStatus = "Online";
+        bskeepAliveAge = millis();
+      }else if (LoRaStatusTarget == "PC" & LoRaStatusCommand == "KA"){
+        periscopeControllerStatus = "Online";
+        pckeepAliveAge = millis();
+      }
+
+
+      displayOLEDString(LoRaDataCommand);
+    }
+  }
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();
@@ -833,3 +868,4 @@ void loop(){
     }
   }
 }  // end of main loop
+

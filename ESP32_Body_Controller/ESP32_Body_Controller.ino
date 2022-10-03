@@ -494,6 +494,39 @@ void writeStSerial(String stringData){
   };
 };
 
+/////////////////////////////////////////////////////////////////////
+///*****             ESP-NOW Functions                        *****///
+//////////////////////////////////////////////////////////////////////
+
+void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+{
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
+}
+
+void sendESPNOWCommand(String starget, String scomm){
+  String sdest;
+  String senderID = "Body";     // change to match location (Dome, Body, Periscope)
+  if (starget == "DS" || starget == "RS" || starget == "HP"){
+    sdest = "Dome";
+  } else if (starget == "PC" || starget == "PL"){
+    sdest = "Periscope";
+  }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
+    sdest = "Body";
+  }
+
+  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
+  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+  if (result == ESP_OK) {
+    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+  }
+  else {
+    DBG("Error sending the data\n");
+  }
+  ESPNOW_command[0] = '\0';
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
