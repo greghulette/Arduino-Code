@@ -13,6 +13,7 @@
 #include <LoRa.h>
 #include "ds3231.h"
 #include <SD.h>
+
 //ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
@@ -90,7 +91,7 @@
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
   
-  
+  String outgoing;
   int LoRaRSSI;
 
 
@@ -296,12 +297,39 @@ void writeSerialString(String stringData){
       Serial.write(completeString[i]);
   };
 };
+//String outgoing;
+byte msgCount = 0;            // count of outgoing messages
+byte localAddress = 0xBB;     // address of this device
+byte destination = 0xFF;      // destination to send to
+long lastSendTime = 0;        // last send time
+
+void sendMessage(String outgoing) {
+  LoRa.beginPacket();                   // start packet
+  LoRa.write(destination);              // add destination address
+  LoRa.write(localAddress);             // add sender address
+  LoRa.write(msgCount);                 // add message ID
+  LoRa.write(outgoing.length());        // add payload length
+  LoRa.print(outgoing);                 // add payload
+  LoRa.endPacket();                     // finish packet and send it
+  msgCount++;                           // increment message ID
+  Serial.print("Message: ");
+  Serial.print(outgoing + " - Length: ");
+  Serial.println(msgCount);
+      ESP_command[0]   = '\0';
+
+}
 
 void LoRaSend(String loRaData){
   LoRa.beginPacket();
+  LoRa.write(localAddress);
+  LoRa.write(destination);
+  LoRa.write(msgCount);
   LoRa.print(loRaData);
   LoRa.endPacket();
+  msgCount++;
   
+  Serial.println("message sent");
+    ESP_command[0]   = '\0';
 }
 int LoRaDataCommandLength;
   String LoRaStatusTarget;
@@ -335,7 +363,7 @@ void readLoRa(){
       }
 
 
-      displayOLEDString(LoRaDataCommand);
+      displayOLEDString(LoRaStatusVariable);
     }
 }
 }
@@ -347,7 +375,7 @@ void displayOLEDString(String StringtoDisplay){
     display.setFont(ArialMT_Plain_10);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
     display.drawString(0,25,"Network: " + WiFi.SSID());
-    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
+    display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
     display.drawString(0,45, StringtoDisplay);
     display.display();
 }
@@ -507,7 +535,8 @@ void setup(){
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
   // Initialize the OLED
-    Wire.begin();
+  Wire.begin();
+   
   if (OLED_RST > 0) {
         pinMode(OLED_RST, OUTPUT);
         digitalWrite(OLED_RST, HIGH);
@@ -542,15 +571,15 @@ void setup(){
     }
 
 
-    // String info = ds3231_test();
-    // if (info != "") {
-    //     display.clear();
-    //     display.setFont(ArialMT_Plain_16);
-    //     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    //     display.drawString(display.getWidth() / 2, display.getHeight() / 2, info);
-    //     display.display();
-    //     delay(2000);
-    // }
+     String info = ds3231_test();
+     if (info != "") {
+         display.clear();
+         display.setFont(ArialMT_Plain_16);
+         display.setTextAlignment(TEXT_ALIGN_LEFT);
+         display.drawString(display.getWidth() / 2, display.getHeight() / 2, info);
+         display.display();
+         delay(2000);
+     }
   //Initialize the Soft Access Point
   WiFi.mode(WIFI_AP);
   Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
@@ -564,37 +593,29 @@ void setup(){
   display.display();
 
 
-esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
+//esp_wifi_set_mac(WIFI_IF_AP, &newMACAddress[0]);
 delay(1000);
-  Serial.print("Local AP MAC address = ");
-Serial.println(WiFi.softAPmacAddress());
+//  Serial.print("Local AP MAC address = ");
+//Serial.println(WiFi.softAPmacAddress());
 
 
 SPI.begin(CONFIG_CLK, CONFIG_MISO, CONFIG_MOSI, CONFIG_NSS);
 LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
-    LoRa.setSyncWord(0xF3);
+//    LoRa.setSyncWord(0xF3);
 
     if (!LoRa.begin(BAND)) {
         Serial.println("Starting LoRa failed!");
         while (1);
     }
+//  displayOLEDString("LoRa Ready");
 
-        display.clear();
-        display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
-        display.display();
+//        display.clear();
+//        display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
+//        display.display();
   delay(1000);
 
   displayOLEDString("Bootup Complete");
-    // display.clear();
-    // display.setFont(ArialMT_Plain_16);
-    // display.setTextAlignment(TEXT_ALIGN_CENTER);
-    // display.drawString(64,0,"R2 Remote");
-    // display.setFont(ArialMT_Plain_10);
-    // display.setTextAlignment(TEXT_ALIGN_LEFT);
-    // display.drawString(0,25,"Network: R2_Remote");
-    // display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
-    // display.display();
- 
+
  //Setup the webpage and accept the GET requests, and parses the variables 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       
@@ -635,11 +656,13 @@ LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
         if (paramVar == 1){
           DBG_1("Sending out LoRa Link\n"); 
 //          delay(100);     
-        if ((p->name())== "param0" & (p->value()) == "LD"){
+        if ((p->name())== "param0"){
             DBG_1("Skipping param 0 in the Lora Message\n");
           } 
-          else {
-            LoRaSend(p->value());
+          else {      
+            String LoRaOutgoing = (p->value());
+            sendMessage(LoRaOutgoing);
+            displayOLEDString(p->value());
           };
         } ;      
 
@@ -691,37 +714,36 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       int counter123 = 1;
 
 void loop(){
-  // readLoRa();
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    // received a packet
-    Serial.print("Received packet ");
-    // read packet
-    while (LoRa.available()) {
-      String LoRaData = LoRa.readString();
-      Serial.print(LoRaData); 
-      LoRaDataCommandLength = LoRaData.length();
-      LoRaStatusTarget= LoRaData.substring(0,2);
-      LoRaStatusCommand = LoRaData.substring(2,4);
-      LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
-      if (LoRaStatusTarget == "BC" & LoRaStatusCommand == "KA"){
-        bodyControllerStatus = "Online";
-        bckeepAliveAge = millis();
-      } else if (LoRaStatusTarget == "BS" & LoRaStatusCommand == "KA"){
-        bodyServoControllerStatus = "Online";
-        bskeepAliveAge = millis();
-      } else if (LoRaStatusTarget == "DC" & LoRaStatusCommand == "KA"){
-        domeControllerStatus = "Online";
-        bskeepAliveAge = millis();
-      }else if (LoRaStatusTarget == "PC" & LoRaStatusCommand == "KA"){
-        periscopeControllerStatus = "Online";
-        pckeepAliveAge = millis();
-      }
-
-
-      displayOLEDString(LoRaDataCommand);
-    }
-  }
+//  int packetSize = LoRa.parsePacket();
+//  if (packetSize) {
+//    // received a packet
+//    Serial.print("Received packet ");
+//    // read packet
+//    while (LoRa.available()) {
+//      String LoRaData = LoRa.readString();
+//      Serial.print(LoRaData); 
+//      LoRaDataCommandLength = LoRaData.length();
+//      LoRaStatusTarget= LoRaData.substring(0,2);
+//      LoRaStatusCommand = LoRaData.substring(2,4);
+//      LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
+//      if (LoRaStatusTarget == "BC" & LoRaStatusCommand == "KA"){
+//        bodyControllerStatus = "Online";
+//        bckeepAliveAge = millis();
+//      } else if (LoRaStatusTarget == "BS" & LoRaStatusCommand == "KA"){
+//        bodyServoControllerStatus = "Online";
+//        bskeepAliveAge = millis();
+//      } else if (LoRaStatusTarget == "DC" & LoRaStatusCommand == "KA"){
+//        domeControllerStatus = "Online";
+//        bskeepAliveAge = millis();
+//      }else if (LoRaStatusTarget == "PC" & LoRaStatusCommand == "KA"){
+//        periscopeControllerStatus = "Online";
+//        pckeepAliveAge = millis();
+//      }
+//
+//
+//      displayOLEDString(LoRaStatusVariable);
+//    }
+//  }
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();
@@ -736,16 +758,17 @@ void loop(){
       LoRa.endPacket();
 
     }
-  // if(millis() - LMillis >= LoraDelay){
-  //   LMillis = millis();
-  //   LoRa.beginPacket();
-  //   LoRa.print("");
-  //   LoRa.endPacket();
-  // }
+   if(millis() - LMillis >= LoraDelay){
+     LMillis = millis();
+     LoRa.beginPacket();
+     LoRa.print("");
+     LoRa.endPacket();
+   }
     
     if(Serial.available()){serialEvent();}
 
-    
+       readLoRa();
+
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
@@ -841,7 +864,7 @@ void loop(){
 
     if(ESP_command[0]){
       switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
+        case 1: Serial.println("Remote LoRa/ESP Controller");   
                 ESP_command[0]   = '\0';                                                        break;
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
@@ -850,8 +873,8 @@ void loop(){
         // case 4: printKeepaliveStatus();break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
+        case 7: LoRaSend(" Test");     break;  //reserved for future use
+        case 8: sendMessage("Testing 9"); break;  //reserved for future use
         case 9:  break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;
@@ -868,4 +891,3 @@ void loop(){
     }
   }
 }  // end of main loop
-

@@ -13,6 +13,7 @@
 #include <LoRa.h>
 #include "ds3231.h"
 #include <SD.h>
+
 //ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
@@ -68,11 +69,14 @@
   String LoRaDataTarget;
   String LoRaDataCommand;
   int LoRaDataCommandLength;
+  String LoRaStatusTarget;
+  String LoRaStatusCommand ;
+  String LoRaStatusVariable;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
 
-  int debugflag = 1;
+  int debugflag = 0;
   int debugflag1 = 0;  // Used for debugging params recieved from clients
   int debugflag2 = 0;
 
@@ -221,13 +225,13 @@ typedef struct struct_message {
   // } struct_message;
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
-  struct_message commandsToSendtoBody;
-  struct_message commandsToSendtoPeriscope;
+//  struct_message commandsToSendtoBody;
+//  struct_message commandsToSendtoPeriscope;
   struct_message commandsToSendtoBroadcast;
 
 // Create a struct_message to hold incoming commands from the Body
-  struct_message commandsToReceiveFromBody;
-  struct_message commandsToReceiveFromPeriscope;
+//  struct_message commandsToReceiveFromBody;
+//  struct_message commandsToReceiveFromPeriscope;
   struct_message commandsToReceiveFromBroadcast;
 
   esp_now_peer_info_t peerInfo;
@@ -334,7 +338,41 @@ void serialEvent() {
   };
   DBG("InputString: %s \n",inputString);
 };
+//int LoRaDataCommandLength;
 
+  
+//void readLoRa(){
+//  int packetSize = LoRa.parsePacket();
+//  if (packetSize) {
+//    // received a packet
+//    Serial.print("Received packet ");
+//    // read packet
+//    while (LoRa.available()) {
+//      String LoRaData = LoRa.readString();
+//      Serial.print(LoRaData); 
+//      LoRaDataCommandLength = LoRaData.length();
+//      LoRaStatusTarget= LoRaData.substring(0,2);
+//      LoRaStatusCommand = LoRaData.substring(2,4);
+//      LoRaStatusVariable= LoRaData.substring(4,LoRaDataCommandLength);
+//      if (LoRaStatusTarget == "BC" & LoRaStatusCommand == "KA"){
+////        bodyControllerStatus = "Online";
+////        bckeepAliveAge = millis();
+//      } else if (LoRaStatusTarget == "BS" & LoRaStatusCommand == "KA"){
+////        bodyServoControllerStatus = "Online";
+////        bskeepAliveAge = millis();
+//      } else if (LoRaStatusTarget == "DC" & LoRaStatusCommand == "KA"){
+//        domeControllerStatus = "Online";
+//        bskeepAliveAge = millis();
+//      }else if (LoRaStatusTarget == "PC" & LoRaStatusCommand == "KA"){
+////        periscopeControllerStatus = "Online";
+////        pckeepAliveAge = millis();
+//      }
+//
+//
+//      displayOLEDString(LoRaStatusVariable);
+//    }
+//}
+//}
 
 // void serialLcEvent() {
 //   while (ldSerial.available()) {
@@ -456,12 +494,12 @@ void displayOLEDString(String StringtoDisplay){
    display.clear();
     display.setFont(ArialMT_Plain_16);
     display.setTextAlignment(TEXT_ALIGN_CENTER);
-    display.drawString(64,0,"Droid");
+    display.drawString(64,0,"Droid Gateway");
     display.setFont(ArialMT_Plain_10);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0,25,"Network: " + WiFi.SSID());
-    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
-    display.drawString(0,45, StringtoDisplay);
+    display.drawString(0,25,"Last Message Received:");
+//    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
+    display.drawString(0,35, StringtoDisplay);
     display.display();
 }
 
@@ -576,26 +614,26 @@ void toggleDebug(){
 }
 
 
-// void toggleDebug1(){
-//   debugflag1 = !debugflag1;
-//   if (debugflag1 == 1){
-//     Serial.println("Parameter Debugging Enabled \n");
-//     }
-//   else{
-//     Serial.println("Parameter Debugging Disabled\n");
-//   }
-//     ESP_command[0]   = '\0';
-// }
-// void toggleDebug2(){
-//   debugflag2 = !debugflag2;
-//   if (debugflag2 == 1){
-//     Serial.println("Debug 2 Debugging Enabled \n");
-//     }
-//   else{
-//     Serial.println("Debug 2 Debugging Disabled\n");
-//   }
-//     ESP_command[0]   = '\0';
-// }
+ void toggleDebug1(){
+   debugflag1 = !debugflag1;
+   if (debugflag1 == 1){
+     Serial.println("Parameter Debugging Enabled \n");
+     }
+   else{
+     Serial.println("Parameter Debugging Disabled\n");
+   }
+     ESP_command[0]   = '\0';
+ }
+ void toggleDebug2(){
+   debugflag2 = !debugflag2;
+   if (debugflag2 == 1){
+     Serial.println("Debug 2 Debugging Enabled \n");
+     }
+   else{
+     Serial.println("Debug 2 Debugging Disabled\n");
+   }
+     ESP_command[0]   = '\0';
+ }
 
 
 //////////////////////////////////////////////////////////////////////
@@ -716,7 +754,7 @@ void setup(){
 //   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
 
   Serial.println("\n\n----------------------------------------");
-  Serial.println("Booting up the Remote's LoRa Bridge");
+  Serial.println("Booting up the Droid's LoRa tp ESP-NOW Bridge");
   
   //Configure the Reset Pins for the arduinoReset() function
 //   pinMode(4, OUTPUT);
@@ -748,7 +786,7 @@ void setup(){
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.drawString(display.getWidth() / 2, display.getHeight() / 2, LORA_SENDER ? "LoRa Sender" : "LoRa Receiver");
     display.display();
-    delay(2000);
+    delay(1000);
 
     if (SDCARD_CS >  0) {
         display.clear();
@@ -762,7 +800,7 @@ void setup(){
             display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Size: " + String(cardSize) + "MB");
         }
         display.display();
-        delay(2000);
+        delay(1000);
     }
 
 
@@ -773,7 +811,7 @@ void setup(){
         display.setTextAlignment(TEXT_ALIGN_LEFT);
         display.drawString(display.getWidth() / 2, display.getHeight() / 2, info);
         display.display();
-        delay(2000);
+        delay(1000);
     }
   //Initialize the Soft Access Point
    //initialize WiFi for ESP-NOW
@@ -798,7 +836,6 @@ void setup(){
   //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
-
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
@@ -808,200 +845,243 @@ void setup(){
   esp_now_register_recv_cb(OnDataRecv);
 
 
-    SPI.begin(CONFIG_CLK, CONFIG_MISO, CONFIG_MOSI, CONFIG_NSS);
-    LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
-        LoRa.setSyncWord(0xF3);
+  SPI.begin(CONFIG_CLK, CONFIG_MISO, CONFIG_MOSI, CONFIG_NSS);
+  LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
+//  LoRa.setSyncWord(0xF3);
+  if (!LoRa.begin(BAND)) {
+    Serial.println("Starting LoRa failed!");
+    while (1);
+  }
+  display.clear();
+  display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
+  display.display();
 
-    if (!LoRa.begin(BAND)) {
-        Serial.println("Starting LoRa failed!");
-        while (1);
-    }
+  delay(1000);
 
-        display.clear();
-        display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
-        display.display();
-  delay(2000);
-
-    display.clear();
-    display.setFont(ArialMT_Plain_16);
-    display.setTextAlignment(TEXT_ALIGN_CENTER);
-    display.drawString(64,0,"Droid");
-    display.setFont(ArialMT_Plain_10);
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(0,25,"Network: " + WiFi.SSID());
-    display.drawString(0,35, "IP:" + WiFi.localIP().toString());
-    display.display();
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawString(64,0,"Droid Gateway");
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.display();
  
  
 }  //end of Setup
-
-
+void onReceive(int packetSize) {
+  if (packetSize == 0){
+//    Serial.println("nothing here");
+    return;          // if there's no packet, return
+  }
+//  Serial.println("Something");
+  // read packet header bytes:
+  int recipient = LoRa.read();          // recipient address
+  byte sender = LoRa.read();            // sender address
+  byte incomingMsgId = LoRa.read();     // incoming msg ID
+  byte incomingLength = LoRa.read();    // incoming msg length
+  Serial.printf("MSG ID: %i , Length: %i \n", incomingMsgId, incomingLength);
+  //--------------- Start receiving DHT22 Data --------------------
+  // try to parse packet
+  int pos1, pos2;
+  // received a packet
+  Serial.print("Received packet:  ");
+  String LoRaData = LoRa.readString();
+  Serial.println(LoRaData);
+  // read packet
+  while (LoRa.available()) {
+//    Serial.println((char)LoRa.read());
+  }
+}
 void loop(){
-
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    // received a packet
-    Serial.print("Received packet '");
-
-    // read packet
-    while (LoRa.available()) {
-      String LoRaData = LoRa.readString();
-      Serial.print(LoRaData); 
-      LoRaDataCommandLength = LoRaData.length();
-      LoRaDataTarget= LoRaData.substring(0,2);
-      LoRaDataCommand = LoRaData.substring(2,LoRaDataCommandLength);
-      sendESPNOWCommand(LoRaDataTarget,LoRaDataCommand);
-      displayOLEDString(LoRaDataCommand);
-    }
-
-    // print RSSI of packet
-    Serial.print("' with RSSI ");
-    Serial.println(LoRa.packetRssi());
-  }
-  if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
-    AnimatedEvent::process();
-    if(startUp) {
-      startUp = false;
-      Serial.println("Startup");
-      // Play Startup Sound
-      LoRa.beginPacket();
-       one = random(0,100);
-       one1 =String(one);
-      LoRa.print("Remote " + one1);
-      LoRa.endPacket();
-
-    }
-  if(millis() - LMillis >= LoraDelay){
-    LMillis = millis();
-    LoRa.beginPacket();
-    LoRa.print("Droid: ");
-    LoRa.endPacket();
-    counter123++;
-  }
-    
-    if(Serial.available()){serialEvent();}
-
-    
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='I'     ||        // Command for receiving status/info from other boards
-          inputBuffer[0]=='i'               // Command for receiving status/info from other boards
-        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
-          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
-
-          if(commandLength >= 3) {
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              }; 
-
-            if(inputBuffer[0]=='I' || inputBuffer[0]=='i'){
-              for (int i=1; i<commandLength-1;i++ ){
-                char inCharRead = inputBuffer[i];
-                infoCommandString += inCharRead;  // add it to the inputString:
-              }
-              DBG_2("I Command Proccessing: %s \n", infoCommandString.c_str());
-              if(infoCommandString == "PC"){
-                periscopeControllerStatus="Online";
-                pckeepAliveAge = millis();
-                DBG_2("Periscope Controller Keepalive Received\n");
-              }
-              if(infoCommandString == "BS"){
-                bodyServoControllerStatus="Online";
-                bskeepAliveAge = millis();
-                DBG_2("Body Servo Controller Keepalive Received\n");
-              }
-              if(infoCommandString == "DC"){
-                domeControllerStatus="Online";
-                dckeepAliveAge = millis();
-                DBG_2("Dome Controller Keepalive Received\n");
-              }
-              infoCommandString="";
-            }     
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=1; i<commandLength;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
-              serialPort = serialStringCommand.substring(0,2);
-              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
-              if (serialPort == "BL"){
-                // writeBlSerial(serialSubStringCommand);
-                DBG("Sending out BL Serial\n");
-              } else if (serialPort == "EN"){
-                // writeBsSerial(serialSubStringCommand);
-                DBG("Sending out EN Serial\n");
-              } else if (serialPort == "ST"){
-                // writeStSerial(serialSubStringCommand);
-                DBG("Sending out ST Serial\n");
-              }else if (serialPort == "MP"){
-                mp3Comm = serialStringCommand.substring(2,3);
-                // mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
-                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
-                // mp3Trigger(mp3Comm,mp3Track);
-                DBG("Sending out MP Serial\n ");
-              } else { DBG("No valid Serial identified\n");}
-              serialStringCommand = "";
-              serialPort = "";
-              serialSubStringCommand = "";
-              int mp3Track;
-            } 
-            
-
-
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
-            }
-          }
-        }
-
-      ///***  Clear States and Reset for next command.  ***///
-        stringComplete =false;
-        autoComplete = false;
-        inputBuffer[0] = '\0';
-
-        // reset Local ESP Command Variables
-        int espCommandFunction;
-
-
-    }
-
-    if(ESP_command[0]){
-      switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-        // case 4: printKeepaliveStatus();break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9:  break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        // case 11: toggleDebug1();                                                                break;
-        // case 12: toggleDebug2();                                                                break;
-
-      }
-    }
-
-
-    
-    if(isStartUp) {
-      isStartUp = false;
-      delay(500);
-    }
-  }
+  onReceive(LoRa.parsePacket());
+////
+//String LoRaData; 
+//  int packetSize = LoRa.parsePacket();
+//  if (packetSize) 
+//  {
+//    // received a packet
+//    Serial.print("Received packet '");
+//
+//    // read packet
+//    while (LoRa.available())
+//    {
+//      LoRaData = LoRa.readString();
+//      Serial.print(LoRaData); 
+//    }
+//
+//    // print RSSI of packet
+//    Serial.print("' with RSSI ");
+//    Serial.println(LoRa.packetRssi());
+//    displayOLEDString(LoRaData);
+//   }
+////
+//  int packetSize = LoRa.parsePacket();
+//  if (packetSize) {
+//    // received a packet
+//    Serial.print("Received packet '");
+//
+//    // read packet
+//    while (LoRa.available()) {
+//      String LoRaData = LoRa.readString();
+////      Serial.print(LoRaData); 
+////      LoRaDataCommandLength = LoRaData.length();
+////      LoRaDataTarget= LoRaData.substring(0,2);
+////      LoRaDataCommand = LoRaData.substring(2,LoRaDataCommandLength);
+////      sendESPNOWCommand(LoRaDataTarget,LoRaDataCommand);
+//
+//    }
+////      displayOLEDString(LoRaDataCommand);
+//
+//    // print RSSI of packet
+//    Serial.print("' with RSSI ");
+//    Serial.println(LoRa.packetRssi());
+//  }
+//  packetSize=0;
+//  if (millis() - MLMillis >= mainLoopDelayVar){
+//    MLMillis = millis();
+//    AnimatedEvent::process();
+//    readLoRa();
+//    if(startUp) {
+//      startUp = false;
+//      Serial.println("Startup");
+//      // Play Startup Sound
+////      LoRa.beginPacket();
+////       one = random(0,100);
+////       one1 =String(one);
+////      LoRa.print("Remote " + one1);
+////      LoRa.endPacket();
+//
+//    }
+////  if(millis() - LMillis >= LoraDelay){
+////    LMillis = millis();
+////    LoRa.beginPacket();
+////    LoRa.print("Droid: ");
+////    LoRa.endPacket();
+////    counter123++;
+////  }
+//    
+//    if(Serial.available()){serialEvent();}
+//
+//    
+//    if (stringComplete) {autoComplete=false;}
+//    if (stringComplete || autoComplete) {
+//      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+//      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+//      if( inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
+//          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
+//          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
+//          inputBuffer[0]=='s'     ||        // Command for sending Serial Strings out Serial ports
+//          inputBuffer[0]=='I'     ||        // Command for receiving status/info from other boards
+//          inputBuffer[0]=='i'               // Command for receiving status/info from other boards
+//        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+//          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
+//
+//          if(commandLength >= 3) {
+//            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
+//              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+//              }; 
+//
+//            if(inputBuffer[0]=='I' || inputBuffer[0]=='i'){
+//              for (int i=1; i<commandLength-1;i++ ){
+//                char inCharRead = inputBuffer[i];
+//                infoCommandString += inCharRead;  // add it to the inputString:
+//              }
+//              DBG_2("I Command Proccessing: %s \n", infoCommandString.c_str());
+//              if(infoCommandString == "PC"){
+//                periscopeControllerStatus="Online";
+//                pckeepAliveAge = millis();
+//                DBG_2("Periscope Controller Keepalive Received\n");
+//              }
+//              if(infoCommandString == "BS"){
+//                bodyServoControllerStatus="Online";
+//                bskeepAliveAge = millis();
+//                DBG_2("Body Servo Controller Keepalive Received\n");
+//              }
+//              if(infoCommandString == "DC"){
+//                domeControllerStatus="Online";
+//                dckeepAliveAge = millis();
+//                DBG_2("Dome Controller Keepalive Received\n");
+//              }
+//              infoCommandString="";
+//            }     
+//            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+//              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+//              for (int i=1; i<commandLength;i++ ){
+//                char inCharRead = inputBuffer[i];
+//                serialStringCommand += inCharRead;  // add it to the inputString:
+//              }
+//              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
+//              serialPort = serialStringCommand.substring(0,2);
+//              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+//              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
+//              if (serialPort == "BL"){
+//                // writeBlSerial(serialSubStringCommand);
+//                DBG("Sending out BL Serial\n");
+//              } else if (serialPort == "EN"){
+//                // writeBsSerial(serialSubStringCommand);
+//                DBG("Sending out EN Serial\n");
+//              } else if (serialPort == "ST"){
+//                // writeStSerial(serialSubStringCommand);
+//                DBG("Sending out ST Serial\n");
+//              }else if (serialPort == "MP"){
+//                mp3Comm = serialStringCommand.substring(2,3);
+//                // mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+//                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
+//                // mp3Trigger(mp3Comm,mp3Track);
+//                DBG("Sending out MP Serial\n ");
+//              } else { DBG("No valid Serial identified\n");}
+//              serialStringCommand = "";
+//              serialPort = "";
+//              serialSubStringCommand = "";
+//              int mp3Track;
+//            } 
+//            
+//
+//
+//            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
+//              ESP_command[0]   = '\0';                                                            // Flushes Array
+//              ESP_command[0] = espCommandFunction;
+//            }
+//          }
+//        }
+//
+//      ///***  Clear States and Reset for next command.  ***///
+//        stringComplete =false;
+//        autoComplete = false;
+//        inputBuffer[0] = '\0';
+//
+//        // reset Local ESP Command Variables
+//        int espCommandFunction;
+//
+//
+//    }
+//
+//    if(ESP_command[0]){
+//      switch (ESP_command[0]){
+//        case 1: Serial.println("Droid ESP-NOW/LoRa Gateway Controller");   
+//                ESP_command[0]   = '\0';                                                        break;
+//        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+//                DelayCall::schedule([] {ESP.restart();}, 3000);
+//                ESP_command[0]   = '\0';                                                        break;
+//        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+//        // case 4: printKeepaliveStatus();break;  //reserved for future use
+//        case 5: break;  //reserved for future use
+//        case 6: break;  //reserved for future use
+//        case 7: break;  //reserved for future use
+//        case 8: break;  //reserved for future use
+//        case 9:  break;  //reserved for future use
+//        case 10: toggleDebug();                                                                 break;
+//        // case 11: toggleDebug1();                                                                break;
+//        // case 12: toggleDebug2();                                                                break;
+//
+//      }
+//    }
+//
+//
+//    
+//    if(isStartUp) {
+//      isStartUp = false;
+//      delay(500);
+//    }
+//  }
 }  // end of main loop
