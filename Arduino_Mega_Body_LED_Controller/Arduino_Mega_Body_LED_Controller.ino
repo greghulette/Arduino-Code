@@ -167,7 +167,7 @@
 
 // Analog Sensors
 #define EXTERNAL_MIC_PIN      2
-#define VOLTAGE_SENSOR_PIN    3
+#define VOLTAGE_SENSOR_PIN    7
 
 
 //////////////////////////////////////////////////////////////////////
@@ -175,7 +175,7 @@
 //////////////////////////////////////////////////////////////////////
 
   #define LDP_PIXELS  32      //32
-  #define MAINT_PIXELS  36    //New to sketch
+  #define MAINT_PIXELS  42    //New to sketch
   #define CS_PIXELS    6      //6
   #define VU_PIXELS    9      //9
 
@@ -749,7 +749,7 @@ void loop() {
       startUp = false;
   }
     getBatLevel();
-
+if(Serial2.available()){serialEvent2();}
   if (millis()-getBattMillis >= 5000){
     getBattMillis = millis();
     sendUpdates();
@@ -918,6 +918,9 @@ void loop() {
         case 7: sendUpdates();                                                                    break;  //ext vu offset
         case 8: break;  //ext vu baseline
         case 9:  clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
+        case 10: toggleDebug();  break;
+        case 11: toggleDebug1();  break;
+        case 12: toggleDebug2();  break;
         };
   };
   
@@ -5738,6 +5741,7 @@ uint8_t splitColor ( uint32_t c, char value )
           if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
             stringComplete = true;            // set a flag so the main loop can do something about it.
           }
+          Serial.println("Received Command over Serial2");
         }
       }
 

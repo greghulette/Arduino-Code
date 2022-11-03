@@ -17,6 +17,9 @@
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
+#include <SoftwareSerial.h>
+
+
 //ReelTwo libaries
 //#define USE_DEBUG
 //#define USE_SERVO_DEBUG
@@ -66,16 +69,16 @@
 
 //     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,   600, 2400, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
-    { 2,   600, 2400, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
-    { 3,   600, 2400, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
-    { 4,   600, 2400, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
-    { 5,   2400, 600, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-    { 6,   2400, 600, BIG_PANEL },             /* 5: door 6 Big Lower door */
-    { 7,   2400, 600, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
-    { 8,   600, 2400, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
-    { 9,   2400, 600, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
-    { 10,  600, 2400, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
+    { 1,   2363, 1592, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
+    { 2,   1975, 1200, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
+    { 3,   2000, 1200, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
+    { 4,   2000, 1200, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
+    { 5,   2050, 1100, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
+    { 6,   1950, 1100, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 7,   2050, 1156, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
+    { 8,   2050, 1175, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
+    { 9,   2050, 1168, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
+    { 10,  2050, 1257, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
 };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -168,7 +171,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
     const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
-  #define NUM_CAMERA_PIXELS 12
+  #define NUM_CAMERA_PIXELS 7
   #define CAMERA_LENS_DATA_PIN 27
   //#define CAMERA_LENS_CLOCK_PIN 13
   int dim = 75;
@@ -182,6 +185,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int speedState;
   
   Adafruit_NeoPixel stripCL = Adafruit_NeoPixel(NUM_CAMERA_PIXELS, CAMERA_LENS_DATA_PIN, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, 18, NEO_GRB + NEO_KHZ800);
 
   boolean countUp=false;
 ///////////////////////////////////////////////////////////////////////
@@ -252,10 +256,10 @@ ServoSequencer servoSequencer(servoDispatch);
   
   #define hpSerial Serial1
   #define rsSerial Serial2
-
-  #define HP_BAUD_RATE 115200
-  #define RS_BAUD_RATE 115200
-
+  SoftwareSerial fuSerial;
+  #define HP_BAUD_RATE 9600
+  #define RS_BAUD_RATE 9600
+  #define FU_BAUD_RATE 9600
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
@@ -358,7 +362,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else if (incomingTargetID == "HP"){
         DBG("Sending %s out hpSerial\n", incomingCommand);
         writeHpSerial(incomingCommand);
-    } else if (incomingTargetID == "DC" || incomingTargetID == "ALL"){
+    } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
         DBG("Execute Local Command = %s\n", incomingCommand);
  if (incomingCommand == "Status"){
           DBG("Status is good\n");                                                                                                                                       
@@ -451,6 +455,13 @@ void colorWipe(uint32_t c, int brightness) {
   }
 };
 
+void colorWipeStatus(uint32_t c, int brightness) {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setBrightness(brightness);
+    StatusLED.setPixelColor(i, c);
+    StatusLED.show();
+  }
+};
 void clearCL() {
   for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
     stripCL.setPixelColor(i, off);
@@ -458,6 +469,12 @@ void clearCL() {
   }
 };
 
+void clearCLStatus() {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setPixelColor(i, off);
+    StatusLED.show();
+  }
+};
 
 void CLAuto () {
   if(millis() - CLAutoTimer >= CLAutoInt*1000) {       // and the timer has reached the set interval
@@ -972,6 +989,14 @@ void writeHpSerial(String stringData){
   DBG("Printing to hpSerial\n");
 }
 
+void writeFuSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    fuSerial.write(completeString[i]);
+  }
+  DBG("Printing to fuSerial\n");
+}
+
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
@@ -1222,7 +1247,7 @@ void setup(){
   Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
-    
+  fuSerial.begin(FU_BAUD_RATE,SWSERIAL_8N1,RXFU,TXFU,false,95);  
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the ESP32 Dome Controller");
 
@@ -1240,6 +1265,11 @@ void setup(){
   stripCL.begin();
   stripCL.show(); // Initialize all pixels to 'off'
   colorWipe(red, 255); // red during bootup
+
+  StatusLED.begin();
+  StatusLED.show();
+  colorWipeStatus(red,255);
+  
   Serial.println("LED Setup Complete");
 
 
@@ -1285,8 +1315,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       closeAllDoors(2,0,0,0,0);
       startUp = false;
       Serial.println("Startup");
+      colorWipeStatus(blue,25);
+
   }
-  keepAlive();
+//  keepAlive();
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}
@@ -1401,18 +1433,24 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               DBG("Command to Forward: %s\n", commandSubString);
             }
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=3; i<commandLength-2;i++ ){
+              
+              for (int i=1; i<commandLength-1;i++ ){
               char inCharRead = inputBuffer[i];
               serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand, serialPort);
+              int serialStringCommandLength;
+//              serialStringCommandLength = strlen(serialStringCommand);
+              serialPort =  serialStringCommand.substring(0,2);
+              String serialStringCommandSubString = serialStringCommand.substring(2,commandLength);
+              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommandSubString, serialPort);
               if (serialPort == "HP"){
-                writeHpSerial(serialStringCommand);
+                writeHpSerial(serialStringCommandSubString);
               } else if (serialPort == "RS"){
-                writeRsSerial(serialStringCommand);
+                writeRsSerial(serialStringCommandSubString);
+              }  else if (serialPort == "FU"){
+                writeFuSerial(serialStringCommandSubString);
               } else if (serialPort == "DS"){
-                inputString = serialStringCommand;
+                inputString = serialStringCommandSubString;
                 stringComplete = true; 
               }
               serialStringCommand = "";

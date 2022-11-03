@@ -52,14 +52,14 @@
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
-//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
+//     Pin  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  700, 2400, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
-    { 2,  700, 2400, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
-    { 3,  700, 2400, LARGE_LEFT_DOOR },       /* 2: Large Left Door as viewing from looking at R2 */
-    { 4,  700, 2400, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
-    { 5,  700, 2400, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
-    { 6,  700, 2400, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
+    { 1,  1688, 700, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
+    { 2,  2300, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
+    { 3,  1600, 2240, LARGE_LEFT_DOOR },       /* 2: Large Left Door as viewing from looking at R2 */
+    { 4,  1650, 937, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
+    { 5,  1526, 726, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
+    { 6,  2030, 1549, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
     };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);

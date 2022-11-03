@@ -1,0 +1,14 @@
+# OS generated files #
+######################
+*.*.bak
+*.orig
+*.sublime-workspace
+._*
+.build
+.lib
+*build_version.h
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+.vs/
