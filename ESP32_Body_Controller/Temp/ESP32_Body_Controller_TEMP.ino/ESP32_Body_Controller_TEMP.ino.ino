@@ -119,7 +119,7 @@
   //////////////////////////////////////////////////////////////////////
 
   #define RXEN 18
-  #define TXEN 19 
+  #define TXEN 21 
   #define RXBL 25 // changed to 26, was 25
   #define TXBL 27 // changed to 25, was 26
   #define RXST 5

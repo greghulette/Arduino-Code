@@ -78,6 +78,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int commandLength;
   String serialPort;
   String serialStringCommand;
+  String serialSubStringCommand;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction = 0;
@@ -138,12 +139,12 @@ ServoSequencer servoSequencer(servoDispatch);
   #define RXBC 15
   #define TXBC 16 
   #define RXFU 25
-  #define TXFU 26 
+  #define TXFU 26
   #define bcSerial Serial1
   #define fuSerial Serial2
 
   #define BC_BAUD_RATE 115200
-  #define FU_BAUD_RATE 115200
+  #define FU_BAUD_RATE 9600
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
@@ -789,7 +790,7 @@ void setupSendStruct(struct_message* msg, String sender, String destID, String t
 void sendESPNOWCommand(String starget, String scomm){
   String sdest;
   String senderID = "Body";     // change to match location (Dome, Body, Periscope)
-  if (starget == "DS" || starget == "RS" || starget == "HP"){
+  if (starget == "DS" || starget == "RS" || starget == "HP" || starget == "DC"){
     sdest = "Dome";
   } else if (starget == "PC" || starget == "PL"){
     sdest = "Periscope";
@@ -1197,26 +1198,29 @@ void loop(){
                 espNowCommandFunctionString = inputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG("ESP NOW Command State: %i\n", espNowCommandFunction);
-                targetID = inputStringCommand.substring(2,4);
+                targetID = inputStringCommand.substring(0,2);
                 DBG("Target ID: %s\n", targetID);
-                commandSubString = inputStringCommand.substring(4,commandLength);
+                commandSubString = inputStringCommand.substring(2,commandLength);
                 DBG("Command to Forward: %s\n", commandSubString.c_str());
+                sendESPNOWCommand(targetID, commandSubString);
                 inputStringCommand="";
               }
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-                serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-                for (int i=3; i<commandLength-2;i++ ){
+//                serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
+                for (int i=1; i<commandLength-1;i++ ){
                   char inCharRead = inputBuffer[i];
                   serialStringCommand += inCharRead;  // add it to the inputString:
                 }
-                DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommand.c_str(), serialPort);
-                if (serialPort == "BC"){
-                  writeBcSerial(serialStringCommand);
+                serialPort = serialStringCommand.substring(0,2);
+                serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+                DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                if (serialPort == "BC"){
+                  writeBcSerial(serialSubStringCommand);
                 } else if (serialPort == "FU"){
-                  writeFuSerial(serialStringCommand);
+                  writeFuSerial(serialSubStringCommand);
                 } 
                 
                 serialStringCommand = "";
+                serialSubStringCommand = "";
                 serialPort = "";
             } 
               

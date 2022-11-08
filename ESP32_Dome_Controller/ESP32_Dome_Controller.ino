@@ -98,6 +98,7 @@ ServoSequencer servoSequencer(servoDispatch);
   int ledFunction;
   int commandLength;
   int serialCommandFunction;
+  String serialStringCommand;
   String serialCommandFunctionString;
 
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
@@ -1441,16 +1442,16 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               int serialStringCommandLength;
 //              serialStringCommandLength = strlen(serialStringCommand);
               serialPort =  serialStringCommand.substring(0,2);
-              String serialStringCommandSubString = serialStringCommand.substring(2,commandLength);
-              DBG("Serial Command: %s to Serial Port: %s\n", serialStringCommandSubString, serialPort);
+              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
               if (serialPort == "HP"){
-                writeHpSerial(serialStringCommandSubString);
+                writeHpSerial(serialStringCommand);
               } else if (serialPort == "RS"){
-                writeRsSerial(serialStringCommandSubString);
+                writeRsSerial(serialStringCommand);
               }  else if (serialPort == "FU"){
-                writeFuSerial(serialStringCommandSubString);
+                writeFuSerial(serialStringCommand);
               } else if (serialPort == "DS"){
-                inputString = serialStringCommandSubString;
+                inputString = serialStringCommand;
                 stringComplete = true; 
               }
               serialStringCommand = "";
