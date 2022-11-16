@@ -5,7 +5,7 @@
 #include <AsyncTCP.h>
 #include <WiFi.h>
 
-//#include <Hash.h>
+#include "dome_controller_pin_config.h"
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
