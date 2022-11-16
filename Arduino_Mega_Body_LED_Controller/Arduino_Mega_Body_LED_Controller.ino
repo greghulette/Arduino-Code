@@ -244,7 +244,7 @@
     
     // For 15volts: R1=47k, R2=24k
     // For 30volts: R1=47k, R2=9.4k
-    #define R1 57000.0     // >> resistance of R1 in ohms << the more accurate these values are
+    #define R1 58000.0     // >> resistance of R1 in ohms << the more accurate these values are
     #define R2 22000.0     // >> resistance of R2 in ohms << the more accurate the measurement will be
 
     float vout = 0.0;       // for voltage out measured analog input
@@ -2543,6 +2543,7 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
         vout = (BatVal*4.8)/1023;
 //        Serial.print("Measured Voltage: ");Serial.println(vout);
         vin = vout/(R2/(R1+R2))+1;
+//        Serial.print("BatVal: ");Serial.println(BatVal);
 //        Serial.print("Actual Voltage: ");Serial.println(vin);
         BatVal = map(BatVal, 0,1023, 0, 2500);
 //        Serial.print("Battery Val 1:");Serial.println(BatVal);

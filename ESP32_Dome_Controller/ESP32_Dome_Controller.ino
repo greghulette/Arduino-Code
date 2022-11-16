@@ -105,8 +105,8 @@ ServoSequencer servoSequencer(servoDispatch);
   int espCommandFunction     = 0;
   
   String serialPort;
-  String serialStringCommand;
-
+//  String serialStringCommand;
+  String serialSubStringCommand;
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
@@ -1230,7 +1230,7 @@ void scan_i2c(){
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("Status","DC");
+    sendESPNOWCommand("BS","DC-ONLINE");
   } 
 }
 
@@ -1319,7 +1319,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       colorWipeStatus(blue,25);
 
   }
-//  keepAlive();
+  keepAlive();
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}

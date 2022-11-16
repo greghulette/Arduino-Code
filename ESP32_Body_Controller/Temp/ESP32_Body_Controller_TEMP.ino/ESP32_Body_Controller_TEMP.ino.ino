@@ -119,7 +119,7 @@
   //////////////////////////////////////////////////////////////////////
 
   #define RXEN 18
-  #define TXEN 21 
+  #define TXEN 19 
   #define RXBL 25 // changed to 26, was 25
   #define TXBL 27 // changed to 25, was 26
   #define RXST 5
@@ -678,7 +678,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BatteryVoltage"] = BL_BatteryVoltage;
       json["BatteryPercent"] = BL_BatteryPercentage;
       json["MP3TriggerVolume"] = mp3Volume;
-      DBG("MP3Volume - JSON- %i \n", mp3Volume);
+//      DBG("MP3Volume - JSON- %i \n", mp3Volume);
 
       serializeJson(json, *response);
       request->send(response);
@@ -697,7 +697,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
   
   preferences.begin("stored",false);
     mp3Volume = preferences.getInt("Volume",45);
-//   mp3Trigger("v", mp3Volume);
+   mp3Trigger("v", mp3Volume);
    DBG("MP3 Trigger Volume: %i \n", mp3Volume);
   preferences.end();
   }  //end of Setup

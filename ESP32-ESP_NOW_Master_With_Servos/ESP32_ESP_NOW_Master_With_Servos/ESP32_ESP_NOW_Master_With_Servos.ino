@@ -1015,7 +1015,9 @@ void scan_i2c()
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("RL","BSKA");  } 
+    writeBcSerial("IBS");
+//    sendESPNOWCommand("RL","BSKA");  
+} 
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
