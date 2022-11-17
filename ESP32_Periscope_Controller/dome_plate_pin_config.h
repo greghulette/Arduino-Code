@@ -11,7 +11,7 @@
 #define SERIAL_TX_PIN       1   // N // debug output
 #define UP_2				2   // Y // (must be left floating or LOW to enter flashing mode)
 #define SERIAL_RX_PIN       3   // N // high at boot
-#define STATUS_LED    		4   // Y // Unused Pin
+#define UP_4        		4   // Y // Unused Pin
 #define UP_5				5   // Y // Unused Pin (must be HIGH during boot)
 #define RESERVED_FLASH_6    6   // N // connected to SPI flash
 #define RESERVED_FLASH_7    7   // N // connected to SPI flash
@@ -20,27 +20,27 @@
 #define RESERVED_FLASH_10   10 // N // connected to SPI flash
 #define RESERVED_FLASH_11   11 //  N // connected to SPI flash
 #define UP_12				12 // W // Unused Pin (must be LOW during boot)
-#define SERIAL_TX_PSI       13 // Y // Unused Pin
-#define SERIAL_RX_PSI       14 // Y // Unused Pin
-#define SERIAL_TX_RS 		15 // Y // Unused Pin (must be HIGH during boot)
-#define SERIAL_RX_RS        16 // Y // Unused Pin
-#define SERIAL_TX_FU        17 // Y // Unused Pin
-#define SERIAL_RX_FU        18 // Y // Unused Pin
+#define SERIAL_TX_US        13 // Y // Unused Pin
+#define SERIAL_RX_US        14 // Y // Unused Pin
+#define SERIAL_TX_FU       	15 // Y // Unused Pin (must be HIGH during boot)
+#define SERIAL_RX_FU        16 // Y // Unused Pin
+#define SERIAL_TX_FU2       17 // Y // Unused Pin
+#define SERIAL_RX_FU2	    18 // Y // Unused Pin
 #define UP_19               19 // Y // Unused Pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA
 #define I2C_SCL             22 // Y // I2C SCL
-#define RADAR_EYE_LED       23 // Y // Unused Pin 
+#define SERIAL_TX_FU3	    23 // Y // Unused Pin 
 #define NONEXISTENT_PIN_24  24 // N // There is no GPIO20
-#define FRONT_HP_LED        25 // Y //	Unused Pin
-#define REAR_HP_LED         26 // Y //  Unused Pin
-#define TOP_HP_LED          27 // Y //  Unused Pin
+#define SERIAL_RX_FU3       25 // Y //	Unused Pin
+#define SERIAL_TX_FU4	    26 // Y //  Unused Pin
+#define SERIAL_RX_FU4	    27 // Y //  Unused Pin
 #define NONEXISTENT_PIN_28  28 // N // There is no GPIO28
 #define NONEXISTENT_PIN_29  29 // N // There is no GPIO29
 #define NONEXISTENT_PIN_30  30 // N // There is no GPIO30
 #define NONEXISTENT_PIN_31 	31 // N // There is no GPIO31
-#define SERIAL_TX_FU2     	32 // Y // Unused Pin
-#define SERIAL_RX_FU2 	  	33 // Y // Unused Pin
+#define UP_32			  	32 // Y // Unused Pin
+#define UP_33	 	 	  	33 // Y // Unused Pin
 #define UP_34 	            34 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
 #define UP_35               35 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
 #define UP_36               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
