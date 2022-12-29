@@ -1,73 +1,171 @@
-
-void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
-  // Command: Dx03
-  DBG("Open all Doors\n");
-  if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
-    setServoEasingMethod(servoEasingMethod);
-    SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
-  }
-  if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
-    sprintf(stringToSend, "D203E%02i%04i%04i ", servoEasingMethod, varSpeedMin, varSpeedMax);
-    DBG("Sent the Command: %s to the sendESPNOWCommand Function\n", stringToSend);
-    sendESPNOWCommand("DS", "D2033015001500");  
-  };
-  D_command[0] = '\0';
-}
-
-void sendESPNOWCommand(String starget, String scomm){
-  String sdest;
-  DBG("Desitation is %s\n", starget);
-  DBG("Recieved the command: %s from the door function\n", scomm);
-    if (starget == "DS" || starget == "RS" || starget == "HP"){
-    sdest = "Dome";
-  } else if (starget == "PC" || starget == "PL"){
-    sdest = "Periscope";
-  }
-  commandsToSendtoBroadcast.structDestinationID = sdest;
-  DBG("sdest: %s\n", sdest);
-  commandsToSendtoBroadcast.structTargetID = starget;
-  commandsToSendtoBroadcast.structSenderID = "Body";
-  commandsToSendtoBroadcast.structCommand = scomm;
-  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-  if (result == ESP_OK) {
-    DBG("Sent with success\n");
-//    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm);
-  }
-  else {
-    DBG("Error sending the data\n");
-  }
-  ESPNOW_command[0] = '\0';
-}
-
-Serial Output from Sender
-15:52:53.889 -> Command: d304e301500 with a length of 12 
-16:08:22.279 -> Other Door Function Called 
-16:08:22.279 -> with Easing 
-16:08:22.279 -> No Variable Speed selected
-16:08:22.279 -> Door Function Called: 4
-16:08:22.326 -> Easing Method: 30 
-16:08:22.326 -> VarSpeed - Min:1500, Max:1500 
-16:08:22.326 -> DelayCall Duration: 0
-16:08:22.326 -> command Proccessed
-16:08:22.326 -> Close all Doors
-16:08:22.326 -> Sent the Command: D204E3015001500 to the sendESPNOWCommand Function
-16:08:22.326 -> Desitation is DS
-16:08:22.326 -> Recieved the command: ⸮:⸮? from the door function
-16:08:22.326 -> sdest: Dome
-16:08:22.326 -> Sent with success
-16:08:22.326 -> 
-16:08:22.326 -> Last Packet Send Status:	Delivery Success
-
-
-
-Serial Output from reciever
-16:08:22.326 -> Bytes received from ESP-NOW Message: 64
-16:08:22.326 -> Sender ID = Body
-16:08:22.326 -> Destination ID= Dome
-16:08:22.326 -> Target ID= DS
-16:08:22.326 -> Command = ⸮⸮⸮?
-16:08:22.326 -> ESP-NOW Command Accepted
-16:08:22.326 -> Target ID= DS
-16:08:22.326 -> Execute Local Command = ⸮⸮⸮?
-
-
+10:15:10.322 -> SAFETY
+10:15:10.322 ->  MOTOR: 0.78
+10:15:10.322 -> TOP LIMIT REACHED
+10:15:10.322 -> SEEK TO BOTTOM
+10:15:11.260 -> BOTTOM LIMIT REACHED
+10:15:11.260 -> LIFTER DISTANCE: 423
+10:15:11.682 -> SEEK TO BOTTOM
+10:15:12.432 -> BOTTOM LIMIT REACHED
+10:15:12.432 -> SEEK TO TOP
+10:15:12.432 -> SPEED: 65
+10:15:12.432 -> SEEK TO BOTTOM
+10:15:12.947 -> BOTTOM LIMIT REACHED
+10:15:13.932 -> OUTPUT LIMIT: 201
+10:15:14.729 -> NO CHANGE
+10:15:14.729 -> ABORT
+10:15:14.729 -> 355 LIMIT NOT REACHED - RETRYING 68 NEW LIMIT : 65
+10:15:15.713 -> SEEK TO BOTTOM
+10:15:16.557 -> BOTTOM LIMIT REACHED
+10:15:17.541 -> OUTPUT LIMIT: 65
+10:15:18.338 -> NO CHANGE
+10:15:18.338 -> ABORT
+10:15:18.338 -> 414 LIMIT NOT REACHED - RETRYING 9 NEW LIMIT : 47
+10:15:19.369 -> SEEK TO BOTTOM
+10:15:20.260 -> BOTTOM LIMIT REACHED
+10:15:21.244 -> OUTPUT LIMIT: 47
+10:15:21.901 -> SPEED: 70
+10:15:21.901 -> SEEK TO BOTTOM
+10:15:22.791 -> BOTTOM LIMIT REACHED
+10:15:23.791 -> OUTPUT LIMIT: 217
+10:15:24.604 -> NO CHANGE
+10:15:24.604 -> ABORT
+10:15:24.604 -> 340 LIMIT NOT REACHED - RETRYING 83 NEW LIMIT : 51
+10:15:25.588 -> SEEK TO BOTTOM
+10:15:26.401 -> BOTTOM LIMIT REACHED
+10:15:27.385 -> OUTPUT LIMIT: 51
+10:15:27.994 -> SPEED: 75
+10:15:27.994 -> SEEK TO BOTTOM
+10:15:28.885 -> BOTTOM LIMIT REACHED
+10:15:29.869 -> OUTPUT LIMIT: 232
+10:15:30.666 -> NO CHANGE
+10:15:30.666 -> ABORT
+10:15:30.666 -> 339 LIMIT NOT REACHED - RETRYING 84 NEW LIMIT : 64
+10:15:31.697 -> SEEK TO BOTTOM
+10:15:32.495 -> BOTTOM LIMIT REACHED
+10:15:33.479 -> OUTPUT LIMIT: 64
+10:15:34.041 -> SPEED: 80
+10:15:34.041 -> SEEK TO BOTTOM
+10:15:34.901 -> BOTTOM LIMIT REACHED
+10:15:35.932 -> OUTPUT LIMIT: 248
+10:15:36.729 -> NO CHANGE
+10:15:36.729 -> ABORT
+10:15:36.729 -> 339 LIMIT NOT REACHED - RETRYING 84 NEW LIMIT : 80
+10:15:37.713 -> SEEK TO BOTTOM
+10:15:38.557 -> BOTTOM LIMIT REACHED
+10:15:39.541 -> OUTPUT LIMIT: 80
+10:15:40.338 -> NO CHANGE
+10:15:40.338 -> ABORT
+10:15:40.338 -> 414 LIMIT NOT REACHED - RETRYING 9 NEW LIMIT : 62
+10:15:41.322 -> SEEK TO BOTTOM
+10:15:42.213 -> BOTTOM LIMIT REACHED
+10:15:43.197 -> OUTPUT LIMIT: 62
+10:15:43.713 -> SPEED: 85
+10:15:43.713 -> SEEK TO BOTTOM
+10:15:44.604 -> BOTTOM LIMIT REACHED
+10:15:45.588 -> OUTPUT LIMIT: 263
+10:15:46.385 -> NO CHANGE
+10:15:46.385 -> ABORT
+10:15:46.385 -> 347 LIMIT NOT REACHED - RETRYING 76 NEW LIMIT : 111
+10:15:47.416 -> SEEK TO BOTTOM
+10:15:48.213 -> BOTTOM LIMIT REACHED
+10:15:49.197 -> OUTPUT LIMIT: 111
+10:15:49.994 -> NO CHANGE
+10:15:49.994 -> ABORT
+10:15:49.994 -> 410 LIMIT NOT REACHED - RETRYING 13 NEW LIMIT : 85
+10:15:50.979 -> SEEK TO BOTTOM
+10:15:51.869 -> BOTTOM LIMIT REACHED
+10:15:52.854 -> OUTPUT LIMIT: 85
+10:15:53.322 -> SPEED: 90
+10:15:53.322 -> SEEK TO BOTTOM
+10:15:54.213 -> BOTTOM LIMIT REACHED
+10:15:55.197 -> OUTPUT LIMIT: 279
+10:15:55.994 -> NO CHANGE
+10:15:55.994 -> ABORT
+10:15:55.994 -> 343 LIMIT NOT REACHED - RETRYING 80 NEW LIMIT : 119
+10:15:56.979 -> SEEK TO BOTTOM
+10:15:57.776 -> BOTTOM LIMIT REACHED
+10:15:58.760 -> OUTPUT LIMIT: 119
+10:15:59.557 -> NO CHANGE
+10:15:59.557 -> ABORT
+10:15:59.557 -> 410 LIMIT NOT REACHED - RETRYING 13 NEW LIMIT : 93
+10:16:00.588 -> SEEK TO BOTTOM
+10:16:01.432 -> BOTTOM LIMIT REACHED
+10:16:02.416 -> OUTPUT LIMIT: 93
+10:16:02.885 -> SPEED: 95
+10:16:02.885 -> SEEK TO BOTTOM
+10:16:03.729 -> BOTTOM LIMIT REACHED
+10:16:04.760 -> OUTPUT LIMIT: 294
+10:16:05.573 -> NO CHANGE
+10:16:05.573 -> ABORT
+10:16:05.573 -> 345 LIMIT NOT REACHED - RETRYING 78 NEW LIMIT : 138
+10:16:06.557 -> SEEK TO BOTTOM
+10:16:07.307 -> BOTTOM LIMIT REACHED
+10:16:08.307 -> OUTPUT LIMIT: 138
+10:16:08.917 -> NO CHANGE
+10:16:08.917 -> ABORT
+10:16:08.917 -> 406 LIMIT NOT REACHED - RETRYING 17 NEW LIMIT : 104
+10:16:09.948 -> SEEK TO BOTTOM
+10:16:10.792 -> BOTTOM LIMIT REACHED
+10:16:11.776 -> OUTPUT LIMIT: 104
+10:16:12.197 -> SPEED: 100
+10:16:12.197 -> SEEK TO BOTTOM
+10:16:13.089 -> BOTTOM LIMIT REACHED
+10:16:14.073 -> OUTPUT LIMIT: 310
+10:16:14.869 -> NO CHANGE
+10:16:14.869 -> ABORT
+10:16:14.869 -> 345 LIMIT NOT REACHED - RETRYING 78 NEW LIMIT : 154
+10:16:15.854 -> SEEK TO BOTTOM
+10:16:16.651 -> BOTTOM LIMIT REACHED
+10:16:17.635 -> OUTPUT LIMIT: 154
+10:16:18.244 -> NO CHANGE
+10:16:18.244 -> ABORT
+10:16:18.244 -> 403 LIMIT NOT REACHED - RETRYING 20 NEW LIMIT : 114
+10:16:19.276 -> SEEK TO BOTTOM
+10:16:20.073 -> BOTTOM LIMIT REACHED
+10:16:21.104 -> OUTPUT LIMIT: 114
+10:16:21.479 -> SEEK TO BOTTOM
+10:16:21.479 -> TOP LIMIT SWITCH: 1
+10:16:21.479 -> BOTTOM LIMIT SWITCH: 0
+10:16:21.479 -> SEEK TO BOTTOM
+10:16:22.370 -> BOTTOM LIMIT REACHED
+10:16:24.869 -> TOP LIMIT REACHED
+10:16:24.869 -> DISTANCE: 417
+10:16:24.869 -> TIME: 499
+10:16:25.151 -> LIFTER ABORTED AT 6
+10:16:25.151 -> SEEK TO TOP FAILED - ABORT
+10:16:25.151 -> SEEK TO BOTTOM PID
+10:16:25.151 -> BOTTOM LIMIT REACHED
+10:16:25.151 -> DISTANCE: 5
+10:16:25.151 -> TIME: 1
+10:16:25.151 -> CALIBRATION ABORTED
+10:16:25.151 -> T: 0 B: 1 R: 0 H: 1 D: 0 P: 1201 F: 1
+10:16:25.151 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.151 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.151 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.151 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.198 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.198 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:25.198 -> T: 0 B: 1 R: 0 H: 0 D: 0 P: 1201 F: 1
+10:16:38.901 -> ID#:               0
+10:16:38.901 -> Baud Rate:         9600
+10:16:38.901 -> Rotary Disabled:   0
+10:16:38.901 -> Min Power:         65
+10:16:38.901 -> Distance:          423
+10:16:38.901 -> Lifter Limit:      0
+10:16:38.901 -> Rotary Limit:      0
+10:16:38.901 -> Up Calibrated:     1
+10:16:38.901 -> Lifter Min Power:  65 [40]
+10:16:38.901 -> Rotary Min Power:  60
+10:16:38.901 -> Lifter Distance:   450
+10:16:38.901 -> Rotary Min Height: 300
+10:16:38.901 -> Safety Maneuver:   0
+10:16:38.901 -> Stored Sequences:
+10:16:38.901 -> [0] H:L0:P100,5:W2:P50:W2:P85,35:A90,25:W2:A270,20,100:W2:P100,100:L5:R50:W4:H
+10:16:38.901 -> [1] H
+10:16:38.901 -> [2] P100
+10:16:38.948 -> [3] P100:L5:R30
+10:16:38.948 -> [4] P100,100:L7:M,80,80,2,4
+10:16:38.948 -> [5] P100:L7:M,50,40,5,5
+10:16:38.948 -> [6] A0
+10:16:38.948 -> [7] P100:L5:R-30
+10:16:38.948 -> [8] H:P50:W2:P85,35:A90,25:W2:A270,20,100:W2:P100,100:L5:R50:W4:H

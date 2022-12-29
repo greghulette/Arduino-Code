@@ -1,0 +1,18 @@
+# OS generated files #
+######################
+*.*.bak
+*.orig
+*.sublime-workspace
+._*
+examples/*/Makefile
+examples/*/.build
+examples/*/.lib
+examples/*/requirements.txt
+examples/*/*build_version.h
+Reeltwo.zip
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+.vs/
+.vscode
