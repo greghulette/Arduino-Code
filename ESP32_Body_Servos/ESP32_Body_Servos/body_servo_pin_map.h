@@ -21,8 +21,8 @@
 #define RESERVED_FLASH_11   11 //  N // connected to SPI flash
 #define UP_12				        12 // W // Unused Pin (must be LOW during boot)
 #define UP_13               13 // Y // Unused Pin
-#define SERIAL_RX_HEADER       14 // Y // Unused Pin
-#define SERIAL_TX_HEADER       	15 // Y // Unused Pin (must be HIGH during boot)
+#define SERIAL_RX_HEADER    14 // Y // Unused Pin
+#define SERIAL_TX_HEADER    15 // Y // Unused Pin (must be HIGH during boot)
 #define AUX3_1              16 // Y // Unused Pin
 #define AUX3_2              17 // Y // Unused Pin
 #define AUX2_1	            18 // Y // Unused Pin

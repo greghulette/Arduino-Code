@@ -11,7 +11,7 @@
 #define SERIAL_TX_PIN       1   // N // debug output
 #define UP_2				2   // Y // (must be left floating or LOW to enter flashing mode)
 #define SERIAL_RX_PIN       3   // N // high at boot
-#define STATUS_LED    		4   // Y // Unused Pin
+#define STATUS_LED    		19   // Y // Unused Pin
 #define UP_5				5   // Y // Unused Pin (must be HIGH during boot)
 #define RESERVED_FLASH_6    6   // N // connected to SPI flash
 #define RESERVED_FLASH_7    7   // N // connected to SPI flash
@@ -26,7 +26,7 @@
 #define SERIAL_RX_RS        16 // Y // Unused Pin
 #define SERIAL_TX_FU        17 // Y // Unused Pin
 #define SERIAL_RX_FU        18 // Y // Unused Pin
-#define UP_19               19 // Y // Unused Pin
+#define UP_19               4 // Y // Unused Pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA
 #define I2C_SCL             22 // Y // I2C SCL
@@ -49,3 +49,5 @@
 #define UP_39               39 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
 
 #endif
+
+

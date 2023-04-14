@@ -1,40 +1,47 @@
-// Copyright (c) Sandeep Mistry. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
 #ifndef LORA_H
 #define LORA_H
 
 #include <Arduino.h>
 #include <SPI.h>
 
-#if defined(ARDUINO_SAMD_MKRWAN1300)
-#define LORA_DEFAULT_SPI           SPI1
-#define LORA_DEFAULT_SPI_FREQUENCY 200000
-#define LORA_DEFAULT_SS_PIN        LORA_IRQ_DUMB
-#define LORA_DEFAULT_RESET_PIN     -1
-#define LORA_DEFAULT_DIO0_PIN      -1
-#elif defined(ARDUINO_SAMD_MKRWAN1310)
-#define LORA_DEFAULT_SPI           SPI1
-#define LORA_DEFAULT_SPI_FREQUENCY 200000
-#define LORA_DEFAULT_SS_PIN        LORA_IRQ_DUMB
-#define LORA_DEFAULT_RESET_PIN     -1
-#define LORA_DEFAULT_DIO0_PIN      LORA_IRQ
-#else
-#define LORA_DEFAULT_SPI           SPI
-#define LORA_DEFAULT_SPI_FREQUENCY 915E6 
-#define LORA_DEFAULT_SS_PIN        5
-#define LORA_DEFAULT_RESET_PIN     27
-#define LORA_DEFAULT_DIO0_PIN      26
-#endif
+#define LORA_DEFAULT_SS_PIN     18
+#define LORA_DEFAULT_RESET_PIN  14
+#define LORA_DEFAULT_DIO0_PIN   26
 
-#define PA_OUTPUT_RFO_PIN          0
-#define PA_OUTPUT_PA_BOOST_PIN     1
+#define PA_OUTPUT_PA_BOOST_PIN  1
+#define PA_OUTPUT_RFO_PIN       0
+
+/*!
+ * RegPaConfig
+ */
+#define RF_PACONFIG_PASELECT_MASK                   0x7F
+#define RF_PACONFIG_PASELECT_PABOOST                0x80
+#define RF_PACONFIG_PASELECT_RFO                    0x00 // Default
+
+#define RF_PACONFIG_MAX_POWER_MASK                  0x8F
+
+#define RF_PACONFIG_OUTPUTPOWER_MASK                0xF0
+
+/*!
+ * RegPaDac
+ */
+#define RF_PADAC_20DBM_MASK                         0xF8
+#define RF_PADAC_20DBM_ON                           0x07
+#define RF_PADAC_20DBM_OFF                          0x04  // Default
+
+
+
+#if defined (__STM32F1__)
+inline unsigned char  digitalPinToInterrupt(unsigned char Interrupt_pin) { return Interrupt_pin; } //This isn't included in the stm32duino libs (yet)
+#define portOutputRegister(port) (volatile byte *)( &(port->regs->ODR) ) //These are defined in STM32F1/variants/generic_stm32f103c/variant.h but return a non byte* value
+#define portInputRegister(port) (volatile byte *)( &(port->regs->IDR) ) //These are defined in STM32F1/variants/generic_stm32f103c/variant.h but return a non byte* value
+#endif
 
 class LoRaClass : public Stream {
 public:
   LoRaClass();
 
-  int begin(long frequency);
+  int begin(long frequency,bool PABOOST);
   void end();
 
   int beginPacket(int implicitHeader = false);
@@ -43,9 +50,6 @@ public:
   int parsePacket(int size = 0);
   int packetRssi();
   float packetSnr();
-  long packetFrequencyError();
-
-  int rssi();
 
   // from Print
   virtual size_t write(uint8_t byte);
@@ -57,16 +61,14 @@ public:
   virtual int peek();
   virtual void flush();
 
-#ifndef ARDUINO_SAMD_MKRWAN1300
   void onReceive(void(*callback)(int));
-  void onTxDone(void(*callback)());
 
   void receive(int size = 0);
-#endif
   void idle();
   void sleep();
 
-  void setTxPower(int level, int outputPin = PA_OUTPUT_PA_BOOST_PIN);
+  void setTxPower(int8_t power, int8_t outputPin);
+  void setTxPowerMax(int level);
   void setFrequency(long frequency);
   void setSpreadingFactor(int sf);
   void setSignalBandwidth(long sbw);
@@ -75,12 +77,10 @@ public:
   void setSyncWord(int sw);
   void enableCrc();
   void disableCrc();
+  void enableTxInvertIQ();
+  void enableRxInvertIQ();
   void enableInvertIQ();
   void disableInvertIQ();
-  
-  void setOCP(uint8_t mA); // Over Current Protection control
-  
-  void setGain(uint8_t gain); // Set LNA gain
 
   // deprecated
   void crc() { enableCrc(); }
@@ -89,7 +89,6 @@ public:
   byte random();
 
   void setPins(int ss = LORA_DEFAULT_SS_PIN, int reset = LORA_DEFAULT_RESET_PIN, int dio0 = LORA_DEFAULT_DIO0_PIN);
-  void setSPI(SPIClass& spi);
   void setSPIFrequency(uint32_t frequency);
 
   void dumpRegisters(Stream& out);
@@ -99,12 +98,6 @@ private:
   void implicitHeaderMode();
 
   void handleDio0Rise();
-  bool isTransmitting();
-
-  int getSpreadingFactor();
-  long getSignalBandwidth();
-
-  void setLdoFlag();
 
   uint8_t readRegister(uint8_t address);
   void writeRegister(uint8_t address, uint8_t value);
@@ -114,15 +107,13 @@ private:
 
 private:
   SPISettings _spiSettings;
-  SPIClass* _spi;
   int _ss;
   int _reset;
   int _dio0;
-  long _frequency;
+  int _frequency;
   int _packetIndex;
   int _implicitHeaderMode;
   void (*_onReceive)(int);
-  void (*_onTxDone)();
 };
 
 extern LoRaClass LoRa;

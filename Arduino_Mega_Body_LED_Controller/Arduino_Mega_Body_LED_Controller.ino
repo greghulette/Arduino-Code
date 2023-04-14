@@ -113,7 +113,8 @@
 //#include <MemoryFree.h>                        // Source: https://github.com/maniacbug/MemoryFree
 #include <avr/pgmspace.h>
 #include "ArduinoJson.h"
-
+//Used for Status LEDs
+#include <Adafruit_NeoPixel.h>
 
 /////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                 *****///
@@ -414,6 +415,9 @@ Adafruit_DotStar stripCS2 = Adafruit_DotStar(CS_PIXELS, CS2_DATA_PIN, CS2_CLOCK_
 Adafruit_DotStar stripVU1  = Adafruit_DotStar(VU_PIXELS, VU1_DATA_PIN, VU1_CLOCK_PIN, DOTSTAR_RBG);
 Adafruit_DotStar stripVU2 = Adafruit_DotStar(VU_PIXELS, VU2_DATA_PIN, VU2_CLOCK_PIN, DOTSTAR_RBG);
 
+Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, 6, NEO_GRB + NEO_KHZ800);
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****              Declare Led Control Object              *****///
 //////////////////////////////////////////////////////////////////////
@@ -661,6 +665,14 @@ void setup()
    inputString.reserve(20);                                                              // Reserve 100 bytes for the inputString:
    autoInputString.reserve(20);
 
+   //***   Status LED SET UP   ***///
+
+  StatusLED.begin();
+  StatusLED.show();
+  colorWipeStatus(red,255);
+  Serial.println("LED Setup Complete");
+
+
    //***        LDP SET UP       ***///
    stripLDP.begin();
    stripLDP.setBrightness(LDP_bright);
@@ -747,6 +759,8 @@ void loop() {
     MLMillis = millis();
   if(startUp) {
       startUp = false;
+        colorWipeStatus(blue,25);
+
   }
     getBatLevel();
 if(Serial2.available()){serialEvent2();}
@@ -1203,7 +1217,20 @@ if(Serial2.available()){serialEvent2();}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+void colorWipeStatus(uint32_t c, int brightness) {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setBrightness(brightness);
+    StatusLED.setPixelColor(i, c);
+    StatusLED.show();
+  }
+};
 
+void clearCLStatus() {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setPixelColor(i, off);
+    StatusLED.show();
+  }
+};
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////

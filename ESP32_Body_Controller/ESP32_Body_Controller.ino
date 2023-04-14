@@ -22,7 +22,8 @@
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
 
-
+//Used for Status LEDs
+#include <Adafruit_NeoPixel.h>
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                       *****///
@@ -130,10 +131,10 @@
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXBS 15
-  #define TXBS 16 
-  #define RXBL 25
-  #define TXBL 26
+  #define RXBS 25
+  #define TXBS 26 
+  #define RXBL 26
+  #define TXBL 25
   #define RXST 12
   #define TXST 14
   #define RXMP 17
@@ -329,6 +330,46 @@ int channel =  8;
 
 AsyncWebServer server(80);
 
+//////////////////////////////////////////////////////////////////////
+///*****             Camera Lens Variables and settings       *****///
+//////////////////////////////////////////////////////////////////////
+  
+  unsigned long loopTime; // We keep track of the "time" in this variable.
+
+// -------------------------------------------------
+// Define some constants to help reference objects,
+// pins, leds, colors etc by name instead of numbers
+// -------------------------------------------------
+//    CAMERA LENS LED VARIABLES
+    const uint32_t red     = 0xFF0000;
+    const uint32_t orange  = 0xFF8000;
+    const uint32_t yellow  = 0xFFFF00;
+    const uint32_t green   = 0x00FF00;
+    const uint32_t cyan    = 0x00FFFF;
+    const uint32_t blue    = 0x0000FF;
+    const uint32_t magenta = 0xFF00FF;
+    const uint32_t white   = 0xFFFFFF;
+    const uint32_t off     = 0x000000;
+
+    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+
+  #define NUM_CAMERA_PIXELS 7
+  #define CAMERA_LENS_DATA_PIN 27
+  //#define CAMERA_LENS_CLOCK_PIN 13
+  int dim = 75;
+  unsigned long CLMillis;
+  byte CLSpeed = 50;
+  unsigned long startMillis;
+  unsigned long currentMillis;
+  byte CL_command[6] = {0,0,0,0,0,0};
+  
+  int colorState1;
+  int speedState;
+  
+  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, 5, NEO_GRB + NEO_KHZ800);
+
+  boolean countUp=false;
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -337,6 +378,21 @@ AsyncWebServer server(80);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+void colorWipeStatus(uint32_t c, int brightness) {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setBrightness(brightness);
+    StatusLED.setPixelColor(i, c);
+    StatusLED.show();
+  }
+};
+
+void clearCLStatus() {
+  for(uint16_t i=0; i<2; i++) {
+    StatusLED.setPixelColor(i, off);
+    StatusLED.show();
+  }
+};
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
@@ -720,6 +776,12 @@ void setup(){
   //Initialize the ReelTwo Library
 //  SetupEvent::ready();
 
+  StatusLED.begin();
+  StatusLED.show();
+  colorWipeStatus(red,255);
+  Serial.println("LED Setup Complete");
+
+
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
@@ -894,6 +956,8 @@ void loop(){
     MLMillis = millis();
     AnimatedEvent::process();
     if(startUp) {
+      colorWipeStatus(blue,25);
+
       startUp = false;
       Serial.println("Startup");
       // Play Startup Sound

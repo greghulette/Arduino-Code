@@ -76,17 +76,24 @@
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
 
-#define TOP_UTILITY_ARM       0x0001 //b0000000001
-#define BOTTOM_UTILITY_ARM    0x0002 //b0000000010
-#define LARGE_LEFT_DOOR       0x0004 //b0000000100
-#define LARGE_RIGHT_DOOR      0x0008 //b0000001000
-#define CHARGE_BAY_DOOR       0x0010 //b0000010000
-#define DATA_PANEL_DOOR       0x0020 //b0000100000
+#define TOP_UTILITY_ARM       0x0001 //b000000000001
+#define BOTTOM_UTILITY_ARM    0x0002 //b000000000010
+#define LARGE_LEFT_DOOR       0x0004 //b000000000100
+#define LARGE_RIGHT_DOOR      0x0008 //b000000001000
+#define CHARGE_BAY_DOOR       0x0010 //b000000010000
+#define DATA_PANEL_DOOR       0x0020 //b000000100000
+#define DRAWER_S1             0X0040 //b000001000000
+#define DRAWER_S2             0x0080 //b000010000000
+#define DRAWER_S3             0x0100 //b000100000000
+#define DRAWER_S4             0x0200 //b001000000000
+#define REAR_LEFT_DOOR        0x0400 //b010000000000
+#define REAR_RIGHT_DOOR       0x0800 //b100000000000
 
 #define UTILITY_ARMS_MASK     (TOP_UTILITY_ARM|BOTTOM_UTILITY_ARM)
 #define LARGE_DOORS_MASK      (LARGE_LEFT_DOOR|LARGE_RIGHT_DOOR)
 #define SMALL_DOORS_MASK      (CHARGE_BAY_DOOR|DATA_PANEL_DOOR)
-#define ALL_DOORS_MASK        (LARGE_DOORS_MASK|SMALL_DOORS_MASK)
+#define DRAWERS_MASK          (DRAWER_S1|DRAWER_S2|DRAWER_S3|DRAWER_S4)
+#define ALL_DOORS_MASK        (LARGE_DOORS_MASK|SMALL_DOORS_MASK|DRAWERS_MASK)
 #define ALL_SERVOS_MASK       (ALL_DOORS_MASK|UTILITY_ARMS_MASK)
 
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
@@ -96,11 +103,17 @@
 const ServoSettings servoSettings[] PROGMEM = {
     { 1,  1688, 700, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
     { 2,  2300, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
-    { 3,  1600, 2240, LARGE_LEFT_DOOR },       /* 2: Large Left Door as viewing from looking at R2 */
+    { 3,  1600, 2240, LARGE_LEFT_DOOR },      /* 2: Large Left Door as viewing from looking at R2 */
     { 4,  1650, 937, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
     { 5,  1526, 726, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
-    { 6,  2030, 1549, DATA_PANEL_DOOR }        /* 5: Data Panel Door */
-    };
+    { 6,  2030, 1549, DATA_PANEL_DOOR },      /* 5: Data Panel Door */
+    { 7,  2050, 700, DRAWER_S1 },             /* 5: Data Panel Door */
+    { 8,  2345, 700, DRAWER_S2 },             /* 5: Data Panel Door */
+    { 9,  550, 2300, DRAWER_S3 },             /* 5: Data Panel Door */
+    { 10,  2070, 650, DRAWER_S4 },            /* 5: Data Panel Door */
+    { 11,  2030, 1549, REAR_LEFT_DOOR },      /* 5: Data Panel Door */
+    { 12,  2030, 1549, REAR_RIGHT_DOOR }      /* 5: Data Panel Door */
+  };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
@@ -318,12 +331,16 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
     switch (doorpos){
-      case 1: DBG_SERVO("Open Top Utility Arm\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, TOP_UTILITY_ARM, varSpeedMin, varSpeedMax);     break;
-      case 2: DBG_SERVO("Open Bottom Utility Arm\n");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, BOTTOM_UTILITY_ARM, varSpeedMin, varSpeedMax);  break;
-      case 3: DBG_SERVO("Open Large Left Door\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, LARGE_LEFT_DOOR, varSpeedMin, varSpeedMax);     break;
-      case 4: DBG_SERVO("Open Large Right Door\n");           SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, LARGE_RIGHT_DOOR, varSpeedMin, varSpeedMax);    break;
-      case 5: DBG_SERVO("Open Charge Bay Indicator Door\n");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, CHARGE_BAY_DOOR, varSpeedMin, varSpeedMax);     break;
-      case 6: DBG_SERVO("Open Data Panel Door\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DATA_PANEL_DOOR, varSpeedMin, varSpeedMax);     break;
+      case 1: DBG_SERVO("Open Top Utility Arm\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, TOP_UTILITY_ARM, varSpeedMin, varSpeedMax);      break;
+      case 2: DBG_SERVO("Open Bottom Utility Arm\n");         SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, BOTTOM_UTILITY_ARM, varSpeedMin, varSpeedMax);   break;
+      case 3: DBG_SERVO("Open Large Left Door\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, LARGE_LEFT_DOOR, varSpeedMin, varSpeedMax);      break;
+      case 4: DBG_SERVO("Open Large Right Door\n");           SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, LARGE_RIGHT_DOOR, varSpeedMin, varSpeedMax);     break;
+      case 5: DBG_SERVO("Open Charge Bay Indicator Door\n");  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, CHARGE_BAY_DOOR, varSpeedMin, varSpeedMax);      break;
+      case 6: DBG_SERVO("Open Data Panel Door\n");            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DATA_PANEL_DOOR, varSpeedMin, varSpeedMax);      break;
+      case 7: DBG_SERVO("Open Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DRAWER_S1, varSpeedMin, varSpeedMax);            break;
+      case 8: DBG_SERVO("Open Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DRAWER_S2, varSpeedMin, varSpeedMax);            break;
+      case 9: DBG_SERVO("Open Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DRAWER_S3, varSpeedMin, varSpeedMax);            break;
+      case 10: DBG_SERVO("Open Drawer S-1\n");                SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, DRAWER_S4, varSpeedMin, varSpeedMax);            break;
     }
   };
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -370,12 +387,16 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     setServoEasingMethod(servoEasingMethod);
     switch(doorpos){    
-      case 1: DBG_SERVO("Close Top Utility Arm\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, TOP_UTILITY_ARM, varSpeedMin, varSpeedMax);  break;
-      case 2: DBG_SERVO("Close Bottom Utility Arm\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, BOTTOM_UTILITY_ARM, varSpeedMin, varSpeedMax);  break;
-      case 3: DBG_SERVO("Close Large Left Door\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, LARGE_LEFT_DOOR, varSpeedMin, varSpeedMax);break;
-      case 4: DBG_SERVO("Close Large Right Door\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, LARGE_RIGHT_DOOR, varSpeedMin, varSpeedMax);  break;
-      case 5: DBG_SERVO("Close Charge Bay Indicator Door\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CHARGE_BAY_DOOR, varSpeedMin, varSpeedMax);break;
-      case 6: DBG_SERVO("Close Data Panel Door\n");SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DATA_PANEL_DOOR, varSpeedMin, varSpeedMax);  break;
+      case 1: DBG_SERVO("Close Top Utility Arm\n");           SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, TOP_UTILITY_ARM, varSpeedMin, varSpeedMax);       break;
+      case 2: DBG_SERVO("Close Bottom Utility Arm\n");        SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, BOTTOM_UTILITY_ARM, varSpeedMin, varSpeedMax);    break;
+      case 3: DBG_SERVO("Close Large Left Door\n");           SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, LARGE_LEFT_DOOR, varSpeedMin, varSpeedMax);       break;
+      case 4: DBG_SERVO("Close Large Right Door\n");          SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, LARGE_RIGHT_DOOR, varSpeedMin, varSpeedMax);      break;
+      case 5: DBG_SERVO("Close Charge Bay Indicator Door\n"); SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CHARGE_BAY_DOOR, varSpeedMin, varSpeedMax);       break;
+      case 6: DBG_SERVO("Close Data Panel Door\n");           SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DATA_PANEL_DOOR, varSpeedMin, varSpeedMax);       break;
+      case 7: DBG_SERVO("Close Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DRAWER_S1, varSpeedMin, varSpeedMax);            break;
+      case 8: DBG_SERVO("Close Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DRAWER_S2, varSpeedMin, varSpeedMax);            break;
+      case 9: DBG_SERVO("Close Drawer S-1\n");                 SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DRAWER_S3, varSpeedMin, varSpeedMax);            break;
+      case 10: DBG_SERVO("Close Drawer S-1\n");                SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, DRAWER_S4, varSpeedMin, varSpeedMax);            break;
     }
   };
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
@@ -460,6 +481,25 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx05
   // add sequence for this routine.  
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+
+  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+  
+  D_command[0] = '\0';
+
+}
+
+void servoTest(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  // Command: Dx05
+  // add sequence for this routine.  
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+
+  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelTest, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+  
+  D_command[0] = '\0';
+
 }
 
 
@@ -1447,6 +1487,7 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
           case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
           case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 95: servoTest(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 98: closeAllDoors(2,0,0,0,0);                                                              break;
           case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;

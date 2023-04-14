@@ -11,7 +11,8 @@
 #include "ArduinoJson.h"
 
 #include <SPI.h>
-#include <LoRa.h>
+#include "LoRa.h"
+#include "pin-map.h"
 #include "ds3231.h"
 // #include <SD.h>
 
@@ -109,7 +110,7 @@ float voltValue;
   byte localAddress = 0xBC;     // address of this device
   byte destination = 0xFF;      // destination to send to
   long lastSendTime = 0;        // last send time
-  int interval = 2000;          // interval between sends
+  int interval = 500;          // interval between sends
   const int csPin = 18;          // LoRa radio chip select
   const int resetPin = 14;       // LoRa radio reset
   const int irqPin = 26;         // change for your board; must be a hardware interrupt pin
@@ -461,7 +462,7 @@ BL_BatteryPercentage = LoRa.read();
   // displayOLEDString(" ");
   // LoRaRSSI = "";
 }
-int updateStatusDuration = 5000;
+int updateStatusDuration = 2500;
 unsigned long updateStatusPreviousMillis;
 int statusCounter =1;
 const float MAX_BATTERY_VOLTAGE = 4.3;
@@ -588,9 +589,12 @@ void setup(){
 
   delay(1000);
 
-  LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
+  // LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
 
-  if (!LoRa.begin(915E6)) {             // initialize ratio at 915 MHz
+  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+    LoRa.setPins(SS_PIN, LORA_RST_PIN, DIO0_PIN);
+
+  if (!LoRa.begin(915E6, true)) {             // initialize ratio at 915 MHz
     Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }

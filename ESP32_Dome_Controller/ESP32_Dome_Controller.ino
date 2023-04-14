@@ -11,7 +11,7 @@
 #include "esp_wifi.h"
 #include <esp_now.h>
 
-//Used for Camera LEDs
+//Used for Camera  and status LEDs
 #include <Adafruit_NeoPixel.h>
 
 //Used for PC9685 - Servo Expansion Board
@@ -150,7 +150,7 @@ ServoSequencer servoSequencer(servoDispatch);
   byte mainLoopDelayVar = 5;
 
 //////////////////////////////////////////////////////////////////////
-///*****             Camera Lens Variables and settings       *****///
+///*****            Status and Camera Lens Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
   
   unsigned long loopTime; // We keep track of the "time" in this variable.

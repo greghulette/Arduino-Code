@@ -64,6 +64,23 @@ static const ServoSequence SeqPanelAllFlutter PROGMEM =
     { 10,   B00000000, B00000000, B00000000, B00000000 },
 };
 
+static const ServoSequence SeqPanelAllShortCircuit PROGMEM =
+{
+    // Twenty permille (per thousand) offset from start/end positions
+    SEQUENCE_RANGE_LIMIT(200, 200)
+    { 10,   B11111111, B11111111, B11111111, B11111111 },
+    { 10,   B00000000, B00000000, B00000000, B00000000 },
+    { 10,   B11111111, B11111111, B11111111, B11111111 },
+    { 10,   B00000000, B00000000, B00000000, B00000000 },
+    { 10,   B11111111, B11111111, B11111111, B11111111 },
+    { 10,   B00000000, B00000000, B00000000, B00000000 },
+    { 10,   B11111111, B11111111, B11111111, B11111111 },
+    { 10,   B00000000, B00000000, B00000000, B00000000 },
+    { 10,   B11111111, B11111111, B11111111, B11111111 },
+    SEQUENCE_RANGE_LIMIT(0, 0)
+    { 10,   B00000000, B00000000, B00000000, B00000000 },
+};
+
 static const ServoSequence SeqPanelAllFOpenCloseRepeat PROGMEM =
 {
     // Twenty permille (per thousand) offset from start/end positions
