@@ -1,4 +1,16 @@
-#define DEBUG
+//////////////////////////////////////\\///////////////////////////////////////////////////////////////////////////////
+///*****                                                                                                        *****///
+///*****                                          Created by Greg Hulette.                                      *****///
+///*****                                                                                                        *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and      *****///
+///*****  serial input method.                                                                                  *****///
+///*****                                                                                                        *****///                                                                                                                                                           *****///
+///*****                                 So exactly what does this all do.....?                                 *****///
+///*****                       - Receives commands via Serial or ESP-NOW                                        *****///
+///*****                       - Sends Serial commands to the Uppity Spinner and other gadgets                  *****///                                                     *****///
+///*****                                                                                                        *****///                                                                                                                                                           *****///
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Used for OTA
 #include "ESPAsyncWebServer.h"
@@ -17,18 +29,14 @@
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
 
-//////////////////////////////////////\\///////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                        *****///
-///*****                         Created by Greg Hulette.  I started with the code from flthymcnsty             *****///
-///*****   I started with the code from flthymcnsty from from which I used the basic command structure and      *****///
-///*****  serial input method.                                                                                  *****///
-///*****                                                                                                        *****///                                                                                                                                                           *****///
-///*****                                 So exactly what does this all do.....?                                                            *****///
-///*****                       - Sends Serial commands to the Uppity Spinner                                                                                       *****///
-///*****                                                                                                        *****///                                                                                                                                                           *****///
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//pin definitions
+#include "dome_plate_controller_pin_map.h"
 
+//////////////////////////////////////////////////////////////////////
+///*****          Preferences/Items to change                 *****///
+//////////////////////////////////////////////////////////////////////
+ // ESPNOW Password - This must be the same across all devices
+  String ESPNOWPASSWORD = "GregsAstromech";
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
@@ -52,8 +60,15 @@
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
 
-  int debugflag = 1;
-  int debugflag1 = 0;  // Used for optional level of debuging
+// Flags to enable/disable debugging in runtime
+  boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
+  boolean debugflag1 = 0;  // Used for optional level of debuging
+  boolean debugflag_espnow = 0;
+  boolean debugflag_servo = 0;
+  boolean debugflag_serial_event = 0;
+  boolean debugflag_loop = 0;
+  boolean debugflag_http = 0;
+  boolean debugflag_lora = 0;
 
 
   //////////////////////////////////////////////////////////////////////
@@ -87,12 +102,12 @@
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  MAC Addresses used in the Droid
+//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
 //  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 //  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 //  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 //  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  Dome Plate Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
 
 
@@ -101,22 +116,21 @@
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
   uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x15};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x15};    //used when connecting to WiFi for OTA
 
 //  // Define variables to store commands to be sent
   String senderID;
-  String destinationID;
   String targetID;
   String command;
   String commandSubString;
-  
+  String espnowpassword;
 //
 
 //  // Define variables to store incoming commands
-  String incomingDestinationID;
   String incomingTargetID;  
   String incomingSenderID;
   String incomingCommand;
+  String incomingPassword;
 //    
 //  // Variable to store if sending data was successful
   String success;
@@ -124,9 +138,9 @@
 //  //Structure example to send data
 //  //Must match the receiver structure
   typedef struct struct_message {
-      char structSenderID[15];
-      char structDestinationID[15];
-      char structTargetID[5];
+      char structPassword[20];
+      char structSenderID[2];
+      char structTargetID[2];
       char structCommand[100];
   } struct_message;
 //
@@ -157,44 +171,62 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 // Callback when data is received
+// void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+//   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+//   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+//   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+//   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+//   DBG("Bytes received from ESP-NOW Message: %i\n", len);
+//   DBG("Sender ID = %s\n",incomingSenderID);
+//   DBG("Target ID= %s\n", incomingTargetID);
+//   DBG("Command = %s\n" , incomingCommand.c_str());  
+//   sendESPNOWCommand("BS","PC-ONLINE");
+//   if (incomingDestinationID == "Periscope"){
+//     DBG("ESP-NOW Command Accepted\n");
+//     DBG("Target ID= %s\n",incomingTargetID);
+//     if (incomingTargetID == "PL"){
+//         DBG("Sending out plSerial\n");
+//         writePlSerial(incomingCommand);
+//     } else if (incomingTargetID == "FU"){
+//         DBG("Sending out fuSerial\n");
+//         writeFuSerial(incomingCommand);
+//     } else if (incomingTargetID == "PC"){
+//         DBG("Execute Local Command = \n", incomingCommand);
+//         if (incomingCommand == "Status"){
+//           DBG("Status is good\n");                                                                                                                                       
+//           sendESPNOWCommand("BS","PC-ONLINE");
+//         }else if(incomingCommand != "Status"){
+//         inputString = incomingCommand;
+//         stringComplete = true; 
+//         }
+//       }
+//      else {
+//         DBG("Wrong Target ID Sent\n");
+//       }
+//   }
+//   else {DBG("ESP-NOW Message Ignored\n");}
+// }
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
+  incomingPassword = commandsToReceiveFromBroadcast.structPassword;
+  if (incomingPassword != ESPNOWPASSWORD){
+  DBG_ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+  } else {
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %i\n", len);
-  DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Destination ID= %s\n" ,incomingDestinationID);
-  DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand.c_str());  
-  sendESPNOWCommand("BS","PC-ONLINE");
-  if (incomingDestinationID == "Periscope"){
-    DBG("ESP-NOW Command Accepted\n");
-    DBG("Target ID= %s\n",incomingTargetID);
-    if (incomingTargetID == "PL"){
-        DBG("Sending out plSerial\n");
-        writePlSerial(incomingCommand);
-    } else if (incomingTargetID == "FU"){
-        DBG("Sending out fuSerial\n");
-        writeFuSerial(incomingCommand);
-    } else if (incomingTargetID == "PC"){
-        DBG("Execute Local Command = \n", incomingCommand);
-        if (incomingCommand == "Status"){
-          DBG("Status is good\n");                                                                                                                                       
-          sendESPNOWCommand("BS","PC-ONLINE");
-        }else if(incomingCommand != "Status"){
-        inputString = incomingCommand;
-        stringComplete = true; 
-        }
-      }
-     else {
-        DBG("Wrong Target ID Sent\n");
-      }
+    if (incomingTargetID == "DP"){
+      incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+      incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+      DBG_ESPNOW("Bytes received from ESP-NOW Message: %i\n", len);
+      DBG_ESPNOW("Target ID= %s\n", incomingTargetID);
+      DBG_ESPNOW("Sender ID = %s\n",incomingSenderID);
+      DBG_ESPNOW("Command = %s\n" , incomingCommand); 
+      inputString = incomingCommand;
+      stringComplete = true; 
+    } else {
+        DBG_ESPNOW("ESP-NOW Message Ignored\n");
+    }
   }
-  else {DBG("ESP-NOW Message Ignored\n");}
-}
-
+} 
 //////////////////////////////////////////////////////////////////////
 ///***   WiFi Specific Setup  (Only used when OTA is enabled)   ***///
 //////////////////////////////////////////////////////////////////////
@@ -307,34 +339,27 @@ void writeFuSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 // 
-void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+void setupSendStruct(struct_message* msg, String pass, String sender, String targetID, String cmd)
 {
+    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
-    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 
 void sendESPNOWCommand(String starget, String scomm){
-  String sdest;
-  String senderID = "Periscope";     // change to match location (Dome, Body, Periscope)
-  if (starget == "DS" || starget == "RS" || starget == "HP"){
-    sdest = "Dome";
-  } else if (starget == "PC" || starget == "PL"){
-    sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
-    sdest = "Body";
-  }
-  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
+  String senderID = "DP";     // change to match location (BC, BS, DP, DC, LD)
+  setupSendStruct(&commandsToSendtoBroadcast ,ESPNOWPASSWORD, senderID, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    DBG_ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
-    DBG("Error sending the data\n");
+    DBG_ESPNOW("Error sending the data\n");
   }
   ESPNOW_command[0] = '\0';
 }
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -349,7 +374,6 @@ void sendESPNOWCommand(String starget, String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-
 void DBG(const char *format, ...) {
         if (!debugflag)
                 return;
@@ -359,7 +383,6 @@ void DBG(const char *format, ...) {
         va_end(ap);
 }
 
-
 void DBG_1(const char *format, ...) {
         if (!debugflag1)
                 return;
@@ -368,7 +391,68 @@ void DBG_1(const char *format, ...) {
         vfprintf(stderr, format, ap);
         va_end(ap);
 }
+void DBG_2(const char *format, ...) {
+        if (!debugflag1)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
 
+void DBG_ESPNOW(const char *format, ...) {
+        if (!debugflag_espnow)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_SERVO(const char *format, ...) {
+        if (!debugflag_servo)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_SERIAL_EVENT(const char *format, ...) {
+        if (!debugflag_serial_event)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_LOOP(const char *format, ...) {
+        if (!debugflag_loop)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_HTTP(const char *format, ...) {
+        if (!debugflag_loop)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_LORA(const char *format, ...) {
+        if (!debugflag_loop)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
 
 void toggleDebug(){
   debugflag = !debugflag;
@@ -381,7 +465,6 @@ void toggleDebug(){
     ESP_command[0]   = '\0';
 }
 
-
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
@@ -390,10 +473,73 @@ void toggleDebug1(){
   else{
     Serial.println("Parameter Debugging Disabled");
   }
+    ESP_command[0]    = '\0';
+}
+
+void toggleDebug_ESPNOW(){
+  debugflag_espnow = !debugflag_espnow;
+  if (debugflag_espnow == 1){
+    Serial.println("ESP-NOW Debugging Enabled");
+    }
+  else{
+    Serial.println("ESP-NOW Debugging Disabled");
+  }
     ESP_command[0]   = '\0';
 }
 
+void toggleDebug_Servo(){
+  debugflag_servo = !debugflag_servo;
+  if (debugflag_servo == 1){
+    Serial.println("Servo Debugging Enabled");
+    }
+  else{
+    Serial.println("Servo Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
 
+void toggleDebug_SerialEvent(){
+  debugflag_serial_event = !debugflag_serial_event;
+  if (debugflag_serial_event == 1){
+    Serial.println("Serial Events Debugging Enabled");
+    }
+  else{
+    Serial.println("Serial Events Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+
+void toggleDebug_Loop(){
+  debugflag_loop = !debugflag_loop;
+  if (debugflag_loop == 1){
+    Serial.println("Main Loop Debugging Enabled");
+    }
+  else{
+    Serial.println("Main Loop Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+void toggleDebug_HTTP(){
+  debugflag_http = !debugflag_http;
+  if (debugflag_http == 1){
+    Serial.println("HTTP Debugging Enabled");
+    }
+  else{
+    Serial.println("HTTP Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+
+void toggleDebug_LORA(){
+  debugflag_lora = !debugflag_lora;
+  if (debugflag_lora == 1){
+    Serial.println("LoRa Debugging Enabled");
+    }
+  else{
+    Serial.println("LoRa Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
 
 //////////////////////////////////////////////////////////////////////
 ///*****    Connects to WiFi and turns on OTA functionality   *****///

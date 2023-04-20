@@ -1,8 +1,8 @@
-#ifndef PIN_CONFIG_h
-#define PIN_CONFIG_h
+#ifndef dome_plate_controller_pin_config.h
+#define dome_plate_controller_pin_config.h
 
 //////////////////////////////// 
-// Body Controller Pinout
+// Dome Plate Controller Pinout
 // ------------------
 // This pinout is for a WROOM32
 ////////////////////////////////
@@ -11,7 +11,7 @@
 #define SERIAL_TX_PIN       1   // N // debug output
 #define UP_2				2   // Y // (must be left floating or LOW to enter flashing mode)
 #define SERIAL_RX_PIN       3   // N // high at boot
-#define UP_4        		4   // Y // Unused Pin
+#define STATUS_LED_PIN      4   // Y // Unused Pin
 #define UP_5				5   // Y // Unused Pin (must be HIGH during boot)
 #define RESERVED_FLASH_6    6   // N // connected to SPI flash
 #define RESERVED_FLASH_7    7   // N // connected to SPI flash

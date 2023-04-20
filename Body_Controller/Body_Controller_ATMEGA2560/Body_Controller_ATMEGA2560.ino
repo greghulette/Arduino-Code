@@ -1,11 +1,3 @@
-//#include <WireCrc.h>
-//#include <WireSlaveRequest.h>
-//#include <WireUnpacker.h>
-//#include <WirePacker.h>
-//#include <WireSlave.h>
-
-//#include <LedControl.h>
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                                                                           *****///
 ///*****                                                       FlthyRhyno Astromech Body Fx Sketch v2.0                                                            *****///
@@ -115,7 +107,8 @@
 #include "ArduinoJson.h"
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>
-
+//Used for pin definition
+#include "body_controller_atmega2560_pin_map.h"
 /////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                 *****///
 ///*****                 Digital & Analog Pin Assignments                *****///
@@ -127,36 +120,36 @@
     ///*****            Digital Pin Assignment Values             *****///
     ///////////////////////////////////// /////////////////////////////////
 
-  //DotStar Digital Pin Assignment
-  #define MAINT_DATA_PIN   30     //New to the sketch
-  #define MAINT_CLOCK_PIN  32     //New to the sketch
-  #define LDP_DATA_PIN     34     //34
-  #define LDP_CLOCK_PIN    36     //36
-  #define CS1_DATA_PIN     38     //38
-  #define CS1_CLOCK_PIN    40     //40
-  #define CS2_DATA_PIN     42     //42
-  #define CS2_CLOCK_PIN    44     //44
-  #define VU1_DATA_PIN     46     //46
-  #define VU1_CLOCK_PIN    48     //48
-  #define VU2_DATA_PIN     50     //52
-  #define VU2_CLOCK_PIN    52     //50
+  // //DotStar Digital Pin Assignment
+  // #define MAINT_DATA_PIN   30     //New to the sketch
+  // #define MAINT_CLOCK_PIN  32     //New to the sketch
+  // #define LDP_DATA_PIN     34     //34
+  // #define LDP_CLOCK_PIN    36     //36
+  // #define CS1_DATA_PIN     38     //38
+  // #define CS1_CLOCK_PIN    40     //40
+  // #define CS2_DATA_PIN     42     //42
+  // #define CS2_CLOCK_PIN    44     //44
+  // #define VU1_DATA_PIN     46     //46
+  // #define VU1_CLOCK_PIN    48     //48
+  // #define VU2_DATA_PIN     50     //52
+  // #define VU2_CLOCK_PIN    52     //50
 
-  //Battery Monitor LEDs
-  #define GREEN_LED        53
-  #define YELLOW_LED       51
-  #define RED_LED          49
+  // //Battery Monitor LEDs
+  // #define GREEN_LED        53
+  // #define YELLOW_LED       51
+  // #define RED_LED          49
 
-  //VU Strobe and Reset (MSGEQ7 Graphic Equalizer IC)
-  #define VU_STROBE         12    //12
-  #define VU_RESET          13    //13
+  // //VU Strobe and Reset (MSGEQ7 Graphic Equalizer IC)
+  // #define VU_STROBE         12    //12
+  // #define VU_RESET          13    //13
 
-  //MAX7219/MAX7221 Pin Assignments
-  #define DATAIN_PIN 3
-  #define CLOCK_PIN  4
-  #define LOAD_PIN   5
+  // //MAX7219/MAX7221 Pin Assignments
+  // #define DATAIN_PIN 3
+  // #define CLOCK_PIN  4
+  // #define LOAD_PIN   5
 
   //Trigger Digital Pin Assignment
-  uint8_t triggerpins[10]  = {29,31,33,35,37,39,41,43,45,47};
+  uint8_t triggerpins[10]  = {D29,D31,D33,D35,D37,D39,D41,D43,D45,D47};
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Analog Pin Assignment Values             *****///
@@ -5903,7 +5896,7 @@ void toggleDebug2(){
 void sendUpdates(){
 //  Serial.println("Executing JSON");
   DynamicJsonDocument doc(1024);
-  doc["BL_Status"] = "Online";
+  doc["bodyLEDControllerStatus"] = 1;
   doc["LDPBright"] = LDP_bright;
   doc["MaintBright"] = MAINT_bright;
   doc["VUBright"] = VU_bright;

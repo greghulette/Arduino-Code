@@ -1,11 +1,32 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///*****                                                                                                       *****///
+///*****                            Created by Greg Hulette.                                                   *****///
+///*****                                                                                                       *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
+///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
+///*****                                                                                                       *****///
+///*****                      So exactly what does this all do.....?                                           *****///
+///*****                       - Receives commands via ESP-NOW                                        *****///
+///*****                       - Controls the Dome servos                                                      *****///
+///*****                       - Controls the Camera Light                                                     *****///
+///*****                       - Sends Serial commands to the HPs and RSeries Logic Displays                   *****///
+///*****                                                                                                       *****///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////
+///*****        Libraries used in this sketch                 *****///
+//////////////////////////////////////////////////////////////////////
+
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
-//#include <elegantWebpage.h>
-#include <AsyncTCP.h>
-#include <WiFi.h>
+#include <elegantWebpage.h>
+// #include <AsyncTCP.h>
+// #include <WiFi.h>
 
-#include "dome_controller_pin_config.h"
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
@@ -17,52 +38,101 @@
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
+// Used to expand Serial Capacity
 #include <SoftwareSerial.h>
 
-
 //ReelTwo libaries
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
-#include "ReelTwo.h"
+#include <ReelTwo.h>
 #include "core/DelayCall.h"
 #include "ServoDispatchPCA9685.h"
 #include "ServoSequencer.h"
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.                                                   *****///
-///*****                                                                                                       *****///
-///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
-///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
-///*****                                                                                                       *****///
-///*****                      So exactly what does this all do.....?                                           *****///
-///*****                       - Controls the Dome servos                                                      *****///
-///*****                       - Controls the Camera Light                                                     *****///
-///*****                       - Sends Serial commands to the HPs and RSeries Logic Displays                   *****///
-///*****                                                                                                       *****///
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Used for pin definition
+#include "dome_controller_pin_map.h"
 
 
-  // Preferences/Items to change
-  
-  
+  //////////////////////////////////////////////////////////////////////
+///*****       Preferences/Items to change        *****///
+//////////////////////////////////////////////////////////////////////
+ //ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";
 
-  #define PS_BAUD_RATE 9600 //need to add to setup
+  // Serial Baud Rates
+  #define PS_BAUD_RATE 9600 //Should be lower than 57600
   #define HP_BAUD_RATE 9600
   #define RS_BAUD_RATE 9600
-  #define FU_BAUD_RATE 9600
+  #define FU_BAUD_RATE 9600  //Should be lower than 57600
 
-  
-
-
-  ////R2 Control Network Details
+  ////R2 Control Network Details for OTA only
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
 
   int keepAliveDuration= 5000;  // 5 seconds
+
+//////////////////////////////////////////////////////////////////////
+///*****        Command Varaiables, Containers & Flags        *****///
+//////////////////////////////////////////////////////////////////////
+  String HOSTNAME = "Dome Controller";
+  
+  char inputBuffer[100];
+  String inputString;         // a string to hold incoming data
+  volatile boolean stringComplete  = false;      // whether the serial string is complete
+  String autoInputString;         // a string to hold incoming data
+  volatile boolean autoComplete    = false;    // whether an Auto command is setA
+  int commandLength;
+
+  String serialPort;
+  String serialStringCommand;
+  String serialSubStringCommand;
+
+
+  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
+  int espCommandFunction     = 0;
+  
+
+
+  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
+  int espNowCommandFunction = 0;
+  String espNowCommandFunctionString;
+  String tempESPNOWTargetID;
+  int defaultESPNOWSendDuration = 50;
+  String espNowInputStringCommand;
+
+  int ledFunction;
+// Flags to enable/disable debugging in runtime
+  boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
+  boolean debugflag1 = 0;  // Used for optional level of debuging
+  boolean debugflag_espnow = 0;
+  boolean debugflag_servo = 0;
+  boolean debugflag_serial_event = 0;
+  boolean debugflag_loop = 0;
+  boolean debugflag_http = 0;
+  boolean debugflag_lora = 0;
+
+
+
+//////////////////////////////////////////////////////////////////////
+///*****   Door Values, Containers, Flags & Timers   *****///
+//////////////////////////////////////////////////////////////////////
+  int door = -1;
+  // Door Command Container
+  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
+  int doorFunction = 0;
+  int doorBoard = 0; 
+  int doorEasingMethod;
+  uint32_t cVarSpeedMin;
+  uint32_t cVarSpeedMax;
+  uint32_t doorEasingDuration;
+  uint32_t delayCallTime;
+
+  // variables for individual functions
+  uint32_t varSpeedMin;
+  uint32_t varSpeedMax;
+  char stringToSend[20];
+  uint32_t fVarSpeedMin;
+  uint32_t fVarSpeedMax;
+
 /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
@@ -104,60 +174,6 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
-
-//////////////////////////////////////////////////////////////////////
-///*****        Command Varaiables, Containers & Flags        *****///
-//////////////////////////////////////////////////////////////////////
-
-  char inputBuffer[100];
-  String inputString;         // a string to hold incoming data
-  String inputStringCommand;
-  volatile boolean stringComplete  = false;      // whether the serial string is complete
-  String autoInputString;         // a string to hold incoming data
-  volatile boolean autoComplete    = false;    // whether an Auto command is setA
-  int ledFunction;
-  int commandLength;
-  int serialCommandFunction;
-  String serialStringCommand;
-  String serialCommandFunctionString;
-
-  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
-  
-  String serialPort;
-//  String serialStringCommand;
-  String serialSubStringCommand;
-  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-  int espNowCommandFunction = 0;
-  String espNowCommandFunctionString;
-  String tempESPNOWTargetID;
-    
-  int debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
-  int debugflag1 = 0;  // Used for optional level of debuging
-
-  int defaultESPNOWSendDuration = 50;
-
-//////////////////////////////////////////////////////////////////////
-///*****   Door Values, Containers, Flags & Timers   *****///
-//////////////////////////////////////////////////////////////////////
-  int door = -1;
-  // Door Command Container
-  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
-  int doorFunction = 0;
-  int doorBoard = 0; 
-  int doorEasingMethod;
-  uint32_t cVarSpeedMin;
-  uint32_t cVarSpeedMax;
-  uint32_t doorEasingDuration;
-  uint32_t delayCallTime;
-
-  // variables for individual functions
-  uint32_t varSpeedMin;
-  uint32_t varSpeedMax;
-  char stringToSend[20];
-  uint32_t fVarSpeedMin;
-  uint32_t fVarSpeedMax;
-
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
 //////////////////////////////////////////////////////////////////////
@@ -169,128 +185,38 @@ ServoSequencer servoSequencer(servoDispatch);
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
 
-//////////////////////////////////////////////////////////////////////
-///*****            Status and Camera Lens Variables and settings       *****///
-//////////////////////////////////////////////////////////////////////
-  
-  unsigned long loopTime; // We keep track of the "time" in this variable.
+ //Timer for Status updates
+    int keepAliveMillis;
 
-// -------------------------------------------------
-// Define some constants to help reference objects,
-// pins, leds, colors etc by name instead of numbers
-// -------------------------------------------------
-//    CAMERA LENS LED VARIABLES
-    const uint32_t red     = 0xFF0000;
-    const uint32_t orange  = 0xFF8000;
-    const uint32_t yellow  = 0xFFFF00;
-    const uint32_t green   = 0x00FF00;
-    const uint32_t cyan    = 0x00FFFF;
-    const uint32_t blue    = 0x0000FF;
-    const uint32_t magenta = 0xFF00FF;
-    const uint32_t white   = 0xFFFFFF;
-    const uint32_t off     = 0x000000;
-
-    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
-
-  #define NUM_CAMERA_PIXELS 7
-  #define CAMERA_LENS_DATA_PIN 27
-  #define STATUS_LED_PIN 5
-  #define STATUS_LED_COUNT 1  
-  int dim = 75;
-  unsigned long CLMillis;
-  byte CLSpeed = 50;
-  unsigned long startMillis;
-  unsigned long currentMillis;
-  byte CL_command[6] = {0,0,0,0,0,0};
-  
-  int colorState1;
-  int speedState;
-  
-  Adafruit_NeoPixel stripCL = Adafruit_NeoPixel(NUM_CAMERA_PIXELS, CAMERA_LENS_DATA_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
-
-  boolean countUp=false;
-///////////////////////////////////////////////////////////////////////
-///*****                 Auto Sequence Settings                *****///
-///*****                                                       *****///
-///*****  When enabled, each display will automatically        *****///
-///*****  trigger random display sequences. This setting can   *****///
-///*****  be overridden by sending the following display       *****///
-///*****  Display Commands to the appropriate display device.  *****///
-///*****                                                       *****///
-///*****     98 - Auto Off Trigger Command                     *****///
-///*****     99 - Auto On Trigger  Command                     *****///
-///*****                                                       *****///
-///*****     1 = enabled   0 = disable                         *****///
-///*****                                                       *****///
-///////////////////////////////////////////////////////////////////////
-   byte enableCLAuto   = 1;   //1
-  
-//////////////////////////////////////////////////////////////////////
-///*****             Auto Mode Interval Settings               *****///
-///*****                                                       *****///
-///*****  Each display enabled by auto mode neeed 4 values.    *****///
-///*****  The first two values of each category below are      *****///
-///*****  the min and max range that determine the run time    *****///
-///*****  of each display sequence.  Run times will be chosen  *****///
-///*****  from with in this range.                             *****///
-///*****                                                       *****///
-///*****  Likewise, the second two values of each category     *****///
-///*****  determine the range from which the interval between  *****///
-///*****  display sequences will be randomly chosen.           *****///
-///*****                                                       *****///
-///////////////////////////////////////////////////////////////////////
-
-  unsigned const int CLAutoIntMin    = 300000;
-  unsigned const int CLAutoIntMax    = 300000;
-  unsigned const int CLAutoPauseMin  = 1;
-  unsigned const int CLAutoPauseMax  = 1;
-  unsigned int CLAutoPause;
-  unsigned int CLAutoInt;
-
-///////////////////////////////////////////////////////////////////////
-///*****               Auto Sequence Assignments               *****///
-///*****                                                       *****///
-///*****   You can choose which sequences will be available    *****///
-///*****  to each auto function. Simply add the command value  *****///
-///*****  for each desired sequence to the string array below. *****///
-///*****                                                       *****///
-///////////////////////////////////////////////////////////////////////
-  String CLautoCommands[] = {
-                            "R0155",        // Pulse Blue at medium speed
-                            "R0155"        // Pulse Blue at medium speed
-                            };
-
-  int CLautoCommandsCount = sizeof(CLautoCommands) / sizeof(CLautoCommands[ 0 ]);     // Determins the # of Commands in List
-
-  unsigned long CLAutoTimer;
 
   //////////////////////////////////////////////////////////////////////
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
   
-  #define RXHP 15
-  #define TXHP 16 
-  #define RXRS 25
-  #define TXRS 26
-  #define RXFU 12
-  #define TXFU 14 
+  // #define RXHP 15
+  // #define TXHP 16 
+  // #define RXRS 25
+  // #define TXRS 26
+  // #define RXFU 12
+  // #define TXFU 14 
   
   #define hpSerial Serial1
   #define rsSerial Serial2
   SoftwareSerial fuSerial;
+  SoftwareSerial psSerial;
+
 
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  MAC Addresses used in the Droid
+//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
 //  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 //  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 //  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 //  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
 
 //    MAC Address to broadcast to all senders at once
@@ -298,7 +224,7 @@ uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
 uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};    //used when connecting to WiFi for OTA
 
 // Define variables to store commands to be sent
   String senderID;
@@ -320,19 +246,11 @@ uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};
 //Structure example to send data
 //Must match the receiver structure
 typedef struct struct_message {
-      char structPassword[25];
-      char structSenderID[15];
-      char structTargetID[5];
+      char structPassword[20];
+      char structSenderID[2];
+      char structTargetID[2];
       char structCommand[100];
   } struct_message;
-
-
-  // typedef struct struct_message {
-  //     String structSenderID;
-  //     String structDestinationID;
-  //     String structTargetID;  
-  //     String structCommand;
-  // } struct_message;
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToSendtoBroadcast;
@@ -414,6 +332,105 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   
   AsyncWebServer server(80);
   
+
+//////////////////////////////////////////////////////////////////////
+///*****            Status and Camera Lens Variables and settings       *****///
+//////////////////////////////////////////////////////////////////////
+  
+  unsigned long loopTime; // We keep track of the "time" in this variable.
+
+// -------------------------------------------------
+// Define some constants to help reference objects,
+// pins, leds, colors etc by name instead of numbers
+// -------------------------------------------------
+//    CAMERA LENS LED VARIABLES
+    const uint32_t red     = 0xFF0000;
+    const uint32_t orange  = 0xFF8000;
+    const uint32_t yellow  = 0xFFFF00;
+    const uint32_t green   = 0x00FF00;
+    const uint32_t cyan    = 0x00FFFF;
+    const uint32_t blue    = 0x0000FF;
+    const uint32_t magenta = 0xFF00FF;
+    const uint32_t white   = 0xFFFFFF;
+    const uint32_t off     = 0x000000;
+
+    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+
+  #define NUM_RADAR_EYE_PIXELS 7
+  // #define RADAR_EYE_DATA_PIN 27
+  // #define STATUS_LED_PIN 5
+  #define STATUS_LED_COUNT 1  
+  int dim = 75;
+  unsigned long RadarEyeMillis;
+  byte RadarEyespeed = 50;
+  unsigned long startMillis;
+  unsigned long currentMillis;
+  byte RE_command[6] = {0,0,0,0,0,0};
+  
+  int colorState1;
+  int speedState;
+  
+  Adafruit_NeoPixel RADAR_EYE_LEDS = Adafruit_NeoPixel(NUM_RADAR_EYE_PIXELS, RADAR_EYE_LED_PIN, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+
+  boolean countUp=false;
+///////////////////////////////////////////////////////////////////////
+///*****                 Auto Sequence Settings                *****///
+///*****                                                       *****///
+///*****  When enabled, each display will automatically        *****///
+///*****  trigger random display sequences. This setting can   *****///
+///*****  be overridden by sending the following display       *****///
+///*****  Display Commands to the appropriate display device.  *****///
+///*****                                                       *****///
+///*****     98 - Auto Off Trigger Command                     *****///
+///*****     99 - Auto On Trigger  Command                     *****///
+///*****                                                       *****///
+///*****     1 = enabled   0 = disable                         *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+   byte enableRadarEyeAuto   = 1;   //1
+  
+//////////////////////////////////////////////////////////////////////
+///*****             Auto Mode Interval Settings               *****///
+///*****                                                       *****///
+///*****  Each display enabled by auto mode neeed 4 values.    *****///
+///*****  The first two values of each category below are      *****///
+///*****  the min and max range that determine the run time    *****///
+///*****  of each display sequence.  Run times will be chosen  *****///
+///*****  from with in this range.                             *****///
+///*****                                                       *****///
+///*****  Likewise, the second two values of each category     *****///
+///*****  determine the range from which the interval between  *****///
+///*****  display sequences will be randomly chosen.           *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+
+  unsigned const int RadarEyeAutoIntMin    = 300000;
+  unsigned const int RadarEyeAutoIntMax    = 300000;
+  unsigned const int RadarEyeAutoPauseMin  = 1;
+  unsigned const int RadarEyeAutoPauseMax  = 1;
+  unsigned int RadarEyeAutoPause;
+  unsigned int RadarEyeAutoInt;
+
+///////////////////////////////////////////////////////////////////////
+///*****               Auto Sequence Assignments               *****///
+///*****                                                       *****///
+///*****   You can choose which sequences will be available    *****///
+///*****  to each auto function. Simply add the command value  *****///
+///*****  for each desired sequence to the string array below. *****///
+///*****                                                       *****///
+///////////////////////////////////////////////////////////////////////
+  String RadarEyeAutoCommands[] = {
+                            "R0155",        // Pulse Blue at medium speed
+                            "R0155"        // Pulse Blue at medium speed
+                            };
+
+  int RadarEyeAutoCommandsCount = sizeof(RadarEyeAutoCommands) / sizeof(RadarEyeAutoCommands[ 0 ]);     // Determins the # of Commands in List
+
+  unsigned long RadarEyeAutoTimer;
+
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
@@ -422,16 +439,16 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void cameraLED(uint32_t color, int CLSpeed1){
-  int CLRLow = 1;
-  int CLRHigh = 50;
+void RadarEye_LED(uint32_t color, int RadarEyespeed1){
+  int RadarEyeLow = 1;
+  int RadarEyeHigh = 50;
 
   currentMillis = millis();
-      CLSpeed = map(CLSpeed1, 1, 9, 1, 250);
-      if (currentMillis - startMillis >= CLSpeed){
+      RadarEyespeed = map(RadarEyespeed1, 1, 9, 1, 250);
+      if (currentMillis - startMillis >= RadarEyespeed){
       if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
       
-          dim=dim - random(CLRLow, CLRHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
+          dim=dim - random(RadarEyeLow, RadarEyeHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
                                               //adding a random causes a less smooth transition which makes it look a little better
           colorWipe(color, dim);              // Set the LEDs to the color and brightness using the colorWipe function
           }
@@ -444,7 +461,7 @@ void cameraLED(uint32_t color, int CLSpeed1){
            countUp = true;                    // if the dim variable is at or below "20", change the countUp flag to true      
           }
         if(countUp == true){                 // check to see if the boolean flag is true.  If true, starting brightening the LEDs
-            dim=dim + random(CLRLow, CLRHigh); // set the brightness to current plus a random number between 5 and 40.  I think that
+            dim=dim + random(RadarEyeLow, RadarEyeHigh); // set the brightness to current plus a random number between 5 and 40.  I think that
                                               //adding a random causes a less smooth transition which makes it look a little better
             colorWipe(color, dim);           // Set the LEDs to the color and brightness using the colorWheel function
         }
@@ -461,47 +478,48 @@ void cameraLED(uint32_t color, int CLSpeed1){
 
   //  Color Changing Function for the Camera Lens LEDs
 void colorWipe(uint32_t c, int brightness) {
-  for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
-    stripCL.setBrightness(brightness);
-    stripCL.setPixelColor(i, c);
-    stripCL.show();
+  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
+    RADAR_EYE_LEDS.setBrightness(brightness);
+    RADAR_EYE_LEDS.setPixelColor(i, c);
+    RADAR_EYE_LEDS.show();
   }
 };
-
-void colorWipeStatus(uint32_t c, int brightness) {
-  for(uint16_t i=0; i<2; i++) {
-    StatusLED.setBrightness(brightness);
-    StatusLED.setPixelColor(i, c);
-    StatusLED.show();
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } else{
+  // DBG("No LED was chosen \n");
   }
-};
+  };
 void clearCL() {
-  for(uint16_t i=0; i<NUM_CAMERA_PIXELS; i++) {
-    stripCL.setPixelColor(i, off);
-    stripCL.show();
+  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
+    RADAR_EYE_LEDS.setPixelColor(i, off);
+    RADAR_EYE_LEDS.show();
   }
 };
 
-void clearCLStatus() {
-  for(uint16_t i=0; i<2; i++) {
-    StatusLED.setPixelColor(i, off);
-    StatusLED.show();
-  }
-};
+// void clearCLStatus() {
+//   for(uint16_t i=0; i<2; i++) {
+//     StatusLED.setPixelColor(i, off);
+//     StatusLED.show();
+//   }
+// };
 
 void CLAuto () {
-  if(millis() - CLAutoTimer >= CLAutoInt*1000) {       // and the timer has reached the set interval
-    if(millis() - CLAutoTimer >= (CLAutoInt+CLAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
+  if(millis() - RadarEyeAutoTimer >= RadarEyeAutoInt*1000) {       // and the timer has reached the set interval
+    if(millis() - RadarEyeAutoTimer >= (RadarEyeAutoInt+RadarEyeAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
       if(!autoComplete) {
-        CLAutoTimer = millis();
-        CLAutoPause = random(CLAutoPauseMin,CLAutoPauseMax);
-        CLAutoInt = random(CLAutoIntMin,CLAutoIntMax);
-        autoInputString = CLautoCommands[random((CLautoCommandsCount-1))];
+        RadarEyeAutoTimer = millis();
+        RadarEyeAutoPause = random(RadarEyeAutoPauseMin,RadarEyeAutoPauseMax);
+        RadarEyeAutoInt = random(RadarEyeAutoIntMin,RadarEyeAutoIntMax);
+        autoInputString = RadarEyeAutoCommands[random((RadarEyeAutoCommandsCount-1))];
         autoComplete = true;
       }
     }
     else {
-      CL_command[0] = 99;
+      RE_command[0] = 99;
     }                                                             // and set flag so new command is processes at beginning of loop
   }
 }
@@ -946,7 +964,6 @@ void serialEvent() {
   // DBG("Received %s\n", inputString);
 }
 
-
 void hpSerialEvent() {
   while (hpSerial.available()) {
     char inChar = (char)hpSerial.read();
@@ -958,10 +975,31 @@ void hpSerialEvent() {
   DBG("Recieved %s\n", inputString);
 }
 
-
 void rsSerialEvent() {
   while (rsSerial.available()) {
     char inChar = (char)rsSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("Received %s\n", inputString);
+}
+
+void psSerialEvent() {
+  while (psSerial.available()) {
+    char inChar = (char)psSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  DBG("Received %s\n", inputString);
+}
+
+void fuSerialEvent() {
+  while (fuSerial.available()) {
+    char inChar = (char)fuSerial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
         stringComplete = true;            // set a flag so the main loop can do something about it.
@@ -985,6 +1023,7 @@ void writeSerialString(String stringData){
     Serial.write(completeString[i]);
   }
 }
+
 void writeRsSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++)
@@ -1008,6 +1047,15 @@ void writeFuSerial(String stringData){
     fuSerial.write(completeString[i]);
   }
   DBG("Printing to fuSerial\n");
+}
+
+void writePsSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    psSerial.write(completeString[i]);
+  }
+  DBG("Printing to rsSerial\n");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -1240,7 +1288,7 @@ void scan_i2c(){
 //////////////////////////////////////////////////////////////////////
   // KeepAlive Message to show status on website.
 
-  uint32_t keepAliveMillis;
+
 
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
@@ -1261,9 +1309,10 @@ void keepAlive(){
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
-  hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,RXHP,TXHP);
-  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,RXRS,TXRS);
-  fuSerial.begin(FU_BAUD_RATE,SWSERIAL_8N1,RXFU,TXFU,false,95);  
+  hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,SERIAL_RX_HP_PIN,SERIAL_TX_HP_PIN);
+  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RS_PIN,SERIAL_TX_RS_PIN);
+  fuSerial.begin(FU_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU_PIN,SERIAL_TX_FU_PIN,false,95);  
+  psSerial.begin(PS_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_PSI_PIN,SERIAL_TX_PSI_PIN,false,95);  
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the ESP32 Dome Controller");
 
@@ -1278,13 +1327,13 @@ void setup(){
   autoInputString.reserve(100);
 
   //Initialize the NeoPixel ring for the camera lens/radar eye
-  stripCL.begin();
-  stripCL.show(); // Initialize all pixels to 'off'
+  RADAR_EYE_LEDS.begin();
+  RADAR_EYE_LEDS.show(); // Initialize all pixels to 'off'
   colorWipe(red, 255); // red during bootup
 
-  StatusLED.begin();
-  StatusLED.show();
-  colorWipeStatus(red,255);
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,255);
   
   Serial.println("LED Setup Complete");
 
@@ -1331,15 +1380,16 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       closeAllDoors(2,0,0,0,0);
       startUp = false;
       Serial.println("Startup");
-      colorWipeStatus(blue,10);
+      colorWipeStatus("ES",blue,10);
 
   }
   keepAlive();
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}
+  if(fuSerial.available()){fuSerialEvent();}
 
-//  cameraLED(blue, 5); // blue
+//  RadarEye_LED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {
@@ -1437,15 +1487,15 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
               for (int i=1; i<=commandLength; i++){
                 char inCharRead = inputBuffer[i];
-                inputStringCommand += inCharRead;                   // add it to the inputString:
+                espNowInputStringCommand += inCharRead;                   // add it to the inputString:
               }
-              DBG("\nFull Command Recieved: %s ",inputStringCommand);
-              espNowCommandFunctionString = inputStringCommand.substring(0,2);
+              DBG("\nFull Command Recieved: %s ",espNowInputStringCommand);
+              espNowCommandFunctionString = espNowInputStringCommand.substring(0,2);
               espNowCommandFunction = espNowCommandFunctionString.toInt();
               DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
-              targetID = inputStringCommand.substring(2,4);
+              targetID = espNowInputStringCommand.substring(2,4);
               DBG("Target ID: %s\n", targetID);
-              commandSubString = inputStringCommand.substring(4,commandLength);
+              commandSubString = espNowInputStringCommand.substring(4,commandLength);
               DBG("Command to Forward: %s\n", commandSubString);
             }
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
@@ -1497,13 +1547,13 @@ if (millis() - MLMillis >= mainLoopDelayVar){
             }
 
             if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
-              CL_command[0]   = '\0';                                                            // Flushes Array
-              CL_command[0] = ledFunction;
-              CL_command[1] = colorState1;
-              CL_command[2] = speedState;
-              if(!autoComplete) {enableCLAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
+              RE_command[0]   = '\0';                                                            // Flushes Array
+              RE_command[0] = ledFunction;
+              RE_command[1] = colorState1;
+              RE_command[2] = speedState;
+              if(!autoComplete) {enableRadarEyeAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
               DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",ledFunction, colorState1, basicColors[colorState1], speedState);
-              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",CL_command[0], CL_command[1], basicColors[CL_command[1]], CL_command[2]);
+              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",RE_command[0], RE_command[1], basicColors[RE_command[1]], RE_command[2]);
             }
                 
             if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
@@ -1542,7 +1592,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         uint32_t delayCallTime;
 
         // reset ESP-NOW Variables
-        inputStringCommand = "";
+        espNowInputStringCommand = "";
         targetID = "";
     
         DBG("command taken\n");
@@ -1598,19 +1648,19 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       }
     }
 
-    if(CL_command[0]){
-      switch(CL_command[0]){
-        case 1: cameraLED(basicColors[CL_command[1]], CL_command[2]);                                   break;
+    if(RE_command[0]){
+      switch(RE_command[0]){
+        case 1: RadarEye_LED(basicColors[RE_command[1]], RE_command[2]);                                   break;
         case 2: break;  //reserved for future use
         case 3: break;  //reserved for future use
-        case 96: enableCLAuto = 0;                                                                      break;     // Disable Auto Mode
-        case 97: enableCLAuto = 1;                                                                      break;     // Enables Auto Mode
-        case 98:  CL_command[0] = '\0'; 
+        case 96: enableRadarEyeAuto = 0;                                                                      break;     // Disable Auto Mode
+        case 97: enableRadarEyeAuto = 1;                                                                      break;     // Enables Auto Mode
+        case 98:  RE_command[0] = '\0'; 
                   clearCL();
-                  enableCLAuto = 0;                                                                     break;
-        case 99:  CL_command[0] = '\0'; 
+                  enableRadarEyeAuto = 0;                                                                     break;
+        case 99:  RE_command[0] = '\0'; 
                   clearCL();
-                  enableCLAuto = 1;                                                                     break;
+                  enableRadarEyeAuto = 1;                                                                     break;
       }
     }
 
@@ -1622,7 +1672,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       }
     }
       if(!stringComplete && inputString) {
-          if(enableCLAuto == 1) {CLAuto();}
+          if(enableRadarEyeAuto == 1) {CLAuto();}
       
         }
     if(isStartUp) {

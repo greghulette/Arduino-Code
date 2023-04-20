@@ -59,10 +59,10 @@
   uint32_t ESP_command[6]  = {0,0,0,0,0,0};
   int espCommandFunction     = 0;
 
-  int debugflag = 0;
+  int debugflag = 1;
   int debugflag1 = 0; 
   int debugflag2 = 0;
-  boolean debugflag_espnow = 0;
+  boolean debugflag_espnow = 1;
   boolean debugflag_lora = 0;
 
 
@@ -162,16 +162,7 @@
   boolean bodyServoStatus = 0;
   boolean domePlateControllerStatus = 0;
   boolean domeControllerStatus = 0;
-  int BL_LDP_Bright;
-  int BL_MAINT_Bright;
-  int BL_VU_Bright;
-  int BL_CS_Bright;
-  int BL_vuOffsetInt;
-  int BL_vuBaselineInt;
-  int BL_vuOffsetExt;
-  int BL_vuBaselineExt;
-  float BL_BatteryVoltage;
-  int BL_BatteryPercentage;
+  
   String BL_Status = "Offline";
   
   String LB;
@@ -188,8 +179,8 @@
   unsigned long keepAliveMillis;
   unsigned long dckeepAliveAge;
   unsigned long dckeepaliveAgeMillis;
-  unsigned long pckeepAliveAge;
-  unsigned long pckeepaliveAgeMillis;
+  unsigned long dpkeepAliveAge;
+  unsigned long dpkeepaliveAgeMillis;
   unsigned long bskeepAliveAge;
   unsigned long bskeepaliveAgeMillis;
   unsigned long bckeepAliveAge;
@@ -212,6 +203,14 @@
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
+//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
+uint8_t  droidGatewayMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+ uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+
+
 //    MAC Address to broadcast to all senders at once
 uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -221,6 +220,17 @@ uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   String command;
   String commandSubString;
   String espnowpassword;
+  int BL_LDP_Bright;
+  int BL_MAINT_Bright;
+  int BL_VU_Bright;
+  int BL_CS_Bright;
+  int BL_vuOffsetInt;
+  int BL_vuBaselineInt;
+  int BL_vuOffsetExt;
+  int BL_vuBaselineExt;
+  float BL_BatteryVoltage;
+  int BL_BatteryPercentage;
+  // boolean bodyLEDControllerStatus;
 
 
 // Define variables to store incoming commands
@@ -228,6 +238,17 @@ uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   String incomingSenderID;
   String incomingCommand;
   String incomingPassword;
+  int incomingstructBL_LDP_Bright;
+  int incomingstructBL_MAINT_Bright;
+  int incomingstructBL_VU_Bright;
+  int incomingstructBL_CS_Bright;
+  int incomingstructBL_vuOffsetInt;
+  int incomingstructBL_vuBaselineInt;
+  int incomingstructBL_vuOffsetExt;
+  int incomingstructBL_vuBaselineExt;
+  float incomingstructBL_BatteryVoltage;
+  int incomingstructBL_BatteryPercentage;
+  bool incomingstructbodyLEDControllerStatus;
   
 // Variable to store if sending data was successful
   String success;
@@ -235,17 +256,33 @@ uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 //Structure example to send data
 //Must match the receiver structure
 typedef struct struct_message {
-      char structPassword[25];
-      char structSenderID[15];
-      char structTargetID[5];
+      char structPassword[20];
+      char structSenderID[4];
+      char structTargetID[4];
       char structCommand[100];
   } struct_message;
 
+typedef struct bodyControllerStatus_struct_message{
+      char structPassword[25];
+      char structSenderID[15];
+      char structTargetID[5];
+      int structBL_LDP_Bright[2];
+      int structBL_MAINT_Bright[2];
+      int structBL_VU_Bright[2];
+      int structBL_CS_Bright[2];
+      int structBL_vuOffsetInt[2];
+      int structBL_vuBaselineInt[2];
+      int structBL_vuOffsetExt[2];
+      int structBL_vuBaselineExt[2];
+      float structBL_BatteryVoltage[10];
+      int structBL_BatteryPercentage[2];
+      bool structbodyLEDControllerStatus[2];
+  } bodyControllerStatus_struct_message;
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToSendtoBroadcast;
-
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   struct_message commandsToReceiveFromBroadcast;
+  bodyControllerStatus_struct_message commandstoReceiveForStatus;
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -262,7 +299,10 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+  // if (mac == bodyControllerMACAddress){
+  //   memcpy(&commandstoReceiveForStatus, incomingData, sizeof(commandstoReceiveForStatus));
+  // }else{
+    memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingPassword = commandsToReceiveFromBroadcast.structPassword;
   if (incomingPassword != ESPNOWPASSWORD){
   DBG("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
@@ -283,15 +323,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       }
       if (incomingCommand == "BS-ONLINE"){
         bodyServoStatus = 1;
+        bskeepAliveAge =millis();
       }   
       if (incomingCommand == "DP-ONLINE"){
         domePlateControllerStatus = 1;
+        dpkeepAliveAge =millis();
       }                             
       if (incomingCommand == "BC-ONLINE"){
         bodyControllerStatus = 1;
+        bckeepAliveAge =millis();
       }
       if (incomingCommand == "BL-ONLINE"){
         bodyLEDControllerStatus = 1;
+        blkeepAliveAge =millis();
       }      
       inputString = incomingCommand;
       stringComplete = true; 
@@ -309,7 +353,9 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   } else {
     DBG("ESP-NOW Message Ignored\n");
     }
-  }
+  } 
+  // }
+  
 }
   esp_now_peer_info_t peerInfo;
 
@@ -326,7 +372,7 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
     }
   }
   if (domePlateControllerStatus== 1){
-    if (millis()-pckeepAliveAge>=keepAliveTimeOut){
+    if (millis()-dpkeepAliveAge>=keepAliveTimeOut){
       domePlateControllerStatus= 0;
       DBG_2("Dome Plate Controller Offline\n");
     }
@@ -353,10 +399,11 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
 
 void printKeepaliveStatus(){
 
-  // DBG("Dome Controller Status: %s\n", domeControllerStatus);
   DBG("Dome Controller Status: %d\n", domeControllerStatus);
-  // DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
-  // DBG("Body LED Controller Status: %s\n", bodyLEDControllerStatus);
+  DBG("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
+  DBG("Body Servo Controller Status: %d\n", bodyServoStatus);
+  DBG("Body  Controller Status: %d\n", bodyControllerStatus);
+  DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
 
   ESP_command[0]   = '\0';
 
@@ -707,31 +754,31 @@ void setup() {
 
   // Serial.println("LoRa init succeeded.");
 
-//initialize WiFi for ESP-NOW
-  // WiFi.mode(WIFI_STA);
-  // //Initialize ESP-NOW
-  // if (esp_now_init() != ESP_OK) {
-  //   Serial.println("Error initializing ESP-NOW");
-  // return;
-  // }
+// initialize WiFi for ESP-NOW
+  WiFi.mode(WIFI_STA);
+  //Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  return;
+  }
 
-  // // Once ESPNow is successfully Init, we will register for Send CB to
-  // // get the status of Trasnmitted packet
-  // esp_now_register_send_cb(OnDataSent);
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
   
-  // // Register peer
-  // peerInfo.channel = 0;  
-  // peerInfo.encrypt = false;
-  // //  peerInfo.ifidx=WIFI_IF_AP;
+  // Register peer
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  //  peerInfo.ifidx=WIFI_IF_AP;
 
-  // // Add peers  
-  // memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
-  // if (esp_now_add_peer(&peerInfo) != ESP_OK){
-  //   Serial.println("Failed to add Broadcast ESP-NOW peer");
-  //   return;
-  // }  
-  // // Register for a callback function that will be called when data is received
-  // esp_now_register_recv_cb(OnDataRecv);
+  // Add peers  
+  memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }  
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
 
 
 ESP_LED.begin();

@@ -1,9 +1,32 @@
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///*****                                                                                                       *****///
+///*****                            Created by Greg Hulette.                                                   *****///
+///*****                                                                                                       *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
+///*****  serial input method.                                                                                 *****///
+///*****                                                                                                       *****///
+///*****                                     So exactly what does this all do.....?                            *****///
+///*****                       - Receives commands via Serial or ESP-NOW                                       *****///
+///*****                       - Sends Serial commands to the LED Controller(ATMEGA2560 onboard)               *****///
+///*****                       - Sends Serial commands to the Stealth Controller                               *****///
+///*****                       - Sends Serial commands to the HCR                                              *****///
+///*****                       - Connects the 25 wire sliip ring to the dome plate controller                  *****///
+///*****                       - Provides USB connectivity to the dome plate  and dome controllers             *****///
+///*****                                                                                                       *****///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****        Libraries used in this sketch                 *****///
+//////////////////////////////////////////////////////////////////////
+
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
-#include <Hash.h>
+// #include <Hash.h>
 
 //Used for WiFi
 #include "esp_wifi.h"
@@ -13,75 +36,79 @@
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
+// Used to parse status from the ATMEGA2560 status messages
 #include "ArduinoJson.h"
 
 //ReelTwo libaries
-//#define USE_DEBUG
-//#define USE_SERVO_DEBUG
-
-#include "ReelTwo.h"
+#include <ReelTwo.h>
 #include "core/DelayCall.h"
 
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.                                                   *****///
-///*****                                                                                                       *****///
-///*****   I started with the code from flthymcnsty from from which I used the basic command structure and     *****///
-///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
-///*****                                                                                                       *****///
-///*****                                     So exactly what does this all do.....?                            *****///
-///*****                       - Controls the Body servos                                                      *****///
-///*****                       - Creates the WiFI network                                                      *****///
-///*****                       - Sends Serial commands to the LED Controller and the Stealth Board             *****///
-///*****                       - Sends Serial commands to the ESP-NOW Master to relay to other Controllers     *****///
-///*****                                                                                                       *****///
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//Used for pin definition
+#include "body_controller_esp32_pin_map.h"
+
+  //////////////////////////////////////////////////////////////////////
+///*****       Preferences/Items to change        *****///
+//////////////////////////////////////////////////////////////////////
+ //ESPNOW Password - This must be the same across all devices
+  String ESPNOWPASSWORD = "GregsAstromech";  //Must be less than 20 characters
+
+  // Serial Baud Rates
+  #define BL_BAUD_RATE 9600
+  #define RD_BAUD_RATE 115200 
+  #define ST_BAUD_RATE 9600  //Should be lower than 57600
+  #define MP_BAUD_RATE 9600  //Should be lower than 57600
+  #define AUX1_BAUD_RATE 115200 //Should be lower than 57600
+  #define AUX2_BAUD_RATE 115200  //Should be lower than 57600
+
+  ////R2 Control Network Details for OTA only
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+  int channel =  8;
+
+  int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveMillis;
+  
 //////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
-    
+  String HOSTNAME = "Body Controller"; 
+  
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
-
   int commandLength;
-  int paramVar = 9;
   
   String serialPort;
   String serialStringCommand;
   String serialSubStringCommand;
-  int mp3Track;
-  String mp3Comm;
-  
-  String infofunction;
-  String infoCommandString;
-  String infoCommandSubString;
+
+  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
+  int espCommandFunction     = 0;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
+  int defaultESPNOWSendDuration = 50;
+  String espNowInputStringCommand;
 
+  int mp3Track;
+  String mp3Comm;
 
-  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
+// Flags to enable/disable debugging in runtime
+  boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
+  boolean debugflag1 = 0;  // Used for optional level of debuging
+  boolean debugflag2 = 0;  // Used for optional level of debuging
+  boolean debugflag_espnow = 0;
+  boolean debugflag_serial_event = 0;
+  boolean debugflag_loop = 0;
 
-  int debugflag = 1;
-  int debugflag1 = 0;  // Used for debugging params recieved from clients
-  int debugflag2 = 0;
-
-  String periscopeControllerStatus = "Offline";
-  String domeControllerStatus = "Offline";
-  String bodyServoControllerStatus  = "Offline";
-  String bodyLEDControllerStatus  = "Offline";
-  
+  // variables for storing status and settings from ATMEGA2560
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
@@ -92,27 +119,10 @@
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
-  String BL_Status = "Offline";
-  
-  String LB;
-  String MB;
-  String VB;
-//  String VB;
-  String OI;
-  String BI;
-  String OE;
-  String BE;
-  String BV;
-  String BP;
 
-  int keepAliveTimeOut = 15000;
-  unsigned long keepAliveMillis;
-  unsigned long dckeepAliveAge;
-  unsigned long dckeepaliveAgeMillis;
-  unsigned long pckeepAliveAge;
-  unsigned long pckeepaliveAgeMillis;
-  unsigned long bskeepAliveAge;
-  unsigned long bskeepaliveAgeMillis;
+  boolean bodyLEDControllerStatus = 0;
+  
+
   unsigned long blkeepAliveAge;
   unsigned long blkeepaliveAgeMillis;
 
@@ -127,75 +137,83 @@
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
 
+ //Timers for Status updates
+  unsigned long keepAliveMillisDuration = 15000;
   //////////////////////////////////////////////////////////////////////
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RXBS 25
-  #define TXBS 26 
-  #define RXBL 26
-  #define TXBL 25
-  #define RXST 12
-  #define TXST 14
-  #define RXMP 17
-  #define TXMP 18
-  #define RXRD 2    //need to implement and test this
-  #define TXRD 34
   
-  #define bsSerial Serial1
+  #define rdSerial Serial1
   #define blSerial Serial2
   SoftwareSerial stSerial;
   SoftwareSerial mpSerial;
-  SoftwareSerial rdSerial;
-
-  #define BS_BAUD_RATE 115200
-  #define BL_BAUD_RATE 9600
-  #define ST_BAUD_RATE 9600
-  #define MP_BAUD_RATE 9600
-  #define RD_BAUD_RATE 115200
-
+  SoftwareSerial aux1Serial;
+  SoftwareSerial aux2Serial;
+ 
 
 
   //////////////////////////////////////////////////////////////////////
   ///******      Arduino Mega Reset Pin Specific Setup          *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RST 4
+  #define RST RESET_PIN_2560
 
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  MAC Addresses used in the Droid
-//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
+uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
 //  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
 //  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Periscope Controller =    {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-
-
+//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
 //    MAC Address to broadcast to all senders at once
 uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
 uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
+uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};  //used when connecting to WiFi for OTA
 
 // Define variables to store commands to be sent
   String senderID;
-  String destinationID;
   String targetID;
   String command;
   String commandSubString;
+  String espnowpassword;
+    // variables for storing status and settings from ATMEGA2560. Declared earlier in code but added here for clarity
+  // int BL_LDP_Bright;
+  // int BL_MAINT_Bright;
+  // int BL_VU_Bright;
+  // int BL_CS_Bright;
+  // int BL_vuOffsetInt;
+  // int BL_vuBaselineInt;
+  // int BL_vuOffsetExt;
+  // int BL_vuBaselineExt;
+  // float BL_BatteryVoltage;
+  // int BL_BatteryPercentage;
 
 
 // Define variables to store incoming commands
-  String incomingDestinationID;
   String incomingTargetID;  
   String incomingSenderID;
   String incomingCommand;
+  String incomingPassword;
+  // int incomingstructBL_LDP_Bright;
+  // int incomingstructBL_MAINT_Bright;
+  // int incomingstructBL_VU_Bright;
+  // int incomingstructBL_CS_Bright;
+  // int incomingstructBL_vuOffsetInt;
+  // int incomingstructBL_vuBaselineInt;
+  // int incomingstructBL_vuOffsetExt;
+  // int incomingstructBL_vuBaselineExt;
+  // float incomingstructBL_BatteryVoltage;
+  // int incomingstructBL_BatteryPercentage;
+  // bool incomingstructbodyLEDControllerStatus;
+  
   
 // Variable to store if sending data was successful
   String success;
@@ -203,28 +221,35 @@ uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};
 //Structure example to send data
 //Must match the receiver structure
 typedef struct struct_message {
-      char structSenderID[15];
-      char structDestinationID[15];
-      char structTargetID[5];
-      char structCommand[25];
+      char structPassword[20];
+      char structSenderID[4];
+      char structTargetID[4];
+      char structCommand[100];
   } struct_message;
 
 
-  // typedef struct struct_message {
-  //     String structSenderID;
-  //     String structDestinationID;
-  //     String structTargetID;  
-  //     String structCommand;
-  // } struct_message;
+typedef struct bodyControllerStatus_struct_message{
+      char structPassword[25];
+      char structSenderID[15];
+      char structTargetID[5];
+      int structBL_LDP_Bright;
+      int structBL_MAINT_Bright;
+      int structBL_VU_Bright;
+      int structBL_CS_Bright;
+      int structBL_vuOffsetInt;
+      int structBL_vuBaselineInt;
+      int structBL_vuOffsetExt;
+      int structBL_vuBaselineExt;
+      float structBL_BatteryVoltage;
+      int structBL_BatteryPercentage;
+      bool structbodyLEDControllerStatus[2];
+  } bodyControllerStatus_struct_message;
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
-  struct_message commandsToSendtoBody;
-  struct_message commandsToSendtoPeriscope;
   struct_message commandsToSendtoBroadcast;
+  bodyControllerStatus_struct_message commandstoSendForStatus;
 
 // Create a struct_message to hold incoming commands from the Body
-  struct_message commandsToReceiveFromBody;
-  struct_message commandsToReceiveFromPeriscope;
   struct_message commandsToReceiveFromBroadcast;
 
   esp_now_peer_info_t peerInfo;
@@ -246,13 +271,11 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-  incomingDestinationID = commandsToReceiveFromBroadcast.structDestinationID;
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
   DBG("Bytes received from ESP-NOW Message: %i\n", len);
   DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Destination ID= %s\n" ,incomingDestinationID);
   DBG("Target ID= %s\n", incomingTargetID);
   DBG("Command = %s\n" , incomingCommand); 
   if(incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID == "ST" || incomingTargetID == "MT" || incomingTargetID == "ALL"){
@@ -279,30 +302,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       DBG("Command Ignored");
     } 
 }
-//   if (incomingDestinationID =="Body" || incomingTargetID == "ALL"){
-//     DBG("ESP-NOW Command Accepted\n");
-//     DBG("Target ID= %s\n", incomingTargetID);
-//     if (incomingTargetID == "RS"){
-//         DBG("Sending %s out rsSerial\n", incomingCommand);
-//         writeRsSerial(incomingCommand);
-//     } else if (incomingTargetID == "HP"){
-//         DBG("Sending %s out hpSerial\n", incomingCommand);
-//         writeHpSerial(incomingCommand);
-//     } else if (incomingTargetID == "DS" || incomingTargetID == "ALL"){
-//         DBG("Execute Local Command = %s\n", incomingCommand);
-//  if (incomingCommand == "Status"){
-//           DBG("Status is good\n");                                                                                                                                       
-//           sendESPNOWCommand("BS","DCONLINE");
-//         }else if(incomingCommand != "Status"){
-//         inputString = incomingCommand;
-//         stringComplete = true; 
-//         }
-//     } else {
-//         DBG("Wrong Target ID Sent\n");
-//       }
-//   }
-//     else {DBG("ESP-NOW Message Ignored\n");}
-// }
+
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -322,11 +322,6 @@ IPAddress local_IP(192,168,4,109);
 IPAddress subnet(255,255,255,0);
 IPAddress gateway(192,168,4,100);
 uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
-
- ////R2 Control Network Details
-const char* ssid = "R2D2_Remote";
-const char* password =  "astromech";
-int channel =  8;
 
 AsyncWebServer server(80);
 
@@ -353,7 +348,7 @@ AsyncWebServer server(80);
 
     const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
-  #define NUM_CAMERA_PIXELS 7
+  #define STATUS_LED_COUNT 7
   #define CAMERA_LENS_DATA_PIN 27
   //#define CAMERA_LENS_CLOCK_PIN 13
   int dim = 75;
@@ -366,7 +361,7 @@ AsyncWebServer server(80);
   int colorState1;
   int speedState;
   
-  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, 5, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(STATUS_LED_COUNT, STAUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
   boolean countUp=false;
 
@@ -423,10 +418,10 @@ void serialEvent() {
 };
 
 
-void serialBsEvent() {
-  while (bsSerial.available()) {
+void serialAux1Event() {
+  while (aux1Serial.available()) {
     // get the new byte:
-    char inChar = (char)bsSerial.read();
+    char inChar = (char)aux1Serial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
@@ -435,7 +430,6 @@ void serialBsEvent() {
   };
   DBG_2("InputString: %s \n",inputString);
 };
-
 
 void serialBlEvent() {
   while (blSerial.available()) {
@@ -447,9 +441,9 @@ void serialBlEvent() {
 
     if (err == DeserializationError::Ok) 
     {
-      BL_Status = doc["BL_Status"].as<String>();
-      if (BL_Status == "Online"){
-        BL_Status="Online";
+      bodyLEDControllerStatus = doc["bodyLEDControllerStatus"].as<bool>();
+      if (bodyLEDControllerStatus == 1){
+        bodyLEDControllerStatus=1;
         blkeepAliveAge = millis();
         DBG_2("Body LED Controler Keepalive Received \n");
         }
@@ -465,7 +459,7 @@ void serialBlEvent() {
       BL_BatteryPercentage = doc["BatteryPercent"].as<int>();
       // Print the values
       // (we must use as<T>() to resolve the ambiguity)
-      DBG_2("Body LED Controller Status = %s\n", BL_Status); //Serial.println(doc["BL_Status"].as<String>());
+      DBG_2("Body LED Controller Status = %d\n", bodyLEDControllerStatus); //Serial.println(doc["BL_Status"].as<String>());
       DBG_2("LDP Brightness = %i\n", BL_LDP_Bright); //Serial.println(doc["LDPBright"].as<int>());
       DBG_2("Maint Brightness = %i\n", BL_MAINT_Bright); //Serial.println(doc["MaintBright"].as<int>());
       DBG_2("VU Brightness = %i\n", BL_VU_Bright); //Serial.println(doc["VUBright"].as<int>());
@@ -541,10 +535,10 @@ void writeBlSerial(String stringData){
 };
 
 
-void writeBsSerial(String stringData){
+void writeaux1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
-    bsSerial.write(completeString[i]);
+    aux1Serial.write(completeString[i]);
   };
   DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
 };
@@ -561,32 +555,54 @@ void writeStSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void setupSendStruct(struct_message* msg, String sender, String destID, String targetID, String cmd)
+void setupSendCommandStruct(struct_message* msg, String pass, String sender, String targetID, String cmd)
 {
+    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
-    snprintf(msg->structDestinationID, sizeof(msg->structDestinationID), "%s", destID.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 
-void sendESPNOWCommand(String starget, String scomm){
-  String sdest;
-  String senderID = "Body";     // change to match location (Dome, Body, Periscope)
-  if (starget == "DS" || starget == "RS" || starget == "HP"){
-    sdest = "Dome";
-  } else if (starget == "PC" || starget == "PL"){
-    sdest = "Periscope";
-  }else if (starget == "EN" || starget == "DS" || starget == "BL" || starget == "ST"|| starget == "BS"){
-    sdest = "Body";
-  }
-
-  setupSendStruct(&commandsToSendtoBroadcast ,senderID, sdest, starget, scomm);
+void sendESPNOWCommand(String starget, String scomm)
+{
+  String senderID = "BC";     // change to match location (BC, BS, DP, DC, LD)
+  setupSendCommandStruct(&commandsToSendtoBroadcast ,ESPNOWPASSWORD, senderID, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    DBG_ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
-    DBG("Error sending the data\n");
+    DBG_ESPNOW("Error sending the data\n");
+  }
+  ESPNOW_command[0] = '\0';
+}
+
+void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass, String sender, String targetID)
+{
+    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    msg->structBL_LDP_Bright = BL_LDP_Bright;
+    msg->structBL_MAINT_Bright = BL_MAINT_Bright;
+    msg->structBL_VU_Bright = BL_VU_Bright;
+    msg->structBL_CS_Bright = BL_CS_Bright;
+    msg->structBL_vuOffsetInt = BL_vuOffsetInt;
+    msg->structBL_vuBaselineInt = BL_vuBaselineInt;
+    msg->structBL_vuOffsetExt = BL_vuOffsetExt;
+    msg->structBL_vuBaselineExt = BL_vuBaselineExt;
+    msg->structBL_BatteryVoltage = BL_BatteryVoltage;
+    msg->structBL_BatteryPercentage = BL_BatteryPercentage;
+}
+void sendESPNOWStatus(String starget, String scomm)
+{
+  String senderID = "BC";     // change to match location (BC, BS, DP, DC, LD)
+  setupSendStatusStruct(&commandstoSendForStatus ,ESPNOWPASSWORD, senderID, starget);
+  esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandstoSendForStatus, sizeof(commandstoSendForStatus));
+  if (result == ESP_OK) {
+    DBG_ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+  }
+  else {
+    DBG_ESPNOW("Error sending the data\n");
   }
   ESPNOW_command[0] = '\0';
 }
@@ -611,7 +627,6 @@ void DBG(const char *format, ...) {
         va_end(ap);
 }
 
-
 void DBG_1(const char *format, ...) {
         if (!debugflag1)
                 return;
@@ -622,7 +637,16 @@ void DBG_1(const char *format, ...) {
 }
 
 void DBG_2(const char *format, ...) {
-        if (!debugflag2)
+        if (!debugflag1)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_ESPNOW(const char *format, ...) {
+        if (!debugflag_espnow)
                 return;
         va_list ap;
         va_start(ap, format);
@@ -631,10 +655,30 @@ void DBG_2(const char *format, ...) {
 }
 
 
+void DBG_SERIAL_EVENT(const char *format, ...) {
+        if (!debugflag_serial_event)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+void DBG_LOOP(const char *format, ...) {
+        if (!debugflag_loop)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
+
+
+
 void toggleDebug(){
   debugflag = !debugflag;
   if (debugflag == 1){
-    Serial.println("Debugging Enabled \n"); 
+    Serial.println("Debugging Enabled");
     }
   else{
     Serial.println("Debugging Disabled");
@@ -642,29 +686,82 @@ void toggleDebug(){
     ESP_command[0]   = '\0';
 }
 
-
 void toggleDebug1(){
   debugflag1 = !debugflag1;
   if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled \n");
+    Serial.println("Parameter Debugging Enabled");
     }
   else{
-    Serial.println("Parameter Debugging Disabled\n");
-  }
-    ESP_command[0]   = '\0';
-}
-void toggleDebug2(){
-  debugflag2 = !debugflag2;
-  if (debugflag2 == 1){
-    Serial.println("Debug 2 Debugging Enabled \n");
-    }
-  else{
-    Serial.println("Debug 2 Debugging Disabled\n");
+    Serial.println("Parameter Debugging Disabled");
   }
     ESP_command[0]   = '\0';
 }
 
+void toggleDebug_ESPNOW(){
+  debugflag_espnow = !debugflag_espnow;
+  if (debugflag_espnow == 1){
+    Serial.println("ESP-NOW Debugging Enabled");
+    }
+  else{
+    Serial.println("ESP-NOW Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
 
+void toggleDebug_SerialEvent(){
+  debugflag_serial_event = !debugflag_serial_event;
+  if (debugflag_serial_event == 1){
+    Serial.println("Serial Events Debugging Enabled");
+    }
+  else{
+    Serial.println("Serial Events Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+
+void toggleDebug_Loop(){
+  debugflag_loop = !debugflag_loop;
+  if (debugflag_loop == 1){
+    Serial.println("Main Loop Debugging Enabled");
+    }
+  else{
+    Serial.println("Main Loop Debugging Disabled");
+  }
+    ESP_command[0]   = '\0';
+}
+//////////////////////////////////////////////////////////////////////
+///*****    Connects to WiFi and turns on OTA functionality   *****///
+//////////////////////////////////////////////////////////////////////
+void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
+  WiFi.begin(ssid,password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
+  });
+  
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+
+  ESP_command[0]   = '\0';
+}   
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
 //////////////////////////////////////////////////////////////////////
@@ -690,27 +787,10 @@ void mp3Trigger(String comm, int track){
 //////////////////////////////////////////////////////////////////////
 
 void checkAgeofkeepAlive(){    //checks for the variable's age
-  if (domeControllerStatus=="Online"){
-    if (millis()-dckeepAliveAge>=keepAliveTimeOut){
-      domeControllerStatus="Offline";
-      DBG_2("Dome Controller Offline\n");
-    }
-  }
-  if (periscopeControllerStatus=="Online"){
-    if (millis()-pckeepAliveAge>=keepAliveTimeOut){
-      periscopeControllerStatus="Offline";
-      DBG_2("Periscope Controller Offline\n");
-    }
-  }
-  if (bodyServoControllerStatus=="Online"){
-    if (millis()-bskeepAliveAge>=keepAliveTimeOut){
-      bodyServoControllerStatus="Offline";
-      DBG_2("Body Servo Controller Offline\n");
-    }
-  }
-    if (BL_Status=="Online"){
-    if (millis()-blkeepAliveAge>=keepAliveTimeOut){
-      BL_Status="Offline";
+
+    if (bodyLEDControllerStatus==1){
+    if (millis()-blkeepAliveAge>=keepAliveMillisDuration){
+      bodyLEDControllerStatus=0;
       BL_BatteryPercentage = 0;
       BL_BatteryVoltage = 0.0;
       DBG_2("Body LED Controller Offline\n");
@@ -718,35 +798,24 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
   }
 }
 
-void checkAgeofBLKeepAlive(){
-  if (BL_LDP_Bright > 0){
-    }
-}
-//void keepAliveBC(){
-//  if (millis() - keepAliveMillis >= keepAliveDuration){
-//    keepAliveMillis = millis();
-//    sendESPNOWCommand("RL","BCKA");
-//  } 
-//}
-//String LBF;
-//void keepAliveBL(){
-//  if (millis() - blkeepAliveMillis >= blkeepAliveDuration){
-//    BLkeepAliveMillis = millis();
-//    LB = String(BL_LDP_Bright);
-//    LBF = "BL" + LB;
-//    sendESPNOWCommand("RL", LBF);
-//  } 
-//}
 void printKeepaliveStatus(){
 
-  DBG("Dome Controller Status: %s\n", domeControllerStatus);
-  DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
-  DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
-  DBG("Body LED Controller Status: %s\n", BL_Status);
+  DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
 
   ESP_command[0]   = '\0';
 
+
+
 }
+
+void keepAlive(){
+  if (millis() - keepAliveMillis >= keepAliveDuration){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("LD","BC-ONLINE");
+  } 
+}
+
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -755,20 +824,24 @@ void printKeepaliveStatus(){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+ 
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  bsSerial.begin(BS_BAUD_RATE,SERIAL_8N1,RXBS,TXBS);
-  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,RXBL,TXBL);
-  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,RXST,TXST,false,95);
-  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,RXMP,TXMP,false,95);
-  rdSerial.begin(RD_BAUD_RATE,SWSERIAL_8N1,RXRD,TXRD,false,95);
+  rdSerial.begin(RD_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RD_PIN,SERIAL_TX_RD_PIN);
+  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,SERIAL_RX_BL_PIN,SERIAL_TX_BL_PIN);
+  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_ST_PIN,SERIAL_TX_ST_PIN,false,95);
+  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_MP_PIN,SERIAL_TX_MP_PIN,false,95);
+  aux1Serial.begin(AUX1_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_AUX1_PIN,SERIAL_TX_AUX1_PIN,false,95);
+  aux2Serial.begin(AUX2_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_AUX2_PIN,SERIAL_TX_AUX2_PIN,false,95);
+  
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body ESP Controller");
   
   //Configure the Reset Pins for the arduinoReset() function
-  pinMode(4, OUTPUT);
-  digitalWrite(4,HIGH);
+  pinMode(RST, OUTPUT);
+  digitalWrite(RST,HIGH);
 
   //Initialize I2C for the Servo Expander Board
 //  Wire.begin();
@@ -816,131 +889,7 @@ void setup(){
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
 
- //Setup the webpage and accept the GET requests, and parses the variables 
-   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      
-     int paramsNr = request->params();               // Gets the number of parameters sent
-// //    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
-     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-       AsyncWebParameter* p = request->getParam(i);
-
-// ////////////////////////////////////////////////////////////////////////////////////////////////////
-// //////////                                                                //////////////////////////        
-// //////////  These If statements choose where to send the commands         //////////////////////////
-// //////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-// //////////                                                                //////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////
-        
-     if ((p->name())== "param0" & (p->value()) == "Serial0"){
-         DBG_1("Serial0 Chosen with If Statement\n");
-         paramVar = 0;
-         };
-     if ((p->name())== "param0" & (p->value()) == "bsSerial"){
-         DBG_1("Serial 1 Chosen with If Statement\n");
-         paramVar = 1;
-         };
-     if ((p->name())== "param0" & (p->value()) == "blSerial"){
-       DBG_1("Serial 2 Chosen with If Statement\n");
-           paramVar = 2;
-     };
-         if ((p->name())== "param0" & (p->value()) == "stSerial"){
-           DBG_1("Serial 2 Chosen with If Statement\n");
-           paramVar = 3;
-     };
-     if ((p->name())== "param0" & (p->value()) == "ESP"){
-           DBG_1("ESP(Self) Chosen with If Statement\n");
-           paramVar = 4;
-     };
-     if ((p->name())== "param0" & (p->value()) == "ArduinoReset"){
-         DBG_1("Reset Only Arduino Chosen with If Statement\n");
-           resetArduino(500);
-         };
-     if ((p->name())== "param0" & (p->value()) == "ESPReset"){
-         DBG_1("Reset ESP and Arduino Chosen with If Statement\n");
-         ESP.restart();
-         };
-  
-         DBG_1("Param name: %s\n", (p->name()));
-         DBG_1("Param value: %s\n", (p->value()).c_str());
-
-         if (paramVar == 0){
-           DBG_1("Writing to Serial 0\n");      
-           writeSerialString(p->value());
-         };
-         if (paramVar == 1){
-           DBG_1("Writing to bsSerial\n"); 
-// //          delay(100);     
-         if ((p->name())== "param0" & (p->value()) == "bsSerial"){
-             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-           } 
-           else {
-             writeBsSerial(p->value());
-           };
-         } ;      
-           if (paramVar == 2){
-           DBG_1("Writing to blSerial\n");   
-
-          if ((p->name())== "param0" & (p->value()) == "blSerial"){
-             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-           } 
-           else {
-             writeBlSerial(p->value());
-           };
- //          writeBlSerial(p->value());
-        
-        
-        
-         };
-         if (paramVar == 3){
-           DBG_1("Writing to stSerial\n");      
-           writeStSerial(p->value());
-         };
-         if (paramVar == 4){
-           DBG_1("Executing on self\n");      
-           inputString = (p->value());
-           stringComplete = true;  
-         };
-
-         DBG_1("------\n");
-         delay(50);
-     }
-
-     request->send(200, "text/plain", "Message Received on Body Controller");
-   });
-
-//   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
-//     request->send_P(200, "text/html", html, processor);
-//   });
-//   
-
- server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-       AsyncResponseStream *response = request->beginResponseStream("application/json");
-       DynamicJsonDocument json(2048);
-       json["BL_Status"] = "Online";
-       json["BodyController"] = "Online";
-       json["BodyServo"] = bodyServoControllerStatus;
-       json["Dome"] = domeControllerStatus;
-       json["Periscope"] = periscopeControllerStatus;
-       json["LDPBright"] = BL_LDP_Bright;
-       json["MaintBright"] = BL_MAINT_Bright;
-       json["VUBright"] = BL_VU_Bright;
-       json["CoinBright"] = BL_CS_Bright;
-       json["VUIntOffset"] = BL_vuOffsetInt;
-       json["VUIntBaseline"] = BL_vuBaselineInt;
-       json["VUExtOffset"] = BL_vuOffsetExt;
-       json["VUExtBaseline"] = BL_vuBaselineExt;
-       json["BatteryVoltage"] = BL_BatteryVoltage;
-       json["BatteryPercent"] = BL_BatteryPercentage;
-
-       serializeJson(json, *response);
-       request->send(response);
-   });
-
-  
-//   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-   AsyncElegantOTA.begin(&server);    // Start ElegantOTA
-
+ 
   //Initialize the AsycWebServer
    server.begin();
 
@@ -967,10 +916,10 @@ void loop(){
 
     }
     checkAgeofkeepAlive();
-    
+      keepAlive();
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
-    if(bsSerial.available()){serialBsEvent();}
+    if(aux1Serial.available()){serialAux1Event();}
     if(stSerial.available()){serialStEvent();}
     if(mpSerial.available()){serialMpEvent();}
 
@@ -983,8 +932,8 @@ void loop(){
           inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
           inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[0]=='s'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='I'     ||        // Command for receiving status/info from other boards
-          inputBuffer[0]=='i'               // Command for receiving status/info from other boards
+          inputBuffer[0]=='N'     ||        // Command for receiving status/info from other boards
+          inputBuffer[0]=='n'               // Command for receiving status/info from other boards
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
           DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
@@ -992,30 +941,7 @@ void loop(){
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
               espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               }; 
-
-            if(inputBuffer[0]=='I' || inputBuffer[0]=='i'){
-              for (int i=1; i<commandLength-1;i++ ){
-                char inCharRead = inputBuffer[i];
-                infoCommandString += inCharRead;  // add it to the inputString:
-              }
-              DBG_2("I Command Proccessing: %s \n", infoCommandString.c_str());
-              if(infoCommandString == "PC"){
-                periscopeControllerStatus="Online";
-                pckeepAliveAge = millis();
-                DBG_2("Periscope Controller Keepalive Received\n");
-              }
-              if(infoCommandString == "BS"){
-                bodyServoControllerStatus="Online";
-                bskeepAliveAge = millis();
-                DBG_2("Body Servo Controller Keepalive Received\n");
-              }
-              if(infoCommandString == "DC"){
-                domeControllerStatus="Online";
-                dckeepAliveAge = millis();
-                DBG_2("Dome Controller Keepalive Received\n");
-              }
-              infoCommandString="";
-            }     
+  
             if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
               // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=1; i<commandLength;i++ ){
@@ -1030,7 +956,7 @@ void loop(){
                 writeBlSerial(serialSubStringCommand);
                 DBG("Sending out BL Serial\n");
               } else if (serialPort == "EN"){
-                writeBsSerial(serialSubStringCommand);
+                writeaux1Serial(serialSubStringCommand);
                 DBG("Sending out EN Serial\n");
               } else if (serialPort == "ST"){
                 writeStSerial(serialSubStringCommand);
@@ -1075,8 +1001,8 @@ void loop(){
         case 2: Serial.println("Resetting the ESP in 3 Seconds");
                 DelayCall::schedule([] {ESP.restart();}, 3000);
                 ESP_command[0]   = '\0';                                                        break;
-        case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-        case 4: printKeepaliveStatus();break;  //reserved for future use
+        case 3: connectWiFi();                                                                  break;        
+        case 4: printKeepaliveStatus();                                                         break;  //reserved for future use
         case 5: break;  //reserved for future use
         case 6: break;  //reserved for future use
         case 7: break;  //reserved for future use
@@ -1084,7 +1010,7 @@ void loop(){
         case 9:  break;  //reserved for future use
         case 10: toggleDebug();                                                                 break;
         case 11: toggleDebug1();                                                                break;
-        case 12: toggleDebug2();                                                                break;
+        // case 12: toggleDebug2();                                                                break;
 
       }
     }

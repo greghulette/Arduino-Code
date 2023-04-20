@@ -1,7 +1,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                                                                                                       *****///
-///*****                            Created by Greg Hulette.  I started with the code from flthymcnsty         *****///
+///*****                                                                                                        *****///
+///*****                                Created by Greg Hulette.  I                                             *****///
+///*****   I started with the code from flthymcnsty from from which I used the basic command structure and      *****///
+///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
 ///*****                                                                                                       *****///
 ///*****                                     So exactly what does this all do.....?                            *****///
 ///*****                       - Receives commands via Serial or ESP-NOW                                       *****///
@@ -10,6 +12,10 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+//////////////////////////////////////////////////////////////////////
+///*****        Libraries used in this sketch                 *****///
+//////////////////////////////////////////////////////////////////////
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
@@ -24,6 +30,9 @@
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
+//Used for the Status LED
+#include <Adafruit_NeoPixel.h>
+
 //reeltwo libaries
 #include <ReelTwo.h>
 #include "core/DelayCall.h"
@@ -33,9 +42,22 @@
 //Used for pin definition
 #include "body_servo_pin_map.h"
 
-//Used for the Status LED
-#include <Adafruit_NeoPixel.h>
 
+//////////////////////////////////////////////////////////////////////
+///*****          Preferences/Items to change                 *****///
+//////////////////////////////////////////////////////////////////////
+ // ESPNOW Password - This must be the same across all devices
+  String ESPNOWPASSWORD = "GregsAstromech";
+
+  // Serial Baud Rates
+  #define FU_BAUD_RATE 9600
+
+  // R2 Control Network Details
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+
+  // Keepalive timer to send status messages to the Kill Switch (Droid)
+  int keepAliveDuration= 5000;  // 5 seconds
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
@@ -43,11 +65,13 @@
   String HOSTNAME = "Body Servo Controller";
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
-  String inputStringCommand;
+
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
   int commandLength;
+  
+  
   String serialPort;
   String serialStringCommand;
   String serialSubStringCommand;
@@ -59,8 +83,9 @@
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
-  String ESPNOWPASSWORD = "GregsAstromech";
   int defaultESPNOWSendDuration = 50;
+  String espNowInputStringCommand;
+
 
 // Flags to enable/disable debugging in runtime
   boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
@@ -72,7 +97,30 @@
   boolean debugflag_http = 0;
   boolean debugflag_lora = 0;
 
- /////////////////////////////////////////////////////////////////////////
+ 
+//////////////////////////////////////////////////////////////////////
+  ///*****   Door Values, Containers, Flags & Timers   *****///
+  //////////////////////////////////////////////////////////////////////
+
+  int door = -1;
+  // Door Command Container
+  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
+  int doorFunction = 0;
+  int doorBoard = 0; 
+  int doorEasingMethod;
+  uint32_t cVarSpeedMin;
+  uint32_t cVarSpeedMax;
+  uint32_t doorEasingDuration;
+  uint32_t delayCallTime;
+
+  // variables for individual functions
+  uint32_t varSpeedMin;
+  uint32_t varSpeedMax;
+  char stringToSend[25];
+  uint32_t fVarSpeedMin;
+  uint32_t fVarSpeedMax;
+
+  /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
 
@@ -118,27 +166,6 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
-//////////////////////////////////////////////////////////////////////
-  ///*****   Door Values, Containers, Flags & Timers   *****///
-  //////////////////////////////////////////////////////////////////////
-
-  int door = -1;
-  // Door Command Container
-  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
-  int doorFunction = 0;
-  int doorBoard = 0; 
-  int doorEasingMethod;
-  uint32_t cVarSpeedMin;
-  uint32_t cVarSpeedMax;
-  uint32_t doorEasingDuration;
-  uint32_t delayCallTime;
-
-  // variables for individual functions
-  uint32_t varSpeedMin;
-  uint32_t varSpeedMax;
-  char stringToSend[25];
-  uint32_t fVarSpeedMin;
-  uint32_t fVarSpeedMax;
   
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -153,7 +180,6 @@ ServoSequencer servoSequencer(servoDispatch);
   byte mainLoopDelayVar = 5;
 
   //Timers for Status updates
-  int keepAliveDuration = 5000;  // 5 seconds
   int keepAliveMillis;
 
   //////////////////////////////////////////////////////////////////////
@@ -167,11 +193,19 @@ ServoSequencer servoSequencer(servoDispatch);
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
+//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
+//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+
 //    MAC Address to broadcast to all senders at once
   uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 //    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
   uint8_t espNowLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};    //used when connecting to WiFi for OTA
 
 // Define variables to store commands to be sent
   String senderID;
@@ -192,10 +226,10 @@ ServoSequencer servoSequencer(servoDispatch);
 
 //Structure example to send data
 //Must match the receiver structure
-typedef struct struct_message {
-      char structPassword[25];
-      char structSenderID[15];
-      char structTargetID[5];
+  typedef struct struct_message {
+      char structPassword[20];
+      char structSenderID[2];
+      char structTargetID[2];
       char structCommand[100];
   } struct_message;
 
@@ -859,6 +893,14 @@ void DBG_1(const char *format, ...) {
         vfprintf(stderr, format, ap);
         va_end(ap);
 }
+void DBG_2(const char *format, ...) {
+        if (!debugflag1)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
 
 void DBG_ESPNOW(const char *format, ...) {
         if (!debugflag_espnow)
@@ -933,7 +975,7 @@ void toggleDebug1(){
   else{
     Serial.println("Parameter Debugging Disabled");
   }
-    ESP_command[0]   = '\0';
+    ESP_command[0]    = '\0';
 }
 
 void toggleDebug_ESPNOW(){
@@ -1342,18 +1384,18 @@ void loop(){
               if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
                 for (int i=1; i<=commandLength; i++){
                   char inCharRead = inputBuffer[i];
-                  inputStringCommand += inCharRead;                   // add it to the inputString:
+                  espNowInputStringCommand += inCharRead;                   // add it to the inputString:
                 }
-                DBG_ESPNOW("\nFull Command Recieved: %s ",inputStringCommand.c_str());
-                espNowCommandFunctionString = inputStringCommand.substring(0,2);
+                DBG_ESPNOW("\nFull Command Recieved: %s ",espNowInputStringCommand.c_str());
+                espNowCommandFunctionString = espNowInputStringCommand.substring(0,2);
                 espNowCommandFunction = espNowCommandFunctionString.toInt();
                 DBG_LOOP("ESP NOW Command State: %i\n", espNowCommandFunction);
-                targetID = inputStringCommand.substring(0,2);
+                targetID = espNowInputStringCommand.substring(0,2);
                 DBG_LOOP("Target ID: %s\n", targetID);
-                commandSubString = inputStringCommand.substring(2,commandLength);
+                commandSubString = espNowInputStringCommand.substring(2,commandLength);
                 DBG_LOOP("Command to Forward: %s\n", commandSubString.c_str());
                 sendESPNOWCommand(targetID, commandSubString);
-                inputStringCommand="";
+                espNowInputStringCommand="";
               }
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
 //                serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
