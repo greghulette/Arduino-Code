@@ -38,6 +38,9 @@ update_version_in_source () {
 	sed -i~ -bE "s/version: .*$/version: $VERSION.{build}/" appveyor.yml
 	rm appveyor.yml~
 
+	sed -i~ -bE "s/^version: .*$/version: \"$VERSION\"/" idf_component.yml
+	rm idf_component.yml~
+
 	sed -i~ -bE \
 		-e "s/ARDUINOJSON_VERSION .*$/ARDUINOJSON_VERSION \"$VERSION\"/" \
 		-e "s/ARDUINOJSON_VERSION_MAJOR .*$/ARDUINOJSON_VERSION_MAJOR $MAJOR/" \
@@ -48,7 +51,7 @@ update_version_in_source () {
 }
 
 commit_new_version () {
-	git add src/ArduinoJson/version.hpp README.md CHANGELOG.md library.json library.properties appveyor.yml CMakeLists.txt
+	git add src/ArduinoJson/version.hpp README.md CHANGELOG.md library.json library.properties appveyor.yml CMakeLists.txt idf_component.yml
 	git commit -m "Set version to $VERSION"
 }
 

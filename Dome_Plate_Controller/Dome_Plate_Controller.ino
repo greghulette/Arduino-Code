@@ -12,25 +12,51 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////
+///*****        Libraries used in this sketch                 *****///
+//////////////////////////////////////////////////////////////////////
+
+// Standard Arduino library
+#include <Arduino.h>
+
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
-#include <Hash.h>
+#include <AsyncTCP.h>
+#include <WiFi.h>
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
 #include <esp_now.h>
 
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
-
-//reeltwo libaries
-#include "ReelTwo.h"
-#include "core/DelayCall.h"
+//Used for Status LEDs
+#include <Adafruit_NeoPixel.h>
 
 //pin definitions
 #include "dome_plate_controller_pin_map.h"
+
+// Debug Functions  - Using my own library for this
+#include <DebugR2.h>
+
+//ReelTwo libaries - Using my forked version of this libarary
+#include "ReelTwo.h"
+#include "core/DelayCall.h"
+
+// Used for Software Serial to allow more useful naming
+#include <SoftwareSerial.h>
+
+
+
+
+
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****          Preferences/Items to change                 *****///
@@ -38,27 +64,52 @@
  // ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";
 
+  // R2 Control Network Details
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+
+  // Keepalive timer to send status messages to the Kill Switch (Droid)
+  int keepAliveDuration= 5000;  // 5 seconds
+
+// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// Change this to work with how your droid performs
+  int defaultESPNOWSendDuration = 50;  
+
+    // Serial Baud Rates
+  #define PL_BAUD_RATE 9600
+  #define SERIAL1_BAUD_RATE 115200 
+  #define SERIAL2_BAUD_RATE 9600  //Should be lower than 57600
+  #define SERIAL3_BAUD_RATE 9600  //Should be lower than 57600
+  #define SERIAL4_BAUD_RATE 57600 //Should be lower than 57600
+
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
   String HOSTNAME = "Dome Plate Controller";
+  
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
-  String inputStringCommand;
+  
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
-  int commandLength;    
-  String serialPort;
-  String serialStringCommand;
+  
+  int commandLength;
 
-  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction = 0;
+  String serialStringCommand;
+  String serialPort;
+  String serialSubStringCommand;
+
+ uint32_t Local_Command[6]  = {0,0,0,0,0,0};
+  int localCommandFunction     = 0;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
+  String inputStringCommand;
 
 // Flags to enable/disable debugging in runtime
   boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.

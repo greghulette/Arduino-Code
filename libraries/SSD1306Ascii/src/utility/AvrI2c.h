@@ -1,21 +1,26 @@
-/* Arduino SSD1306Ascii Library
- * Copyright (C) 2015 by William Greiman
- *
+/**
+ * Copyright (c) 2011-2023 Bill Greiman
  * This file is part of the Arduino SSD1306Ascii Library
  *
- * This Library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * MIT License
  *
- * This Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
  *
- * You should have received a copy of the GNU General Public License
- * along with the Arduino SSD1306Ascii Library.  If not, see
- * <http://www.gnu.org/licenses/>.
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  */
 /**
  * @file AvrI2c.h
@@ -29,10 +34,10 @@
 #else  // !defined(__AVR__) || !defined(TWSR)
 
 /** Maximum SCL frecquency */
-const uint32_t MAX_SCL_CLOCK = F_CPU/(16+2*10);
+const uint32_t MAX_SCL_CLOCK = F_CPU / (16 + 2 * 10);
 
 /** Minimum SCL frecquency */
-const uint32_t MIN_SCL_CLOCK = F_CPU/(16+2*255);
+const uint32_t MIN_SCL_CLOCK = F_CPU / (16 + 2 * 255);
 
 /** Bit to or with address for read start and read restart */
 uint8_t const I2C_READ = 1;
@@ -81,8 +86,11 @@ static void AvrI2cFail(uint16_t line) {
   Serial.print(F("DBG_FAIL: AvrI2c.h:"));
   Serial.println(line);
 }
-#define DBG_PRINT_HEX(msg, val)\
-  {Serial.print(F(msg));Serial.println(val, HEX);}
+#define DBG_PRINT_HEX(msg, val) \
+  {                             \
+    Serial.print(F(msg));       \
+    Serial.println(val, HEX);   \
+  }
 #define AVR_I2C_FAIL_MACRO AvrI2cFail(__LINE__)
 #else  // AVR_I2C_DBG
 #define AVR_I2C_FAIL_MACRO
@@ -112,9 +120,7 @@ class AvrI2c {
   /**
    * @brief Disable TWI module.
    */
-  void end() {
-    TWCR &= ~((1 << TWEN) | (1 << TWEA));
-  }
+  void end() { TWCR &= ~((1 << TWEN) | (1 << TWEA)); }
   /**
    * @brief Read a byte and send Ack if more reads follow else
              Nak to terminate read.
@@ -143,9 +149,7 @@ class AvrI2c {
    * @param[in] addressRW I2C address with read/write bit.
    * @return The value true, 1, for success or false, 0, for failure.
    */
-  bool repeatedStart(uint8_t addressRW) {
-    return start(addressRW);
-  }
+  bool repeatedStart(uint8_t addressRW) { return start(addressRW); }
   /**
    * @brief Set the I2C bit rate.
    *
@@ -190,7 +194,7 @@ class AvrI2c {
     return true;
   }
   /** @return status from last TWI command - useful for library debug */
-  uint8_t status(void) {return status_;}
+  uint8_t status(void) { return status_; }
   /** Issue a stop condition. */
   bool stop(void) {
     TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTO);
@@ -237,9 +241,9 @@ class AvrI2c {
         return true;
       }
     }
-    AVR_I2C_FAIL_MACRO;    
+    AVR_I2C_FAIL_MACRO;
     return false;
-  }    
+  }
 };
 #endif  // !defined(__AVR__) || !defined(TWSR)
 #endif  // AvrI2c_h

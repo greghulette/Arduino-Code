@@ -1,21 +1,26 @@
-/* Arduino SSD1306Ascii Library
- * Copyright (C) 2015 by William Greiman
- *
+/**
+ * Copyright (c) 2011-2023 Bill Greiman
  * This file is part of the Arduino SSD1306Ascii Library
  *
- * This Library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * MIT License
  *
- * This Library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
  *
- * You should have received a copy of the GNU General Public License
- * along with the Arduino SSD1306Ascii Library.  If not, see
- * <http://www.gnu.org/licenses/>.
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  */
 /**
  * @file SSD1306init.h
@@ -28,7 +33,7 @@
 /** Handle AVR flash addressing. */
 #define MEM_TYPE
 #else  // __AVR__
-#define MEM_TYPE __attribute__ ((progmem))
+#define MEM_TYPE __attribute__((progmem))
 #endif  // __AVR__
 //------------------------------------------------------------------------------
 /** Set Lower Column Start Address for Page Addressing Mode. */
@@ -115,6 +120,7 @@ struct DevType {
    */
   const uint8_t colOffset;
 };
+// clang-format off
 //------------------------------------------------------------------------------
 /** Initialization commands for a 64x48 Micro OLED display (by r7) */
 static const uint8_t MEM_TYPE MicroOLED64x48init[] = {
@@ -123,7 +129,7 @@ static const uint8_t MEM_TYPE MicroOLED64x48init[] = {
     SSD1306_SETDISPLAYCLOCKDIV, 0x80,  // the suggested ratio 0x80
     SSD1306_SETMULTIPLEX, 0x2F,        //
     SSD1306_SETDISPLAYOFFSET, 0x0,     // no offset
-    SSD1306_SETSTARTLINE | 0x0,        // line #0
+    SSD1306_SETSTARTLINE,              // line #0
     SSD1306_CHARGEPUMP, 0x14,          // internal vcc
     SSD1306_NORMALDISPLAY,
     SSD1306_DISPLAYALLON_RESUME,
@@ -153,7 +159,7 @@ static const uint8_t MEM_TYPE SSD1306_96x16init[] = {
     SSD1306_SETDISPLAYCLOCKDIV, 0x80,  // clock divide ratio and osc frequency
     SSD1306_SETMULTIPLEX, 0x0F,        // multiplex ratio
     SSD1306_SETDISPLAYOFFSET, 0x0,     // display offset zero
-    SSD1306_SETSTARTLINE | 0x0,        // set display start line to 0
+    SSD1306_SETSTARTLINE,              // set display start line to 0
     SSD1306_CHARGEPUMP, 0x14,          // charge pump setting enable
     SSD1306_MEMORYMODE, 0x00,          // page addressing mode
     SSD1306_SEGREMAP | 0xA1,           // segment remap
@@ -184,7 +190,7 @@ static const uint8_t MEM_TYPE Adafruit128x32init[] = {
     SSD1306_SETDISPLAYCLOCKDIV, 0x80,  // the suggested ratio 0x80
     SSD1306_SETMULTIPLEX, 0x1F,        // ratio 32
     SSD1306_SETDISPLAYOFFSET, 0x0,     // no offset
-    SSD1306_SETSTARTLINE | 0x0,        // line #0
+    SSD1306_SETSTARTLINE,              // line #0
     SSD1306_CHARGEPUMP, 0x14,          // internal vcc
     SSD1306_MEMORYMODE, 0x02,          // page mode
     SSD1306_SEGREMAP | 0x1,            // column 127 mapped to SEG0
@@ -214,7 +220,7 @@ static const uint8_t MEM_TYPE Adafruit128x64init[] = {
     SSD1306_SETDISPLAYCLOCKDIV, 0x80,  // the suggested ratio 0x80
     SSD1306_SETMULTIPLEX, 0x3F,        // ratio 64
     SSD1306_SETDISPLAYOFFSET, 0x0,     // no offset
-    SSD1306_SETSTARTLINE | 0x0,        // line #0
+    SSD1306_SETSTARTLINE,              // line #0
     SSD1306_CHARGEPUMP, 0x14,          // internal vcc
     SSD1306_MEMORYMODE, 0x02,          // page mode
     SSD1306_SEGREMAP | 0x1,            // column 127 mapped to SEG0
@@ -240,7 +246,7 @@ static const DevType MEM_TYPE Adafruit128x64 = {
 /** Initialization commands for a 128x64 SH1106 oled display. */
 static const uint8_t MEM_TYPE SH1106_128x64init[] = {
   SSD1306_DISPLAYOFF,
-  SSD1306_SETSTARTPAGE | 0X0,            // set page address
+  SSD1306_SETSTARTPAGE,                  // set page zero
   SSD1306_SETCONTRAST, 0x80,             // 128
   SSD1306_SEGREMAP | 0X1,                // set segment remap
   SSD1306_NORMALDISPLAY,                 // normal / reverse
@@ -263,4 +269,5 @@ static const DevType MEM_TYPE SH1106_128x64 =  {
   64,
   2    // SH1106 is a 132x64 controller.  Use middle 128 columns.
 };
+// clang-format on
 #endif  // SSD1306init_h

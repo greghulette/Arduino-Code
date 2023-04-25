@@ -23,13 +23,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "SoftwareSerial.h"
 #include <Arduino.h>
 
+using namespace EspSoftwareSerial;
+
 #ifndef ESP32
-uint32_t SoftwareSerial::m_savedPS = 0;
+uint32_t UARTBase::m_savedPS = 0;
 #else
-portMUX_TYPE SoftwareSerial::m_interruptsMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE UARTBase::m_interruptsMux = portMUX_INITIALIZER_UNLOCKED;
 #endif
 
-inline void IRAM_ATTR SoftwareSerial::disableInterrupts()
+__attribute__((always_inline)) inline void IRAM_ATTR UARTBase::disableInterrupts()
 {
 #ifndef ESP32
     m_savedPS = xt_rsil(15);
@@ -38,7 +40,7 @@ inline void IRAM_ATTR SoftwareSerial::disableInterrupts()
 #endif
 }
 
-inline void IRAM_ATTR SoftwareSerial::restoreInterrupts()
+__attribute__((always_inline)) inline void IRAM_ATTR UARTBase::restoreInterrupts()
 {
 #ifndef ESP32
     xt_wsr_ps(m_savedPS);
@@ -49,155 +51,80 @@ inline void IRAM_ATTR SoftwareSerial::restoreInterrupts()
 
 constexpr uint8_t BYTE_ALL_BITS_SET = ~static_cast<uint8_t>(0);
 
-SoftwareSerial::SoftwareSerial() {
+UARTBase::UARTBase() {
     m_isrOverflow = false;
-    m_rxGPIOPullUpEnabled = true;
-    m_txGPIOOpenDrain = false;
 }
 
-SoftwareSerial::SoftwareSerial(int8_t rxPin, int8_t txPin, bool invert)
+UARTBase::UARTBase(int8_t rxPin, int8_t txPin, bool invert)
 {
     m_isrOverflow = false;
-    m_rxGPIOPullUpEnabled = true;
-    m_txGPIOOpenDrain = false;
     m_rxPin = rxPin;
     m_txPin = txPin;
     m_invert = invert;
 }
 
-SoftwareSerial::~SoftwareSerial() {
+UARTBase::~UARTBase() {
     end();
 }
 
-#if __GNUC__ >= 10
-constexpr
-#endif
-bool SoftwareSerial::isValidGPIOpin(int8_t pin) const {
-#if defined(ESP8266)
-    return (pin >= 0 && pin <= 16) && !isFlashInterfacePin(pin);
-#elif defined(ESP32)
-    // Remove the strapping pins as defined in the datasheets, they affect bootup and other critical operations
-    // Remmove the flash memory pins on related devices, since using these causes memory access issues.
-#ifdef CONFIG_IDF_TARGET_ESP32
-    // Datasheet https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf,
-    // Pinout    https://docs.espressif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.jpg    
-    return (pin == 1) || (pin >= 3 && pin <= 5) ||
-        (pin >= 12 && pin <= 15) ||
-        (!psramFound() && pin >= 16 && pin <= 17) ||
-        (pin >= 18 && pin <= 19) ||
-        (pin >= 21 && pin <= 23) || (pin >= 25 && pin <= 27) || (pin >= 32 && pin <= 39);
-#elif CONFIG_IDF_TARGET_ESP32S2
-    // Datasheet https://www.espressif.com/sites/default/files/documentation/esp32-s2_datasheet_en.pdf,
-    // Pinout    https://docs.espressif.com/projects/esp-idf/en/latest/esp32s2/_images/esp32-s2_saola1-pinout.jpg
-    return (pin >= 1 && pin <= 21) || (pin >= 33 && pin <= 44);
-#elif CONFIG_IDF_TARGET_ESP32C3
-    // Datasheet https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf, 
-    // Pinout    https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/_images/esp32-c3-devkitm-1-v1-pinout.jpg
-    return (pin >= 0 && pin <= 1) || (pin >= 3 && pin <= 7) || (pin >= 18 && pin <= 21);
-#else 
-    return pin >= 0;
-#endif
-#else
-    return pin >= 0;
-#endif
-}
-
-#if __GNUC__ >= 10
-constexpr
-#endif
-bool SoftwareSerial::isValidRxGPIOpin(int8_t pin) const {
-    return isValidGPIOpin(pin)
-#if defined(ESP8266)
-        && (pin != 16)
-#endif
-        ;
-}
-
-#if __GNUC__ >= 10
-constexpr
-#endif
-bool SoftwareSerial::isValidTxGPIOpin(int8_t pin) const {
-    return isValidGPIOpin(pin)
-#if defined(ESP32)
-#ifdef CONFIG_IDF_TARGET_ESP32
-        && (pin < 34)
-#elif CONFIG_IDF_TARGET_ESP32S2
-        && (pin <= 45)
-#elif CONFIG_IDF_TARGET_ESP32C3
-        // no restrictions
-#endif
-#endif
-        ;
-}
-
-#if __GNUC__ >= 10
-constexpr
-#endif
-bool SoftwareSerial::hasRxGPIOPullUp(int8_t pin) const {
-#if defined(ESP32)
-    return !(pin >= 34 && pin <= 39);
-#else
-    (void)pin;
-    return true;
-#endif
-}
-
-void SoftwareSerial::setRxGPIOPinMode() {
+void UARTBase::setRxGPIOPinMode() {
     if (m_rxValid) {
-        pinMode(m_rxPin, hasRxGPIOPullUp(m_rxPin) && m_rxGPIOPullUpEnabled ? INPUT_PULLUP : INPUT);
+        pinMode(m_rxPin, m_rxGPIOHasPullUp && m_rxGPIOPullUpEnabled ? INPUT_PULLUP : INPUT);
     }
 }
 
-void SoftwareSerial::setTxGPIOPinMode() {
+void UARTBase::setTxGPIOPinMode() {
     if (m_txValid) {
         pinMode(m_txPin, m_txGPIOOpenDrain ? OUTPUT_OPEN_DRAIN : OUTPUT);
     }
 }
 
-void SoftwareSerial::begin(uint32_t baud, SoftwareSerialConfig config,
+void UARTBase::begin(uint32_t baud, Config config,
     int8_t rxPin, int8_t txPin,
-    bool invert, int bufCapacity, int isrBufCapacity) {
+    bool invert) {
     if (-1 != rxPin) m_rxPin = rxPin;
     if (-1 != txPin) m_txPin = txPin;
     m_oneWire = (m_rxPin == m_txPin);
     m_invert = invert;
     m_dataBits = 5 + (config & 07);
-    m_parityMode = static_cast<SoftwareSerialParity>(config & 070);
+    m_parityMode = static_cast<Parity>(config & 070);
     m_stopBits = 1 + ((config & 0300) ? 1 : 0);
     m_pduBits = m_dataBits + static_cast<bool>(m_parityMode) + m_stopBits;
     m_bitTicks = (microsToTicks(1000000UL) + baud / 2) / baud;
     m_intTxEnabled = true;
-    if (isValidRxGPIOpin(m_rxPin)) {
-        m_rxReg = portInputRegister(digitalPinToPort(m_rxPin));
-        m_rxBitMask = digitalPinToBitMask(m_rxPin);
-        m_buffer.reset(new circular_queue<uint8_t>((bufCapacity > 0) ? bufCapacity : 64));
-        if (m_parityMode)
-        {
-            m_parityBuffer.reset(new circular_queue<uint8_t>((m_buffer->capacity() + 7) / 8));
-            m_parityInPos = m_parityOutPos = 1;
-        }
-        m_isrBuffer.reset(new circular_queue<uint32_t, SoftwareSerial*>((isrBufCapacity > 0) ?
-            isrBufCapacity : m_buffer->capacity() * (2 + m_dataBits + static_cast<bool>(m_parityMode))));
-        if (m_buffer && (!m_parityMode || m_parityBuffer) && m_isrBuffer) {
-            m_rxValid = true;
-            setRxGPIOPinMode();
-        }
-    }
-    if (isValidTxGPIOpin(m_txPin)) {
-#if !defined(ESP8266)
-        m_txReg = portOutputRegister(digitalPinToPort(m_txPin));
-#endif
-        m_txBitMask = digitalPinToBitMask(m_txPin);
-        m_txValid = true;
-        if (!m_oneWire) {
-            setTxGPIOPinMode();
-            digitalWrite(m_txPin, !m_invert);
-        }
-    }
-    enableRx(true);
 }
 
-void SoftwareSerial::end()
+void UARTBase::beginRx(bool hasPullUp, int bufCapacity, int isrBufCapacity) {
+    m_rxGPIOHasPullUp = hasPullUp;
+    m_rxReg = portInputRegister(digitalPinToPort(m_rxPin));
+    m_rxBitMask = digitalPinToBitMask(m_rxPin);
+    m_buffer.reset(new circular_queue<uint8_t>((bufCapacity > 0) ? bufCapacity : 64));
+    if (m_parityMode)
+    {
+        m_parityBuffer.reset(new circular_queue<uint8_t>((m_buffer->capacity() + 7) / 8));
+        m_parityInPos = m_parityOutPos = 1;
+    }
+    m_isrBuffer.reset(new circular_queue<uint32_t, UARTBase*>((isrBufCapacity > 0) ?
+        isrBufCapacity : m_buffer->capacity() * (2 + m_dataBits + static_cast<bool>(m_parityMode))));
+    if (m_buffer && (!m_parityMode || m_parityBuffer) && m_isrBuffer) {
+        m_rxValid = true;
+        setRxGPIOPinMode();
+    }
+}
+
+void UARTBase::beginTx() {
+#if !defined(ESP8266)
+    m_txReg = portOutputRegister(digitalPinToPort(m_txPin));
+#endif
+    m_txBitMask = digitalPinToBitMask(m_txPin);
+    m_txValid = true;
+    if (!m_oneWire) {
+        setTxGPIOPinMode();
+        digitalWrite(m_txPin, !m_invert);
+    }
+}
+
+void UARTBase::end()
 {
     enableRx(false);
     m_txValid = false;
@@ -210,12 +137,12 @@ void SoftwareSerial::end()
     }
 }
 
-uint32_t SoftwareSerial::baudRate() {
+uint32_t UARTBase::baudRate() {
     return 1000000UL / ticksToMicros(m_bitTicks);
 }
 
-void SoftwareSerial::setTransmitEnablePin(int8_t txEnablePin) {
-    if (isValidTxGPIOpin(txEnablePin)) {
+void UARTBase::setTransmitEnablePin(int8_t txEnablePin) {
+    if (-1 != txEnablePin) {
         m_txEnableValid = true;
         m_txEnablePin = txEnablePin;
         pinMode(m_txEnablePin, OUTPUT);
@@ -226,21 +153,21 @@ void SoftwareSerial::setTransmitEnablePin(int8_t txEnablePin) {
     }
 }
 
-void SoftwareSerial::enableIntTx(bool on) {
+void UARTBase::enableIntTx(bool on) {
     m_intTxEnabled = on;
 }
 
-void SoftwareSerial::enableRxGPIOPullUp(bool on) {
+void UARTBase::enableRxGPIOPullUp(bool on) {
     m_rxGPIOPullUpEnabled = on;
     setRxGPIOPinMode();
 }
 
-void SoftwareSerial::enableTxGPIOOpenDrain(bool on) {
+void UARTBase::enableTxGPIOOpenDrain(bool on) {
     m_txGPIOOpenDrain = on;
     setTxGPIOPinMode();
 }
 
-void SoftwareSerial::enableTx(bool on) {
+void UARTBase::enableTx(bool on) {
     if (m_txValid && m_oneWire) {
         if (on) {
             enableRx(false);
@@ -254,7 +181,7 @@ void SoftwareSerial::enableTx(bool on) {
     }
 }
 
-void SoftwareSerial::enableRx(bool on) {
+void UARTBase::enableRx(bool on) {
     if (m_rxValid && on != m_rxEnabled) {
         if (on) {
             m_rxLastBit = m_pduBits - 1;
@@ -272,7 +199,7 @@ void SoftwareSerial::enableRx(bool on) {
     }
 }
 
-int SoftwareSerial::read() {
+int UARTBase::read() {
     if (!m_rxValid) { return -1; }
     if (!m_buffer->available()) {
         rxBits();
@@ -292,7 +219,7 @@ int SoftwareSerial::read() {
     return val;
 }
 
-int SoftwareSerial::read(uint8_t* buffer, size_t size) {
+int UARTBase::read(uint8_t* buffer, size_t size) {
     if (!m_rxValid) { return 0; }
     int avail;
     if (0 == (avail = m_buffer->pop_n(buffer, size))) {
@@ -309,7 +236,7 @@ int SoftwareSerial::read(uint8_t* buffer, size_t size) {
     return avail;
 }
 
-size_t SoftwareSerial::readBytes(uint8_t* buffer, size_t size) {
+size_t UARTBase::readBytes(uint8_t* buffer, size_t size) {
     if (!m_rxValid || !size) { return 0; }
     size_t count = 0;
     auto start = millis();
@@ -327,7 +254,7 @@ size_t SoftwareSerial::readBytes(uint8_t* buffer, size_t size) {
     return count;
 }
 
-int SoftwareSerial::available() {
+int UARTBase::available() {
     if (!m_rxValid) { return 0; }
     rxBits();
     int avail = m_buffer->available();
@@ -337,12 +264,12 @@ int SoftwareSerial::available() {
     return avail;
 }
 
-void SoftwareSerial::lazyDelay() {
+void UARTBase::lazyDelay() {
     // Reenable interrupts while delaying to avoid other tasks piling up
     if (!m_intTxEnabled) { restoreInterrupts(); }
     const auto expired = microsToTicks(micros()) - m_periodStart;
     const int32_t remaining = m_periodDuration - expired;
-    const int32_t ms = remaining > 0 ? static_cast<int32_t>(ticksToMicros(remaining) / 1000L) : 0;
+    const uint32_t ms = remaining > 0 ? ticksToMicros(remaining) / 1000UL : 0;
     if (ms > 0)
     {
         delay(ms);
@@ -357,18 +284,16 @@ void SoftwareSerial::lazyDelay() {
     if (!m_intTxEnabled) { disableInterrupts(); }
 }
 
-void IRAM_ATTR SoftwareSerial::preciseDelay() {
+void IRAM_ATTR UARTBase::preciseDelay() {
     uint32_t ticks;
-    uint32_t expired;
     do {
         ticks = microsToTicks(micros());
-        expired =  ticks - m_periodStart;
-    } while (static_cast<int32_t>(m_periodDuration - expired) > 0);
+    } while ((ticks - m_periodStart) < m_periodDuration);
     m_periodDuration = 0;
     m_periodStart = ticks;
 }
 
-void IRAM_ATTR SoftwareSerial::writePeriod(
+void IRAM_ATTR UARTBase::writePeriod(
     uint32_t dutyCycle, uint32_t offCycle, bool withStopBit) {
     preciseDelay();
     if (dutyCycle)
@@ -410,19 +335,19 @@ void IRAM_ATTR SoftwareSerial::writePeriod(
     }
 }
 
-size_t SoftwareSerial::write(uint8_t byte) {
+size_t UARTBase::write(uint8_t byte) {
     return write(&byte, 1);
 }
 
-size_t SoftwareSerial::write(uint8_t byte, SoftwareSerialParity parity) {
+size_t UARTBase::write(uint8_t byte, Parity parity) {
     return write(&byte, 1, parity);
 }
 
-size_t SoftwareSerial::write(const uint8_t* buffer, size_t size) {
+size_t UARTBase::write(const uint8_t* buffer, size_t size) {
     return write(buffer, size, m_parityMode);
 }
 
-size_t IRAM_ATTR SoftwareSerial::write(const uint8_t* buffer, size_t size, SoftwareSerialParity parity) {
+size_t IRAM_ATTR UARTBase::write(const uint8_t* buffer, size_t size, Parity parity) {
     if (m_rxValid) { rxBits(); }
     if (!m_txValid) { return -1; }
 
@@ -452,24 +377,24 @@ size_t IRAM_ATTR SoftwareSerial::write(const uint8_t* buffer, size_t size, Softw
             uint32_t parityBit;
             switch (parity)
             {
-            case SWSERIAL_PARITY_EVEN:
+            case PARITY_EVEN:
                 // from inverted, so use odd parity
                 parityBit = byte;
                 parityBit ^= parityBit >> 4;
                 parityBit &= 0xf;
                 parityBit = (0x9669 >> parityBit) & 1;
                 break;
-            case SWSERIAL_PARITY_ODD:
+            case PARITY_ODD:
                 // from inverted, so use even parity
                 parityBit = byte;
                 parityBit ^= parityBit >> 4;
                 parityBit &= 0xf;
                 parityBit = (0x6996 >> parityBit) & 1;
                 break;
-            case SWSERIAL_PARITY_MARK:
+            case PARITY_MARK:
                 parityBit = 0;
                 break;
-            case SWSERIAL_PARITY_SPACE:
+            case PARITY_SPACE:
                 // suppresses warning parityBit uninitialized
             default:
                 parityBit = 1;
@@ -510,7 +435,7 @@ size_t IRAM_ATTR SoftwareSerial::write(const uint8_t* buffer, size_t size, Softw
     return size;
 }
 
-void SoftwareSerial::flush() {
+void UARTBase::flush() {
     if (!m_rxValid) { return; }
     m_buffer->flush();
     if (m_parityBuffer)
@@ -520,13 +445,13 @@ void SoftwareSerial::flush() {
     }
 }
 
-bool SoftwareSerial::overflow() {
+bool UARTBase::overflow() {
     bool res = m_overflow;
     m_overflow = false;
     return res;
 }
 
-int SoftwareSerial::peek() {
+int UARTBase::peek() {
     if (!m_rxValid) { return -1; }
     if (!m_buffer->available()) {
         rxBits();
@@ -537,7 +462,7 @@ int SoftwareSerial::peek() {
     return val;
 }
 
-void SoftwareSerial::rxBits() {
+void UARTBase::rxBits() {
 #ifdef ESP8266
     if (m_isrOverflow.load()) {
         m_overflow = true;
@@ -565,7 +490,7 @@ void SoftwareSerial::rxBits() {
     }
 }
 
-void SoftwareSerial::rxBits(const uint32_t isrTick) {
+void UARTBase::rxBits(const uint32_t isrTick) {
     const bool level = (m_isrLastTick & 1) ^ m_invert;
 
     // error introduced by edge value in LSB of isrTick is negligible
@@ -633,20 +558,24 @@ void SoftwareSerial::rxBits(const uint32_t isrTick) {
     }
 }
 
-void IRAM_ATTR SoftwareSerial::rxBitISR(SoftwareSerial* self) {
-    uint32_t curTick = microsToTicks(micros());
-    bool level = *self->m_rxReg & self->m_rxBitMask;
+void IRAM_ATTR UARTBase::rxBitISR(UARTBase* self) {
+    const bool level = *self->m_rxReg & self->m_rxBitMask;
+    const uint32_t curTick = microsToTicks(micros());
+    const bool empty = !self->m_isrBuffer->available();
 
     // Store level and tick in the buffer unless we have an overflow
     // tick's LSB is repurposed for the level bit
     if (!self->m_isrBuffer->push((curTick | 1U) ^ !level)) self->m_isrOverflow.store(true);
+    // Trigger rx callback only when receiver is starved
+    if (empty) self->m_rxHandler();
 }
 
-void IRAM_ATTR SoftwareSerial::rxBitSyncISR(SoftwareSerial* self) {
-    uint32_t start = microsToTicks(micros());
-    uint32_t wait = self->m_bitTicks - microsToTicks(2U);
-
+void IRAM_ATTR UARTBase::rxBitSyncISR(UARTBase* self) {
     bool level = self->m_invert;
+    const uint32_t start = microsToTicks(micros());
+    uint32_t wait = self->m_bitTicks;
+    const bool empty = !self->m_isrBuffer->available();
+
     // Store level and tick in the buffer unless we have an overflow
     // tick's LSB is repurposed for the level bit
     if (!self->m_isrBuffer->push(((start + wait) | 1U) ^ !level)) self->m_isrOverflow.store(true);
@@ -663,17 +592,30 @@ void IRAM_ATTR SoftwareSerial::rxBitSyncISR(SoftwareSerial* self) {
             level = !level;
         }
     }
+    // Trigger rx callback only when receiver is starved
+    if (empty) self->m_rxHandler();
 }
 
-void SoftwareSerial::onReceive(Delegate<void(int available), void*> handler) {
-    receiveHandler = handler;
+void UARTBase::onReceive(const Delegate<void(), void*>& handler) {
+    disableInterrupts();
+    m_rxHandler = handler;
+    restoreInterrupts();
 }
 
-void SoftwareSerial::perform_work() {
-    if (!m_rxValid) { return; }
-    rxBits();
-    if (receiveHandler) {
-        int avail = m_buffer->available();
-        if (avail) { receiveHandler(avail); }
-    }
+void UARTBase::onReceive(Delegate<void(), void*>&& handler) {
+    disableInterrupts();
+    m_rxHandler = std::move(handler);
+    restoreInterrupts();
 }
+
+// The template member functions below must be in IRAM, but due to a bug GCC doesn't currently
+// honor the attribute. Instead, it is possible to do explicit specialization and adorn
+// these with the IRAM attribute:
+// Delegate<>::operator (), circular_queue<>::available,
+// circular_queue<>::available_for_push, circular_queue<>::push_peek, circular_queue<>::push
+
+template void IRAM_ATTR delegate::detail::DelegateImpl<void*, void>::operator()() const;
+template size_t IRAM_ATTR circular_queue<uint32_t, UARTBase*>::available() const;
+template bool IRAM_ATTR circular_queue<uint32_t, UARTBase*>::push(uint32_t&&);
+template bool IRAM_ATTR circular_queue<uint32_t, UARTBase*>::push(const uint32_t&);
+

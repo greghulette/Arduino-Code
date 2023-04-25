@@ -16,17 +16,21 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Libraries used in this sketch                 *****///
 //////////////////////////////////////////////////////////////////////
+
+// Standard Arduino library
+#include <Arduino.h>
 
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
-// #include <AsyncTCP.h>
-// #include <WiFi.h>
-
+#include <AsyncTCP.h>
+#include <WiFi.h>
 
 //Used for ESP-NOW
 #include "esp_wifi.h"
@@ -35,40 +39,50 @@
 //Used for Camera  and status LEDs
 #include <Adafruit_NeoPixel.h>
 
+//Used for pin definition
+#include "dome_controller_pin_map.h"
+
+// Debug Functions  - Using my own library for this
+#include <DebugR2.h>
+
+//ReelTwo libaries - Using my forked version of this libarary
+#include <ReelTwo.h>
+#include "core/DelayCall.h"
+#include "ServoDispatchPCA9685.h"
+#include "ServoSequencer.h"
+
 //Used for PC9685 - Servo Expansion Board
 #include <Wire.h>
 
 // Used to expand Serial Capacity
 #include <SoftwareSerial.h>
 
-//ReelTwo libaries
-#include <ReelTwo.h>
-#include "core/DelayCall.h"
-#include "ServoDispatchPCA9685.h"
-#include "ServoSequencer.h"
 
-//Used for pin definition
-#include "dome_controller_pin_map.h"
-
-
-  //////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
 ///*****       Preferences/Items to change        *****///
 //////////////////////////////////////////////////////////////////////
  //ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";
 
-  // Serial Baud Rates
-  #define PS_BAUD_RATE 9600 //Should be lower than 57600
-  #define HP_BAUD_RATE 9600
-  #define RS_BAUD_RATE 9600
-  #define FU_BAUD_RATE 9600  //Should be lower than 57600
-
   ////R2 Control Network Details for OTA only
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
-
+  // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 5000;  // 5 seconds
+  
+  // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// Change this to work with how your droid performs
+  int defaultESPNOWSendDuration = 50;  
+
+// Serial Baud Rates
+  #define HP_BAUD_RATE 9600
+  #define RS_BAUD_RATE 9600
+  #define PS_BAUD_RATE 9600 //Should be lower than 57600
+  #define FU_BAUD_RATE 9600  //Should be lower than 57600
+
+
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
@@ -77,38 +91,28 @@
   
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
+  
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
+  
   int commandLength;
 
-  String serialPort;
   String serialStringCommand;
+  String serialPort;
   String serialSubStringCommand;
 
-
-  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
-  
-
+ uint32_t Local_Command[6]  = {0,0,0,0,0,0};
+  int localCommandFunction     = 0;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
-  int defaultESPNOWSendDuration = 50;
   String espNowInputStringCommand;
 
   int ledFunction;
-// Flags to enable/disable debugging in runtime
-  boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
-  boolean debugflag1 = 0;  // Used for optional level of debuging
-  boolean debugflag_espnow = 0;
-  boolean debugflag_servo = 0;
-  boolean debugflag_serial_event = 0;
-  boolean debugflag_loop = 0;
-  boolean debugflag_http = 0;
-  boolean debugflag_lora = 0;
+
 
 
 
@@ -315,12 +319,14 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
   
-//Raspberry Pi              192.168.4.100
-//Body Controller ESP       192.168.4.101   
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA) 
-//Dome Controller ESP       192.168.4.111   (Only used for OTA) ************
-//Periscope Controller ESP  192.168.4.112   (Only used for OTA)
-//Remote                    192.168.4.107
+//LoRa Remote ESP           192.168.4.101   
+//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.113
+//Remote Raspberry Pi       192.168.4.114
 //Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP
@@ -1395,42 +1401,93 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if (stringComplete || autoComplete) {
     if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='D' ||        // Door Designator
-          inputBuffer[0]=='d' ||        // Door Designator
-          inputBuffer[0]=='R' ||        // Radar Eye LED
-          inputBuffer[0]=='r' ||        // Radar Eye LED
-          inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
+         if (inputBuffer[0] == '#'){
+        if (
+            inputBuffer[1]=='D' ||          // Command for debugging
+            inputBuffer[1]=='d' ||          // Command for debugging
+            inputBuffer[1]=='L' ||          // Command designator for internal functions
+            inputBuffer[1]=='l' ||          // Command designator for internal functions
+            inputBuffer[1]=='E' ||          // Command designator for storing EEPROM data
+            inputBuffer[1]=='e'           // Command designator for storing EEPROM data
+          ){commandLength = strlen(inputBuffer); 
+            if (inputBuffer[1]=='D' || inputBuffer[1]=='d'){
+              debugInputIdentifier = "";                            // flush the string
+              for (int i=2; i<=commandLength-2; i++){
+                char inCharRead = inputBuffer[i];
+                debugInputIdentifier += inCharRead;                   // add it to the inputString:
+              }
+              debugInputIdentifier.toUpperCase();
+              Debug.toggle(debugInputIdentifier);
+              debugInputIdentifier = "";                             // flush the string
+              } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
+                localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                Local_Command[0]   = '\0';                                                            // Flushes Array
+                Local_Command[0] = localCommandFunction;
+              Debug.LOOP("Entered the Local Command Structure /n");
+              } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
+                Debug.LOOP("EEPROM configuration selected /n");
+                // need to actually add the code to implement this.
+
+              } else {Debug.LOOP("No valid command entered /n");}
+              
+          }
+              if(Local_Command[0]){
+                switch (Local_Command[0]){
+                  case 1: Serial.println(HOSTNAME);
+                        Local_Command[0]   = '\0';                                                           break;
+                  case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                        //  DelayCall::schedule([] {ESP.restart();}, 3000);
+                        ESP.restart();
+                        Local_Command[0]   = '\0';                                                           break;
+                  case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+                  case 4: break;  //reserved for future use
+                  case 5: MainRelayOn();                                                                    break;  //reserved for future use
+                  case 6: MainRelayOff();                                                                   break;  //reserved for future use
+                  case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
+                  case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
+                  case 9:  break;  //reserved for future use
+
+                }
+              }
+
+        }else if (inputBuffer[0] == ':'){
+     
+          if( inputBuffer[1]=='D' ||        // Door Designator
+          inputBuffer[1]=='d' ||        // Door Designator
+          inputBuffer[1]=='R' ||        // Radar Eye LED
+          inputBuffer[1]=='r' ||        // Radar Eye LED
+          inputBuffer[1]=='E' ||        // Command designatore for internal ESP functions
+          inputBuffer[1]=='e' ||        // Command designatore for internal ESP functions
+          inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {                                                            // specifies the overall door command
-              doorBoard = inputBuffer[1]-'0';                                                                           // Sets the board to call the command on.
-              doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');                                              // Sets the door command to a specific function
+            if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {                                                            // specifies the overall door command
+              doorBoard = inputBuffer[2]-'0';                                                                           // Sets the board to call the command on.
+              doorFunction = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');                                              // Sets the door command to a specific function
               if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
-                door = (inputBuffer[4]-'0')*10+(inputBuffer[5]-'0');                                                    // Sets the specific door to move
-                if (inputBuffer[6] == 'D' || inputBuffer[6] == 'd'){
+                door = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');                                                    // Sets the specific door to move
+                if (inputBuffer[7] == 'D' || inputBuffer[7] == 'd'){
                   DBG("with DelayCall \n");
-                  delayCallTime =  (inputBuffer[7]-'0')*10000+(inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');  // converts 5 digit character to uint32_t
+                  delayCallTime =  (inputBuffer[8]-'0')*10000+(inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');  // converts 5 digit character to uint32_t
                   doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
                   cVarSpeedMin = 0;
                   cVarSpeedMax = 0;                                                                                                                        // Sets Easing duration to 0-Off
-                } else if (inputBuffer[6] == 'E' ||inputBuffer[6] == 'e'){
+                } else if (inputBuffer[7] == 'E' ||inputBuffer[7] == 'e'){
                   DBG("with Easing \n");
-                  doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
-                  doorEasingDuration = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
+                  doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                  doorEasingDuration = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
                   delayCallTime = 0;
-                } else if (inputBuffer[6] == 'B' || inputBuffer[6] == 'b'){
+                } else if (inputBuffer[7] == 'B' || inputBuffer[7] == 'b'){
                   DBG("with Both Easing and Delay Call \n");
-                  doorEasingMethod = (inputBuffer[7]-'0')*10+(inputBuffer[8]-'0');
-                  cVarSpeedMin = (inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');                
-                  cVarSpeedMax = (inputBuffer[13]-'0')*1000+(inputBuffer[14]-'0')*100+(inputBuffer[15]-'0')*10+(inputBuffer[16]-'0');
-                  delayCallTime =  (inputBuffer[17]-'0')*10000+(inputBuffer[18]-'0')*1000+(inputBuffer[19]-'0')*100+(inputBuffer[20]-'0')*10+(inputBuffer[21]-'0');
+                  doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                  cVarSpeedMin = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
+                  cVarSpeedMax = (inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
+                  delayCallTime =  (inputBuffer[18]-'0')*10000+(inputBuffer[19]-'0')*1000+(inputBuffer[20]-'0')*100+(inputBuffer[21]-'0')*10+(inputBuffer[22]-'0');
                 }else{
                   DBG("No easing or Delay time specified \n");
                   delayCallTime = 0;
@@ -1441,36 +1498,36 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               }
               else if (doorFunction != 1 || doorFunction != 2) {
                 DBG("Other Door Function Called \n");
-                if (inputBuffer[4] == 'D' || inputBuffer[4] == 'd'){
+                if (inputBuffer[5] == 'D' || inputBuffer[5] == 'd'){
                   DBG("with DelayCall \n");
-                  delayCallTime =  (inputBuffer[5]-'0')*10000+(inputBuffer[6]-'0')*1000+(inputBuffer[7]-'0')*100+(inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
+                  delayCallTime =  (inputBuffer[6]-'0')*10000+(inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');
                   doorEasingMethod = 0;
                   cVarSpeedMin = 0;
                   cVarSpeedMax = 0;
-                } else if (inputBuffer[4] == 'E' ||inputBuffer[4] == 'e'){
+                } else if (inputBuffer[5] == 'E' ||inputBuffer[5] == 'e'){
                   DBG("with Easing \n");
-                  doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                   if (commandLength >= 13){
                     DBG("Variable Speed Selected\n");
-                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
-                    cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');  
+                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
+                    cVarSpeedMax = (inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');  
                   } else {
                     DBG("No Variable Speed selected\n");
-                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
                     cVarSpeedMax = cVarSpeedMin; 
                   }              
                   delayCallTime = 0;
-                } else if (inputBuffer[4] == 'B' || inputBuffer[4] == 'b'){
+                } else if (inputBuffer[5] == 'B' || inputBuffer[5] == 'b'){
                   DBG("Both Easing and Delay Call \n");
-                  doorEasingMethod = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                   if (commandLength >= 17){
-                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
-                    cVarSpeedMax = (inputBuffer[11]-'0')*1000+(inputBuffer[12]-'0')*100+(inputBuffer[13]-'0')*10+(inputBuffer[14]-'0');
-                    delayCallTime =  (inputBuffer[15]-'0')*10000+(inputBuffer[16]-'0')*1000+(inputBuffer[17]-'0')*100+(inputBuffer[18]-'0')*10+(inputBuffer[19]-'0');
+                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
+                    cVarSpeedMax = (inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
+                    delayCallTime =  (inputBuffer[16]-'0')*10000+(inputBuffer[17]-'0')*1000+(inputBuffer[18]-'0')*100+(inputBuffer[19]-'0')*10+(inputBuffer[20]-'0');
                   } else {
-                    cVarSpeedMin = (inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');                
+                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
                     cVarSpeedMax = cVarSpeedMin;
-                    delayCallTime =  (inputBuffer[11]-'0')*10000+(inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
+                    delayCallTime =  (inputBuffer[12]-'0')*10000+(inputBuffer[13]-'0')*1000+(inputBuffer[14]-'0')*100+(inputBuffer[15]-'0')*10+(inputBuffer[16]-'0');
                   }
                 }else{
                   DBG("No easing or DelayCall time specified \n");
@@ -1481,34 +1538,29 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 }
               }
             }                                    
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-            }
-            if(inputBuffer[0]=='N' || inputBuffer[0]=='n') {
-              for (int i=1; i<=commandLength; i++){
-                char inCharRead = inputBuffer[i];
-                espNowInputStringCommand += inCharRead;                   // add it to the inputString:
-              }
-              DBG("\nFull Command Recieved: %s ",espNowInputStringCommand);
-              espNowCommandFunctionString = espNowInputStringCommand.substring(0,2);
-              espNowCommandFunction = espNowCommandFunctionString.toInt();
-              DBG("ESP NOW Command State: %s\n", espNowCommandFunction);
-              targetID = espNowInputStringCommand.substring(2,4);
-              DBG("Target ID: %s\n", targetID);
-              commandSubString = espNowInputStringCommand.substring(4,commandLength);
-              DBG("Command to Forward: %s\n", commandSubString);
-            }
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-              
-              for (int i=1; i<commandLength-1;i++ ){
-              char inCharRead = inputBuffer[i];
-              serialStringCommand += inCharRead;  // add it to the inputString:
-              }
-              int serialStringCommandLength;
-//              serialStringCommandLength = strlen(serialStringCommand);
-              serialPort =  serialStringCommand.substring(0,2);
-              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
+                if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+                  for (int i=2; i<=commandLength; i++){
+                    char inCharRead = inputBuffer[i];
+                    ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
+                  }
+                  Debug.LOOP("\nFull Command Recieved: %s \n",ESPNOWStringCommand.c_str());
+                  ESPNOWTarget = ESPNOWStringCommand.substring(0,2);
+                  Debug.LOOP("ESP NOW Target: %s\n", ESPNOWTarget.c_str());
+                  ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
+                  Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
+                  sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
+                  String  ESPNOWStringCommand = "";
+                  String ESPNOWSubStringCommand = "";
+                  String ESPNOWTarget = "";
+                  }  
+                if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+                    for (int i=2; i<commandLength-1;i++ ){
+                      char inCharRead = inputBuffer[i];
+                      serialStringCommand += inCharRead;  // add it to the inputString:
+                    }
+                    serialPort = serialStringCommand.substring(0,2);
+                    serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+                    Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
               if (serialPort == "HP"){
                 writeHpSerial(serialStringCommand);
               } else if (serialPort == "RS"){
@@ -1567,8 +1619,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               tempESPNOWTargetID = targetID;
             }
           }
+          }
         }
-
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;

@@ -22,26 +22,19 @@
 ///*****        Libraries used in this sketch                 *****///
 //////////////////////////////////////////////////////////////////////
 
+// Standard Arduino library
+#include <Arduino.h>
+
 // Used for OTA
 #include "ESPAsyncWebServer.h"
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
-// #include <Hash.h>
+#include <AsyncTCP.h>
+#include <WiFi.h>
 
-//Used for WiFi
+//Used for ESP-NOW
 #include "esp_wifi.h"
 #include <esp_now.h>
-
-
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
-
-// Used to parse status from the ATMEGA2560 status messages
-#include "ArduinoJson.h"
-
-//ReelTwo libaries
-#include <ReelTwo.h>
-#include "core/DelayCall.h"
 
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>
@@ -49,64 +42,82 @@
 //Used for pin definition
 #include "body_controller_esp32_pin_map.h"
 
-  //////////////////////////////////////////////////////////////////////
+// Debug Functions  - Using my own library for this
+#include <DebugR2.h>
+
+//ReelTwo libaries - Using my forked version of this libarary
+#include <ReelTwo.h>
+#include "core/DelayCall.h"
+
+// Used for Software Serial to allow more useful naming
+#include <SoftwareSerial.h>
+
+// Used to parse status from the ATMEGA2560 status messages
+#include "ArduinoJson.h"
+
+
+
+
+//////////////////////////////////////////////////////////////////////
 ///*****       Preferences/Items to change        *****///
 //////////////////////////////////////////////////////////////////////
  //ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";  //Must be less than 20 characters
+
+  ////R2 Control Network Details for OTA only
+  const char* ssid = "R2D2_Control_Network";
+  const char* password =  "astromech";
+
+  // Keepalive timer to send status messages to the Kill Switch (Droid)
+ int keepAliveDuration= 5000;  // 5 seconds
+
+// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// Change this to work with how your droid performs
+  int defaultESPNOWSendDuration = 50;
 
   // Serial Baud Rates
   #define BL_BAUD_RATE 9600
   #define RD_BAUD_RATE 115200 
   #define ST_BAUD_RATE 9600  //Should be lower than 57600
   #define MP_BAUD_RATE 9600  //Should be lower than 57600
-  #define AUX1_BAUD_RATE 115200 //Should be lower than 57600
-  #define AUX2_BAUD_RATE 115200  //Should be lower than 57600
+  #define AUX1_BAUD_RATE 57600 //Should be lower than 57600
+  #define AUX2_BAUD_RATE 57600  //Should be lower than 57600
 
-  ////R2 Control Network Details for OTA only
-  const char* ssid = "R2D2_Control_Network";
-  const char* password =  "astromech";
-  int channel =  8;
 
-  int keepAliveDuration= 5000;  // 5 seconds
-  int keepAliveMillis;
-  
 //////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
   String HOSTNAME = "Body Controller"; 
   
   char inputBuffer[100];
-  String inputString;         // a string to hold incoming data
+  String inputString;    
+       // a string to hold incoming data
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
+  
   int commandLength;
   
-  String serialPort;
   String serialStringCommand;
+  String serialPort;
   String serialSubStringCommand;
 
-  uint32_t ESP_command[6]  = {0,0,0,0,0,0};
-  int espCommandFunction     = 0;
+ uint32_t Local_Command[6]  = {0,0,0,0,0,0};
+  int localCommandFunction     = 0;
 
   uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
   int espNowCommandFunction = 0;
   String espNowCommandFunctionString;
   String tempESPNOWTargetID;
-  int defaultESPNOWSendDuration = 50;
   String espNowInputStringCommand;
 
   int mp3Track;
   String mp3Comm;
 
-// Flags to enable/disable debugging in runtime
-  boolean debugflag = 1;    // Normally set to 0, but leaving at 1 during coding and testing.
-  boolean debugflag1 = 0;  // Used for optional level of debuging
-  boolean debugflag2 = 0;  // Used for optional level of debuging
-  boolean debugflag_espnow = 0;
-  boolean debugflag_serial_event = 0;
-  boolean debugflag_loop = 0;
+  debugClass Debug;
+
+
+
 
   // variables for storing status and settings from ATMEGA2560
   int BL_LDP_Bright;
@@ -123,8 +134,6 @@
   boolean bodyLEDControllerStatus = 0;
   
 
-  unsigned long blkeepAliveAge;
-  unsigned long blkeepaliveAgeMillis;
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -139,6 +148,17 @@
 
  //Timers for Status updates
   unsigned long keepAliveMillisDuration = 15000;
+  unsigned long blkeepAliveAge;
+  unsigned long blkeepaliveAgeMillis;
+  unsigned long keepAliveMillis;
+
+
+
+
+
+
+
+
   //////////////////////////////////////////////////////////////////////
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
@@ -164,12 +184,12 @@
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
-uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  ESP-NOW MAC Addresses used in the Droid.  
+const uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+const uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+const int8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
 
 //    MAC Address to broadcast to all senders at once
 uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -256,7 +276,7 @@ typedef struct bodyControllerStatus_struct_message{
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  if (debugflag == 1){
+  if (Debug.debugflag == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
     if (status ==0){
@@ -270,37 +290,39 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  
   memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
   incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
   incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
   incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %i\n", len);
-  DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand); 
+  Debug.DBG("Bytes received from ESP-NOW Message: %i\n", len);
+  Debug.DBG("Sender ID = %s\n",incomingSenderID);
+  Debug.DBG("Target ID= %s\n", incomingTargetID);
+  Debug.DBG("Command = %s\n" , incomingCommand); 
   if(incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID == "ST" || incomingTargetID == "MT" || incomingTargetID == "ALL"){
     if (incomingTargetID=="BC"){
       inputString = incomingCommand;
       stringComplete = true; 
       }
     else if (incomingTargetID == "BL"){
-      DBG("Sending command to Body LED Controller");
+      Debug.DBG("Sending command to Body LED Controller");
         writeBlSerial(incomingCommand);
     }
     else  if (incomingTargetID == "ST"){
-      DBG("Sending command to Body LED Controller");
+      Debug.DBG("Sending command to Body LED Controller");
         writeStSerial(incomingCommand);
     }
     else if (incomingTargetID == "MT"){
-      DBG("Sending command to Body LED Controller");
+      Debug.DBG("Sending command to Body LED Controller");
 //        writeMpSerial(incomingCommand);
     } else {
-      DBG("Command Ignored");
+      Debug.DBG("Command Ignored");
     }
 
   }    else {
-      DBG("Command Ignored");
+      Debug.DBG("Command Ignored");
     } 
+    
 }
 
 
@@ -414,7 +436,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  DBG("InputString: %s \n",inputString);
+  Debug.DBG("InputString: %s \n",inputString);
 };
 
 
@@ -428,7 +450,7 @@ void serialAux1Event() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  DBG_2("InputString: %s \n",inputString);
+  Debug.ESPNOW("InputString: %s \n",inputString);
 };
 
 void serialBlEvent() {
@@ -445,7 +467,7 @@ void serialBlEvent() {
       if (bodyLEDControllerStatus == 1){
         bodyLEDControllerStatus=1;
         blkeepAliveAge = millis();
-        DBG_2("Body LED Controler Keepalive Received \n");
+        Debug.JSON("Body LED Controler Keepalive Received \n");
         }
       BL_LDP_Bright = doc["LDPBright"].as<int>();
       BL_MAINT_Bright = doc["MaintBright"].as<int>();
@@ -459,27 +481,25 @@ void serialBlEvent() {
       BL_BatteryPercentage = doc["BatteryPercent"].as<int>();
       // Print the values
       // (we must use as<T>() to resolve the ambiguity)
-      DBG_2("Body LED Controller Status = %d\n", bodyLEDControllerStatus); //Serial.println(doc["BL_Status"].as<String>());
-      DBG_2("LDP Brightness = %i\n", BL_LDP_Bright); //Serial.println(doc["LDPBright"].as<int>());
-      DBG_2("Maint Brightness = %i\n", BL_MAINT_Bright); //Serial.println(doc["MaintBright"].as<int>());
-      DBG_2("VU Brightness = %i\n", BL_VU_Bright); //Serial.println(doc["VUBright"].as<int>());
-      DBG_2("Coin Slots Brightness = %i\n",BL_CS_Bright); //Serial.println(doc["CoinBright"].as<int>());
-      DBG_2("Spectrum Int Offset = %i\n",BL_vuOffsetInt); //Serial.println(doc["VUIntOffset"].as<int>());
-      DBG_2("Spectrum Int Baseline = %i\n",BL_vuBaselineInt); //Serial.println(doc["VUIntBaseline"].as<int>());
-      DBG_2("Spectrum Ext Offset = %i\n",BL_vuOffsetExt); //Serial.println(doc["VUExtOffset"].as<int>());
-      DBG_2("Spectrum Ext Baseline = %i\n",BL_vuBaselineExt); //Serial.println(doc["VUExtOffset"].as<int>());
-      DBG_2("Battery Voltage = %.2f\n",BL_BatteryVoltage); //Serial.println(doc["BatteryVoltage"].as<float>());
-      DBG_2("Battery Percentage = %i\n",BL_BatteryPercentage);//Serial.println(doc["BatteryPercent"].as<int>());
+      Debug.JSON("Body LED Controller Status = %d\n", bodyLEDControllerStatus); //Serial.println(doc["BL_Status"].as<String>());
+      Debug.JSON("LDP Brightness = %i\n", BL_LDP_Bright); //Serial.println(doc["LDPBright"].as<int>());
+      Debug.JSON("Maint Brightness = %i\n", BL_MAINT_Bright); //Serial.println(doc["MaintBright"].as<int>());
+      Debug.JSON("VU Brightness = %i\n", BL_VU_Bright); //Serial.println(doc["VUBright"].as<int>());
+      Debug.JSON("Coin Slots Brightness = %i\n",BL_CS_Bright); //Serial.println(doc["CoinBright"].as<int>());
+      Debug.JSON("Spectrum Int Offset = %i\n",BL_vuOffsetInt); //Serial.println(doc["VUIntOffset"].as<int>());
+      Debug.JSON("Spectrum Int Baseline = %i\n",BL_vuBaselineInt); //Serial.println(doc["VUIntBaseline"].as<int>());
+      Debug.JSON("Spectrum Ext Offset = %i\n",BL_vuOffsetExt); //Serial.println(doc["VUExtOffset"].as<int>());
+      Debug.JSON("Spectrum Ext Baseline = %i\n",BL_vuBaselineExt); //Serial.println(doc["VUExtOffset"].as<int>());
+      Debug.JSON("Battery Voltage = %.2f\n",BL_BatteryVoltage); //Serial.println(doc["BatteryVoltage"].as<float>());
+      Debug.JSON("Battery Percentage = %i\n",BL_BatteryPercentage);//Serial.println(doc["BatteryPercent"].as<int>());
     } 
     else 
     {
       // Print error to the "debug" serial port
-      Serial.print("deserializeJson() returned ");
+      if (Debug.debugflag_json == 1){
+        Serial.print("deserializeJson() returned ");
       Serial.println(err.c_str());
-    
-      // Flush all bytes in the "link" serial port buffer
-//      while (blSerial.available() > 0)
-//        blSerial.read();
+      }
     }
   };
 };
@@ -495,7 +515,7 @@ void serialStEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  DBG("InputString: %s \n",inputString);
+  Debug.DBG("InputString: %s \n",inputString);
 };
 
 String mp3TriggerResponseString;
@@ -507,7 +527,7 @@ void serialMpEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
     };
   };
-  DBG("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
+  Debug.DBG("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
   mp3TriggerResponseString = "";
 };
 
@@ -540,7 +560,7 @@ void writeaux1Serial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     aux1Serial.write(completeString[i]);
   };
-  DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
+  Debug.DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
 };
 
 
@@ -569,10 +589,10 @@ void sendESPNOWCommand(String starget, String scomm)
   setupSendCommandStruct(&commandsToSendtoBroadcast ,ESPNOWPASSWORD, senderID, starget, scomm);
   esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
   if (result == ESP_OK) {
-    DBG_ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
   }
   else {
-    DBG_ESPNOW("Error sending the data\n");
+    Debug.ESPNOW("Error sending the data\n");
   }
   ESPNOW_command[0] = '\0';
 }
@@ -593,16 +613,22 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structBL_BatteryVoltage = BL_BatteryVoltage;
     msg->structBL_BatteryPercentage = BL_BatteryPercentage;
 }
-void sendESPNOWStatus(String starget, String scomm)
+int ESPNowSuccessCounter = 1;
+int ESPNowFailureCounter = 1;
+void sendESPNOWStatus()
 {
   String senderID = "BC";     // change to match location (BC, BS, DP, DC, LD)
+  String starget = "LD";
   setupSendStatusStruct(&commandstoSendForStatus ,ESPNOWPASSWORD, senderID, starget);
   esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandstoSendForStatus, sizeof(commandstoSendForStatus));
   if (result == ESP_OK) {
-    DBG_ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    // printf("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    printf("Sent a command/status update to : %x, packet number: %i \n", droidLoRaMACAddress, ESPNowSuccessCounter);
+    ESPNowSuccessCounter++;
   }
   else {
-    DBG_ESPNOW("Error sending the data\n");
+   printf("Error sending the data to: %X, packet number: %i\n", droidLoRaMACAddress, ESPNowFailureCounter);
+   ESPNowFailureCounter++;
   }
   ESPNOW_command[0] = '\0';
 }
@@ -618,117 +644,6 @@ void sendESPNOWStatus(String starget, String scomm)
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-void DBG(const char *format, ...) {
-        if (!debugflag)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void DBG_1(const char *format, ...) {
-        if (!debugflag1)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void DBG_2(const char *format, ...) {
-        if (!debugflag1)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void DBG_ESPNOW(const char *format, ...) {
-        if (!debugflag_espnow)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-
-void DBG_SERIAL_EVENT(const char *format, ...) {
-        if (!debugflag_serial_event)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-void DBG_LOOP(const char *format, ...) {
-        if (!debugflag_loop)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-
-
-void toggleDebug(){
-  debugflag = !debugflag;
-  if (debugflag == 1){
-    Serial.println("Debugging Enabled");
-    }
-  else{
-    Serial.println("Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
-void toggleDebug1(){
-  debugflag1 = !debugflag1;
-  if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled");
-    }
-  else{
-    Serial.println("Parameter Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
-void toggleDebug_ESPNOW(){
-  debugflag_espnow = !debugflag_espnow;
-  if (debugflag_espnow == 1){
-    Serial.println("ESP-NOW Debugging Enabled");
-    }
-  else{
-    Serial.println("ESP-NOW Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
-void toggleDebug_SerialEvent(){
-  debugflag_serial_event = !debugflag_serial_event;
-  if (debugflag_serial_event == 1){
-    Serial.println("Serial Events Debugging Enabled");
-    }
-  else{
-    Serial.println("Serial Events Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
-void toggleDebug_Loop(){
-  debugflag_loop = !debugflag_loop;
-  if (debugflag_loop == 1){
-    Serial.println("Main Loop Debugging Enabled");
-    }
-  else{
-    Serial.println("Main Loop Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
 //////////////////////////////////////////////////////////////////////
 ///*****    Connects to WiFi and turns on OTA functionality   *****///
 //////////////////////////////////////////////////////////////////////
@@ -767,7 +682,7 @@ void connectWiFi(){
 //////////////////////////////////////////////////////////////////////
 
 void resetArduino(int delayperiod){
-  DBG("Body LED Controller Reset Function\n");
+  Debug.DBG("Body LED Controller Reset Function\n");
   digitalWrite(RST,LOW);
   delay(delayperiod);
   digitalWrite(RST,HIGH);
@@ -793,14 +708,16 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
       bodyLEDControllerStatus=0;
       BL_BatteryPercentage = 0;
       BL_BatteryVoltage = 0.0;
-      DBG_2("Body LED Controller Offline\n");
+      Debug.ESPNOW("Body LED Controller Offline\n");
     }
   }
 }
 
+
+
 void printKeepaliveStatus(){
 
-  DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+  Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
 
   ESP_command[0]   = '\0';
 
@@ -811,7 +728,7 @@ void printKeepaliveStatus(){
 void keepAlive(){
   if (millis() - keepAliveMillis >= keepAliveDuration){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","BC-ONLINE");
+    sendESPNOWStatus();
   } 
 }
 
@@ -861,7 +778,7 @@ void setup(){
 
   //Initialize the Soft Access Point
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  esp_wifi_set_mac(WIFI_IF_STA, &bodyControllerMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
@@ -884,6 +801,11 @@ void setup(){
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }  
+    memcpy(peerInfo.peer_addr, droidLoRaMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Kill Switch Droid ESP-NOW peer");
     return;
   }  
   // Register for a callback function that will be called when data is received
@@ -935,7 +857,7 @@ void loop(){
           inputBuffer[0]=='N'     ||        // Command for receiving status/info from other boards
           inputBuffer[0]=='n'               // Command for receiving status/info from other boards
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
-          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
+          Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
           if(commandLength >= 3) {
             if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
@@ -948,26 +870,26 @@ void loop(){
                 char inCharRead = inputBuffer[i];
                 serialStringCommand += inCharRead;  // add it to the inputString:
               }
-              DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
+              Debug.DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
               serialPort = serialStringCommand.substring(0,2);
               serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-              DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
+              Debug.DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
               if (serialPort == "BL"){
                 writeBlSerial(serialSubStringCommand);
-                DBG("Sending out BL Serial\n");
+                Debug.DBG("Sending out BL Serial\n");
               } else if (serialPort == "EN"){
                 writeaux1Serial(serialSubStringCommand);
-                DBG("Sending out EN Serial\n");
+                Debug.DBG("Sending out EN Serial\n");
               } else if (serialPort == "ST"){
                 writeStSerial(serialSubStringCommand);
-                DBG("Sending out ST Serial\n");
+                Debug.DBG("Sending out ST Serial\n");
               }else if (serialPort == "MP"){
                 mp3Comm = serialStringCommand.substring(2,3);
                 mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
-                DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
+                Debug.DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
                 mp3Trigger(mp3Comm,mp3Track);
-                DBG("Sending out MP Serial\n ");
-              } else { DBG("No valid Serial identified\n");}
+                Debug.DBG("Sending out MP Serial\n ");
+              } else { Debug.DBG("No valid Serial identified\n");}
               serialStringCommand = "";
               serialPort = "";
               serialSubStringCommand = "";
@@ -1008,8 +930,8 @@ void loop(){
         case 7: break;  //reserved for future use
         case 8: break;  //reserved for future use
         case 9:  break;  //reserved for future use
-        case 10: toggleDebug();                                                                 break;
-        case 11: toggleDebug1();                                                                break;
+        case 10: Debug.toggle_Debug();                                                                 break;
+        case 11: Debug.toggle_Debug1();                                                                break;
         // case 12: toggleDebug2();                                                                break;
 
       }

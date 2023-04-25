@@ -39,7 +39,7 @@ namespace
 {
 
     template<typename R, typename... P>
-    R IRAM_ATTR vPtrToFunPtrExec(void* fn, P... args)
+    __attribute__((always_inline)) inline R IRAM_ATTR vPtrToFunPtrExec(void* fn, P... args)
     {
         using target_type = R(P...);
         return reinterpret_cast<target_type*>(fn)(std::forward<P...>(args...));
@@ -253,7 +253,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -269,7 +269,7 @@ namespace delegate
                 }
             }
 
-            static R IRAM_ATTR vPtrToFunAPtrExec(void* self, P... args)
+            static inline R IRAM_ATTR vPtrToFunAPtrExec(void* self, P... args) __attribute__((always_inline))
             {
                 return static_cast<DelegatePImpl*>(self)->fnA(
                     static_cast<DelegatePImpl*>(self)->obj,
@@ -323,20 +323,29 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()(P... args) const
             {
                 if (FP == kind)
                 {
-                    return fn(std::forward<P...>(args...));
+                    if (fn) return fn(std::forward<P...>(args...));
                 }
                 else if (FPA == kind)
                 {
-                    return fnA(obj, std::forward<P...>(args...));
+                    if (fnA) return fnA(obj, std::forward<P...>(args...));
                 }
                 else
                 {
-                    return functional(std::forward<P...>(args...));
+                    if (functional) return functional(std::forward<P...>(args...));
                 }
+                return R();
             }
 
         protected:
@@ -494,7 +503,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -506,7 +515,7 @@ namespace delegate
                 }
             }
 
-            static R IRAM_ATTR vPtrToFunAPtrExec(void* self, P... args)
+            static inline R IRAM_ATTR vPtrToFunAPtrExec(void* self, P... args) __attribute__((always_inline))
             {
                 return static_cast<DelegatePImpl*>(self)->fnA(
                     static_cast<DelegatePImpl*>(self)->obj,
@@ -537,16 +546,25 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()(P... args) const
             {
                 if (FP == kind)
                 {
-                    return fn(std::forward<P...>(args...));
+                    if (fn) return fn(std::forward<P...>(args...));
                 }
                 else
                 {
-                    return fnA(obj, std::forward<P...>(args...));
+                    if (fnA) return fnA(obj, std::forward<P...>(args...));
                 }
+                return R();
             }
 
         protected:
@@ -693,7 +711,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -744,16 +762,25 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()(P... args) const
             {
                 if (FP == kind)
                 {
-                    return fn(std::forward<P...>(args...));
+                    if (fn) return fn(std::forward<P...>(args...));
                 }
                 else
                 {
-                    return functional(std::forward<P...>(args...));
+                    if (functional) return functional(std::forward<P...>(args...));
                 }
+                return R();
             }
 
         protected:
@@ -822,13 +849,13 @@ namespace delegate
                 return *this;
             }
 
-            DelegatePImpl& IRAM_ATTR operator=(std::nullptr_t)
+            inline DelegatePImpl& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline))
             {
                 fn = nullptr;
                 return *this;
             }
 
-            operator bool() const
+            inline IRAM_ATTR operator bool() const __attribute__((always_inline))
             {
                 return fn;
             }
@@ -843,9 +870,18 @@ namespace delegate
                 return reinterpret_cast<void*>(fn);
             }
 
-            R IRAM_ATTR operator()(P... args) const
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
+            inline R IRAM_ATTR operator()(P... args) const __attribute__((always_inline))
             {
-                return fn(std::forward<P...>(args...));
+                if (fn) return fn(std::forward<P...>(args...));
+                return R();
             }
 
         protected:
@@ -1054,7 +1090,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -1070,7 +1106,7 @@ namespace delegate
                 }
             }
 
-            static R IRAM_ATTR vPtrToFunAPtrExec(void* self)
+            static inline R IRAM_ATTR vPtrToFunAPtrExec(void* self) __attribute__((always_inline))
             {
                 return static_cast<DelegateImpl*>(self)->fnA(
                     static_cast<DelegateImpl*>(self)->obj);
@@ -1123,20 +1159,29 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()() const
             {
                 if (FP == kind)
                 {
-                    return fn();
+                    if (fn) return fn();
                 }
                 else if (FPA == kind)
                 {
-                    return fnA(obj);
+                    if (fnA) return fnA(obj);
                 }
                 else
                 {
-                    return functional();
+                    if (functional) return functional();
                 }
+                return R();
             }
 
         protected:
@@ -1294,7 +1339,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -1306,7 +1351,7 @@ namespace delegate
                 }
             }
 
-            static R IRAM_ATTR vPtrToFunAPtrExec(void* self)
+            static inline R IRAM_ATTR vPtrToFunAPtrExec(void* self) __attribute__((always_inline))
             {
                 return static_cast<DelegateImpl*>(self)->fnA(
                     static_cast<DelegateImpl*>(self)->obj);
@@ -1336,16 +1381,25 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()() const
             {
                 if (FP == kind)
                 {
-                    return fn();
+                    if (fn) return fn();
                 }
                 else
                 {
-                    return fnA(obj);
+                    if (fnA) return fnA(obj);
                 }
+                return R();
             }
 
         protected:
@@ -1492,7 +1546,7 @@ namespace delegate
                 return *this;
             }
 
-            operator bool() const
+            IRAM_ATTR operator bool() const
             {
                 if (FP == kind)
                 {
@@ -1543,16 +1597,25 @@ namespace delegate
                 }
             }
 
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
             R IRAM_ATTR operator()() const
             {
                 if (FP == kind)
                 {
-                    return fn();
+                    if (fn) return fn();
                 }
                 else
                 {
-                    return functional();
+                    if (functional) return functional();
                 }
+                return R();
             }
 
         protected:
@@ -1621,13 +1684,13 @@ namespace delegate
                 return *this;
             }
 
-            DelegateImpl& IRAM_ATTR operator=(std::nullptr_t)
+            inline DelegateImpl& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline))
             {
                 fn = nullptr;
                 return *this;
             }
 
-            operator bool() const
+            inline IRAM_ATTR operator bool() const __attribute__((always_inline))
             {
                 return fn;
             }
@@ -1642,9 +1705,18 @@ namespace delegate
                 return nullptr;
             }
 
-            R IRAM_ATTR operator()() const
+	    /// Calling is safe without checking for nullptr.
+	    /// If non-void, returns the default value.
+	    /// In ISR context, where faults and exceptions must not
+	    /// occurs, this saves the extra check for nullptr,
+	    /// and allows the compiler to optimize out checks
+	    /// in std::function which may not be ISR-safe or
+	    /// cause linker errors, like l32r relocation errors
+	    /// on the Xtensa ISA.
+            inline R IRAM_ATTR operator()() const __attribute__((always_inline))
             {
-                return fn();
+                if (fn) return fn();
+                return R();
             }
 
         protected:
@@ -1707,7 +1779,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegatePImpl<A, R, P...>::operator=(nullptr);
                 return *this;
             }
@@ -1786,7 +1858,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegatePImpl<A*, R, P...>::operator=(nullptr);
                 return *this;
             }
@@ -1842,7 +1914,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegatePImpl<void, R, P...>::operator=(nullptr);
                 return *this;
             }
@@ -1903,7 +1975,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegateImpl<A, R>::operator=(nullptr);
                 return *this;
             }
@@ -1982,7 +2054,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegateImpl<A*, R>::operator=(nullptr);
                 return *this;
             }
@@ -2038,7 +2110,7 @@ namespace delegate
                 return *this;
             }
 
-            Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+            inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
                 detail::DelegateImpl<void, R>::operator=(nullptr);
                 return *this;
             }
@@ -2083,7 +2155,7 @@ public:
         return *this;
     }
 
-    Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+    inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
         delegate::detail::Delegate<A, R, P...>::operator=(nullptr);
         return *this;
     }
@@ -2121,7 +2193,7 @@ public:
         return *this;
     }
 
-    Delegate& IRAM_ATTR operator=(std::nullptr_t) {
+    inline Delegate& IRAM_ATTR operator=(std::nullptr_t) __attribute__((always_inline)) {
         delegate::detail::Delegate<void, R, P...>::operator=(nullptr);
         return *this;
     }
