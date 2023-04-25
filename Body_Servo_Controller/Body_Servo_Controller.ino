@@ -43,7 +43,7 @@
 #include "body_servo_pin_map.h"
 
 // Debug Functions  - Using my own library for this
-#include <DebugR2.h>
+#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
 #include <ReelTwo.h>
