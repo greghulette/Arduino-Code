@@ -69,7 +69,7 @@
   const char* password =  "astromech";
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
-  int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveDuration= 4000;  // 4 seconds
 
 // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
 // Change this to work with how your droid performs
@@ -105,8 +105,6 @@
   uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction = 0;
 
-  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-  int espNowCommandFunction = 0;
   String ESPNOWStringCommand;
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
@@ -1151,7 +1149,7 @@ void scan_i2c()
 
 
 void keepAlive(){
-  if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 500))){
+  if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
     keepAliveMillis = millis();
    sendESPNOWCommand("LD","");  
 } 

@@ -313,7 +313,7 @@ typedef struct bodyControllerStatus_struct_message{
 
 // Create a espnow_struct_message called commandsTosendto****** to hold variables that will be sent
   espnow_struct_message commandsToSendtoBroadcast;
-  // espnow_struct_message commandsToSendtoDroidLoRa;
+  espnow_struct_message commandsToSendtoDroidLoRa;
   espnow_struct_message commandsToSendtoBodyController;
   espnow_struct_message commandsToSendtoBodyServoController;
   espnow_struct_message commandsToSendtoDomeController;
@@ -342,7 +342,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-    colorWipeStatus("ES",orange,40);
+    colorWipeStatus("ES",orange,255);
 
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
