@@ -69,7 +69,7 @@
   const char* password =  "astromech";
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
-  int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveDuration= 4000;  // 4 seconds
   
   // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
 // Change this to work with how your droid performs
@@ -105,16 +105,19 @@
  uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
 
-  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-  int espNowCommandFunction = 0;
-  String espNowCommandFunctionString;
-  String tempESPNOWTargetID;
-  String espNowInputStringCommand;
-
+  String ESPNOWStringCommand;
+  String ESPNOWTarget;
+  String ESPNOWSubStringCommand;
+  
+    byte RE_command[6] = {0,0,0,0,0,0};
+ 
+  
+  int colorState1;
+  int speedState;
   int ledFunction;
 
-
-
+  debugClass Debug;
+  String debugInputIdentifier ="";
 
 //////////////////////////////////////////////////////////////////////
 ///*****   Door Values, Containers, Flags & Timers   *****///
@@ -211,175 +214,41 @@ ServoSequencer servoSequencer(servoDispatch);
 
 
 
-/////////////////////////////////////////////////////////////////////////
-///*****                  ESP NOW Set Up                         *****///
-/////////////////////////////////////////////////////////////////////////
-
-//  MAC Addresses used in the Droid.  Not really needed because we broadcast everything but good to know for troublshooting.
-//  Droid LoRa =              {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-//  Body Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-//  Body Servos Controller =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-//  Dome Controller =         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-//  Dome Plate Controller =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-
-
-//    MAC Address to broadcast to all senders at once
-uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};    //used when connecting to WiFi for OTA
-
-// Define variables to store commands to be sent
-  String senderID;
-  String targetID;
-  String command;
-  String commandSubString;
-  String espnowpassword;
-
-
-// Define variables to store incoming commands
-  String incomingTargetID;  
-  String incomingSenderID;
-  String incomingCommand;
-  String incomingPassword;
-  
-// Variable to store if sending data was successful
-  String success;
-
-//Structure example to send data
-//Must match the receiver structure
-typedef struct struct_message {
-      char structPassword[20];
-      char structSenderID[2];
-      char structTargetID[2];
-      char structCommand[100];
-  } struct_message;
-
-// Create a struct_message calledcommandsTosend to hold variables that will be sent
-  struct_message commandsToSendtoBroadcast;
-
-// Create a struct_message to hold incoming commands from the Body
-  struct_message commandsToReceiveFromBroadcast;
-
-  esp_now_peer_info_t peerInfo;
-
-// Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  if (debugflag == 1){
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    if (status ==0){
-      success = "Delivery Success :)";
-    }
-    else{
-      success = "Delivery Fail :(";
-    }
-  }
-}
-
-//   Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-    incomingPassword = commandsToReceiveFromBroadcast.structPassword;
-  if (incomingPassword != ESPNOWPASSWORD){
-  DBG("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-  } else{
-  incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  DBG("Bytes received from ESP-NOW Message: %i\n", len);
-  DBG("Sender ID = %s\n",incomingSenderID);
-  DBG("Target ID= %s\n", incomingTargetID);
-  DBG("Command = %s\n" , incomingCommand); 
-    if (incomingTargetID == "RS"){
-        DBG("Sending %s out rsSerial\n", incomingCommand);
-        writeRsSerial(incomingCommand);
-    } else if (incomingTargetID == "HP"){
-        DBG("Sending %s out hpSerial\n", incomingCommand);
-        writeHpSerial(incomingCommand);
-    }else if (incomingTargetID == "PS"){
-        DBG("Sending %s out hpSerial\n", incomingCommand);
-        writeHpSerial(incomingCommand);
-    } else if (incomingTargetID == "DC" || incomingTargetID == "ALL"){
-        DBG("Execute Local Command = %s\n", incomingCommand);
-//  if (incomingCommand == "Status"){
-//           DBG("Status is good\n");                                                                                                                                       
-//           sendESPNOWCommand("BS","DCONLINE");
-//         }else if(incomingCommand != "Status"){
-        inputString = incomingCommand;
-        stringComplete = true; 
-//         }
-    } 
-       else {DBG("ESP-NOW Message Ignored\n");}
-  }
- }
-
-  //////////////////////////////////////////////////////////////////////
-  ///******             WiFi Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
-  
-//LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Droid Raspberry Pi        192.168.4.113
-//Remote Raspberry Pi       192.168.4.114
-//Developer Laptop          192.168.4.125
-  
-  // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,111);
-  IPAddress subnet(255,255,255,0);
-  IPAddress gateway(192,168,4,101);
-  
-
-  
-  AsyncWebServer server(80);
-  
-
 //////////////////////////////////////////////////////////////////////
 ///*****            Status and Camera Lens Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
   
-  unsigned long loopTime; // We keep track of the "time" in this variable.
-
+  unsigned long RE_loopTime; // We keep track of the "time" in this variable.
+  unsigned long RadarEyeMillis;
+  byte RadarEyespeed = 50;
+  unsigned long RE_startMillis;
+  unsigned long RE_currentMillis;  
+  int dim = 75;
+  boolean countUp=false;
 // -------------------------------------------------
 // Define some constants to help reference objects,
 // pins, leds, colors etc by name instead of numbers
 // -------------------------------------------------
 //    CAMERA LENS LED VARIABLES
-    const uint32_t red     = 0xFF0000;
-    const uint32_t orange  = 0xFF8000;
-    const uint32_t yellow  = 0xFFFF00;
-    const uint32_t green   = 0x00FF00;
-    const uint32_t cyan    = 0x00FFFF;
-    const uint32_t blue    = 0x0000FF;
-    const uint32_t magenta = 0xFF00FF;
-    const uint32_t white   = 0xFFFFFF;
-    const uint32_t off     = 0x000000;
+  const uint32_t red     = 0xFF0000;
+  const uint32_t orange  = 0xFF8000;
+  const uint32_t yellow  = 0xFFFF00;
+  const uint32_t green   = 0x00FF00;
+  const uint32_t cyan    = 0x00FFFF;
+  const uint32_t blue    = 0x0000FF;
+  const uint32_t magenta = 0xFF00FF;
+  const uint32_t white   = 0xFFFFFF;
+  const uint32_t off     = 0x000000;
 
-    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+  const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
   #define NUM_RADAR_EYE_PIXELS 7
-  // #define RADAR_EYE_DATA_PIN 27
-  // #define STATUS_LED_PIN 5
   #define STATUS_LED_COUNT 1  
-  int dim = 75;
-  unsigned long RadarEyeMillis;
-  byte RadarEyespeed = 50;
-  unsigned long startMillis;
-  unsigned long currentMillis;
-  byte RE_command[6] = {0,0,0,0,0,0};
-  
-  int colorState1;
-  int speedState;
   
   Adafruit_NeoPixel RADAR_EYE_LEDS = Adafruit_NeoPixel(NUM_RADAR_EYE_PIXELS, RADAR_EYE_LED_PIN, NEO_GRB + NEO_KHZ800);
   Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
-  boolean countUp=false;
+
 ///////////////////////////////////////////////////////////////////////
 ///*****                 Auto Sequence Settings                *****///
 ///*****                                                       *****///
@@ -436,6 +305,205 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   unsigned long RadarEyeAutoTimer;
 
 
+/////////////////////////////////////////////////////////////////////////
+///*****                  ESP NOW Set Up                         *****///
+/////////////////////////////////////////////////////////////////////////
+
+//  ESP-NOW MAC Addresses used in the Droid. 
+  const uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  const uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+  const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+  const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+
+// Uses these Strings for comparators
+  String droidLoRaMACAddressString = "02:00:00:00:00:01";
+  String bodyControllerMACAddressString = "02:00:00:00:00:02";
+  String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
+  String domeControllerMACAddressString = "02:00:00:00:00:04";
+  String domePlateControllerMACAddressString = "02:00:00:00:00:05";
+  String broadcastMACAddressString = "FF:FF:FF:FF:FF:FF";
+
+// Define variables to store commands to be sent
+  String  senderID;
+  String  targetID;
+  bool    commandIncluded;
+  String  command;
+
+// Define variables to store incoming commands
+  String  incomingTargetID;  
+  String  incomingSenderID;
+  String  incomingCommand;
+  bool    incomingCommandIncluded;
+  String  incomingPassword;
+  
+// Variable to store if sending data was successful
+  String success;
+
+//Structure example to send data
+//Must match the receiver structure
+typedef struct espnow_struct_message {
+      char structPassword[20];
+      char structSenderID[4];
+      char structTargetID[4];
+      bool structCommandIncluded;
+      char structCommand[100];
+  } espnow_struct_message;
+
+// Create a struct_message calledcommandsTosend to hold variables that will be sent
+  espnow_struct_message commandsToSendtoBroadcast;
+  espnow_struct_message commandsToSendtoDroidLoRa;
+  espnow_struct_message commandsToSendtoBodyController;
+  espnow_struct_message commandsToSendtoBodyServoController;
+  espnow_struct_message commandsToSendtoDomeController;
+  espnow_struct_message commandsToSendtoDomePlateController;
+
+// Create a struct_message to hold incoming commands from the Body
+  espnow_struct_message commandsToReceiveFromBroadcast;
+  espnow_struct_message commandsToReceiveFromDroidLoRa;
+  espnow_struct_message commandsToReceiveFromBodyController;
+  espnow_struct_message commandsToReceiveFromBodyServoController;
+  espnow_struct_message commandsToReceiveFromDomeController;
+  espnow_struct_message commandsToReceiveFromDomePlateController;
+  
+  esp_now_peer_info_t peerInfo;
+
+// Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (Debug.debugflag_espnow == 1){
+    Serial.print("\r\nLast Packet Send Status:\t");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    if (status ==0){
+      success = "Delivery Success :)";
+    }
+    else{
+      success = "Delivery Fail :(";
+    }
+  }
+}
+
+//   Callback when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+    colorWipeStatus("ES", orange ,255);
+
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  String IncomingMacAddress(macStr);
+  if (IncomingMacAddress = droidLoRaMACAddressString) {
+      memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
+      incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
+        incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress == bodyControllerMACAddressString){
+    memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
+    incomingPassword = commandsToReceiveFromBodyController.structPassword;
+   if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
+        incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBodyController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
+      incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
+        incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = domeControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
+      incomingPassword = commandsToReceiveFromDomeController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDomeController.structSenderID;
+        incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDomeController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = domePlateControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
+      incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDomePlateController.structSenderID;
+        incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = broadcastMACAddressString) {
+      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+      incomingPassword = commandsToReceiveFromBroadcast.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+        incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBroadcast.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
+      colorWipeStatus("ES", blue, 10);
+
+}
+
+void processESPNOWIncomingMessage(){
+
+  if (incomingTargetID == "DC" || incomingTargetID == "BR"){
+    inputString = incomingCommand;
+    stringComplete = true; 
+
+  }
+}
+
+  //////////////////////////////////////////////////////////////////////
+  ///******             WiFi Specific Setup                     *****///
+  //////////////////////////////////////////////////////////////////////
+  
+//LoRa Remote ESP           192.168.4.101   
+//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.113
+//Remote Raspberry Pi       192.168.4.114
+//Developer Laptop          192.168.4.125
+  
+  // IP Address config of local ESP
+  IPAddress local_IP(192,168,4,111);
+  IPAddress subnet(255,255,255,0);
+  IPAddress gateway(192,168,4,101);
+  
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};    //used when connecting to WiFi for OTA
+
+  
+  AsyncWebServer server(80);
+  
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -449,9 +517,9 @@ void RadarEye_LED(uint32_t color, int RadarEyespeed1){
   int RadarEyeLow = 1;
   int RadarEyeHigh = 50;
 
-  currentMillis = millis();
+  RE_currentMillis = millis();
       RadarEyespeed = map(RadarEyespeed1, 1, 9, 1, 250);
-      if (currentMillis - startMillis >= RadarEyespeed){
+      if (RE_currentMillis - RE_startMillis >= RadarEyespeed){
       if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
       
           dim=dim - random(RadarEyeLow, RadarEyeHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
@@ -463,7 +531,7 @@ void RadarEye_LED(uint32_t color, int RadarEyespeed1){
                                               //allow the dim variable to go below zero causing the flicker.  The closer you
                                               //set the "20" to zero, the more flickering will happen. I use half the larger
                                               //dim random number to allow a small flicker without being too annoying.
-      
+
            countUp = true;                    // if the dim variable is at or below "20", change the countUp flag to true      
           }
         if(countUp == true){                 // check to see if the boolean flag is true.  If true, starting brightening the LEDs
@@ -477,7 +545,7 @@ void RadarEye_LED(uint32_t color, int RadarEyespeed1){
                                               //dim random number to allow a small flicker without being too annoying.
             countUp = false;                  // if the dim variable is at or above "235", change the countUp flag to false
           }
-          startMillis = currentMillis; 
+          RE_startMillis = RE_currentMillis; 
       }
       
   }
@@ -490,30 +558,15 @@ void colorWipe(uint32_t c, int brightness) {
     RADAR_EYE_LEDS.show();
   }
 };
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else{
-  // DBG("No LED was chosen \n");
-  }
-  };
-void clearCL() {
+
+void clearRE() {
   for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
     RADAR_EYE_LEDS.setPixelColor(i, off);
     RADAR_EYE_LEDS.show();
   }
 };
 
-// void clearCLStatus() {
-//   for(uint16_t i=0; i<2; i++) {
-//     StatusLED.setPixelColor(i, off);
-//     StatusLED.show();
-//   }
-// };
-
-void CLAuto () {
+void REAuto () {
   if(millis() - RadarEyeAutoTimer >= RadarEyeAutoInt*1000) {       // and the timer has reached the set interval
     if(millis() - RadarEyeAutoTimer >= (RadarEyeAutoInt+RadarEyeAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
       if(!autoComplete) {
@@ -529,6 +582,17 @@ void CLAuto () {
     }                                                             // and set flag so new command is processes at beginning of loop
   }
 }
+
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } else{
+  // Debug.DBG("No LED was chosen \n");
+  }
+  };
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -559,30 +623,30 @@ void CLAuto () {
 
 void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   //Command: Dx01zz
-  DBG("Open Specific Door\n");
+  Debug.DBG("Open Specific Door\n");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
-      case 1: DBG("Open Top Utility Arm\n");
+      case 1: Debug.DBG("Open Top Utility Arm\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 2: DBG("Open Bottom Utility Arm\n");
+      case 2: Debug.DBG("Open Bottom Utility Arm\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 3: DBG("Open Large Left Door\n");
+      case 3: Debug.DBG("Open Large Left Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 4: DBG("Open Large Right Door\n");
+      case 4: Debug.DBG("Open Large Right Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 5: DBG("Open Charge Bay Indicator Door\n");
+      case 5: Debug.DBG("Open Charge Bay Indicator Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 6: DBG("Open Data Panel Door\n");
+      case 6: Debug.DBG("Open Data Panel Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
@@ -609,30 +673,30 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
 
 void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx02zz
-  DBG("Close Specific Door");
+  Debug.DBG("Close Specific Door");
   if (servoBoard == 1 || servoBoard == 3 || servoBoard == 4){
     switch(doorpos){
-      case 1: DBG("Close Top Utility Arm\n");             
+      case 1: Debug.DBG("Close Top Utility Arm\n");             
               snprintf(stringToSend, sizeof(stringToSend), "D10201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 2: DBG("Close Bottom Utility Arm\n");              
+      case 2: Debug.DBG("Close Bottom Utility Arm\n");              
               snprintf(stringToSend, sizeof(stringToSend), "D10202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 3: DBG("Close Large Left Door\n");
+      case 3: Debug.DBG("Close Large Left Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 4: DBG("Close Large Right Door\n");
+      case 4: Debug.DBG("Close Large Right Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 5: DBG("Close Charge Bay Indicator Door\n");
+      case 5: Debug.DBG("Close Charge Bay Indicator Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
-      case 6: DBG("Close Data Panel Door\n");
+      case 6: Debug.DBG("Close Data Panel Door\n");
               snprintf(stringToSend, sizeof(stringToSend), "D10206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("BS", stringToSend);                                        
               break;
@@ -659,7 +723,7 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
-  DBG("Open all Doors\n");
+  Debug.DBG("Open all Doors\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -679,7 +743,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
 
 void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx04
-  DBG("Close all Doors\n");
+  Debug.DBG("Close all Doors\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -705,7 +769,7 @@ void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
 
 void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx06
-  DBG("Open and Close All Doors\n");
+  Debug.DBG("Open and Close All Doors\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -725,7 +789,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
 
 void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx07
-  DBG("Open and Close Doors Long\n");
+  Debug.DBG("Open and Close Doors Long\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -745,7 +809,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
 
 void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx08
-  DBG("Flutter All Doors\n");
+  Debug.DBG("Flutter All Doors\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -765,7 +829,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
 
 void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx09
-  DBG("Open and Close All Doors Repeat\n");
+  Debug.DBG("Open and Close All Doors Repeat\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -785,7 +849,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
 
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx10
-  DBG("Wave\n");
+  Debug.DBG("Wave\n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
   snprintf(stringToSend, sizeof(stringToSend), "D110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
@@ -805,7 +869,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
 
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx11  
-  DBG("Wave Fast\n");
+  Debug.DBG("Wave Fast\n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
   snprintf(stringToSend, sizeof(stringToSend), "D111E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
@@ -824,7 +888,7 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 
 void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx12
-  DBG("Open Close Wave \n");
+  Debug.DBG("Open Close Wave \n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
   snprintf(stringToSend, sizeof(stringToSend), "D112E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
@@ -843,7 +907,7 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
 
 void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx13
-  DBG("Marching Ants\n");
+  Debug.DBG("Marching Ants\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -863,7 +927,7 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
 
 void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx14
-  DBG("Panel Alternate\n");
+  Debug.DBG("Panel Alternate\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -883,7 +947,7 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
 
 void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
  // Command: Dx15
-  DBG("Panel Dance\n");
+  Debug.DBG("Panel Dance\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -904,7 +968,7 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
 
 void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx16
-  DBG("Panel Dance Long Disco\n");
+  Debug.DBG("Panel Dance Long Disco\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -924,7 +988,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
 
 void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx17
-  DBG("Harlem Shake\n");
+  Debug.DBG("Harlem Shake\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
@@ -967,7 +1031,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-  // DBG("Received %s\n", inputString);
+  // Debug.DBG("Received %s\n", inputString);
 }
 
 void hpSerialEvent() {
@@ -978,7 +1042,7 @@ void hpSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("Recieved %s\n", inputString);
+  Debug.DBG("Recieved %s\n", inputString);
 }
 
 void rsSerialEvent() {
@@ -989,7 +1053,7 @@ void rsSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("Received %s\n", inputString);
+  Debug.DBG("Received %s\n", inputString);
 }
 
 void psSerialEvent() {
@@ -1000,7 +1064,7 @@ void psSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("Received %s\n", inputString);
+  Debug.DBG("Received %s\n", inputString);
 }
 
 void fuSerialEvent() {
@@ -1011,7 +1075,7 @@ void fuSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  DBG("Received %s\n", inputString);
+  Debug.DBG("Received %s\n", inputString);
 }
 
  /////////////////////////////////////////////////////////
@@ -1036,7 +1100,7 @@ void writeRsSerial(String stringData){
   {
     rsSerial.write(completeString[i]);
   }
-  DBG("Printing to rsSerial\n");
+  Debug.DBG("Printing to rsSerial\n");
 }
 
 void writeHpSerial(String stringData){
@@ -1044,7 +1108,7 @@ void writeHpSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     hpSerial.write(completeString[i]);
   }
-  DBG("Printing to hpSerial\n");
+  Debug.DBG("Printing to hpSerial\n");
 }
 
 void writeFuSerial(String stringData){
@@ -1052,7 +1116,7 @@ void writeFuSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     fuSerial.write(completeString[i]);
   }
-  DBG("Printing to fuSerial\n");
+  Debug.DBG("Printing to fuSerial\n");
 }
 
 void writePsSerial(String stringData){
@@ -1061,46 +1125,62 @@ void writePsSerial(String stringData){
   {
     psSerial.write(completeString[i]);
   }
-  DBG("Printing to rsSerial\n");
+  Debug.DBG("Printing to rsSerial\n");
 }
 
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void setupSendStruct(struct_message* msg, String pass, String sender, String targetID, String cmd)
+void setupSendStruct(espnow_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
 {
     snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 
 void sendESPNOWCommand(String starget, String scomm){
-  String sdest;
-  String senderID = "DC";   // change to match location (Dome, Body, Periscope)
-  if (starget == "DS" || starget == "RS" || starget == "HP"){
-    sdest = "Dome";
-  } else if (starget == "PC" || starget == "PL"){
-    sdest = "Periscope";
-  }else if (starget == "EN" || starget == "BC" || starget == "BL" || starget == "ST"|| starget == "BS"){
-    sdest = "Body";
-  } else if (starget =="SR"){
-    sdest = "Broadcast";
-  }
+  String senderID = "DC";   // change to match location (BC/BS/DC/DP/LD)
+  String scommEval = "";
+  bool hasCommand;
+  if (scommEval = scomm){
+    hasCommand = 0;
+  } else {hasCommand = 1;};
 
-
-  setupSendStruct(&commandsToSendtoBroadcast , ESPNOWPASSWORD, senderID, starget, scomm);
-  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-  if (result == ESP_OK) {
-    DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+   if (starget == "LD"){
+    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
+  } else if (starget == "BC"){
+    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
+  } else if (starget == "BS"){
+    setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
+  }  else if (starget == "DC"){
+    setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
+  } else if (starget == "DP"){
+    setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
+  } else if (starget == "BR"){
+    setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.DBG("Error sending the data\n");}
   }
-  else {
-    DBG("Error sending the data\n");
-  }
-  ESPNOW_command[0] = '\0';
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1109,54 +1189,6 @@ void sendESPNOWCommand(String starget, String scomm){
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////
-///*****             Debugging Functions                      *****///
-//////////////////////////////////////////////////////////////////////
-
-void DBG(const char *format, ...) {
-        if (!debugflag)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-
-void DBG_1(const char *format, ...) {
-        if (!debugflag1)
-                return;
-        va_list ap;
-        va_start(ap, format);
-        vfprintf(stderr, format, ap);
-        va_end(ap);
-}
-
-
-void toggleDebug(){
-  debugflag = !debugflag;
-  if (debugflag == 1){
-    Serial.println("Debugging Enabled");
-    }
-  else{
-    Serial.println("Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
-
-void toggleDebug1(){
-  debugflag1 = !debugflag1;
-  if (debugflag1 == 1){
-    Serial.println("Parameter Debugging Enabled");
-    }
-  else{
-    Serial.println("Parameter Debugging Disabled");
-  }
-    ESP_command[0]   = '\0';
-}
-
 
 
 //////////////////////////////////////////////////////////////////////
@@ -1191,7 +1223,7 @@ void connectWiFi(){
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
-  ESP_command[0]   = '\0';
+  Local_Command[0]   = '\0';
 }   
 
 //////////////////////////////////////////////////////////////////////
@@ -1232,7 +1264,7 @@ void setServoEasingMethod(int easingMethod){
     case 30:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseOut);         break;
     case 31:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::BounceEaseInOut);       break;
     default:  servoDispatch.setServosEasingMethod(ALL_SERVOS_MASK, Easing::LinearInterpolation); 
-              DBG("No Easing Method Selected\n");                                                  break;
+              Debug.DBG("No Easing Method Selected\n");                                                  break;
   }
 }
 
@@ -1317,10 +1349,12 @@ void setup(){
   Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,SERIAL_RX_HP_PIN,SERIAL_TX_HP_PIN);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RS_PIN,SERIAL_TX_RS_PIN);
+  psSerial.begin(PS_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_PSI_PIN,SERIAL_TX_PSI_PIN,false,95); 
   fuSerial.begin(FU_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU_PIN,SERIAL_TX_FU_PIN,false,95);  
-  psSerial.begin(PS_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_PSI_PIN,SERIAL_TX_PSI_PIN,false,95);  
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the ESP32 Dome Controller");
+ 
+  Serial.println("\n\n----------------------------------------");
+  Serial.print("Booting up the ");Serial.println(HOSTNAME);
+  Serial.println("----------------------------------------");
 
   //Initialize I2C for the Servo Expander Board
   Wire.begin();
@@ -1346,7 +1380,7 @@ void setup(){
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &newLocalMACAddress[0]);
+  esp_wifi_set_mac(WIFI_IF_STA, &domeControllerMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
@@ -1365,12 +1399,43 @@ void setup(){
   peerInfo.encrypt = true;
   //  peerInfo.ifidx=WIFI_IF_AP;
 
-  // Add peers  
+// Add peers  
+ // Broadcast
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
+  }
+    // Droid LoRa Controller
+  memcpy(peerInfo.peer_addr, droidLoRaMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
   }  
+ // Body Controller
+  memcpy(peerInfo.peer_addr, bodyControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }
+   // Body Servo Controller
+  memcpy(peerInfo.peer_addr, bodyServosControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }
+// // Dome Controller
+//   memcpy(peerInfo.peer_addr, domeControllerMACAddress, 6);
+//   if (esp_now_add_peer(&peerInfo) != ESP_OK){
+//     Serial.println("Failed to add Broadcast ESP-NOW peer");
+//     return;
+//   } 
+// Dome Plate Controller
+  memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  } 
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
 
@@ -1380,12 +1445,12 @@ void setup(){
 void loop() {
 if (millis() - MLMillis >= mainLoopDelayVar){
   MLMillis = millis();
-  loopTime = millis();
+  RE_loopTime = millis();
   AnimatedEvent::process();
   if(startUp) {
       closeAllDoors(2,0,0,0,0);
       startUp = false;
-      Serial.println("Startup");
+      Serial.println("Startup completed, now running loop");
       colorWipeStatus("ES",blue,10);
 
   }
@@ -1436,19 +1501,22 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   case 1: Serial.println(HOSTNAME);
                         Local_Command[0]   = '\0';                                                           break;
                   case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                        //  DelayCall::schedule([] {ESP.restart();}, 3000);
-                        ESP.restart();
-                        Local_Command[0]   = '\0';                                                           break;
-                  case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-                  case 4: break;  //reserved for future use
-                  case 5: MainRelayOn();                                                                    break;  //reserved for future use
-                  case 6: MainRelayOff();                                                                   break;  //reserved for future use
-                  case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
-                  case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
-                  case 9:  break;  //reserved for future use
+                          DelayCall::schedule([] {ESP.restart();}, 3000);
+                          Local_Command[0]   = '\0';                                                           break;
+                  case 3: connectWiFi();                                                                          break;
+                  case 4: ; break;  //reserved for future use
+                  case 5: ; break;  //reserved for future use
+                  case 6: ; break;  //reserved for future use
+                  case 7: ; break;  //reserved for future use
+                  case 8: ; break;  //reserved for future use
+                  case 9: scan_i2c(); Local_Command[0]='\0';                                                        break;  //Used for scanning I2C
 
                 }
               }
+
+
+
+
 
         }else if (inputBuffer[0] == ':'){
      
@@ -1456,15 +1524,13 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           inputBuffer[1]=='d' ||        // Door Designator
           inputBuffer[1]=='R' ||        // Radar Eye LED
           inputBuffer[1]=='r' ||        // Radar Eye LED
-          inputBuffer[1]=='E' ||        // Command designatore for internal ESP functions
-          inputBuffer[1]=='e' ||        // Command designatore for internal ESP functions
-          inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+          inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
           inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
 
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
+          Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
           if(commandLength >= 3) {
             if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {                                                            // specifies the overall door command
               doorBoard = inputBuffer[2]-'0';                                                                           // Sets the board to call the command on.
@@ -1472,24 +1538,24 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
                 door = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');                                                    // Sets the specific door to move
                 if (inputBuffer[7] == 'D' || inputBuffer[7] == 'd'){
-                  DBG("with DelayCall \n");
+                  Debug.DBG("with DelayCall \n");
                   delayCallTime =  (inputBuffer[8]-'0')*10000+(inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');  // converts 5 digit character to uint32_t
                   doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
                   cVarSpeedMin = 0;
                   cVarSpeedMax = 0;                                                                                                                        // Sets Easing duration to 0-Off
                 } else if (inputBuffer[7] == 'E' ||inputBuffer[7] == 'e'){
-                  DBG("with Easing \n");
+                  Debug.DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
                   doorEasingDuration = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
                   delayCallTime = 0;
                 } else if (inputBuffer[7] == 'B' || inputBuffer[7] == 'b'){
-                  DBG("with Both Easing and Delay Call \n");
+                  Debug.DBG("with Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
                   cVarSpeedMin = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
                   cVarSpeedMax = (inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
                   delayCallTime =  (inputBuffer[18]-'0')*10000+(inputBuffer[19]-'0')*1000+(inputBuffer[20]-'0')*100+(inputBuffer[21]-'0')*10+(inputBuffer[22]-'0');
                 }else{
-                  DBG("No easing or Delay time specified \n");
+                  Debug.DBG("No easing or Delay time specified \n");
                   delayCallTime = 0;
                   doorEasingMethod = 0;
                   cVarSpeedMin = 0;
@@ -1497,28 +1563,28 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                 }
               }
               else if (doorFunction != 1 || doorFunction != 2) {
-                DBG("Other Door Function Called \n");
+                Debug.DBG("Other Door Function Called \n");
                 if (inputBuffer[5] == 'D' || inputBuffer[5] == 'd'){
-                  DBG("with DelayCall \n");
+                  Debug.DBG("with DelayCall \n");
                   delayCallTime =  (inputBuffer[6]-'0')*10000+(inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');
                   doorEasingMethod = 0;
                   cVarSpeedMin = 0;
                   cVarSpeedMax = 0;
                 } else if (inputBuffer[5] == 'E' ||inputBuffer[5] == 'e'){
-                  DBG("with Easing \n");
+                  Debug.DBG("with Easing \n");
                   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                   if (commandLength >= 13){
-                    DBG("Variable Speed Selected\n");
+                    Debug.DBG("Variable Speed Selected\n");
                     cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
                     cVarSpeedMax = (inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');  
                   } else {
-                    DBG("No Variable Speed selected\n");
+                    Debug.DBG("No Variable Speed selected\n");
                     cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
                     cVarSpeedMax = cVarSpeedMin; 
                   }              
                   delayCallTime = 0;
                 } else if (inputBuffer[5] == 'B' || inputBuffer[5] == 'b'){
-                  DBG("Both Easing and Delay Call \n");
+                  Debug.DBG("Both Easing and Delay Call \n");
                   doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                   if (commandLength >= 17){
                     cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
@@ -1530,7 +1596,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                     delayCallTime =  (inputBuffer[12]-'0')*10000+(inputBuffer[13]-'0')*1000+(inputBuffer[14]-'0')*100+(inputBuffer[15]-'0')*10+(inputBuffer[16]-'0');
                   }
                 }else{
-                  DBG("No easing or DelayCall time specified \n");
+                  Debug.DBG("No easing or DelayCall time specified \n");
                   delayCallTime = 0;
                   doorEasingMethod = 0;
                   cVarSpeedMin = 0;
@@ -1592,10 +1658,10 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               D_command[5] = cVarSpeedMax;
               D_command[6] = delayCallTime;
 
-              DBG("Door Function Called: %d\n",doorFunction);
-              DBG("Easing Method: %d \n",doorEasingMethod);
-              DBG("VarSpeed - Min:%d, Max:%d \n",cVarSpeedMin, cVarSpeedMax);
-              DBG("DelayCall Duration: %d\n",delayCallTime);
+              Debug.DBG("Door Function Called: %d\n",doorFunction);
+              Debug.DBG("Easing Method: %d \n",doorEasingMethod);
+              Debug.DBG("VarSpeed - Min:%d, Max:%d \n",cVarSpeedMin, cVarSpeedMax);
+              Debug.DBG("DelayCall Duration: %d\n",delayCallTime);
             }
 
             if(inputBuffer[1]=='R' || inputBuffer[1]=='r'){
@@ -1604,11 +1670,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               RE_command[1] = colorState1;
               RE_command[2] = speedState;
               if(!autoComplete) {enableRadarEyeAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
-              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",ledFunction, colorState1, basicColors[colorState1], speedState);
-              DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",RE_command[0], RE_command[1], basicColors[RE_command[1]], RE_command[2]);
+              Debug.DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",ledFunction, colorState1, basicColors[colorState1], speedState);
+              Debug.DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",RE_command[0], RE_command[1], basicColors[RE_command[1]], RE_command[2]);
             }
                 
           }
+        }
         }
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
@@ -1617,7 +1684,6 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         inputBuffer[1] = '\0';
 
         // reset Local ESP Command Variables
-        int espCommandFunction;
 
         // reset Camera Variables
         int ledFunction;
@@ -1634,34 +1700,16 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         uint32_t delayCallTime;
 
         // reset ESP-NOW Variables
-        espNowInputStringCommand = "";
-        targetID = "";
+
     
-        DBG("command taken\n");
+        Debug.DBG("command taken\n");
   }
 
-    if(ESP_command[0]){
-      switch (ESP_command[0]){
-        case 1: Serial.println("Controller: Dome ESP Controller");   
-                ESP_command[0]   = '\0';                                                                break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                                break;
-        case 3: connectWiFi();                                                                          break;
-        case 4: break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9: scan_i2c(); ESP_command[0]='\0';                                                        break;  //Used for scanning I2C
-        case 10: toggleDebug();                                                                         break;
-        case 11: toggleDebug1();                                                                        break; 
-      }
-    }
+
 
     if(D_command[0]) {
       if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-//        DBG("Incorrect Door Value Specified, Command Aborted!");
+//        Debug.DBG("Incorrect Door Value Specified, Command Aborted!");
         D_command[0] = '\0';
       }
       else {
@@ -1698,23 +1746,17 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 96: enableRadarEyeAuto = 0;                                                                      break;     // Disable Auto Mode
         case 97: enableRadarEyeAuto = 1;                                                                      break;     // Enables Auto Mode
         case 98:  RE_command[0] = '\0'; 
-                  clearCL();
+                  clearRE();
                   enableRadarEyeAuto = 0;                                                                     break;
         case 99:  RE_command[0] = '\0'; 
-                  clearCL();
+                  clearRE();
                   enableRadarEyeAuto = 1;                                                                     break;
       }
     }
 
-    if(ESPNOW_command[0]){
-      switch(ESPNOW_command[0]){
-        case 1: sendESPNOWCommand(tempESPNOWTargetID,commandSubString);                   break; 
-        case 2: sendESPNOWCommand("ALL","ALL");   break;  //reserved for future use
-        case 3: break;  //reserved for future use
-      }
-    }
+
       if(!stringComplete && inputString) {
-          if(enableRadarEyeAuto == 1) {CLAuto();}
+          if(enableRadarEyeAuto == 1) {REAuto();}
       
         }
     if(isStartUp) {

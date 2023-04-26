@@ -64,19 +64,19 @@
  // ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";
 
-  // R2 Control Network Details
+  // R2 Control Network Details for OTA
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
 
-// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the peers
 // Change this to work with how your droid performs
   int defaultESPNOWSendDuration = 50;  
 
   // Serial Baud Rates
-  #define HEADER_BAUD_RATE 115200
+  #define SH_BAUD_RATE 115200
 
 
 
@@ -109,8 +109,8 @@
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
 
-debugClass Debug;
-String debugInputIdentifier ="";
+  debugClass Debug;
+  String debugInputIdentifier ="";
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -144,9 +144,9 @@ String debugInputIdentifier ="";
   //////////////////////////////////////////////////////////////////////
   
 //LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//LoRa Droid ESP            192.168.4.108     (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   ************(Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Droid Raspberry Pi        192.168.4.113
@@ -172,21 +172,21 @@ String debugInputIdentifier ="";
 // pins, leds, colors etc by name instead of numbers
 // -------------------------------------------------
 //    CAMERA LENS LED VARIABLES
-    const uint32_t red     = 0xFF0000;
-    const uint32_t orange  = 0xFF8000;
-    const uint32_t yellow  = 0xFFFF00;
-    const uint32_t green   = 0x00FF00;
-    const uint32_t cyan    = 0x00FFFF;
-    const uint32_t blue    = 0x0000FF;
-    const uint32_t magenta = 0xFF00FF;
-    const uint32_t white   = 0xFFFFFF;
-    const uint32_t off     = 0x000000;
+  const uint32_t red     = 0xFF0000;
+  const uint32_t orange  = 0xFF8000;
+  const uint32_t yellow  = 0xFFFF00;
+  const uint32_t green   = 0x00FF00;
+  const uint32_t cyan    = 0x00FFFF;
+  const uint32_t blue    = 0x0000FF;
+  const uint32_t magenta = 0xFF00FF;
+  const uint32_t white   = 0xFFFFFF;
+  const uint32_t off     = 0x000000;
 
-    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+  const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
-#define STATUS_LED_COUNT 1
+  #define STATUS_LED_COUNT 1
 
-Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
 
 /////////////////////////////////////////////////////////////////////////
@@ -215,7 +215,6 @@ Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, 
   bool    commandIncluded;
   String  command;
 
-
 // Define variables to store incoming commands
   String  incomingPassword;
   String  incomingTargetID;  
@@ -235,7 +234,6 @@ typedef struct espnow_struct_message {
       bool structCommandIncluded;
       char structCommand[100];
   } espnow_struct_message;
-
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   espnow_struct_message commandsToSendtoBroadcast;
@@ -356,6 +354,7 @@ void processESPNOWIncomingMessage(){
   if (incomingTargetID == "BS" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
+    Debug.ESPNOW("Recieved command from Lora Droid\n");
 
   }
 }
@@ -1180,7 +1179,7 @@ else{
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  shSerial.begin(HEADER_BAUD_RATE, SERIAL_8N1, SERIAL_RX_HEADER, SERIAL_TX_HEADER);
+  shSerial.begin(SH_BAUD_RATE, SERIAL_8N1, SERIAL_RX_HEADER, SERIAL_TX_HEADER);
   
   delay(500);
   
@@ -1327,26 +1326,26 @@ void loop(){
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
                         Local_Command[0]   = '\0';                                                           break;
-                  case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
-                  case 4: break;  //reserved for future use
-                  case 5: ;                                                                    break;  //reserved for future use
-                  case 6: ;                                                                   break;  //reserved for future use
-                  case 7: ;                  break;  //reserved for future use
-                  case 8: ;                                                           break;  //reserved for future use
-                  case 9:  break;  //reserved for future use
+                  case 3: connectWiFi();                                                                          break;
+                  case 4: ; break;  //reserved for future use
+                  case 5: ; break;  //reserved for future use
+                  case 6: ; break;  //reserved for future use
+                  case 7: ; break;  //reserved for future use
+                  case 8: ; break;  //reserved for future use                                                         break;  //reserved for future use
+                  case 9:  ;break;  //reserved for future use
 
                 }
               }
 
         }else if (inputBuffer[0] == ':'){
-       if( inputBuffer[0]=='D' ||        // Door Designator
-            inputBuffer[0]=='d' ||        // Door Designator
-            inputBuffer[0]=='E' ||        // Command designatore for internal ESP functions
-            inputBuffer[0]=='e' ||        // Command designatore for internal ESP functions
-            inputBuffer[0]=='N' ||        // Command for Sending ESP-NOW Messages
-            inputBuffer[0]=='n' ||        // Command for Sending ESP-NOW Messages
-            inputBuffer[0]=='S' ||        // Command for sending Serial Strings out Serial ports
-            inputBuffer[0]=='s'           // Command for sending Serial Strings out Serial ports
+       if(  inputBuffer[1]=='D' ||        // Door Designator
+            inputBuffer[1]=='d' ||        // Door Designator
+            inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+            inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+            inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
+            inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
 
 
          ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.

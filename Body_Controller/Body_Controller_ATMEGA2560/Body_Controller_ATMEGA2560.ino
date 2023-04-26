@@ -5755,6 +5755,8 @@ uint8_t splitColor ( uint32_t c, char value )
       }
       void serialEvent2() {
        while (Serial2.available()) {
+           colorWipeStatus(magenta,255);
+
           // get the new byte:
           char inChar = (char)Serial2.read();
           // add it to the inputString:
@@ -5762,8 +5764,10 @@ uint8_t splitColor ( uint32_t c, char value )
           if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
             stringComplete = true;            // set a flag so the main loop can do something about it.
           }
-          Serial.println("Received Command over Serial2");
         }
+          Serial.println("Received Command over Serial2");
+          colorWipeStatus(blue,10);
+
       }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////

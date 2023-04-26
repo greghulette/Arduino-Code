@@ -69,7 +69,7 @@
   const char* password =  "astromech";
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
- int keepAliveDuration= 5000;  // 5 seconds
+  int keepAliveDuration= 4000;  // 4 seconds
 
 // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
 // Change this to work with how your droid performs
@@ -105,16 +105,17 @@
  uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
 
-  uint32_t ESPNOW_command[6]  = {0,0,0,0,0,0};
-  int espNowCommandFunction = 0;
-  String espNowCommandFunctionString;
-  String tempESPNOWTargetID;
-  String espNowInputStringCommand;
+  String ESPNOWStringCommand;
+  String ESPNOWTarget;
+  String ESPNOWSubStringCommand;
+
+  String LEDCommandString;
 
   int mp3Track;
   String mp3Comm;
 
   debugClass Debug;
+String debugInputIdentifier ="";
 
 
 
@@ -179,31 +180,60 @@
 
   #define RST RESET_PIN_2560
 
+//////////////////////////////////////////////////////////////////////
+///*****             Camera Lens Variables and settings       *****///
+//////////////////////////////////////////////////////////////////////
+  
+  unsigned long loopTime; // We keep track of the "time" in this variable.
+
+// -------------------------------------------------
+// Define some constants to help reference objects,
+// pins, leds, colors etc by name instead of numbers
+// -------------------------------------------------
+//    Status LED VARIABLES
+    const uint32_t red     = 0xFF0000;
+    const uint32_t orange  = 0xFF8000;
+    const uint32_t yellow  = 0xFFFF00;
+    const uint32_t green   = 0x00FF00;
+    const uint32_t cyan    = 0x00FFFF;
+    const uint32_t blue    = 0x0000FF;
+    const uint32_t magenta = 0xFF00FF;
+    const uint32_t white   = 0xFFFFFF;
+    const uint32_t off     = 0x000000;
+
+    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+
+  #define STATUS_LED_COUNT 1
+
+  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STAUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+
 
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  ESP-NOW MAC Addresses used in the Droid.  
-const uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-const uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-const int8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//  ESP-NOW MAC Addresses used in the Droid. 
+  const uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  const uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+  const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+  const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+  const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-//    MAC Address to broadcast to all senders at once
-uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-uint8_t newLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};  //used when connecting to WiFi for OTA
+// Uses these Strings for comparators
+  String droidLoRaMACAddressString = "02:00:00:00:00:01";
+  String bodyControllerMACAddressString = "02:00:00:00:00:02";
+  String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
+  String domeControllerMACAddressString = "02:00:00:00:00:04";
+  String domePlateControllerMACAddressString = "02:00:00:00:00:05";
+  String broadcastMACAddressString = "FF:FF:FF:FF:FF:FF";
 
 // Define variables to store commands to be sent
-  String senderID;
-  String targetID;
-  String command;
-  String commandSubString;
-  String espnowpassword;
+  String  senderID;
+  String  targetID;
+  bool    commandIncluded;
+  String  command;
     // variables for storing status and settings from ATMEGA2560. Declared earlier in code but added here for clarity
   // int BL_LDP_Bright;
   // int BL_MAINT_Bright;
@@ -218,10 +248,11 @@ uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};  //used whe
 
 
 // Define variables to store incoming commands
-  String incomingTargetID;  
-  String incomingSenderID;
-  String incomingCommand;
-  String incomingPassword;
+  String  incomingTargetID;  
+  String  incomingSenderID;
+  String  incomingCommand;
+  bool    incomingCommandIncluded;
+  String  incomingPassword;
   // int incomingstructBL_LDP_Bright;
   // int incomingstructBL_MAINT_Bright;
   // int incomingstructBL_VU_Bright;
@@ -240,13 +271,13 @@ uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};  //used whe
 
 //Structure example to send data
 //Must match the receiver structure
-typedef struct struct_message {
+typedef struct espnow_struct_message {
       char structPassword[20];
       char structSenderID[4];
       char structTargetID[4];
+      bool structCommandIncluded;
       char structCommand[100];
-  } struct_message;
-
+  } espnow_struct_message;
 
 typedef struct bodyControllerStatus_struct_message{
       char structPassword[25];
@@ -262,21 +293,32 @@ typedef struct bodyControllerStatus_struct_message{
       int structBL_vuBaselineExt;
       float structBL_BatteryVoltage;
       int structBL_BatteryPercentage;
-      bool structbodyLEDControllerStatus[2];
+      bool structbodyLEDControllerStatus;
+      bool structCommandIncluded;
+      char structCommand[100];
   } bodyControllerStatus_struct_message;
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
-  struct_message commandsToSendtoBroadcast;
-  bodyControllerStatus_struct_message commandstoSendForStatus;
+  espnow_struct_message commandsToSendtoBroadcast;
+  bodyControllerStatus_struct_message commandsToSendtoDroidLoRa;
+  espnow_struct_message commandsToSendtoBodyController;
+  espnow_struct_message commandsToSendtoBodyServoController;
+  espnow_struct_message commandsToSendtoDomeController;
+  espnow_struct_message commandsToSendtoDomePlateController;
 
 // Create a struct_message to hold incoming commands from the Body
-  struct_message commandsToReceiveFromBroadcast;
-
+  espnow_struct_message commandsToReceiveFromBroadcast;
+  espnow_struct_message commandsToReceiveFromDroidLoRa;
+  espnow_struct_message commandsToReceiveFromBodyController;
+  espnow_struct_message commandsToReceiveFromBodyServoController;
+  espnow_struct_message commandsToReceiveFromDomeController;
+  espnow_struct_message commandsToReceiveFromDomePlateController;
+  
   esp_now_peer_info_t peerInfo;
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  if (Debug.debugflag == 1){
+  if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
     if (status ==0){
@@ -290,42 +332,97 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  
-  memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-  incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-  incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-  incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-  Debug.DBG("Bytes received from ESP-NOW Message: %i\n", len);
-  Debug.DBG("Sender ID = %s\n",incomingSenderID);
-  Debug.DBG("Target ID= %s\n", incomingTargetID);
-  Debug.DBG("Command = %s\n" , incomingCommand); 
-  if(incomingTargetID == "BC" || incomingTargetID == "BL" || incomingTargetID == "ST" || incomingTargetID == "MT" || incomingTargetID == "ALL"){
-    if (incomingTargetID=="BC"){
-      inputString = incomingCommand;
-      stringComplete = true; 
-      }
-    else if (incomingTargetID == "BL"){
-      Debug.DBG("Sending command to Body LED Controller");
-        writeBlSerial(incomingCommand);
-    }
-    else  if (incomingTargetID == "ST"){
-      Debug.DBG("Sending command to Body LED Controller");
-        writeStSerial(incomingCommand);
-    }
-    else if (incomingTargetID == "MT"){
-      Debug.DBG("Sending command to Body LED Controller");
-//        writeMpSerial(incomingCommand);
-    } else {
-      Debug.DBG("Command Ignored");
-    }
+    colorWipeStatus("ES", orange ,255);
 
-  }    else {
-      Debug.DBG("Command Ignored");
-    } 
-    
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  String IncomingMacAddress(macStr);
+  if (IncomingMacAddress = droidLoRaMACAddressString) {
+      memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
+      incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
+        incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress == bodyControllerMACAddressString){
+    memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
+    incomingPassword = commandsToReceiveFromBodyController.structPassword;
+   if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
+        incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBodyController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
+      incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
+        incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = domeControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
+      incomingPassword = commandsToReceiveFromDomeController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDomeController.structSenderID;
+        incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDomeController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = domePlateControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
+      incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDomePlateController.structSenderID;
+        incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress = broadcastMACAddressString) {
+      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+      incomingPassword = commandsToReceiveFromBroadcast.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+        incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromBroadcast.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
+      colorWipeStatus("ES", blue, 10);
+
 }
 
+void processESPNOWIncomingMessage(){
 
+  if (incomingTargetID == "BC" || incomingTargetID == "BR"){
+    inputString = incomingCommand;
+    stringComplete = true; 
+
+  }
+}
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -343,49 +440,11 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 IPAddress local_IP(192,168,4,109);
 IPAddress subnet(255,255,255,0);
 IPAddress gateway(192,168,4,100);
-uint8_t newMACAddress[] = {0x02, 0x00, 0xC0, 0xA8, 0x04, 0x65};
+
+const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};    //used when connecting to WiFi for OTA
 
 AsyncWebServer server(80);
 
-//////////////////////////////////////////////////////////////////////
-///*****             Camera Lens Variables and settings       *****///
-//////////////////////////////////////////////////////////////////////
-  
-  unsigned long loopTime; // We keep track of the "time" in this variable.
-
-// -------------------------------------------------
-// Define some constants to help reference objects,
-// pins, leds, colors etc by name instead of numbers
-// -------------------------------------------------
-//    CAMERA LENS LED VARIABLES
-    const uint32_t red     = 0xFF0000;
-    const uint32_t orange  = 0xFF8000;
-    const uint32_t yellow  = 0xFFFF00;
-    const uint32_t green   = 0x00FF00;
-    const uint32_t cyan    = 0x00FFFF;
-    const uint32_t blue    = 0x0000FF;
-    const uint32_t magenta = 0xFF00FF;
-    const uint32_t white   = 0xFFFFFF;
-    const uint32_t off     = 0x000000;
-
-    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
-
-  #define STATUS_LED_COUNT 7
-  #define CAMERA_LENS_DATA_PIN 27
-  //#define CAMERA_LENS_CLOCK_PIN 13
-  int dim = 75;
-  unsigned long CLMillis;
-  byte CLSpeed = 50;
-  unsigned long startMillis;
-  unsigned long currentMillis;
-  byte CL_command[6] = {0,0,0,0,0,0};
-  
-  int colorState1;
-  int speedState;
-  
-  Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(STATUS_LED_COUNT, STAUS_LED_PIN, NEO_GRB + NEO_KHZ800);
-
-  boolean countUp=false;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -396,20 +455,18 @@ AsyncWebServer server(80);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-void colorWipeStatus(uint32_t c, int brightness) {
-  for(uint16_t i=0; i<2; i++) {
-    StatusLED.setBrightness(brightness);
-    StatusLED.setPixelColor(i, c);
-    StatusLED.show();
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } 
+else{
+  Debug.DBG("No LED was chosen \n");
   }
-};
+  };
 
-void clearCLStatus() {
-  for(uint16_t i=0; i<2; i++) {
-    StatusLED.setPixelColor(i, off);
-    StatusLED.show();
-  }
-};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
@@ -457,7 +514,7 @@ void serialBlEvent() {
   while (blSerial.available()) {
     // get the new byte:
     StaticJsonDocument<2048> doc;
-
+colorWipeStatus("ES", green, 10);
     // Read the JSON document from the "link" serial port
     DeserializationError err = deserializeJson(doc, blSerial);
 
@@ -502,6 +559,8 @@ void serialBlEvent() {
       }
     }
   };
+  colorWipeStatus("ES", blue, 10);
+
 };
 
 
@@ -575,29 +634,16 @@ void writeStSerial(String stringData){
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void setupSendCommandStruct(struct_message* msg, String pass, String sender, String targetID, String cmd)
+void setupSendStruct(espnow_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
 {
     snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 
-void sendESPNOWCommand(String starget, String scomm)
-{
-  String senderID = "BC";     // change to match location (BC, BS, DP, DC, LD)
-  setupSendCommandStruct(&commandsToSendtoBroadcast ,ESPNOWPASSWORD, senderID, starget, scomm);
-  esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-  if (result == ESP_OK) {
-    Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-  }
-  else {
-    Debug.ESPNOW("Error sending the data\n");
-  }
-  ESPNOW_command[0] = '\0';
-}
-
-void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass, String sender, String targetID)
+void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
 {
     snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
@@ -612,26 +658,55 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structBL_vuBaselineExt = BL_vuBaselineExt;
     msg->structBL_BatteryVoltage = BL_BatteryVoltage;
     msg->structBL_BatteryPercentage = BL_BatteryPercentage;
+    msg->structbodyLEDControllerStatus = bodyLEDControllerStatus;
+    msg->structCommandIncluded = hascommand;
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 }
 int ESPNowSuccessCounter = 1;
 int ESPNowFailureCounter = 1;
-void sendESPNOWStatus()
-{
-  String senderID = "BC";     // change to match location (BC, BS, DP, DC, LD)
-  String starget = "LD";
-  setupSendStatusStruct(&commandstoSendForStatus ,ESPNOWPASSWORD, senderID, starget);
-  esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandstoSendForStatus, sizeof(commandstoSendForStatus));
-  if (result == ESP_OK) {
-    // printf("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    printf("Sent a command/status update to : %x, packet number: %i \n", droidLoRaMACAddress, ESPNowSuccessCounter);
-    ESPNowSuccessCounter++;
-  }
-  else {
-   printf("Error sending the data to: %X, packet number: %i\n", droidLoRaMACAddress, ESPNowFailureCounter);
-   ESPNowFailureCounter++;
-  }
-  ESPNOW_command[0] = '\0';
+
+
+void sendESPNOWCommand(String starget, String scomm){
+  String senderID = "BC";   // change to match location (BC/BS/DC/DP/LD)
+  String scommEval = "";
+  bool hasCommand;
+  if (scommEval = scomm){
+    hasCommand = 0;
+  } else {hasCommand = 1;};
+
+   if (starget == "LD"){
+    setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BC"){
+    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BS"){
+    setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  }  else if (starget == "DC"){
+    setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "DP"){
+    setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BR"){
+    setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
 }
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -675,7 +750,7 @@ void connectWiFi(){
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
-  ESP_command[0]   = '\0';
+  Local_Command[0]   = '\0';
 }   
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
@@ -706,6 +781,14 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
     if (bodyLEDControllerStatus==1){
     if (millis()-blkeepAliveAge>=keepAliveMillisDuration){
       bodyLEDControllerStatus=0;
+      BL_LDP_Bright =0;
+      BL_MAINT_Bright = 0;
+      BL_VU_Bright = 0;
+      BL_CS_Bright =0;
+      BL_vuOffsetInt = 0;
+      BL_vuBaselineInt = 0;
+      BL_vuOffsetExt = 0;
+      BL_vuBaselineExt =0;
       BL_BatteryPercentage = 0;
       BL_BatteryVoltage = 0.0;
       Debug.ESPNOW("Body LED Controller Offline\n");
@@ -714,21 +797,47 @@ void checkAgeofkeepAlive(){    //checks for the variable's age
 }
 
 
-
 void printKeepaliveStatus(){
-
-  Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
-
-  ESP_command[0]   = '\0';
-
-
-
+  if (Debug.debugflag_status == 0)
+  {
+    Debug.debugflag_status = 1;
+    // Debug.STATUS("Dome Controller Status: %d\n", domeControllerStatus);
+    // Debug.STATUS("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
+    // Debug.STATUS("Body Servo Controller Status: %d\n", bodyServoControllerStatus);
+    // Debug.STATUS("Body  Controller Status: %d\n", bodyControllerStatus);
+    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
+    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
+    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
+    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
+    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
+    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
+    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
+    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
+    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
+    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+    Debug.debugflag_status = 0;
+  } else
+  {  
+    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
+    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
+    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
+    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
+    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
+    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
+    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
+    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
+    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
+    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+  }
+  Local_Command[0]   = '\0';
 }
 
 void keepAlive(){
-  if (millis() - keepAliveMillis >= keepAliveDuration){
+  if (millis() - keepAliveMillis >= keepAliveDuration + random(1, 1000)){
     keepAliveMillis = millis();
-    sendESPNOWStatus();
+    sendESPNOWCommand("LD", "");
   } 
 }
 
@@ -766,9 +875,9 @@ void setup(){
   //Initialize the ReelTwo Library
 //  SetupEvent::ready();
 
-  StatusLED.begin();
-  StatusLED.show();
-  colorWipeStatus(red,255);
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,255);
   Serial.println("LED Setup Complete");
 
 
@@ -794,20 +903,46 @@ void setup(){
   
   // Register peer
   peerInfo.channel = 0;  
-  peerInfo.encrypt = true;
-  //  peerInfo.ifidx=WIFI_IF_AP;
+  peerInfo.encrypt = false;
 
-  // Add peers  
+ // Add peers  
+ // Broadcast
   memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
-  }  
-    memcpy(peerInfo.peer_addr, droidLoRaMACAddress, 6);
+  }
+    // Droid LoRa Controller
+  memcpy(peerInfo.peer_addr, droidLoRaMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Kill Switch Droid ESP-NOW peer");
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
   }  
+//  // Body Controller
+//   memcpy(peerInfo.peer_addr, bodyControllerMACAddress, 6);
+//   if (esp_now_add_peer(&peerInfo) != ESP_OK){
+//     Serial.println("Failed to add Broadcast ESP-NOW peer");
+//     return;
+//   }
+   // Body Servo Controller
+  memcpy(peerInfo.peer_addr, bodyServosControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }
+// Dome Controller
+  memcpy(peerInfo.peer_addr, domeControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  } 
+// Dome Plate Controller
+  memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }
+
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
 
@@ -823,22 +958,24 @@ void setup(){
 
 
 void loop(){
+  keepAlive();
+  checkAgeofkeepAlive();
+
+
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();
     if(startUp) {
-      colorWipeStatus(blue,25);
+      colorWipeStatus("ES",blue,10);
 
       startUp = false;
-      Serial.println("Startup");
+      Serial.println("Startup completed, now running loop");
       // Play Startup Sound
       mp3Trigger("v",16);
       mp3Trigger("t",1);
       mp3Trigger("v",0);
 
     }
-    checkAgeofkeepAlive();
-      keepAlive();
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
     if(aux1Serial.available()){serialAux1Event();}
@@ -850,21 +987,87 @@ void loop(){
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-      if( inputBuffer[0]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='e'     ||        // Command designatore for internal ESP functions
-          inputBuffer[0]=='S'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='s'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[0]=='N'     ||        // Command for receiving status/info from other boards
-          inputBuffer[0]=='n'               // Command for receiving status/info from other boards
+       if (inputBuffer[0] == '#'){
+        if (
+            inputBuffer[1]=='D' ||          // Command for debugging
+            inputBuffer[1]=='d' ||          // Command for debugging
+            inputBuffer[1]=='L' ||          // Command designator for internal functions
+            inputBuffer[1]=='l' ||          // Command designator for internal functions
+            inputBuffer[1]=='E' ||          // Command designator for storing EEPROM data
+            inputBuffer[1]=='e'           // Command designator for storing EEPROM data
+          ){commandLength = strlen(inputBuffer); 
+            if (inputBuffer[1]=='D' || inputBuffer[1]=='d'){
+              debugInputIdentifier = "";                            // flush the string
+              for (int i=2; i<=commandLength-2; i++){
+                char inCharRead = inputBuffer[i];
+                debugInputIdentifier += inCharRead;                   // add it to the inputString:
+              }
+              debugInputIdentifier.toUpperCase();
+              Debug.toggle(debugInputIdentifier);
+              debugInputIdentifier = "";                             // flush the string
+              } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
+                localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                Local_Command[0]   = '\0';                                                            // Flushes Array
+                Local_Command[0] = localCommandFunction;
+              Debug.LOOP("Entered the Local Command Structure /n");
+              } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
+                Debug.LOOP("EEPROM configuration selected /n");
+                // need to actually add the code to implement this.
+
+              } else {Debug.LOOP("No valid command entered /n");}
+              
+          }
+              if(Local_Command[0]){
+                switch (Local_Command[0]){
+                  case 1: Serial.println(HOSTNAME);
+                        Local_Command[0]   = '\0';                                                           break;
+                  case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                        //  DelayCall::schedule([] {ESP.restart();}, 3000);
+                        ESP.restart();
+                        Local_Command[0]   = '\0';                                                           break;
+                  case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
+                  case 4: break;  //reserved for future use
+                  case 5:   ;                                                                    break;  //reserved for future use
+                  case 6:   ;                                                                   break;  //reserved for future use
+                  case 7: ;                  break;  //reserved for future use
+                  case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
+                  case 9:  break;  //reserved for future use
+
+                }
+              }
+
+        }else if (inputBuffer[0] == ':'){
+     
+         if( inputBuffer[1]=='E'     ||        // Command designatore for internal ESP functions
+          inputBuffer[1]=='e'     ||        // Command designatore for internal ESP functions
+          inputBuffer[1]=='S'     ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[1]=='s'     ||        // Command for sending Serial Strings out Serial ports
+          inputBuffer[1]=='N'     ||        // Command for receiving status/info from other boards
+          inputBuffer[1]=='n'     ||         // Command for receiving status/info from other boards
+          inputBuffer[1]=='L'     ||        // Command for receiving status/info from other boards
+          inputBuffer[1]=='l'               // Command for receiving status/info from other boards
+
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
           Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
           if(commandLength >= 3) {
-            if(inputBuffer[0]=='E' || inputBuffer[0]=='e') {
-              espCommandFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              }; 
-  
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+     
+              if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+                for (int i=1; i<=commandLength; i++){
+                  char inCharRead = inputBuffer[i];
+                  ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
+                  }
+                  Debug.LOOP("\nFull Command Recieved: %s \n",ESPNOWStringCommand.c_str());
+                  ESPNOWTarget = ESPNOWStringCommand.substring(0,2);
+                  Debug.LOOP("ESP NOW Target: %s\n", ESPNOWTarget.c_str());
+                  ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
+                  Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
+                  sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
+                  String  ESPNOWStringCommand = "";
+                  String ESPNOWSubStringCommand = "";
+                  String ESPNOWTarget = "";
+                } 
+              if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
               // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
               for (int i=1; i<commandLength;i++ ){
                 char inCharRead = inputBuffer[i];
@@ -884,8 +1087,8 @@ void loop(){
                 writeStSerial(serialSubStringCommand);
                 Debug.DBG("Sending out ST Serial\n");
               }else if (serialPort == "MP"){
-                mp3Comm = serialStringCommand.substring(2,3);
-                mp3Track = (inputBuffer[4]-'0')*100+(inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');
+                mp3Comm = serialStringCommand.substring(3,4);
+                mp3Track = (inputBuffer[5]-'0')*100+(inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
                 Debug.DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
                 mp3Trigger(mp3Comm,mp3Track);
                 Debug.DBG("Sending out MP Serial\n ");
@@ -894,47 +1097,30 @@ void loop(){
               serialPort = "";
               serialSubStringCommand = "";
               int mp3Track;
-            } 
-            
+            }
+            if(inputBuffer[1]=='L' || inputBuffer[1]=='l') {
+              for (int i=2; i<commandLength;i++ ){
+                char inCharRead = inputBuffer[i];
+                LEDCommandString += inCharRead;  // add it to the inputString:
+              }              
+              writeBlSerial(LEDCommandString);
+              Debug.LOOP("Sent ATMEGA2560 command of %s \n", LEDCommandString);
+              LEDCommandString ="";
 
-
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
             }
           }
+        }
         }
 
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
-
-        // reset Local ESP Command Variables
-        int espCommandFunction;
+        inputBuffer[1] = '\0';
 
 
-    }
 
-    if(ESP_command[0]){
-      switch (ESP_command[0]){
-        case 1: Serial.println("Body ESP Controller");   
-                ESP_command[0]   = '\0';                                                        break;
-        case 2: Serial.println("Resetting the ESP in 3 Seconds");
-                DelayCall::schedule([] {ESP.restart();}, 3000);
-                ESP_command[0]   = '\0';                                                        break;
-        case 3: connectWiFi();                                                                  break;        
-        case 4: printKeepaliveStatus();                                                         break;  //reserved for future use
-        case 5: break;  //reserved for future use
-        case 6: break;  //reserved for future use
-        case 7: break;  //reserved for future use
-        case 8: break;  //reserved for future use
-        case 9:  break;  //reserved for future use
-        case 10: Debug.toggle_Debug();                                                                 break;
-        case 11: Debug.toggle_Debug1();                                                                break;
-        // case 12: toggleDebug2();                                                                break;
 
-      }
     }
 
 
