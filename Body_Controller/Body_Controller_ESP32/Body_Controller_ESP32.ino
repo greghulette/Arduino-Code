@@ -131,7 +131,7 @@
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
 
-  boolean bodyLEDControllerStatus = 0;
+  bool bodyLEDControllerStatus = 0;
   
 
 
@@ -330,11 +330,11 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
 //LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109   ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//ESP-NOW Master ESP        192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Periscope Controller ESP  192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Droid Raspberry Pi        192.168.4.113
 //Remote Raspberry Pi       192.168.4.114
 //Developer Laptop          192.168.4.125
@@ -794,7 +794,7 @@ void setup(){
   
   // Register peer
   peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
+  peerInfo.encrypt = true;
   //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  

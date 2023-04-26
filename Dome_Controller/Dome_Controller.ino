@@ -1362,7 +1362,7 @@ void setup(){
   
   // Register peer
   peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
+  peerInfo.encrypt = true;
   //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
@@ -1574,15 +1574,15 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               serialStringCommand = "";
               serialPort = "";
             }   
-            if(inputBuffer[0]=='R' || inputBuffer[0]=='r') {
-              ledFunction = (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              colorState1 = (inputBuffer[3]-'0');
-              speedState = (inputBuffer[4]-'0');
+            if(inputBuffer[1]=='R' || inputBuffer[1]=='r') {
+              ledFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+              colorState1 = (inputBuffer[4]-'0');
+              speedState = (inputBuffer[5]-'0');
               }              
 
 
 
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+            if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
               D_command[1] = doorBoard;
@@ -1598,7 +1598,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               DBG("DelayCall Duration: %d\n",delayCallTime);
             }
 
-            if(inputBuffer[0]=='R' || inputBuffer[0]=='r'){
+            if(inputBuffer[1]=='R' || inputBuffer[1]=='r'){
               RE_command[0]   = '\0';                                                            // Flushes Array
               RE_command[0] = ledFunction;
               RE_command[1] = colorState1;
@@ -1608,23 +1608,13 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               DBG(" LED Function:%d, ColorState:%d, Color(Dec):%d, Speed:%d\n",RE_command[0], RE_command[1], basicColors[RE_command[1]], RE_command[2]);
             }
                 
-            if(inputBuffer[0]=='E' || inputBuffer[0] == 'e') {
-              ESP_command[0]   = '\0';                                                            // Flushes Array
-              ESP_command[0] = espCommandFunction;
-            }
-
-            if(inputBuffer[0]=='N' || inputBuffer[0] == 'n') {
-              ESPNOW_command[0]   = '\0';                                                            // Flushes Array
-              ESPNOW_command[0] = espNowCommandFunction;
-              tempESPNOWTargetID = targetID;
-            }
-          }
           }
         }
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
+        inputBuffer[1] = '\0';
 
         // reset Local ESP Command Variables
         int espCommandFunction;

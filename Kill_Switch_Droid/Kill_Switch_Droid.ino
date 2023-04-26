@@ -43,7 +43,7 @@
 #include "kill_switch_droid_pin_map.h"
 
 // Debug Functions  - Using my own library for this
-#include <DebugR2.h>
+#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
 #include <ReelTwo.h>
@@ -189,10 +189,7 @@ String debugInputIdentifier ="";
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,101);
   
-  ////R2 Control Network Details
-  // const char* ssid = "R2D2_Control_Network";  // only commented out for testing at work.
-  
-  // uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};
+  const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};    //used when connecting to WiFi for OTA
 
   AsyncWebServer server(80);
   
@@ -200,8 +197,6 @@ String debugInputIdentifier ="";
 //////////////////////////////////////////////////////////////////////
 ///*****            Status LED Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
-  
-  unsigned long loopTime; // We keep track of the "time" in this variable.
 
 // -------------------------------------------------
 // Define some constants to help reference objects,
@@ -238,7 +233,6 @@ String debugInputIdentifier ="";
   const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
   const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-  const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};    //used when connecting to WiFi for OTA
 
 
 // Uses these Strings for comparators
@@ -348,11 +342,13 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+    colorWipeStatus("ES",orange,40);
+
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
-  if (IncomingMacAddress = droidLoRaMACAddress) {
+  if (IncomingMacAddress = droidLoRaMACAddressString) {
       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
       incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -432,6 +428,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
+      colorWipeStatus("ES",blue,10);
+
 }
   esp_now_peer_info_t peerInfo;
 
@@ -912,7 +910,6 @@ void setup() {
   // Register peer
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
-  //  peerInfo.ifidx=WIFI_IF_AP;
 
   // Add peers  
  // Broadcast

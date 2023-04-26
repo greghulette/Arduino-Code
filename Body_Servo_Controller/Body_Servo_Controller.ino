@@ -138,7 +138,7 @@ String debugInputIdentifier ="";
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define headerSerial Serial2
+  #define shSerial Serial2
 
 
 //////////////////////////////////////////////////////////////////////
@@ -160,10 +160,7 @@ String debugInputIdentifier ="";
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,101);
   
-  ////R2 Control Network Details
-  // const char* ssid = "R2D2_Control_Network";  // only commented out for testing at work.
-  
-  // uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};    //used when connecting to WiFi for OTA
 
   AsyncWebServer server(80);
   
@@ -172,7 +169,6 @@ String debugInputIdentifier ="";
 ///*****             Status LED Varibles and settings         *****///
 //////////////////////////////////////////////////////////////////////
   
-
 // -------------------------------------------------
 // Define some constants to help reference objects,
 // pins, leds, colors etc by name instead of numbers
@@ -192,7 +188,7 @@ String debugInputIdentifier ="";
 
 #define STATUS_LED_COUNT 1
 
-Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
 
 /////////////////////////////////////////////////////////////////////////
@@ -214,10 +210,6 @@ Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN
   String domeControllerMACAddressString = "02:00:00:00:00:04";
   String domePlateControllerMACAddressString = "02:00:00:00:00:05";
   String broadcastMACAddressString = "FF:FF:FF:FF:FF:FF";
-
-//    MAC Address for the Local ESP to use - This prevents having to capture the MAC address of reciever boards.
-  uint8_t espNowLocalMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x13};    //used when connecting to WiFi for OTA
 
 // Define variables to store commands to be sent
   String  senderID;
@@ -911,9 +903,9 @@ void serialEvent() {
   Debug.SERIAL_EVENT("%s\n", inputString);
 }
 
-void headerSerialEvent() {
-  while (headerSerial.available()) {
-    char inChar = (char)headerSerial.read();
+void shSerialEvent() {
+  while (shSerial.available()) {
+    char inChar = (char)shSerial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
         stringComplete = true;            // set a flag so the main loop can do something about it.
@@ -939,11 +931,11 @@ void writeSerialString(String stringData){
   }
 }
 
-void writeheaderSerial(String stringData){
+void writeshSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++)
   {
-    headerSerial.write(completeString[i]);
+    shSerial.write(completeString[i]);
   }
 }
 
@@ -969,9 +961,9 @@ void sendESPNOWCommand(String starget, String scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
-   if (starget == "DL"){
-    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
+   if (starget == "LD"){
+    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
     if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
     }else {Debug.DBG("Error sending the data\n");}
   } else if (starget == "BC"){
@@ -1161,20 +1153,23 @@ void scan_i2c()
 void keepAlive(){
   if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 500))){
     keepAliveMillis = millis();
-   sendESPNOWCommand("LD","BS-ONLINE");  
+   sendESPNOWCommand("LD","");  
 } 
 }
 
 //////////////////////////////////////////////////////////////////////
 ///*****   ColorWipe Function for Status LED                  *****///
 //////////////////////////////////////////////////////////////////////
-void colorWipeStatus(uint32_t c, int brightness) {
-  for(uint16_t i=0; i<2; i++) {
-    StatusLED.setBrightness(brightness);
-    StatusLED.setPixelColor(i, c);
-    StatusLED.show();
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } 
+else{
+  Debug.DBG("No LED was chosen \n");
   }
-}
+  };
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1187,7 +1182,7 @@ void colorWipeStatus(uint32_t c, int brightness) {
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-  headerSerial.begin(HEADER_BAUD_RATE, SERIAL_8N1, SERIAL_RX_HEADER, SERIAL_TX_HEADER);
+  shSerial.begin(HEADER_BAUD_RATE, SERIAL_8N1, SERIAL_RX_HEADER, SERIAL_TX_HEADER);
   
   delay(500);
   
@@ -1195,9 +1190,7 @@ void setup(){
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
 
-  StatusLED.begin();
-  StatusLED.show();
-  colorWipeStatus(red,255);
+
 
   //Initialize I2C for the Servo Expander Board
   Wire.begin();
@@ -1211,7 +1204,7 @@ void setup(){
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &espNowLocalMACAddress[0]);
+  esp_wifi_set_mac(WIFI_IF_STA, &bodyServosControllerMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
@@ -1269,7 +1262,9 @@ void setup(){
 
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
-
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,10);
   
 }   // end of setup
 
@@ -1284,13 +1279,13 @@ void loop(){
       closeAllDoors(1,0,0,0,0);
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
-      colorWipeStatus(blue,25);
+  colorWipeStatus("ES",blue,10);
 
     }  
     keepAlive();
     if(Serial.available()){serialEvent();}
     // if(bcSerial.available()){bcSerialEvent();}
-    if(headerSerial.available()){headerSerialEvent();}
+    if(shSerial.available()){shSerialEvent();}
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
@@ -1461,7 +1456,7 @@ void loop(){
                 if (serialPort == "BC"){
                   // writeBcSerial(serialSubStringCommand);
                 } else if (serialPort == "FU"){
-                  writeheaderSerial(serialSubStringCommand);
+                  writeshSerial(serialSubStringCommand);
                 } 
                 
                 serialStringCommand = "";
