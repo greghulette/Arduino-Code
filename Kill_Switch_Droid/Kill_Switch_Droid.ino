@@ -802,6 +802,7 @@ void writes1Serial(String stringData){
   for (int i=0; i<completeString.length(); i++){
       s1Serial.write(completeString[i]);
   };
+  Debug.SERIAL_EVENT("Writing to Serial 1\n");
 };
 
 
@@ -1089,9 +1090,6 @@ LoRa.setPins(NSS_LORA, RESET_LORA, DIO_LORA);
     while (1);
   }
 }
-// Serial.println("Lora Intialized");
-
- 
 
 void loop() {
   checkAgeofkeepAlive();
