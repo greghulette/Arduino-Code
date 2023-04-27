@@ -474,6 +474,7 @@ void processESPNOWIncomingMessage(){
   if (incomingTargetID == "DC" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
+    Debug.ESPNOW("Received packet from %s \n", incomingSenderID);
 
   }
 }
@@ -1329,9 +1330,9 @@ void scan_i2c(){
 
 
 void keepAlive(){
-  if (millis() - keepAliveMillis >= keepAliveDuration){
+  if (millis() - keepAliveMillis >= keepAliveDuration + random(1,1000)){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","DC-ONLINE");
+    sendESPNOWCommand("LD","");
   } 
 }
 
@@ -1396,7 +1397,7 @@ void setup(){
   
   // Register peer
   peerInfo.channel = 0;  
-  peerInfo.encrypt = true;
+  peerInfo.encrypt = false;
   //  peerInfo.ifidx=WIFI_IF_AP;
 
 // Add peers  
@@ -1605,7 +1606,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               }
             }                                    
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-                  for (int i=2; i<=commandLength; i++){
+                  String  ESPNOWStringCommand = "";
+                  String ESPNOWSubStringCommand = "";
+                  String ESPNOWTarget = "";                  for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
                   }
@@ -1615,9 +1618,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
-                  String  ESPNOWStringCommand = "";
-                  String ESPNOWSubStringCommand = "";
-                  String ESPNOWTarget = "";
+
                   }  
                 if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength-1;i++ ){

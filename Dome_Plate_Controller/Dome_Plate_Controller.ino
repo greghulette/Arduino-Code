@@ -775,6 +775,9 @@ void loop(){
           Debug.DBG("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+                  String  ESPNOWStringCommand = "";
+                  String ESPNOWSubStringCommand = "";
+                  String ESPNOWTarget = "";
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
@@ -785,11 +788,9 @@ void loop(){
                   ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
-                  String  ESPNOWStringCommand = "";
-                  String ESPNOWSubStringCommand = "";
-                  String ESPNOWTarget = "";
+
                   }  
-            if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+            if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength-1;i++ ){
                       char inCharRead = inputBuffer[i];
                       serialStringCommand += inCharRead;  // add it to the inputString:
