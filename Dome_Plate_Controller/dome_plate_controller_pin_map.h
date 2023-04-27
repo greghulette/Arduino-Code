@@ -22,19 +22,19 @@
 #define UP_12				12 // W // Unused Pin (must be LOW during boot)
 #define SERIAL_TX_US        13 // Y // Unused Pin
 #define SERIAL_RX_US        14 // Y // Unused Pin
-#define SERIAL_TX_FU       	15 // Y // Unused Pin (must be HIGH during boot)
-#define SERIAL_RX_FU        16 // Y // Unused Pin
-#define SERIAL_TX_FU2       17 // Y // Unused Pin
-#define SERIAL_RX_FU2	    18 // Y // Unused Pin
+#define SERIAL1_TX_PIN      15 // Y // Unused Pin (must be HIGH during boot)
+#define SERIAL1_RX_PIN      16 // Y // Unused Pin
+#define SERIAL2_TX_PIN      17 // Y // Unused Pin
+#define SERIAL2_RX_PIN	    18 // Y // Unused Pin
 #define UP_19               19 // Y // Unused Pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA
 #define I2C_SCL             22 // Y // I2C SCL
-#define SERIAL_TX_FU3	    23 // Y // Unused Pin 
+#define SERIAL3_TX_PIN	    23 // Y // Unused Pin 
 #define NONEXISTENT_PIN_24  24 // N // There is no GPIO20
-#define SERIAL_RX_FU3       25 // Y //	Unused Pin
-#define SERIAL_TX_FU4	    26 // Y //  Unused Pin
-#define SERIAL_RX_FU4	    27 // Y //  Unused Pin
+#define SERIAL3_RX_PIN      25 // Y //	Unused Pin
+#define SERIAL4_TX_PIN	    26 // Y //  Unused Pin
+#define SERIAL4_RX_PIN	    27 // Y //  Unused Pin
 #define NONEXISTENT_PIN_28  28 // N // There is no GPIO28
 #define NONEXISTENT_PIN_29  29 // N // There is no GPIO29
 #define NONEXISTENT_PIN_30  30 // N // There is no GPIO30

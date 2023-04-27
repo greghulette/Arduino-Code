@@ -1,4 +1,3 @@
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                       *****///
@@ -17,6 +16,7 @@
 ///*****                                                                                                       *****///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Libraries used in this sketch                 *****///
@@ -43,7 +43,7 @@
 #include "body_controller_esp32_pin_map.h"
 
 // Debug Functions  - Using my own library for this
-#include <DebugR2.h>
+#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
 #include <ReelTwo.h>
@@ -68,6 +68,9 @@
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
+    //Enables status tracking on the LoRa Droid
+  bool STATUS_TRACKING = 1;
+  
   // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
 
@@ -80,8 +83,10 @@
   #define RD_BAUD_RATE 115200 
   #define ST_BAUD_RATE 9600  //Should be lower than 57600
   #define MP_BAUD_RATE 9600  //Should be lower than 57600
-  #define AUX1_BAUD_RATE 57600 //Should be lower than 57600
-  #define AUX2_BAUD_RATE 57600  //Should be lower than 57600
+  #define SERIAL1_BAUD_RATE 57600 //Should be lower than 57600
+  #define SERIAL2_BAUD_RATE 57600  //Should be lower than 57600
+
+
 
 
 //////////////////////////////////////////////////////////////
@@ -109,18 +114,40 @@
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
 
+  debugClass Debug;
+  String debugInputIdentifier ="";
+
   String LEDCommandString;
 
   int mp3Track;
   String mp3Comm;
-
-  debugClass Debug;
-String debugInputIdentifier ="";
+  String mp3TriggerResponseString;
 
 
 
+//////////////////////////////////////////////////////////////////////
+  ///*****       Startup and Loop Variables                     *****///
+  //////////////////////////////////////////////////////////////////////
+  
+  boolean startUp = true;
+  boolean isStartUp = true;
+  
+    //Main Loop Timers
+  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
+  unsigned long MLMillis;
+  byte mainLoopDelayVar = 5;
 
-  // variables for storing status and settings from ATMEGA2560
+
+///////////////////////////////////////////////////////////////////////
+  ///*****                Status Variables                     *****///
+  /////////////////////////////////////////////////////////////////////
+
+  unsigned long keepAliveMillisDuration = 15000;
+  unsigned long blkeepAliveAge;
+  unsigned long blkeepaliveAgeMillis;
+  unsigned long keepAliveMillis;
+
+    // variables for storing status and settings from ATMEGA2560
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
@@ -133,59 +160,69 @@ String debugInputIdentifier ="";
   int BL_BatteryPercentage;
 
   bool bodyLEDControllerStatus = 0;
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
   
-
-
-  //////////////////////////////////////////////////////////////////////
-  ///*****       Startup and Loop Variables                     *****///
-  //////////////////////////////////////////////////////////////////////
   
-  boolean startUp = true;
-  boolean isStartUp = true;
   
-  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
-  unsigned long MLMillis;
-  byte mainLoopDelayVar = 5;
-
- //Timers for Status updates
-  unsigned long keepAliveMillisDuration = 15000;
-  unsigned long blkeepAliveAge;
-  unsigned long blkeepaliveAgeMillis;
-  unsigned long keepAliveMillis;
-
-
-
-
-
-
-
-
-  //////////////////////////////////////////////////////////////////////
-  ///******       Serial Ports Specific Setup                   *****///
-  //////////////////////////////////////////////////////////////////////
-
   
+  
+  
+  
+  
+  
+  
+  
+  
+  //////////////////////////////////////////////////////////////////
+  ///******       Serial Ports Definitions                  *****///
+  //////////////////////////////////////////////////////////////////
+
   #define rdSerial Serial1
   #define blSerial Serial2
   SoftwareSerial stSerial;
   SoftwareSerial mpSerial;
-  SoftwareSerial aux1Serial;
-  SoftwareSerial aux2Serial;
+  SoftwareSerial s1Serial;
+  SoftwareSerial s2Serial;
  
 
-
   //////////////////////////////////////////////////////////////////////
-  ///******      Arduino Mega Reset Pin Specific Setup          *****///
+  ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define RST RESET_PIN_2560
+//LoRa Remote ESP           192.168.4.101   
+//LoRa Droid ESP            192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   ************(Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.113
+//Remote Raspberry Pi       192.168.4.114
+//Developer Laptop          192.168.4.125
+
+// IP Address config of local ESP
+IPAddress local_IP(192,168,4,109);
+IPAddress subnet(255,255,255,0);
+IPAddress gateway(192,168,4,100);
+
+const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};    //used when connecting to WiFi for OTA
+
+AsyncWebServer server(80);
+
+ 
 
 //////////////////////////////////////////////////////////////////////
-///*****             Camera Lens Variables and settings       *****///
+///*****            Status LED Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
   
-  unsigned long loopTime; // We keep track of the "time" in this variable.
-
 // -------------------------------------------------
 // Define some constants to help reference objects,
 // pins, leds, colors etc by name instead of numbers
@@ -208,6 +245,72 @@ String debugInputIdentifier ="";
   Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STAUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
@@ -219,7 +322,6 @@ String debugInputIdentifier ="";
   const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
   const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
 
 // Uses these Strings for comparators
   String droidLoRaMACAddressString = "02:00:00:00:00:01";
@@ -234,18 +336,6 @@ String debugInputIdentifier ="";
   String  targetID;
   bool    commandIncluded;
   String  command;
-    // variables for storing status and settings from ATMEGA2560. Declared earlier in code but added here for clarity
-  // int BL_LDP_Bright;
-  // int BL_MAINT_Bright;
-  // int BL_VU_Bright;
-  // int BL_CS_Bright;
-  // int BL_vuOffsetInt;
-  // int BL_vuBaselineInt;
-  // int BL_vuOffsetExt;
-  // int BL_vuBaselineExt;
-  // float BL_BatteryVoltage;
-  // int BL_BatteryPercentage;
-
 
 // Define variables to store incoming commands
   String  incomingTargetID;  
@@ -253,19 +343,19 @@ String debugInputIdentifier ="";
   String  incomingCommand;
   bool    incomingCommandIncluded;
   String  incomingPassword;
-  // int incomingstructBL_LDP_Bright;
-  // int incomingstructBL_MAINT_Bright;
-  // int incomingstructBL_VU_Bright;
-  // int incomingstructBL_CS_Bright;
-  // int incomingstructBL_vuOffsetInt;
-  // int incomingstructBL_vuBaselineInt;
-  // int incomingstructBL_vuOffsetExt;
-  // int incomingstructBL_vuBaselineExt;
-  // float incomingstructBL_BatteryVoltage;
-  // int incomingstructBL_BatteryPercentage;
-  // bool incomingstructbodyLEDControllerStatus;
-  
-  
+ 
+
+
+
+
+
+
+
+
+
+
+
+
 // Variable to store if sending data was successful
   String success;
 
@@ -332,8 +422,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-    colorWipeStatus("ES", orange ,255);
-
+  colorWipeStatus("ES", orange ,255);
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -360,6 +449,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromBodyController.structCommand;
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         processESPNOWIncomingMessage();
         }
     }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
@@ -411,39 +513,28 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-      colorWipeStatus("ES", blue, 10);
-
+  colorWipeStatus("ES",blue,10);
+  IncomingMacAddress ="";
 }
 
 void processESPNOWIncomingMessage(){
-
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
+  Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand);
   if (incomingTargetID == "BC" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
 
   }
 }
+
+
+ //////////////////////////////////////////////////////////////////////
+  ///******      Arduino Mega Reset Pin Specific Setup          *****///
   //////////////////////////////////////////////////////////////////////
-  ///******             WiFi Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
-//LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Droid Raspberry Pi        192.168.4.113
-//Remote Raspberry Pi       192.168.4.114
-//Developer Laptop          192.168.4.125
 
-// IP Address config of local ESP
-IPAddress local_IP(192,168,4,109);
-IPAddress subnet(255,255,255,0);
-IPAddress gateway(192,168,4,100);
-
-const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x12};    //used when connecting to WiFi for OTA
-
-AsyncWebServer server(80);
+  #define RST RESET_PIN_2560
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -454,6 +545,9 @@ AsyncWebServer server(80);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////////////////////
+///*****   ColorWipe Function for Status LED                  *****///
+//////////////////////////////////////////////////////////////////////
 
 void colorWipeStatus(String statusled, uint32_t c, int brightness) {
   if(statusled == "ES"){
@@ -461,27 +555,128 @@ void colorWipeStatus(String statusled, uint32_t c, int brightness) {
     ESP_LED.setPixelColor(0, c);
     ESP_LED.show();
   } 
-else{
-  Debug.DBG("No LED was chosen \n");
+  else{Debug.DBG("No LED was chosen \n");}
+};
+
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
+
+void keepAlive(){
+  if (STATUS_TRACKING == 1){
+    if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("LD","");  
+    } 
   }
-  };
+};
 
+//////////////////////////////////////////////////////////////////////
+///*****    Checks the age of the Status Variables            *****///
+//////////////////////////////////////////////////////////////////////
+
+void checkAgeofkeepAlive(){    //checks for the variable's age
+
+    if (bodyLEDControllerStatus==1){
+    if (millis()-blkeepAliveAge>=keepAliveMillisDuration){
+      bodyLEDControllerStatus=0;
+      BL_LDP_Bright =0;
+      BL_MAINT_Bright = 0;
+      BL_VU_Bright = 0;
+      BL_CS_Bright =0;
+      BL_vuOffsetInt = 0;
+      BL_vuBaselineInt = 0;
+      BL_vuOffsetExt = 0;
+      BL_vuBaselineExt =0;
+      BL_BatteryPercentage = 0;
+      BL_BatteryVoltage = 0.0;
+      Debug.ESPNOW("Body LED Controller Offline\n");
+    }
+  }
+}
+
+
+void printKeepaliveStatus(){
+  if (Debug.debugflag_status == 0)
+  {
+    Debug.debugflag_status = 1;
+    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
+    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
+    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
+    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
+    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
+    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
+    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
+    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
+    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
+    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+    Debug.debugflag_status = 0;
+  } else
+  {  
+    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
+    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
+    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
+    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
+    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
+    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
+    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
+    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
+    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
+    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+  }
+  Local_Command[0]   = '\0';
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
-/////                             Serial Communication Functions                                    /////
+/////                              Communication Functions                                    /////
 /////                                                                                               /////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-      /////////////////////////////////////////////////////////
-      ///*****          Serial Event Function          *****///
-      /////////////////////////////////////////////////////////
-      /// This routine is called each loop() runs, so using ///
-      /// delay inside loop can delay response.  Multiple   ///
-      /// bytes of data may be available.                   ///
-      /////////////////////////////////////////////////////////
+/*//////////////////////////////////////////////////////////////////////
+Turns on Wifi and enables OTA.  It will connect to the Kill Switch Remotes's
+WiFi network to allow the uploading of sktches(.bin files) via the OTA process. 
+It does not produce it's own WiFi network.  Once enables, a reboot is
+required to regain ESP-NOW functionality.
+*///////////////////////////////////////////////////////////////////////
+void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
+  WiFi.begin(ssid,password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+  });
+  
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+
+  Local_Command[0]   = '\0';
+} ;
+
+/////////////////////////////////////////////////////////
+///*****          Serial Event Function          *****///
+/////////////////////////////////////////////////////////
 
 void serialEvent() {
   while (Serial.available()) {
@@ -493,21 +688,21 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.DBG("InputString: %s \n",inputString);
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
 
-void serialAux1Event() {
-  while (aux1Serial.available()) {
+void serial1Event() {
+  while (s1Serial.available()) {
     // get the new byte:
-    char inChar = (char)aux1Serial.read();
+    char inChar = (char)s1Serial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.ESPNOW("InputString: %s \n",inputString);
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
 
 void serialBlEvent() {
@@ -560,9 +755,9 @@ colorWipeStatus("ES", green, 10);
     }
   };
   colorWipeStatus("ES", blue, 10);
+  Debug.SERIAL_EVENT("BL Status Recieved: \n");
 
 };
-
 
 void serialStEvent() {
   while (stSerial.available()) {
@@ -574,10 +769,8 @@ void serialStEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.DBG("InputString: %s \n",inputString);
+  Debug.SERIAL_EVENT("Stealth Serial Input: %s \n",inputString);
 };
-
-String mp3TriggerResponseString;
 
 void serialMpEvent() {
   while (mpSerial.available()) {
@@ -586,16 +779,12 @@ void serialMpEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
     };
   };
-  Debug.DBG("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
+  Debug.SERIAL_EVENT("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
   mp3TriggerResponseString = "";
 };
 
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-  /// These functions recieve a string and transmits    ///
-  /// one character at a time and adds a '/r' to the    ///
-  /// end of the string.                                ///
   /////////////////////////////////////////////////////////
 
 void writeSerialString(String stringData){
@@ -614,10 +803,10 @@ void writeBlSerial(String stringData){
 };
 
 
-void writeaux1Serial(String stringData){
+void writes1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
-    aux1Serial.write(completeString[i]);
+    s1Serial.write(completeString[i]);
   };
   Debug.DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
 };
@@ -719,39 +908,7 @@ void sendESPNOWCommand(String starget, String scomm){
 ///*****             Debugging Functions                      *****///
 //////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////
-///*****    Connects to WiFi and turns on OTA functionality   *****///
-//////////////////////////////////////////////////////////////////////
-void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
 
-  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
-  
-  delay(500);
-  
-  WiFi.begin(ssid,password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.110/update to upload file");
-  });
-  
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
-
-  Local_Command[0]   = '\0';
-}   
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
 //////////////////////////////////////////////////////////////////////
@@ -772,74 +929,7 @@ void mp3Trigger(String comm, int track){
 }
 
 
-//////////////////////////////////////////////////////////////////////
-///*****    Checks the age of the Status Variables            *****///
-//////////////////////////////////////////////////////////////////////
 
-void checkAgeofkeepAlive(){    //checks for the variable's age
-
-    if (bodyLEDControllerStatus==1){
-    if (millis()-blkeepAliveAge>=keepAliveMillisDuration){
-      bodyLEDControllerStatus=0;
-      BL_LDP_Bright =0;
-      BL_MAINT_Bright = 0;
-      BL_VU_Bright = 0;
-      BL_CS_Bright =0;
-      BL_vuOffsetInt = 0;
-      BL_vuBaselineInt = 0;
-      BL_vuOffsetExt = 0;
-      BL_vuBaselineExt =0;
-      BL_BatteryPercentage = 0;
-      BL_BatteryVoltage = 0.0;
-      Debug.ESPNOW("Body LED Controller Offline\n");
-    }
-  }
-}
-
-
-void printKeepaliveStatus(){
-  if (Debug.debugflag_status == 0)
-  {
-    Debug.debugflag_status = 1;
-    // Debug.STATUS("Dome Controller Status: %d\n", domeControllerStatus);
-    // Debug.STATUS("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
-    // Debug.STATUS("Body Servo Controller Status: %d\n", bodyServoControllerStatus);
-    // Debug.STATUS("Body  Controller Status: %d\n", bodyControllerStatus);
-    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
-    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
-    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
-    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
-    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
-    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
-    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
-    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
-    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
-    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
-    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
-    Debug.debugflag_status = 0;
-  } else
-  {  
-    Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
-    Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
-    Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
-    Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
-    Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
-    Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
-    Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
-    Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
-    Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
-    Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
-    Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
-  }
-  Local_Command[0]   = '\0';
-}
-
-void keepAlive(){
-  if (millis() - keepAliveMillis >= keepAliveDuration + random(1, 1000)){
-    keepAliveMillis = millis();
-    sendESPNOWCommand("LD", "");
-  } 
-}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -859,8 +949,8 @@ void setup(){
   blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,SERIAL_RX_BL_PIN,SERIAL_TX_BL_PIN);
   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_ST_PIN,SERIAL_TX_ST_PIN,false,95);
   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_MP_PIN,SERIAL_TX_MP_PIN,false,95);
-  aux1Serial.begin(AUX1_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_AUX1_PIN,SERIAL_TX_AUX1_PIN,false,95);
-  aux2Serial.begin(AUX2_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_AUX2_PIN,SERIAL_TX_AUX2_PIN,false,95);
+  s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);
+  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);
   
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body ESP Controller");
@@ -978,7 +1068,7 @@ void loop(){
     }
     if(Serial.available()){serialEvent();}
     if(blSerial.available()){serialBlEvent();}
-    if(aux1Serial.available()){serialAux1Event();}
+    if(s1Serial.available()){serial1Event();}
     if(stSerial.available()){serialStEvent();}
     if(mpSerial.available()){serialMpEvent();}
 
@@ -1081,7 +1171,7 @@ void loop(){
                 writeBlSerial(serialSubStringCommand);
                 Debug.DBG("Sending out BL Serial\n");
               } else if (serialPort == "EN"){
-                writeaux1Serial(serialSubStringCommand);
+                writes1Serial(serialSubStringCommand);
                 Debug.DBG("Sending out EN Serial\n");
               } else if (serialPort == "ST"){
                 writeStSerial(serialSubStringCommand);

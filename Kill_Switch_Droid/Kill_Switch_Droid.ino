@@ -76,7 +76,7 @@
   int defaultESPNOWSendDuration = 50;  
 
   // Serial Baud Rates
-  #define SH_BAUD_RATE 115200
+  #define SERIAL1_BAUD_RATE 115200
 
 
 
@@ -109,9 +109,14 @@
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
 
-
 debugClass Debug;
 String debugInputIdentifier ="";
+
+
+
+
+
+
 
 
 //////////////////////////////////////////////////////////////////////
@@ -121,10 +126,9 @@ String debugInputIdentifier ="";
   boolean startUp = true;
   boolean isStartUp = true;
   
-  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
+    //Main Loop Timers
+  unsigned long mainLoopTime; 
   unsigned long MLMillis;
-  unsigned long LMillis;
-  int LoraDelay = 5000;
   byte mainLoopDelayVar = 5;
 
 
@@ -159,21 +163,35 @@ String debugInputIdentifier ="";
   unsigned long ksrkeepAliveAge;
   unsigned long ksrkeepaliveAgeMillis;
   
+    // variables for storing status and settings from ATMEGA2560
+  int BL_LDP_Bright;
+  int BL_MAINT_Bright;
+  int BL_VU_Bright;
+  int BL_CS_Bright;
+  int BL_vuOffsetInt;
+  int BL_vuBaselineInt;
+  int BL_vuOffsetExt;
+  int BL_vuBaselineExt;
+  float BL_BatteryVoltage;
+  int BL_BatteryPercentage;
 
-    //////////////////////////////////////////////////////////////////////
-  ///******       Serial Ports Specific Setup                   *****///
+
+  //////////////////////////////////////////////////////////////////
+  ///******       Serial Ports Definitions                  *****///
+  //////////////////////////////////////////////////////////////////
+
+  #define s1Serial Serial1
+
+
+
+
+
+
+
   //////////////////////////////////////////////////////////////////////
-
-  #define shSerial Serial1
-
-
-//////////////////////////////////////////////////////////////////////
-///******             WiFi Specific Setup                     *****///
-//////////////////////////////////////////////////////////////////////
-  
-   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
+
 //LoRa Remote ESP           192.168.4.101   
 //LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
@@ -222,6 +240,71 @@ String debugInputIdentifier ="";
   Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_LED_PIN, NEO_GRB + NEO_KHZ800);
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
@@ -233,7 +316,6 @@ String debugInputIdentifier ="";
   const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
   const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
 
 // Uses these Strings for comparators
   String droidLoRaMACAddressString =            "02:00:00:00:00:01";
@@ -248,17 +330,6 @@ String debugInputIdentifier ="";
   String  targetID;
   bool    commandIncluded;
   String  command;
-  int     BL_LDP_Bright;
-  int     BL_MAINT_Bright;
-  int     BL_VU_Bright;
-  int     BL_CS_Bright;
-  int     BL_vuOffsetInt;
-  int     BL_vuBaselineInt;
-  int     BL_vuOffsetExt;
-  int     BL_vuBaselineExt;
-  float   BL_BatteryVoltage;
-  int     BL_BatteryPercentage;
-  // boolean bodyLEDControllerStatus;
 
 
 // Define variables to store incoming commands
@@ -350,20 +421,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
   Debug.ESPNOW("Recieved ESP-NOW packet from %s \n", IncomingMacAddress.c_str());
-  // if (IncomingMacAddress = droidLoRaMACAddressString) {
-  //     memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
-  //     incomingPassword == commandsToReceiveFromDroidLoRa.structPassword;
-  //     if (incomingPassword != ESPNOWPASSWORD){
-  //       Debug.ESPNOW("Wrong ESP-NOW Password was sent from DL.  Message Ignored\n");  
-  //     } else {
-  //       incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
-  //       incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
-  //       incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
-  //       incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
-  //       processESPNOWIncomingMessage();
-  //       }
-  //   } else 
-    if (IncomingMacAddress == bodyControllerMACAddressString){
+  if (IncomingMacAddress = droidLoRaMACAddressString) {
+      memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
+      incomingPassword == commandsToReceiveFromDroidLoRa.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent from DL.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
+        incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else if (IncomingMacAddress == bodyControllerMACAddressString){
         Debug.ESPNOW("ESP-NOW Packet Size from BC: %i \n", len);
       memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
       incomingPassword = commandsToReceiveFromBodyController.structPassword;
@@ -437,9 +507,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-      colorWipeStatus("ES",blue,10);
-
-IncomingMacAddress ="";
+  colorWipeStatus("ES",blue,10);
+  IncomingMacAddress ="";
 
 }
 
@@ -531,10 +600,40 @@ void processESPNOWIncomingMessage(){
 //////////////////////////////////////////////////////////////
 ///*****        Variables for button      *****///
 //////////////////////////////////////////////////////////////////////
-  // unsigned long buttonCurrentMillis;
-  // unsigned long buttonPreviousMillis;
-  // unsigned long buttonDelayInterval;
+
   boolean RELAY_STATUS = HIGH;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             Start OF FUNCTIONS                                        /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****   ColorWipe Function for Status LED                  *****///
+//////////////////////////////////////////////////////////////////////
+
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } else if (statusled == "RS"){
+    RELAY_LED.setBrightness(brightness);
+    RELAY_LED.setPixelColor(0, c);
+    RELAY_LED.show();
+  }else if (statusled == "LS"){
+    LORA_LED.setBrightness(brightness);
+    LORA_LED.setPixelColor(0, c);
+    LORA_LED.show();
+  }
+else{Debug.DBG("No LED was chosen \n");}
+  };
 
 
 ////////////////////////////////////////////////////////////////////
@@ -611,39 +710,7 @@ void printKeepaliveStatus(){
     Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
     Local_Command[0]   = '\0';
   }
-
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////                                                                                       /////////     
-/////////                             Start OF FUNCTIONS                                        /////////
-/////////                                                                                       /////////     
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else if (statusled == "RS"){
-    RELAY_LED.setBrightness(brightness);
-    RELAY_LED.setPixelColor(0, c);
-    RELAY_LED.show();
-  }else if (statusled == "LS"){
-    LORA_LED.setBrightness(brightness);
-    LORA_LED.setPixelColor(0, c);
-    LORA_LED.show();
-  }
-else{
-  // Debug.DBG("No LED was chosen \n");
-  }
-  };
-
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
@@ -652,13 +719,46 @@ else{
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-      /////////////////////////////////////////////////////////
-      ///*****          Serial Event Function          *****///
-      /////////////////////////////////////////////////////////
-      /// This routine is called each loop() runs, so using ///
-      /// delay inside loop can delay response.  Multiple   ///
-      /// bytes of data may be available.                   ///
-      /////////////////////////////////////////////////////////
+/*//////////////////////////////////////////////////////////////////////
+Turns on Wifi and enables OTA.  It will connect to the Kill Switch Remotes's
+WiFi network to allow the uploading of sktches(.bin files) via the OTA process. 
+It does not produce it's own WiFi network.  Once enables, a reboot is
+required to regain ESP-NOW functionality.
+*///////////////////////////////////////////////////////////////////////
+void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+  
+  delay(500);
+  
+  WiFi.begin(ssid,password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+  });
+  
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+
+  Local_Command[0]   = '\0';
+} ;
+
+/////////////////////////////////////////////////////////
+///*****          Serial Event Function          *****///
+/////////////////////////////////////////////////////////
 
 void serialEvent() {
   while (Serial.available()) {
@@ -670,28 +770,24 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.SERIAL_EVENT("InputString: %s \n",inputString);
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
-void shSerialEvent() {
-  while (shSerial.available()) {
+void s1SerialEvent() {
+  while (s1Serial.available()) {
     // get the new byte:
-    char inChar = (char)shSerial.read();
+    char inChar = (char)s1Serial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.SERIAL_EVENT("InputString: %s \n",inputString);
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
 
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-  /// These functions recieve a string and transmits    ///
-  /// one character at a time and adds a '/r' to the    ///
-  /// end of the string.                                ///
   /////////////////////////////////////////////////////////
 
 void writeSerialString(String stringData){
@@ -701,10 +797,10 @@ void writeSerialString(String stringData){
   };
 };
 
-void writeshSerial(String stringData){
+void writes1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
-      shSerial.write(completeString[i]);
+      s1Serial.write(completeString[i]);
   };
 };
 
@@ -859,36 +955,6 @@ void onReceive(int packetSize) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
-
-  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
-  
-  delay(500);
-  
-  WiFi.begin(ssid,password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
-  });
-  
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
-
-  Local_Command[0]   = '\0';
-} 
 
 void MainRelayOn(){
   RELAY_STATUS = HIGH;
@@ -927,7 +993,7 @@ void checkButton(){
 void setup() {
   Serial.begin(115200);
   while (!Serial);
-  shSerial.begin(SH_BAUD_RATE,SERIAL_8N1,SERIAL_RX_HEADER,SERIAL_TX_HEADER);
+  s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
 
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
@@ -1133,7 +1199,7 @@ void loop() {
                     serialSubStringCommand = serialStringCommand.substring(2,commandLength);
                     Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
                     if (serialPort == "SH"){
-                      writeshSerial(serialSubStringCommand);
+                      writes1Serial(serialSubStringCommand);
                     } else{
                       Debug.LOOP("Wrong Serial Port Identified /n");
                     } 

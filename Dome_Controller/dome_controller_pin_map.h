@@ -24,8 +24,8 @@
 #define SERIAL_RX_PSI_PIN   14 // Y // Serial Rx pin for the PSI's (NOT WIRED UP AND NO PIN PRESENT ON THE BOARD, BUT NEEDS TO BE ADDED TO THE SETUP FOR ININTIALIZATION OF THE SERIAL PORT)
 #define SERIAL_TX_RS_PIN    15 // Y // Serial Rx pin for the Dome Logics Controller  (must be HIGH during boot)
 #define SERIAL_RX_RS_PIN    16 // Y // Serial Rx pin for the Dome Logics Controller
-#define SERIAL_TX_FU_PIN    17 // Y // Serial Rx pin for the Future Use serial port
-#define SERIAL_RX_FU_PIN    18 // Y // Serial Rx pin for the Future Use serial port
+#define SERIAL1_TX_PIN    17 // Y // Serial Rx pin for the Future Use serial port
+#define SERIAL1_RX_PIN    18 // Y // Serial Rx pin for the Future Use serial port
 #define UP_19               19 // Y // Unused Pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA

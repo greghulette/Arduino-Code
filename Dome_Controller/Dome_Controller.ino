@@ -43,7 +43,7 @@
 #include "dome_controller_pin_map.h"
 
 // Debug Functions  - Using my own library for this
-#include <DebugR2.h>
+#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
 #include <ReelTwo.h>
@@ -68,6 +68,9 @@
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
+  //Enables status tracking on the LoRa Droid
+  bool STATUS_TRACKING = 1;
+  
   // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
   
@@ -79,7 +82,7 @@
   #define HP_BAUD_RATE 9600
   #define RS_BAUD_RATE 9600
   #define PS_BAUD_RATE 9600 //Should be lower than 57600
-  #define FU_BAUD_RATE 9600  //Should be lower than 57600
+  #define SERIAL1_BAUD_RATE 9600  //Should be lower than 57600
 
 
 
@@ -109,9 +112,8 @@
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
   
-    byte RE_command[6] = {0,0,0,0,0,0};
- 
-  
+  byte RE_command[6] = {0,0,0,0,0,0};
+
   int colorState1;
   int speedState;
   int ledFunction;
@@ -119,67 +121,6 @@
   debugClass Debug;
   String debugInputIdentifier ="";
 
-//////////////////////////////////////////////////////////////////////
-///*****   Door Values, Containers, Flags & Timers   *****///
-//////////////////////////////////////////////////////////////////////
-  int door = -1;
-  // Door Command Container
-  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
-  int doorFunction = 0;
-  int doorBoard = 0; 
-  int doorEasingMethod;
-  uint32_t cVarSpeedMin;
-  uint32_t cVarSpeedMax;
-  uint32_t doorEasingDuration;
-  uint32_t delayCallTime;
-
-  // variables for individual functions
-  uint32_t varSpeedMin;
-  uint32_t varSpeedMax;
-  char stringToSend[20];
-  uint32_t fVarSpeedMin;
-  uint32_t fVarSpeedMax;
-
-/////////////////////////////////////////////////////////////////////////
-///*****              ReelTwo Servo Set Up                       *****///
-/////////////////////////////////////////////////////////////////////////
-
-#define SMALL_PANEL_ONE       0x0001 //b0000 0000 0000 0001
-#define SMALL_PANEL_TWO       0x0002 //b0000 0000 0000 0010
-#define SMALL_PANEL_THREE     0x0004 //b0000 0000 0000 0100
-#define MEDIUM_PANEL_PAINTED  0x0008 //b0000 0000 0000 1000
-#define MEDIUM_PANEL_SILVER   0x0010 //b0000 0000 0001 0000
-#define BIG_PANEL             0x0020 //b0000 0000 0010 0000
-#define PIE_PANEL_ONE         0x0040 //b0000 0000 0100 0000
-#define PIE_PANEL_TWO         0x0080 //b0000 0000 1000 0000
-#define PIE_PANEL_THREE       0x0100 //b0000 0001 0000 0000
-#define PIE_PANEL_FOUR        0x0200 //b0000 0010 0000 0000
-
-#define SMALL_PANELS_MASK     (SMALL_PANEL_ONE|SMALL_PANEL_TWO|SMALL_PANEL_THREE)
-#define MEDIUM_PANELS_MASK    (MEDIUM_PANEL_PAINTED|MEDIUM_PANEL_SILVER)
-#define DOME_PANELS_MASK      (SMALL_PANELS_MASK|MEDIUM_PANELS_MASK|BIG_PANEL)
-#define PIE_PANELS_MASK       (PIE_PANEL_ONE|PIE_PANEL_TWO|PIE_PANEL_THREE|PIE_PANEL_FOUR)
-#define ALL_SERVOS_MASK       (DOME_PANELS_MASK|PIE_PANELS_MASK)
-
-// Group ID is used by the ServoSequencer and some ServoDispatch functions to
-// identify a group of servos.
-
-//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
-const ServoSettings servoSettings[] PROGMEM = {
-    { 1,   2363, 1592, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
-    { 2,   1975, 1200, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
-    { 3,   2000, 1200, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
-    { 4,   2000, 1200, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
-    { 5,   2050, 1100, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-    { 6,   1950, 1100, BIG_PANEL },             /* 5: door 6 Big Lower door */
-    { 7,   2050, 1156, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
-    { 8,   2050, 1175, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
-    { 9,   2050, 1168, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
-    { 10,  2050, 1257, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
-};
-
-ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
-ServoSequencer servoSequencer(servoDispatch);
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -188,43 +129,96 @@ ServoSequencer servoSequencer(servoDispatch);
   boolean startUp = true;
   boolean isStartUp = true;
   
-  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
+  //Main Loop Timers
+  unsigned long mainLoopTime; 
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
 
- //Timer for Status updates
-    int keepAliveMillis;
+
+///////////////////////////////////////////////////////////////////////
+  ///*****                Status Variables                     *****///
+  /////////////////////////////////////////////////////////////////////
+
+  unsigned long keepAliveMillis;
 
 
-  //////////////////////////////////////////////////////////////////////
-  ///******       Serial Ports Specific Setup                   *****///
-  //////////////////////////////////////////////////////////////////////
-  
-  // #define RXHP 15
-  // #define TXHP 16 
-  // #define RXRS 25
-  // #define TXRS 26
-  // #define RXFU 12
-  // #define TXFU 14 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  //////////////////////////////////////////////////////////////////
+  ///******       Serial Ports Definitions                  *****///
+  //////////////////////////////////////////////////////////////////
   
   #define hpSerial Serial1
   #define rsSerial Serial2
-  SoftwareSerial fuSerial;
+  SoftwareSerial s1Serial;
   SoftwareSerial psSerial;
 
 
+ 
+ 
+ //////////////////////////////////////////////////////////////////////
+  ///******             WiFi Specific Setup                     *****///
+  //////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////
+//LoRa Remote ESP           192.168.4.101   
+//LoRa Droid ESP            192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Controller ESP       192.168.4.111   ************(Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.113
+//Remote Raspberry Pi       192.168.4.114
+//Developer Laptop          192.168.4.125
+  
+  // IP Address config of local ESP
+  IPAddress local_IP(192,168,4,111);
+  IPAddress subnet(255,255,255,0);
+  IPAddress gateway(192,168,4,101);
+  
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};    //used when connecting to WiFi for OTA
+
+  AsyncWebServer server(80);
+  
+
+/////////////////////////////////////////////////////////////////////
 ///*****            Status and Camera Lens Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
   
-  unsigned long RE_loopTime; // We keep track of the "time" in this variable.
-  unsigned long RadarEyeMillis;
-  byte RadarEyespeed = 50;
-  unsigned long RE_startMillis;
-  unsigned long RE_currentMillis;  
-  int dim = 75;
-  boolean countUp=false;
 // -------------------------------------------------
 // Define some constants to help reference objects,
 // pins, leds, colors etc by name instead of numbers
@@ -286,6 +280,15 @@ ServoSequencer servoSequencer(servoDispatch);
   unsigned const int RadarEyeAutoPauseMax  = 1;
   unsigned int RadarEyeAutoPause;
   unsigned int RadarEyeAutoInt;
+  
+  //Timers and variables to keep track of during the loop
+  unsigned long RE_loopTime; // We keep track of the "time" in this variable.
+  unsigned long RadarEyeMillis;
+  byte RadarEyespeed = 50;
+  unsigned long RE_startMillis;
+  unsigned long RE_currentMillis;  
+  int dim = 75;
+  boolean countUp=false;
 
 ///////////////////////////////////////////////////////////////////////
 ///*****               Auto Sequence Assignments               *****///
@@ -317,7 +320,6 @@ ServoSequencer servoSequencer(servoDispatch);
   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
   const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-
 // Uses these Strings for comparators
   String droidLoRaMACAddressString = "02:00:00:00:00:01";
   String bodyControllerMACAddressString = "02:00:00:00:00:02";
@@ -339,6 +341,18 @@ ServoSequencer servoSequencer(servoDispatch);
   bool    incomingCommandIncluded;
   String  incomingPassword;
   
+
+
+
+
+
+
+
+
+
+
+
+
 // Variable to store if sending data was successful
   String success;
 
@@ -351,6 +365,25 @@ typedef struct espnow_struct_message {
       bool structCommandIncluded;
       char structCommand[100];
   } espnow_struct_message;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   espnow_struct_message commandsToSendtoBroadcast;
@@ -386,8 +419,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-    colorWipeStatus("ES", orange ,255);
-
+  colorWipeStatus("ES", orange ,255);
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -414,6 +446,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromBodyController.structCommand;
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         processESPNOWIncomingMessage();
         }
     }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
@@ -465,12 +510,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-      colorWipeStatus("ES", blue, 10);
-
+  colorWipeStatus("ES",blue,10);
+  IncomingMacAddress ="";
 }
 
 void processESPNOWIncomingMessage(){
-
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
+  Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand);
   if (incomingTargetID == "DC" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
@@ -479,37 +527,149 @@ void processESPNOWIncomingMessage(){
   }
 }
 
-  //////////////////////////////////////////////////////////////////////
-  ///******             WiFi Specific Setup                     *****///
-  //////////////////////////////////////////////////////////////////////
-  
-//LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Droid Raspberry Pi        192.168.4.113
-//Remote Raspberry Pi       192.168.4.114
-//Developer Laptop          192.168.4.125
-  
-  // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,111);
-  IPAddress subnet(255,255,255,0);
-  IPAddress gateway(192,168,4,101);
-  
-  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x14};    //used when connecting to WiFi for OTA
+ //////////////////////////////////////////////////////////////////////
+///*****   Door Values, Containers, Flags & Timers   *****///
+//////////////////////////////////////////////////////////////////////
+  int door = -1;
+  // Door Command Container
+  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
+  int doorFunction = 0;
+  int doorBoard = 0; 
+  int doorEasingMethod;
+  uint32_t cVarSpeedMin;
+  uint32_t cVarSpeedMax;
+  uint32_t doorEasingDuration;
+  uint32_t delayCallTime;
 
+  // variables for individual functions
+  uint32_t varSpeedMin;
+  uint32_t varSpeedMax;
+  char stringToSend[20];
+  uint32_t fVarSpeedMin;
+  uint32_t fVarSpeedMax;
+
+/////////////////////////////////////////////////////////////////////////
+///*****              ReelTwo Servo Set Up                       *****///
+/////////////////////////////////////////////////////////////////////////
+
+#define SMALL_PANEL_ONE       0x0001 //b0000 0000 0000 0001
+#define SMALL_PANEL_TWO       0x0002 //b0000 0000 0000 0010
+#define SMALL_PANEL_THREE     0x0004 //b0000 0000 0000 0100
+#define MEDIUM_PANEL_PAINTED  0x0008 //b0000 0000 0000 1000
+#define MEDIUM_PANEL_SILVER   0x0010 //b0000 0000 0001 0000
+#define BIG_PANEL             0x0020 //b0000 0000 0010 0000
+#define PIE_PANEL_ONE         0x0040 //b0000 0000 0100 0000
+#define PIE_PANEL_TWO         0x0080 //b0000 0000 1000 0000
+#define PIE_PANEL_THREE       0x0100 //b0000 0001 0000 0000
+#define PIE_PANEL_FOUR        0x0200 //b0000 0010 0000 0000
+
+#define SMALL_PANELS_MASK     (SMALL_PANEL_ONE|SMALL_PANEL_TWO|SMALL_PANEL_THREE)
+#define MEDIUM_PANELS_MASK    (MEDIUM_PANEL_PAINTED|MEDIUM_PANEL_SILVER)
+#define DOME_PANELS_MASK      (SMALL_PANELS_MASK|MEDIUM_PANELS_MASK|BIG_PANEL)
+#define PIE_PANELS_MASK       (PIE_PANEL_ONE|PIE_PANEL_TWO|PIE_PANEL_THREE|PIE_PANEL_FOUR)
+#define ALL_SERVOS_MASK       (DOME_PANELS_MASK|PIE_PANELS_MASK)
+
+// Group ID is used by the ServoSequencer and some ServoDispatch functions to
+// identify a group of servos.
+
+//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
+const ServoSettings servoSettings[] PROGMEM = {
+    { 1,   2363, 1592, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
+    { 2,   1975, 1200, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
+    { 3,   2000, 1200, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
+    { 4,   2000, 1200, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
+    { 5,   2050, 1100, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
+    { 6,   1950, 1100, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 7,   2050, 1156, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
+    { 8,   2050, 1175, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
+    { 9,   2050, 1168, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
+    { 10,  2050, 1257, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
+};
+
+ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
+ServoSequencer servoSequencer(servoDispatch);
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             Start OF FUNCTIONS                                        /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****   ColorWipe Function for Status LED                  *****///
+//////////////////////////////////////////////////////////////////////
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } 
+  else{Debug.DBG("No LED was chosen \n");}
+};
+
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
+
+void keepAlive(){
+  if (STATUS_TRACKING == 1){
+    if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("LD","");  
+    } 
+  }
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////                                                                                               /////
+/////                              Communication Functions                                    /////
+/////                                                                                               /////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*//////////////////////////////////////////////////////////////////////
+Turns on Wifi and enables OTA.  It will connect to the Kill Switch Remotes's
+WiFi network to allow the uploading of sktches(.bin files) via the OTA process. 
+It does not produce it's own WiFi network.  Once enables, a reboot is
+required to regain ESP-NOW functionality.
+*///////////////////////////////////////////////////////////////////////
+void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
   
-  AsyncWebServer server(80);
+  delay(500);
   
+  WiFi.begin(ssid,password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+  });
+  
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
 
-
-
+  Local_Command[0]   = '\0';
+} 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
-///////                                      Radar eye Camera LED Functions                           /////
+///////                                      Radar eye LED Functions                           /////
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -584,15 +744,6 @@ void REAuto () {
   }
 }
 
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else{
-  // Debug.DBG("No LED was chosen \n");
-  }
-  };
 
 
 
@@ -1006,23 +1157,10 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   D_command[0]  = '\0';                                             
 };                                                    
 
+/////////////////////////////////////////////////////////
+///*****          Serial Event Function          *****///
+/////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                             Serial & ESP-NOW Communication Functions                          /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//      /////////////////////////////////////////////////////////
-//      ///*****          Serial Event Function          *****///
-//      /////////////////////////////////////////////////////////
-//      /// This routine is run between loop() runs, so using ///
-//      /// delay inside loop can delay response.  Multiple   ///
-//      /// bytes of data may be available.                   ///
-//      /////////////////////////////////////////////////////////
-//
 void serialEvent() {
   //int count = 0;
   while (Serial.available()) {
@@ -1032,7 +1170,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     }
   }
-  Debug.SERIAL_EVENT("Received %s on main serial\n", inputString);
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 }
 
 void hpSerialEvent() {
@@ -1043,7 +1181,7 @@ void hpSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("Recieved %s on hp serial\n", inputString);
+  Debug.SERIAL_EVENT("HP Serial Input: %s \n",inputString);
 }
 
 void rsSerialEvent() {
@@ -1054,7 +1192,7 @@ void rsSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("Received %s on dome logics serial\n", inputString);
+  Debug.SERIAL_EVENT("Dome Logics Serial Input: %s \n",inputString);
 }
 
 void psSerialEvent() {
@@ -1065,26 +1203,22 @@ void psSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("Received %s psi serial.  This should not happen ever.\n", inputString);
+  Debug.SERIAL_EVENT("PSI Serial Input: %s \n",inputString);
 }
 
-void fuSerialEvent() {
-  while (fuSerial.available()) {
-    char inChar = (char)fuSerial.read();
+void s1SerialEvent() {
+  while (s1Serial.available()) {
+    char inChar = (char)s1Serial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("Received %s on future serial\n", inputString);
-}
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+};
 
  /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-  /// These functions recieve a string and transmits    ///
-  /// one character at a time and adds a '/r' to the    ///
-  /// end of the string.                                ///
   /////////////////////////////////////////////////////////
 
 void writeSerialString(String stringData){
@@ -1115,9 +1249,9 @@ void writeHpSerial(String stringData){
 void writeFuSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
-    fuSerial.write(completeString[i]);
+    s1Serial.write(completeString[i]);
   }
-  Debug.SERIAL_EVENT("Printing to fuSerial\n");
+  Debug.SERIAL_EVENT("Printing to s1Serial\n");
 }
 
 void writePsSerial(String stringData){
@@ -1191,41 +1325,6 @@ void sendESPNOWCommand(String starget, String scomm){
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-//////////////////////////////////////////////////////////////////////
-///*****    Connects to WiFi and turns on OTA functionality   *****///
-//////////////////////////////////////////////////////////////////////
-
-void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
-
-  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
-  
-  delay(500);
-  
-  WiFi.begin(ssid,password);
-  while (WiFi.status() != WL_CONNECTED) {
-  delay(1000);
-  Serial.println("Connecting to WiFi..");
-  }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.111/update to upload file");
-  });
-  
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
-
-  Local_Command[0]   = '\0';
-}   
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
@@ -1322,19 +1421,6 @@ void scan_i2c(){
         Serial.println("done\n");
 }
 
-//////////////////////////////////////////////////////////////////////
-///*****    Send Keepalive Messages for Status                *****///
-//////////////////////////////////////////////////////////////////////
-  // KeepAlive Message to show status on website.
-
-
-
-void keepAlive(){
-  if (millis() - keepAliveMillis >= keepAliveDuration + random(1,1000)){
-    keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");
-  } 
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1351,7 +1437,7 @@ void setup(){
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,SERIAL_RX_HP_PIN,SERIAL_TX_HP_PIN);
   rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RS_PIN,SERIAL_TX_RS_PIN);
   psSerial.begin(PS_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_PSI_PIN,SERIAL_TX_PSI_PIN,false,95); 
-  fuSerial.begin(FU_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU_PIN,SERIAL_TX_FU_PIN,false,95);  
+  s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);  
  
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
@@ -1459,7 +1545,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
   if(rsSerial.available()){rsSerialEvent();}
-  if(fuSerial.available()){fuSerialEvent();}
+  if(s1Serial.available()){s1SerialEvent();}
 
 //  RadarEye_LED(blue, 5); // blue
 

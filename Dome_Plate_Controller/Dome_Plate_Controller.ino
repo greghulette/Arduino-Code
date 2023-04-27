@@ -43,7 +43,7 @@
 #include "dome_plate_controller_pin_map.h"
 
 // Debug Functions  - Using my own library for this
-#include <DebugR2.h>
+#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
 #include "ReelTwo.h"
@@ -68,6 +68,9 @@
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
+  //Enables status tracking on the LoRa Droid
+  bool STATUS_TRACKING = 1;
+  
   // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
 
@@ -113,14 +116,21 @@
   String debugInputIdentifier ="";
 
 
-  //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
   
   boolean startUp = true;
   boolean isStartUp = true;
   
-  unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
+  //Main Loop Timers
+  unsigned long mainLoopTime; 
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
 
@@ -129,14 +139,49 @@
   ///*****                Status Variables                     *****///
   /////////////////////////////////////////////////////////////////////
 
-  int keepAliveMillis;
+  unsigned long keepAliveMillis;
 
 
-  //////////////////////////////////////////////////////////////////////
-  ///******       Serial Ports Specific Setup                   *****///
-  //////////////////////////////////////////////////////////////////////
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  //////////////////////////////////////////////////////////////////
+  ///******       Serial Ports Definitions                  *****///
+  //////////////////////////////////////////////////////////////////
 
   #define usSerial Serial1
   #define s1Serial Serial2
@@ -145,13 +190,14 @@
   SoftwareSerial s4Serial;
   
 
-//////////////////////////////////////////////////////////////////////
+
+  //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
   
 //LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108     (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//LoRa Droid ESP            192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Plate Controller ESP 192.168.4.112   ************(Only used for OTA, Remote LoRa ESP must be on and close to Droid)
@@ -170,7 +216,7 @@
   
 
 //////////////////////////////////////////////////////////////////////
-///*****             Status LED Varibles and settings         *****///
+///*****            Status LED Variables and settings       *****///
 //////////////////////////////////////////////////////////////////////
   
 // -------------------------------------------------
@@ -193,6 +239,73 @@
   #define STATUS_LED_COUNT 1
 
   Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /////////////////////////////////////////////////////////////////////////
@@ -228,6 +341,18 @@
   bool    incomingCommandIncluded;
   String  incomingCommand;
   
+
+
+
+
+
+
+
+
+
+
+
+
 // Variable to store if sending data was successful
   String success;
 
@@ -240,6 +365,25 @@ typedef struct espnow_struct_message {
       bool structCommandIncluded;
       char structCommand[100];
   } espnow_struct_message;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Create a struct_message calledcommandsTosend to hold variables that will be sent
   espnow_struct_message commandsToSendtoBroadcast;
@@ -273,10 +417,10 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   }
 }
 
-
   // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-   char macStr[18];
+  colorWipeStatus("ES", orange ,255);
+  char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
@@ -301,6 +445,20 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromBodyController.structCommand;
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         processESPNOWIncomingMessage();
         }
     }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
@@ -352,11 +510,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-  
+  colorWipeStatus("ES",blue,10);
+  IncomingMacAddress ="";  
 } 
 
 void processESPNOWIncomingMessage(){
-
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
+  Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand);
   if (incomingTargetID == "DP" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
@@ -365,22 +527,87 @@ void processESPNOWIncomingMessage(){
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                             Serial & ESP-NOW Communication Functions                          /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////                                                                                       /////////     
+/////////                             Start OF FUNCTIONS                                        /////////
+/////////                                                                                       /////////     
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+///*****   ColorWipe Function for Status LED                  *****///
+//////////////////////////////////////////////////////////////////////
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } 
+  else{Debug.DBG("No LED was chosen \n");}
+};
+
+//////////////////////////////////////////////////////////////////////
+///*****    Send Keepalive Messages for Status                *****///
+//////////////////////////////////////////////////////////////////////
+
+void keepAlive(){
+  if (STATUS_TRACKING == 1){
+    if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
+    keepAliveMillis = millis();
+    sendESPNOWCommand("LD","");  
+    } 
+  }
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////                                                                                               /////
+/////                              Communication Functions                                    /////
+/////                                                                                               /////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*//////////////////////////////////////////////////////////////////////
+Turns on Wifi and enables OTA.  It will connect to the Kill Switch Remotes's
+WiFi network to allow the uploading of sktches(.bin files) via the OTA process. 
+It does not produce it's own WiFi network.  Once enables, a reboot is
+required to regain ESP-NOW functionality.
+*///////////////////////////////////////////////////////////////////////
+void connectWiFi(){
+  esp_now_deinit();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+
+  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
   
+  delay(500);
   
-  /////////////////////////////////////////////////////////
-  ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-  /// These functions recieve a string and transmits    ///
-  /// one character at a time and adds a '/r' to the    ///
-  /// end of the string.                                ///
-  /////////////////////////////////////////////////////////
+  WiFi.begin(ssid,password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi..");
+  }
+  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+  });
+  
+  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  server.begin();
+
+  Local_Command[0]   = '\0';
+};
+
+/////////////////////////////////////////////////////////
+///*****          Serial Event Function          *****///
+/////////////////////////////////////////////////////////
 
 void writeSerialString(String stringData){
   String completeString = stringData + '\r';
@@ -433,12 +660,7 @@ void writeS4SerialString(String stringData){
 //      /////////////////////////////////////////////////////////
 //      ///*****          Serial Event Function          *****///
 //      /////////////////////////////////////////////////////////
-//      /// This routine is run between loop() runs, so using ///
-//      /// delay inside loop can delay response.  Multiple   ///
-//      /// bytes of data may be available.                   ///
-//      /////////////////////////////////////////////////////////
 
-                                            
 void serialEvent() {
   while (Serial.available()) {
     char inChar = (char)Serial.read();
@@ -447,7 +669,7 @@ void serialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.DBG("%s\n", inputString);
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 }
 void usSerialEvent() {
   while (usSerial.available()) {
@@ -457,7 +679,7 @@ void usSerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("%s\n", inputString);
+  Debug.SERIAL_EVENT("Uppity Spinner Serial Input: %s \n",inputString);
 }
 
 void s1SerialEvent() {
@@ -468,7 +690,7 @@ void s1SerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("%s\n", inputString);
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 }
 void s2SerialEvent() {
   while (s2Serial.available()) {
@@ -478,7 +700,7 @@ void s2SerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("%s\n", inputString);
+  Debug.SERIAL_EVENT("Serial 2 Input: %s \n",inputString);
 }
 void s3SerialEvent() {
   while (s3Serial.available()) {
@@ -488,7 +710,7 @@ void s3SerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("%s\n", inputString);
+  Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString);
 }
 void s4SerialEvent() {
   while (s4Serial.available()) {
@@ -498,7 +720,7 @@ void s4SerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("%s\n", inputString);
+  Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString);
 }
 
 
@@ -555,54 +777,7 @@ void sendESPNOWCommand(String starget, String scomm){
     }else {Debug.DBG("Error sending the data\n");}
   }
 }
-//////////////////////////////////////////////////////////////////////
-///*****    Connects to WiFi and turns on OTA functionality   *****///
-//////////////////////////////////////////////////////////////////////
 
-void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
-
-  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
-  
-  delay(500);
-  
-  WiFi.begin(ssid,password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
-  });
-  
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
-
-  Local_Command[0]   = '\0';
-} 
-
-//////////////////////////////////////////////////////////////////////
-///*****    Send Keepalive Messages for Status                *****///
-//////////////////////////////////////////////////////////////////////
-  // KeepAlive Message to show status on website.
-  // int keepAliveDuration= 5000;  // 5 seconds
-  // int keepAliveMillis;
-
-void keepAlive(){
-  if (millis() - keepAliveMillis >= keepAliveDuration + random(1,1000)){
-    keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");
-  } 
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -619,10 +794,10 @@ void setup(){
 
   Serial.begin(115200);
   usSerial.begin(US_BAUD_RATE,SERIAL_8N1,SERIAL_RX_US,SERIAL_TX_US);
-  s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL_RX_FU,SERIAL_TX_FU);
-  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU2,SERIAL_TX_FU2,false,95);  
-  s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU3,SERIAL_TX_FU3,false,95);  
-  s3Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_FU4,SERIAL_TX_FU4,false,95);  
+  s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
+  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);  
+  s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
+  s3Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
 
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
