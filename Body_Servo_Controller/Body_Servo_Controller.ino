@@ -826,34 +826,34 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
     switch (doorpos){
       case 1: Debug.SERVO("Open SMALL_PANEL_ONE\n");      
               sprintf(stringToSend, ":D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 2: Debug.SERVO("Open SMALL_PANEL_TWO\n");      
               sprintf(stringToSend, ":D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 3: Debug.SERVO("Open SMALL_PANEL_THREE\n");    
               sprintf(stringToSend, ":D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 4: Debug.SERVO("Open MEDIUM_PANEL_PAINTED\n"); 
               sprintf(stringToSend, ":D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 5: Debug.SERVO("Open MEDIUM_PANEL_SILVER\n");  
               sprintf(stringToSend, ":D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 6: Debug.SERVO("Open BIG_PANEL\n");            
               sprintf(stringToSend, ":D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 7: Debug.SERVO("Open PIE_PANEL_ONE\n");         
               sprintf(stringToSend, ":D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 8: Debug.SERVO("Open PIE_PANEL_TWO\n");        
               sprintf(stringToSend, ":D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 9: Debug.SERVO("Open PIE_PANEL_THREE\n");      
               sprintf(stringToSend, ":D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 10:  Debug.SERVO("Open PIE_PANEL_FOUR\n");      
                 sprintf(stringToSend, ":D20110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-                sendESPNOWCommand("DS", stringToSend);  break;
+                sendESPNOWCommand("DC", stringToSend);  break;
     }
   };
   D_command[0]   = '\0';
@@ -881,34 +881,34 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
     switch (doorpos){
       case 1: Debug.SERVO("Close SMALL_PANEL_ONE\n");     
               sprintf(stringToSend, ":D20201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 2: Debug.SERVO("Close SMALL_PANEL_TWO\n");      
               sprintf(stringToSend, ":D20202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 3: Debug.SERVO("Close SMALL_PANEL_THREE\n");   
               sprintf(stringToSend, ":D20203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 4: Debug.SERVO("Close MEDIUM_PANEL_PAINTED\n"); 
               sprintf(stringToSend, ":D20204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 5: Debug.SERVO("Close MEDIUM_PANEL_SILVER\n");  
               sprintf(stringToSend, ":D20205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 6: Debug.SERVO("Close BIG_PANEL\n");            
               sprintf(stringToSend, ":D20206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 7: Debug.SERVO("Close PIE_PANEL_ON\nE");        
               sprintf(stringToSend, ":D20207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 8: Debug.SERVO("Close PIE_PANEL_TWO\n");        
               sprintf(stringToSend, ":D20208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 9: Debug.SERVO("Close PIE_PANEL_THREE\n");      
               sprintf(stringToSend, ":D20209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-              sendESPNOWCommand("DS", stringToSend);  break;
+              sendESPNOWCommand("DC", stringToSend);  break;
       case 10:  Debug.SERVO("Close PIE_PANEL_FOUR\n");      
                 sprintf(stringToSend, ":D20210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
-                sendESPNOWCommand("DS", stringToSend);  break;
+                sendESPNOWCommand("DC", stringToSend);  break;
     }
   };
   D_command[0]   = '\0';
@@ -924,11 +924,11 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   setServoEasingMethod(servoEasingMethod);
 switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
-            // writeBcSerial("SMPt001");  break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+            break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0] = '\0';
@@ -944,10 +944,10 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0] = '\0';
@@ -973,10 +973,10 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                           
@@ -992,10 +992,10 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                                 
@@ -1011,10 +1011,10 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }  
   D_command[0]   = '\0';   
@@ -1030,10 +1030,10 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';             
@@ -1048,10 +1048,10 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
-            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend);
+            DelayCall::schedule([] {sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
@@ -1066,10 +1066,10 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
-            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend);
+            DelayCall::schedule([] {sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
@@ -1084,10 +1084,10 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
-            DelayCall::schedule([] {sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend);
+            DelayCall::schedule([] {sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
@@ -1103,10 +1103,10 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
@@ -1122,10 +1122,10 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
@@ -1141,10 +1141,10 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
@@ -1160,10 +1160,10 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
@@ -1179,10 +1179,10 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 2: sendESPNOWCommand("DS", stringToSend); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("DS", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DS", stringToSend); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             

@@ -955,19 +955,23 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
 
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
+  // Debug.SERVO("Open all Doors\n");
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
   snprintf(stringToSend, sizeof(stringToSend),":D103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend); break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 1: sendESPNOWCommand("BS", stringToSend); 
+            Debug.SERVO("Open all Doors in Body\n"); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
+            Debug.SERVO("Open all Doors in Dome\n"); break;
     case 3: sendESPNOWCommand("BS", stringToSend);     
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); 
+            Debug.SERVO("Open all Doors Starting in Body\n");break;
     case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
-            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); 
+            Debug.SERVO("Open all Doors Starting in the Dome\n");break;
   }
   D_command[0] = '\0';
 }
@@ -981,8 +985,10 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   snprintf(stringToSend, sizeof(stringToSend), ":D104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BS", stringToSend); break;
-    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);  break;
+    case 1: sendESPNOWCommand("BS", stringToSend); 
+            Debug.SERVO("Close all Doors in Body\n"); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            Debug.SERVO("Close all Doors in Body\n"); break;
     case 3: sendESPNOWCommand("BS", stringToSend);     
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
     case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
