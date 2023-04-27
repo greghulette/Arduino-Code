@@ -566,7 +566,7 @@ void keepAlive(){
   if (STATUS_TRACKING == 1){
     if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");  
+    sendESPNOWCommand("DG","");  
     } 
   }
 };
@@ -691,18 +691,17 @@ void serialEvent() {
   Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
-
-void serial1Event() {
-  while (s1Serial.available()) {
+void seriaRdEvent() {
+  while (rdSerial.available()) {
     // get the new byte:
-    char inChar = (char)s1Serial.read();
+    char inChar = (char)rdSerial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+  Debug.SERIAL_EVENT("Roam-A-Dome Input: %s \n",inputString);
 };
 
 void serialBlEvent() {
@@ -783,6 +782,19 @@ void serialMpEvent() {
   mp3TriggerResponseString = "";
 };
 
+void serialS1Event() {
+  while (s1Serial.available()) {
+    // get the new byte:
+    char inChar = (char)s1Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+};
+
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
   /////////////////////////////////////////////////////////
@@ -794,30 +806,53 @@ void writeSerialString(String stringData){
   };
 };
 
-
+void writeRdSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    rdSerial.write(completeString[i]);
+  };
+  Debug.SERIAL_EVENT("Writing to Roam-A-Dome\n");
+};
 void writeBlSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     blSerial.write(completeString[i]);
   };
+  Debug.SERIAL_EVENT("Writing to ATMEGA\n");
 };
-
-
-void writes1Serial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    s1Serial.write(completeString[i]);
-  };
-  Debug.DBG("String to Send over ESPNOW Serial: %s \n" , completeString.c_str());
-};
-
 
 void writeStSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     stSerial.write(completeString[i]);
   };
+  Debug.SERIAL_EVENT("Writing to the Stealth Controller\n");
 };
+
+void writeMpSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    mpSerial.write(completeString[i]);
+  };
+  Debug.SERIAL_EVENT("Writing to the Stealth Controller\n");
+};
+
+void writes1Serial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    s1Serial.write(completeString[i]);
+  };
+  Debug.SERIAL_EVENT("Writing to Serial 1\n");
+};
+
+void writes2Serial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    s2Serial.write(completeString[i]);
+  };
+  Debug.SERIAL_EVENT("Writing to Serial 2\n");
+};
+
 
 /////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
@@ -830,7 +865,7 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
+};
 
 void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
 {
@@ -850,10 +885,7 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structbodyLEDControllerStatus = bodyLEDControllerStatus;
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
-int ESPNowSuccessCounter = 1;
-int ESPNowFailureCounter = 1;
-
+};
 
 void sendESPNOWCommand(String starget, String scomm){
   String senderID = "BC";   // change to match location (BC/BS/DC/DP/LD)
@@ -863,7 +895,7 @@ void sendESPNOWCommand(String starget, String scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
-   if (starget == "LD"){
+  if (starget == "DG"){
     setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
@@ -894,7 +926,7 @@ void sendESPNOWCommand(String starget, String scomm){
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
     }else {Debug.ESPNOW("Error sending the data\n");}
   } else {Debug.ESPNOW("No valid destination \n");}
-}
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -903,11 +935,6 @@ void sendESPNOWCommand(String starget, String scomm){
 ///////                             Miscellaneous Functions                                           /////
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////
-///*****             Debugging Functions                      *****///
-//////////////////////////////////////////////////////////////////////
-
 
 //////////////////////////////////////////////////////////////////////
 ///*****    Resets Arduino Mega due to bug in my PCB          *****///
@@ -923,6 +950,11 @@ void resetArduino(int delayperiod){
 //////////////////////////////////////////////////////////////////////
 ///*****         Function for MP3 Trigger                     *****///
 //////////////////////////////////////////////////////////////////////
+
+/*
+NEED TO WRITE NEW FUNCTION TO WORK WITH THE HCR
+*/
+
 void mp3Trigger(String comm, int track){
   mpSerial.print(comm);
   mpSerial.write(track);

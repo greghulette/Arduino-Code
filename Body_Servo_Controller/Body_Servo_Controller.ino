@@ -623,7 +623,7 @@ void keepAlive(){
   if (STATUS_TRACKING == 1){
     if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");  
+    sendESPNOWCommand("DG","");  
     } 
   }
 };
@@ -731,7 +731,7 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
+};
 
 void sendESPNOWCommand(String starget, String scomm){
   String senderID = "BS";   // change to match location (BC/BS/DC/DP/LD)
@@ -741,56 +741,38 @@ void sendESPNOWCommand(String starget, String scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
-   if (starget == "LD"){
+  if (starget == "DG"){
     setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BC"){
     setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BS"){
     setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   }  else if (starget == "DC"){
     setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "DP"){
     setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BR"){
     setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -874,7 +856,6 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   D_command[0]   = '\0';
 };
 
-
 void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax) {
   // Command: Dx02zz
   Debug.SERVO("Close Specific Door");
@@ -928,8 +909,7 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
     }
   };
   D_command[0]   = '\0';
-}
-
+};
 
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
@@ -949,8 +929,7 @@ switch(servoBoard){
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0] = '\0';
-}
-
+};
   
 void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx04
@@ -969,8 +948,7 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0] = '\0';
-}
-
+};
 
 void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx05
@@ -979,23 +957,8 @@ void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
 
   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
-  
   D_command[0] = '\0';
-
-}
-
-void servoTest(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
-  // Command: Dx05
-  // add sequence for this routine.  
-  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
-  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
-
-  // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelTest, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
-  
-  D_command[0] = '\0';
-
-}
-
+};
 
 void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx06
@@ -1014,8 +977,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                           
-}
-
+};
 
 void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx07
@@ -1034,8 +996,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                                 
-}
-
+};
 
 void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx08
@@ -1054,8 +1015,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }  
   D_command[0]   = '\0';   
-}
-
+};
 
 void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx09
@@ -1074,8 +1034,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';             
-}
-
+};
 
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx10
@@ -1093,8 +1052,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx11  
@@ -1112,8 +1070,7 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx12
@@ -1131,8 +1088,7 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx13
@@ -1151,8 +1107,7 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx14
@@ -1171,8 +1126,7 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
-}                                                            
-
+};                                                          
 
 void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
  // Command: Dx15
@@ -1191,8 +1145,7 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx16
@@ -1211,8 +1164,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
-}
-
+};
 
 void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx17
@@ -1231,23 +1183,8 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   D_command[0]   = '\0';                                             
-}                                                       
+};                                                      
 
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                             Miscellaneous Functions                                           /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////
-///*****             Debug Functions                          *****///
-//////////////////////////////////////////////////////////////////////
-
-
-/
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1289,6 +1226,15 @@ void setServoEasingMethod(int easingMethod){
               Debug.DBG("No Easing Method Selected\n");                                                  break;
   }
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 
 //////////////////////////////////////////////////////////////////////

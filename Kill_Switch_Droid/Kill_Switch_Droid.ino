@@ -517,7 +517,7 @@ void processESPNOWIncomingMessage(){
     Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
     Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
     Debug.ESPNOW("incoming command: %s\n", incomingCommand);
-    if (incomingTargetID == "LD" || incomingTargetID == "BR"){
+    if (incomingTargetID == "DG" || incomingTargetID == "BR"){
       if (incomingSenderID == "BC"){
         bodyControllerStatus = 1;
         bckeepAliveAge =millis();
@@ -816,53 +816,52 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
+};
 
 void sendESPNOWCommand(String starget, String scomm){
-  String senderID = "LD";   // change to match location (BC/BS/DC/DP/LD)
+  String senderID = "DG";   // change to match location (BC/BS/DC/DP/LD)
   String scommEval = "";
   bool hasCommand;
   if (scommEval = scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
-   if (starget == "DL"){
-    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+  if (starget == "DG"){
+    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BC"){
     setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BS"){
     setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   }  else if (starget == "DC"){
     setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "DP"){
     setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BR"){
     setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
-  }
-}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
+};
 
-
-//   //////////////////////////////////////////////////////////////////////
-//   ///*****             LoRa Functions                           *****///
-//   //////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+///*****             LoRa Functions                           *****///
+//////////////////////////////////////////////////////////////////////
 
 void sendStatusMessage(String outgoing) {
   LoRa.beginPacket();                   // start packet
@@ -892,11 +891,9 @@ void sendStatusMessage(String outgoing) {
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   msgCount++;                           // increment message ID
-  Serial.println("Status Sent");
+  Debug.LORA("Status Sent\n");
   Local_Command[0]   = '\0';
-
-
-}
+};
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
@@ -908,24 +905,25 @@ void onReceive(int packetSize) {
   byte incomingLength = LoRa.read();    // incoming msg length
 
   String incoming = "";
-        killSwitchRemoteStatus = 1;
-        ksrkeepAliveAge =millis();
+  killSwitchRemoteStatus = 1;
+  ksrkeepAliveAge =millis();
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
   }
 
   if (incomingLength != incoming.length()) {   // check length for error
-    Serial.println("error: message length does not match length");
+    if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
     return;                             // skip rest of function
   }
 
   // if the recipient isn't this device or broadcast,
   if (recipient != localAddress && recipient != 0xFF) {
-    Serial.println("This message is not for me.");
+      if (Debug.debugflag_lora == 1){Serial.println("This message is not for me.");}
     return;                             // skip rest of function
   }
 
   // if message is for this device, or broadcast, print details:
+  if (Debug.debugflag_lora == 1){
   Serial.println("Received from: 0x" + String(sender, HEX));
   Serial.println("Sent to: 0x" + String(recipient, HEX));
   Serial.println("Message ID: " + String(incomingMsgId));
@@ -934,17 +932,18 @@ void onReceive(int packetSize) {
   Serial.println("RSSI: " + String(LoRa.packetRssi()));
   Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
+  }
   
   if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
     colorWipeStatus("LS", green, 10);
   }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
-     colorWipeStatus("LS", yellow, 10);
+    colorWipeStatus("LS", yellow, 10);
   } else{ colorWipeStatus("LS", red, 10);}
 
   inputString = incoming;
   stringComplete = true; 
       // sendMessage("Message Revieved");
-}
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////

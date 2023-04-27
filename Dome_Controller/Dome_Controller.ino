@@ -617,7 +617,7 @@ void keepAlive(){
   if (STATUS_TRACKING == 1){
     if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");  
+    sendESPNOWCommand("DG","");  
     } 
   }
 };
@@ -666,85 +666,166 @@ void connectWiFi(){
 
   Local_Command[0]   = '\0';
 } 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                                      Radar eye LED Functions                           /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void RadarEye_LED(uint32_t color, int RadarEyespeed1){
-  int RadarEyeLow = 1;
-  int RadarEyeHigh = 50;
+/////////////////////////////////////////////////////////
+///*****          Serial Event Function          *****///
+/////////////////////////////////////////////////////////
 
-  RE_currentMillis = millis();
-      RadarEyespeed = map(RadarEyespeed1, 1, 9, 1, 250);
-      if (RE_currentMillis - RE_startMillis >= RadarEyespeed){
-      if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
-      
-          dim=dim - random(RadarEyeLow, RadarEyeHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
-                                              //adding a random causes a less smooth transition which makes it look a little better
-          colorWipe(color, dim);              // Set the LEDs to the color and brightness using the colorWipe function
-          }
-      
-        if(dim <= 10){                        //Check to see if the brightness is at or below 20.  Modifying the "20" will
-                                              //allow the dim variable to go below zero causing the flicker.  The closer you
-                                              //set the "20" to zero, the more flickering will happen. I use half the larger
-                                              //dim random number to allow a small flicker without being too annoying.
-
-           countUp = true;                    // if the dim variable is at or below "20", change the countUp flag to true      
-          }
-        if(countUp == true){                 // check to see if the boolean flag is true.  If true, starting brightening the LEDs
-            dim=dim + random(RadarEyeLow, RadarEyeHigh); // set the brightness to current plus a random number between 5 and 40.  I think that
-                                              //adding a random causes a less smooth transition which makes it look a little better
-            colorWipe(color, dim);           // Set the LEDs to the color and brightness using the colorWheel function
-        }
-          if(dim>=250){                       //Check to see if the brightness is at or above 235.  Modifying the "235" will
-                                               //allow the dim variable to go above 255 causing the flicker.  The closer you
-                                              //set the "235" to 255, the more flickering will happen. I use half the larger
-                                              //dim random number to allow a small flicker without being too annoying.
-            countUp = false;                  // if the dim variable is at or above "235", change the countUp flag to false
-          }
-          RE_startMillis = RE_currentMillis; 
-      }
-      
-  }
-
-  //  Color Changing Function for the Camera Lens LEDs
-void colorWipe(uint32_t c, int brightness) {
-  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
-    RADAR_EYE_LEDS.setBrightness(brightness);
-    RADAR_EYE_LEDS.setPixelColor(i, c);
-    RADAR_EYE_LEDS.show();
-  }
-};
-
-void clearRE() {
-  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
-    RADAR_EYE_LEDS.setPixelColor(i, off);
-    RADAR_EYE_LEDS.show();
-  }
-};
-
-void REAuto () {
-  if(millis() - RadarEyeAutoTimer >= RadarEyeAutoInt*1000) {       // and the timer has reached the set interval
-    if(millis() - RadarEyeAutoTimer >= (RadarEyeAutoInt+RadarEyeAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
-      if(!autoComplete) {
-        RadarEyeAutoTimer = millis();
-        RadarEyeAutoPause = random(RadarEyeAutoPauseMin,RadarEyeAutoPauseMax);
-        RadarEyeAutoInt = random(RadarEyeAutoIntMin,RadarEyeAutoIntMax);
-        autoInputString = RadarEyeAutoCommands[random((RadarEyeAutoCommandsCount-1))];
-        autoComplete = true;
-      }
+void serialEvent() {
+  //int count = 0;
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
     }
-    else {
-      RE_command[0] = 99;
-    }                                                             // and set flag so new command is processes at beginning of loop
+  }
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
+}
+
+void hpSerialEvent() {
+  while (hpSerial.available()) {
+    char inChar = (char)hpSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  Debug.SERIAL_EVENT("HP Serial Input: %s \n",inputString);
+}
+
+void rsSerialEvent() {
+  while (rsSerial.available()) {
+    char inChar = (char)rsSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  Debug.SERIAL_EVENT("Dome Logics Serial Input: %s \n",inputString);
+}
+
+void psSerialEvent() {
+  while (psSerial.available()) {
+    char inChar = (char)psSerial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  Debug.SERIAL_EVENT("PSI Serial Input: %s \n",inputString);
+}
+
+void s1SerialEvent() {
+  while (s1Serial.available()) {
+    char inChar = (char)s1Serial.read();
+    inputString += inChar;
+      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+        stringComplete = true;            // set a flag so the main loop can do something about it.
+      }
+  }
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+};
+
+ /////////////////////////////////////////////////////////
+  ///*****          Serial Write Function          *****///
+  /////////////////////////////////////////////////////////
+
+void writeSerialString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    Serial.write(completeString[i]);
   }
 }
 
+void writeRsSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    rsSerial.write(completeString[i]);
+  }
+  Debug.SERIAL_EVENT("Printing to rsSerial\n");
+}
 
+void writeHpSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    hpSerial.write(completeString[i]);
+  }
+  Debug.SERIAL_EVENT("Printing to hpSerial\n");
+}
+
+void writeFuSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+    s1Serial.write(completeString[i]);
+  }
+  Debug.SERIAL_EVENT("Printing to s1Serial\n");
+}
+
+void writePsSerial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    psSerial.write(completeString[i]);
+  }
+  Debug.SERIAL_EVENT("Printing to rsSerial\n");
+}
+
+//////////////////////////////////////////////////////////////////////
+///*****             ESP-NOW Functions                        *****///
+//////////////////////////////////////////////////////////////////////
+
+void setupSendStruct(espnow_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
+{
+    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
+    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
+    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
+    msg->structCommandIncluded = hascommand;
+    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
+};
+
+void sendESPNOWCommand(String starget, String scomm){
+  String senderID = "DC";   // change to match location (BC/BS/DC/DP/LD)
+  String scommEval = "";
+  bool hasCommand;
+  if (scommEval = scomm){
+    hasCommand = 0;
+  } else {hasCommand = 1;};
+
+  if (starget == "DG"){
+    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BC"){
+    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BS"){
+    setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  }  else if (starget == "DC"){
+    setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "DP"){
+    setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else if (starget == "BR"){
+    setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -872,7 +953,6 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   D_command[0]   = '\0';
 }
 
-
 void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx03
   Debug.SERVO("Open all Doors\n");
@@ -891,7 +971,6 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   D_command[0] = '\0';
 }
-
 
 void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx04
@@ -918,7 +997,6 @@ void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   // add sequence for this routine.  
 }
 
-
 void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx06
   Debug.SERVO("Open and Close All Doors\n");
@@ -937,7 +1015,6 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   }
   D_command[0]   = '\0';                                           
 }
-
 
 void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx07
@@ -958,7 +1035,6 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   D_command[0]   = '\0';                                                 
 }
 
-
 void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx08
   Debug.SERVO("Flutter All Doors\n");
@@ -977,7 +1053,6 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   }
   D_command[0]   = '\0';   
 }
-
 
 void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx09
@@ -998,7 +1073,6 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
   D_command[0]   = '\0';             
 }
 
-
 void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx10
   Debug.SERVO("Wave\n");
@@ -1018,7 +1092,6 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   D_command[0]   = '\0';                                             
 }
 
-
 void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration){
   // Command: Dx11  
   Debug.SERVO("Wave Fast\n");
@@ -1037,7 +1110,6 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   D_command[0]   = '\0';                                             
 }
 
-
 void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx12
   Debug.SERVO("Open Close Wave \n");
@@ -1055,7 +1127,6 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   }
   D_command[0]   = '\0';                                             
 }
-
 
 void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx13
@@ -1076,7 +1147,6 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   D_command[0]   = '\0';                                             
 }
 
-
 void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx14
   Debug.SERVO("Panel Alternate\n");
@@ -1095,7 +1165,6 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
   }
   D_command[0]   = '\0';                                             
 }                                                            
-
 
 void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
  // Command: Dx15
@@ -1116,8 +1185,6 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   D_command[0]   = '\0';                                             
 };
 
-
-
 void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx16
   Debug.SERVO("Panel Dance Long Disco\n");
@@ -1137,7 +1204,6 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   D_command[0]  = '\0';                                     
 };
 
-
 void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
   // Command: Dx17
   Debug.SERVO("Harlem Shake\n");
@@ -1155,176 +1221,7 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
             DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration);                                                                               break;    
   }   
   D_command[0]  = '\0';                                             
-};                                                    
-
-/////////////////////////////////////////////////////////
-///*****          Serial Event Function          *****///
-/////////////////////////////////////////////////////////
-
-void serialEvent() {
-  //int count = 0;
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    }
-  }
-  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
-}
-
-void hpSerialEvent() {
-  while (hpSerial.available()) {
-    char inChar = (char)hpSerial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("HP Serial Input: %s \n",inputString);
-}
-
-void rsSerialEvent() {
-  while (rsSerial.available()) {
-    char inChar = (char)rsSerial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Dome Logics Serial Input: %s \n",inputString);
-}
-
-void psSerialEvent() {
-  while (psSerial.available()) {
-    char inChar = (char)psSerial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("PSI Serial Input: %s \n",inputString);
-}
-
-void s1SerialEvent() {
-  while (s1Serial.available()) {
-    char inChar = (char)s1Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
-};
-
- /////////////////////////////////////////////////////////
-  ///*****          Serial Write Function          *****///
-  /////////////////////////////////////////////////////////
-
-void writeSerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    Serial.write(completeString[i]);
-  }
-}
-
-void writeRsSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    rsSerial.write(completeString[i]);
-  }
-  Debug.SERIAL_EVENT("Printing to rsSerial\n");
-}
-
-void writeHpSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    hpSerial.write(completeString[i]);
-  }
-  Debug.SERIAL_EVENT("Printing to hpSerial\n");
-}
-
-void writeFuSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++){
-    s1Serial.write(completeString[i]);
-  }
-  Debug.SERIAL_EVENT("Printing to s1Serial\n");
-}
-
-void writePsSerial(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    psSerial.write(completeString[i]);
-  }
-  Debug.SERIAL_EVENT("Printing to rsSerial\n");
-}
-
-//////////////////////////////////////////////////////////////////////
-///*****             ESP-NOW Functions                        *****///
-//////////////////////////////////////////////////////////////////////
-
-void setupSendStruct(espnow_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
-{
-    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
-    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
-    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
-    msg->structCommandIncluded = hascommand;
-    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
-
-void sendESPNOWCommand(String starget, String scomm){
-  String senderID = "DC";   // change to match location (BC/BS/DC/DP/LD)
-  String scommEval = "";
-  bool hasCommand;
-  if (scommEval = scomm){
-    hasCommand = 0;
-  } else {hasCommand = 1;};
-
-   if (starget == "LD"){
-    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BC"){
-    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BS"){
-    setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  }  else if (starget == "DC"){
-    setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "DP"){
-    setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BR"){
-    setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  }
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////                                                                                               /////
-///////                             Miscellaneous Functions                                           /////
-///////                                                                                               /////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+};    
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
@@ -1367,6 +1264,94 @@ void setServoEasingMethod(int easingMethod){
               Debug.DBG("No Easing Method Selected\n");                                                  break;
   }
 }
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                                      Radar eye LED Functions                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void RadarEye_LED(uint32_t color, int RadarEyespeed1){
+  int RadarEyeLow = 1;
+  int RadarEyeHigh = 50;
+
+  RE_currentMillis = millis();
+      RadarEyespeed = map(RadarEyespeed1, 1, 9, 1, 250);
+      if (RE_currentMillis - RE_startMillis >= RadarEyespeed){
+      if(countUp == false){                   // check to see if the boolean flag is false.  If false, starting dimming the LEDs
+      
+          dim=dim - random(RadarEyeLow, RadarEyeHigh);  // set the brightness to current minus a random number between 5 and 40. I think that
+                                              //adding a random causes a less smooth transition which makes it look a little better
+          colorWipe(color, dim);              // Set the LEDs to the color and brightness using the colorWipe function
+          }
+      
+        if(dim <= 10){                        //Check to see if the brightness is at or below 20.  Modifying the "20" will
+                                              //allow the dim variable to go below zero causing the flicker.  The closer you
+                                              //set the "20" to zero, the more flickering will happen. I use half the larger
+                                              //dim random number to allow a small flicker without being too annoying.
+
+           countUp = true;                    // if the dim variable is at or below "20", change the countUp flag to true      
+          }
+        if(countUp == true){                 // check to see if the boolean flag is true.  If true, starting brightening the LEDs
+            dim=dim + random(RadarEyeLow, RadarEyeHigh); // set the brightness to current plus a random number between 5 and 40.  I think that
+                                              //adding a random causes a less smooth transition which makes it look a little better
+            colorWipe(color, dim);           // Set the LEDs to the color and brightness using the colorWheel function
+        }
+          if(dim>=250){                       //Check to see if the brightness is at or above 235.  Modifying the "235" will
+                                               //allow the dim variable to go above 255 causing the flicker.  The closer you
+                                              //set the "235" to 255, the more flickering will happen. I use half the larger
+                                              //dim random number to allow a small flicker without being too annoying.
+            countUp = false;                  // if the dim variable is at or above "235", change the countUp flag to false
+          }
+          RE_startMillis = RE_currentMillis; 
+      }
+      
+  }
+
+  //  Color Changing Function for the Camera Lens LEDs
+void colorWipe(uint32_t c, int brightness) {
+  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
+    RADAR_EYE_LEDS.setBrightness(brightness);
+    RADAR_EYE_LEDS.setPixelColor(i, c);
+    RADAR_EYE_LEDS.show();
+  }
+};
+
+void clearRE() {
+  for(uint16_t i=0; i<NUM_RADAR_EYE_PIXELS; i++) {
+    RADAR_EYE_LEDS.setPixelColor(i, off);
+    RADAR_EYE_LEDS.show();
+  }
+};
+
+void REAuto () {
+  if(millis() - RadarEyeAutoTimer >= RadarEyeAutoInt*1000) {       // and the timer has reached the set interval
+    if(millis() - RadarEyeAutoTimer >= (RadarEyeAutoInt+RadarEyeAutoPause)*1000) {     // Assign a random command string from the Auto Command Array to the input string
+      if(!autoComplete) {
+        RadarEyeAutoTimer = millis();
+        RadarEyeAutoPause = random(RadarEyeAutoPauseMin,RadarEyeAutoPauseMax);
+        RadarEyeAutoInt = random(RadarEyeAutoIntMin,RadarEyeAutoIntMax);
+        autoInputString = RadarEyeAutoCommands[random((RadarEyeAutoCommandsCount-1))];
+        autoComplete = true;
+      }
+    }
+    else {
+      RE_command[0] = 99;
+    }                                                             // and set flag so new command is processes at beginning of loop
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////
 ///*****          Scan I2C for devices                        *****///

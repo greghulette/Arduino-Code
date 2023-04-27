@@ -555,7 +555,7 @@ void keepAlive(){
   if (STATUS_TRACKING == 1){
     if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
     keepAliveMillis = millis();
-    sendESPNOWCommand("LD","");  
+    sendESPNOWCommand("DG","");  
     } 
   }
 };
@@ -735,7 +735,7 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-}
+};
 
 void sendESPNOWCommand(String starget, String scomm){
   String senderID = "DP";   // change to match location (BC/BS/DC/DP/LD)
@@ -745,38 +745,38 @@ void sendESPNOWCommand(String starget, String scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
-   if (starget == "LD"){
+  if (starget == "DG"){
     setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BC"){
     setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BS"){
     setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   }  else if (starget == "DC"){
     setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "DP"){
     setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BR"){
     setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-    if (result == ESP_OK) {Debug.DBG("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.DBG("Error sending the data\n");}
-  }
-}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
+};
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
