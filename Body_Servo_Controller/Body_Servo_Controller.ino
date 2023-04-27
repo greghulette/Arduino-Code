@@ -424,7 +424,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
-  if (IncomingMacAddress = droidLoRaMACAddressString) {
+  if (IncomingMacAddress == droidLoRaMACAddressString) {
       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
       incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -461,7 +461,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         
         processESPNOWIncomingMessage();
         }
-    }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
+    }else if (IncomingMacAddress == bodyServosControllerMACAddressString) {
       memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
       incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -473,7 +473,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = domeControllerMACAddressString) {
+    } else if (IncomingMacAddress == domeControllerMACAddressString) {
       memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
       incomingPassword = commandsToReceiveFromDomeController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -485,7 +485,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromDomeController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = domePlateControllerMACAddressString) {
+    } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
       memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
       incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -497,7 +497,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = broadcastMACAddressString) {
+    } else if (IncomingMacAddress == broadcastMACAddressString) {
       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
       incomingPassword = commandsToReceiveFromBroadcast.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -515,10 +515,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 } 
 
 void processESPNOWIncomingMessage(){
-  Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
-  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
-  Debug.ESPNOW("incoming command: %s\n", incomingCommand);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
   if (incomingTargetID == "BS" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
@@ -699,6 +699,7 @@ void s1SerialEvent() {
   Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
 
+
 //      /////////////////////////////////////////////////////////
 //      ///*****          Serial Write Function          *****///
 //      /////////////////////////////////////////////////////////
@@ -717,6 +718,8 @@ void writes1Serial(String stringData){
   {
     s1Serial.write(completeString[i]);
   }
+    Debug.SERIAL_EVENT("Writing to Serial 1\n");
+
 };
 
 
@@ -822,34 +825,34 @@ void openDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varSp
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: Debug.SERVO("Open SMALL_PANEL_ONE\n");      
-              sprintf(stringToSend, "D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20101E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 2: Debug.SERVO("Open SMALL_PANEL_TWO\n");      
-              sprintf(stringToSend, "D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20102E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 3: Debug.SERVO("Open SMALL_PANEL_THREE\n");    
-              sprintf(stringToSend, "D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20103E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 4: Debug.SERVO("Open MEDIUM_PANEL_PAINTED\n"); 
-              sprintf(stringToSend, "D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20104E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 5: Debug.SERVO("Open MEDIUM_PANEL_SILVER\n");  
-              sprintf(stringToSend, "D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 6: Debug.SERVO("Open BIG_PANEL\n");            
-              sprintf(stringToSend, "D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20106E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 7: Debug.SERVO("Open PIE_PANEL_ONE\n");         
-              sprintf(stringToSend, "D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20107E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 8: Debug.SERVO("Open PIE_PANEL_TWO\n");        
-              sprintf(stringToSend, "D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20108E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 9: Debug.SERVO("Open PIE_PANEL_THREE\n");      
-              sprintf(stringToSend, "D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20109E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 10:  Debug.SERVO("Open PIE_PANEL_FOUR\n");      
-                sprintf(stringToSend, "D20110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+                sprintf(stringToSend, ":D20110E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
                 sendESPNOWCommand("DS", stringToSend);  break;
     }
   };
@@ -877,34 +880,34 @@ void closeDoor(int servoBoard, int doorpos, int servoEasingMethod, uint32_t varS
   if (servoBoard == 2 || servoBoard == 3 || servoBoard == 4){
     switch (doorpos){
       case 1: Debug.SERVO("Close SMALL_PANEL_ONE\n");     
-              sprintf(stringToSend, "D20201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20201E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 2: Debug.SERVO("Close SMALL_PANEL_TWO\n");      
-              sprintf(stringToSend, "D20202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20202E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 3: Debug.SERVO("Close SMALL_PANEL_THREE\n");   
-              sprintf(stringToSend, "D20203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 4: Debug.SERVO("Close MEDIUM_PANEL_PAINTED\n"); 
-              sprintf(stringToSend, "D20204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 5: Debug.SERVO("Close MEDIUM_PANEL_SILVER\n");  
-              sprintf(stringToSend, "D20205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20205E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 6: Debug.SERVO("Close BIG_PANEL\n");            
-              sprintf(stringToSend, "D20206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 7: Debug.SERVO("Close PIE_PANEL_ON\nE");        
-              sprintf(stringToSend, "D20207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 8: Debug.SERVO("Close PIE_PANEL_TWO\n");        
-              sprintf(stringToSend, "D20208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 9: Debug.SERVO("Close PIE_PANEL_THREE\n");      
-              sprintf(stringToSend, "D20209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+              sprintf(stringToSend, ":D20209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
               sendESPNOWCommand("DS", stringToSend);  break;
       case 10:  Debug.SERVO("Close PIE_PANEL_FOUR\n");      
-                sprintf(stringToSend, "D20210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+                sprintf(stringToSend, ":D20210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
                 sendESPNOWCommand("DS", stringToSend);  break;
     }
   };
@@ -917,7 +920,7 @@ void openAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
 switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
@@ -937,7 +940,7 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -966,7 +969,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D206E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -985,7 +988,7 @@ void allOpenCloseLong(int servoBoard, int servoEasingMethod, uint32_t varSpeedMi
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D207E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenCloseLong, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1004,7 +1007,7 @@ void allFlutter(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D208E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFlutter, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1023,7 +1026,7 @@ void allOpenCloseRepeat(int servoBoard, int servoEasingMethod, uint32_t varSpeed
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D209E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllFOpenCloseRepeat, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1041,7 +1044,7 @@ void panelWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   Debug.SERVO("Wave\n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  snprintf(stringToSend, sizeof(stringToSend), "D210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend), ":D210E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1059,7 +1062,7 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   Debug.SERVO("Wave Fast\n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;
-  snprintf(stringToSend, sizeof(stringToSend),"D211E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D211E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1077,7 +1080,7 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   Debug.SERVO("Open Close Wave \n");
   fVarSpeedMin = varSpeedMin;
   fVarSpeedMax = varSpeedMax;  
-  snprintf(stringToSend, sizeof(stringToSend), "D212E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend), ":D212E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1096,7 +1099,7 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D213E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D213E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1115,7 +1118,7 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D214E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),";D214E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1134,7 +1137,7 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D215E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D215E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1153,7 +1156,7 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D216E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D216E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1172,7 +1175,7 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
-  snprintf(stringToSend, sizeof(stringToSend),"D217E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  snprintf(stringToSend, sizeof(stringToSend),":D217E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
     case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
@@ -1558,9 +1561,7 @@ void loop(){
             }   
 
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-                  String  ESPNOWStringCommand = "";
-                  String ESPNOWSubStringCommand = "";
-                  String ESPNOWTarget = "";                  for (int i=2; i<=commandLength; i++){
+                  for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
                   }
@@ -1570,10 +1571,12 @@ void loop(){
                   ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
-
+                  // reset ESP-NOW Variables
+                  ESPNOWStringCommand = "";
+                  ESPNOWSubStringCommand = "";
+                  ESPNOWTarget = "";                  
                   } 
               if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-//                serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
                 for (int i=1; i<commandLength-1;i++ ){
                   char inCharRead = inputBuffer[i];
                   serialStringCommand += inCharRead;  // add it to the inputString:
@@ -1594,7 +1597,7 @@ void loop(){
               
               
 
-            if(inputBuffer[0]=='D' || inputBuffer[0]=='d') {
+            if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
               D_command[1] = doorBoard;
@@ -1621,7 +1624,7 @@ void loop(){
         
         // reset Local ESP Command Variables
         int localCommandFunction;
-    
+
 
       // reset Door Variables
         int door = -1;
@@ -1688,7 +1691,7 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
           case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
           case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
-          case 95: servoTest(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          // case 95: servoTest(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 98: closeAllDoors(2,0,0,0,0);                                                              break;
           case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;

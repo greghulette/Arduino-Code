@@ -421,7 +421,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
   Debug.ESPNOW("Recieved ESP-NOW packet from %s \n", IncomingMacAddress.c_str());
-  if (IncomingMacAddress = droidLoRaMACAddressString) {
+  if (IncomingMacAddress == droidLoRaMACAddressString) {
       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
       incomingPassword == commandsToReceiveFromDroidLoRa.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -513,10 +513,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 }
 
 void processESPNOWIncomingMessage(){
-    Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
-    Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
-    Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
-    Debug.ESPNOW("incoming command: %s\n", incomingCommand);
+    Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
+  Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
     if (incomingTargetID == "DG" || incomingTargetID == "BR"){
       if (incomingSenderID == "BC"){
         bodyControllerStatus = 1;
@@ -694,11 +694,27 @@ void printKeepaliveStatus(){
   if (Debug.debugflag == 0)
   {
     Debug.debugflag = 1;
-    Debug.DBG("Dome Controller Status: %d\n", domeControllerStatus);
-    Debug.DBG("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
-    Debug.DBG("Body Servo Controller Status: %d\n", bodyServoControllerStatus);
-    Debug.DBG("Body  Controller Status: %d\n", bodyControllerStatus);
-    Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+    Debug.DBG("\n\n------------------------------------\n");
+    Debug.DBG("Board Name \t\t| Status:\n");
+    Debug.DBG("------------------------------------\n");
+    Debug.DBG("Dome Controller: \t| %d\n", domeControllerStatus);
+    Debug.DBG("Dome Plate Controller: \t| %d\n", domePlateControllerStatus);
+    Debug.DBG("Body Servo Controller: \t| %d\n", bodyServoControllerStatus);
+    Debug.DBG("Body  Controller: \t| %d\n", bodyControllerStatus);
+    Debug.DBG("Body LED Controller: \t| %d\n", bodyLEDControllerStatus);
+    Debug.DBG("\n------------------------------------\n");
+    Debug.DBG("Body LED Setting \t| Value:\n");
+    Debug.DBG("------------------------------------\n");
+    Debug.DBG("LDP Bright: \t\t| %i\n", BL_LDP_Bright);
+    Debug.DBG("Maintenence Bright: \t| %i\n", BL_MAINT_Bright);
+    Debug.DBG("VU Bright: \t\t| %i\n", BL_VU_Bright);
+    Debug.DBG("Coin SLots Bright: \t| %i\n", BL_CS_Bright);
+    Debug.DBG("vuOffsetInt: \t\t| %i\n", BL_vuOffsetInt);
+    Debug.DBG("vuBaselineInt: \t\t| %i\n", BL_vuBaselineInt);
+    Debug.DBG("vuOffsetExt: \t\t| %i\n", BL_vuOffsetExt);
+    Debug.DBG("vuBaselineExt: \t\t| %i\n", BL_vuBaselineExt);
+    Debug.DBG("BL_BatteryVoltage: \t| %f\n", BL_BatteryVoltage);
+    Debug.DBG("BL_BatteryPercentage: \t| %i\n", BL_BatteryPercentage);
     Debug.debugflag = 0;
     Local_Command[0]   = '\0';
   } else
@@ -1180,9 +1196,7 @@ void loop() {
 
               if(commandLength >= 3) {
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-                  String  ESPNOWStringCommand;
-                  String ESPNOWSubStringCommand;
-                  String ESPNOWTarget;
+
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
@@ -1193,7 +1207,10 @@ void loop() {
                   ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
-
+                  // reset ESP-NOW Variables
+                  ESPNOWStringCommand = "";
+                  ESPNOWSubStringCommand = "";
+                  ESPNOWTarget = "";                 
                   }  
                   if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength-1;i++ ){
@@ -1208,9 +1225,7 @@ void loop() {
                     } else{
                       Debug.LOOP("Wrong Serial Port Identified /n");
                     } 
-                    serialStringCommand = "";
-                    serialSubStringCommand = "";
-                    serialPort = "";
+
                   } 
               }
             }
@@ -1226,6 +1241,10 @@ void loop() {
 
     // reset Local ESP Command Variables
         int localCommandFunction;
+
+        String  ESPNOWStringCommand = "";
+        String ESPNOWSubStringCommand = "";
+        String ESPNOWTarget = "";
    }
   
    if(isStartUp) {

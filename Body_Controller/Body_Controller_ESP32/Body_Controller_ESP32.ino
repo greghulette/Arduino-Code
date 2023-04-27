@@ -427,7 +427,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   String IncomingMacAddress(macStr);
-  if (IncomingMacAddress = droidLoRaMACAddressString) {
+  if (IncomingMacAddress == droidLoRaMACAddressString) {
       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
       incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -464,7 +464,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         
         processESPNOWIncomingMessage();
         }
-    }else if (IncomingMacAddress = bodyServosControllerMACAddressString) {
+    }else if (IncomingMacAddress == bodyServosControllerMACAddressString) {
       memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
       incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -476,7 +476,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = domeControllerMACAddressString) {
+    } else if (IncomingMacAddress == domeControllerMACAddressString) {
       memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
       incomingPassword = commandsToReceiveFromDomeController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -488,7 +488,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromDomeController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = domePlateControllerMACAddressString) {
+    } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
       memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
       incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -500,7 +500,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
         processESPNOWIncomingMessage();
         }
-    } else if (IncomingMacAddress = broadcastMACAddressString) {
+    } else if (IncomingMacAddress == broadcastMACAddressString) {
       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
       incomingPassword = commandsToReceiveFromBroadcast.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -518,10 +518,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 }
 
 void processESPNOWIncomingMessage(){
-  Debug.ESPNOW("incoming target: %s\n", incomingTargetID);
-  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID);
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
+  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
-  Debug.ESPNOW("incoming command: %s\n", incomingCommand);
+  Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
   if (incomingTargetID == "BC" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
@@ -691,7 +691,7 @@ void serialEvent() {
   Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
-void seriaRdEvent() {
+void serialRdEvent() {
   while (rdSerial.available()) {
     // get the new byte:
     char inChar = (char)rdSerial.read();
@@ -782,10 +782,22 @@ void serialMpEvent() {
   mp3TriggerResponseString = "";
 };
 
-void serialS1Event() {
+void serial1Event() {
   while (s1Serial.available()) {
     // get the new byte:
     char inChar = (char)s1Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+    };
+  };
+  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+};
+void serial2Event() {
+  while (s2Serial.available()) {
+    // get the new byte:
+    char inChar = (char)s2Serial.read();
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
@@ -1099,10 +1111,12 @@ void loop(){
 
     }
     if(Serial.available()){serialEvent();}
+    if(rdSerial.available()){serialRdEvent();}
     if(blSerial.available()){serialBlEvent();}
-    if(s1Serial.available()){serial1Event();}
     if(stSerial.available()){serialStEvent();}
     if(mpSerial.available()){serialMpEvent();}
+    if(s1Serial.available()){serial1Event();}
+    if(s1Serial.available()){serial2Event();}
 
     
     if (stringComplete) {autoComplete=false;}
@@ -1175,7 +1189,7 @@ void loop(){
           if(commandLength >= 3) {
      
               if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-                for (int i=1; i<=commandLength; i++){
+                for (int i=2; i<=commandLength; i++){
                   char inCharRead = inputBuffer[i];
                   ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
                   }
@@ -1185,9 +1199,10 @@ void loop(){
                   ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
-                  String  ESPNOWStringCommand = "";
-                  String ESPNOWSubStringCommand = "";
-                  String ESPNOWTarget = "";
+                  // reset ESP-NOW Variables
+                  ESPNOWStringCommand = "";
+                  ESPNOWSubStringCommand = "";
+                  ESPNOWTarget = "";  
                 } 
               if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
               // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
@@ -1239,7 +1254,6 @@ void loop(){
         autoComplete = false;
         inputBuffer[0] = '\0';
         inputBuffer[1] = '\0';
-
 
 
 
