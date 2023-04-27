@@ -828,7 +828,7 @@ void loop(){
               // reset ESP-NOW Variables
 
 
-      Debug.DBG("command Proccessed\n");
+      Debug.LOOP("command Proccessed\n");
 
     }  
 
