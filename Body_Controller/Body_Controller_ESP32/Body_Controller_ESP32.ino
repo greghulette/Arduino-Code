@@ -316,20 +316,22 @@ AsyncWebServer server(80);
 /////////////////////////////////////////////////////////////////////////
 
 //  ESP-NOW MAC Addresses used in the Droid. 
-  const uint8_t droidLoRaMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-  const uint8_t bodyControllerMACAddress[] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+  const uint8_t droidLoRaMACAddress[] =             {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+  const uint8_t bodyControllerMACAddress[] =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
   const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-  const uint8_t domeControllerMACAddress[]=  {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+  const uint8_t domeControllerMACAddress[]=         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-  const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  const uint8_t hpControllerMACAddress[] =          {0x02, 0x00, 0x00, 0x00, 0x00, 0x06};
+  const uint8_t broadcastMACAddress[] =             {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 // Uses these Strings for comparators
-  String droidLoRaMACAddressString = "02:00:00:00:00:01";
-  String bodyControllerMACAddressString = "02:00:00:00:00:02";
+  String droidLoRaMACAddressString =            "02:00:00:00:00:01";
+  String bodyControllerMACAddressString =       "02:00:00:00:00:02";
   String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
-  String domeControllerMACAddressString = "02:00:00:00:00:04";
-  String domePlateControllerMACAddressString = "02:00:00:00:00:05";
-  String broadcastMACAddressString = "FF:FF:FF:FF:FF:FF";
+  String domeControllerMACAddressString =       "02:00:00:00:00:04";
+  String domePlateControllerMACAddressString =  "02:00:00:00:00:05";
+  String hpControllerMACAddressString =         "02:00:00:00:00:06";
+  String broadcastMACAddressString =            "FF:FF:FF:FF:FF:FF";
 
 // Define variables to store commands to be sent
   String  senderID;
@@ -395,6 +397,7 @@ typedef struct bodyControllerStatus_struct_message{
   espnow_struct_message commandsToSendtoBodyServoController;
   espnow_struct_message commandsToSendtoDomeController;
   espnow_struct_message commandsToSendtoDomePlateController;
+  espnow_struct_message commandsToSendtoHPController;
 
 // Create a struct_message to hold incoming commands from the Body
   espnow_struct_message commandsToReceiveFromBroadcast;
@@ -403,7 +406,8 @@ typedef struct bodyControllerStatus_struct_message{
   espnow_struct_message commandsToReceiveFromBodyServoController;
   espnow_struct_message commandsToReceiveFromDomeController;
   espnow_struct_message commandsToReceiveFromDomePlateController;
-  
+  espnow_struct_message commandsToReceiveFromHPController;
+
   esp_now_peer_info_t peerInfo;
 
 // Callback when data is sent
@@ -512,7 +516,19 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromBroadcast.structCommand;
         processESPNOWIncomingMessage();
         }
-    }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
+    }  else if (IncomingMacAddress == hpControllerMACAddressString) {
+      memcpy(&commandsToReceiveFromHPController, incomingData, sizeof(commandsToReceiveFromHPController));
+      incomingPassword = commandsToReceiveFromHPController.structPassword;
+      if (incomingPassword != ESPNOWPASSWORD){
+        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+      } else {
+        incomingSenderID = commandsToReceiveFromHPController.structSenderID;
+        incomingTargetID = commandsToReceiveFromHPController.structTargetID;
+        incomingCommandIncluded = commandsToReceiveFromHPController.structCommandIncluded;
+        incomingCommand = commandsToReceiveFromHPController.structCommand;
+        processESPNOWIncomingMessage();
+        }
+    } else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
   colorWipeStatus("ES",blue,10);
   IncomingMacAddress ="";
 }
@@ -525,6 +541,7 @@ void processESPNOWIncomingMessage(){
   if (incomingTargetID == "BC" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
+    Debug.ESPNOW("Recieved command from $sn", incomingSenderID);
 
   }
 }
@@ -903,7 +920,7 @@ void sendESPNOWCommand(String starget, String scomm){
   String senderID = "BC";   // change to match location (BC/BS/DC/DP/LD)
   String scommEval = "";
   bool hasCommand;
-  if (scommEval = scomm){
+  if (scommEval == scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
@@ -937,7 +954,12 @@ void sendESPNOWCommand(String starget, String scomm){
        esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
     }else {Debug.ESPNOW("Error sending the data\n");}
-  } else {Debug.ESPNOW("No valid destination \n");}
+  } else if (starget == "HP"){
+    setupSendStruct(&commandsToSendtoHPController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
+       esp_err_t result = esp_now_send(hpControllerMACAddress, (uint8_t *) &commandsToSendtoHPController, sizeof(commandsToSendtoHPController));
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data\n");}
+  }else {Debug.ESPNOW("No valid destination \n");}
 };
 
 
@@ -1072,6 +1094,12 @@ void setup(){
   } 
 // Dome Plate Controller
   memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add Broadcast ESP-NOW peer");
+    return;
+  }
+// HP Controller
+  memcpy(peerInfo.peer_addr, hpControllerMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;

@@ -92,7 +92,7 @@
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
-  String HOSTNAME = "Body Servo Controller";
+  String HOSTNAME = "HP Controller";
   
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data

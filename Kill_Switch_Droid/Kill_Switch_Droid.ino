@@ -45,8 +45,8 @@
 // Debug Functions  - Using my own library for this
 #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
-//ReelTwo libaries - Using my forked version of this libarary
-#include <ReelTwo.h>
+//ReelTwo libaries - Using my forked version of this libarary at https://github.com/greghulette/Reeltwo
+#include <ReelTwo.h>   
 #include "core/DelayCall.h"
 
 //Used for LoRa
@@ -874,7 +874,7 @@ void sendESPNOWCommand(String starget, String scomm){
   String senderID = "DG";   // change to match location (BC/BS/DC/DP/LD)
   String scommEval = "";
   bool hasCommand;
-  if (scommEval = scomm){
+  if (scommEval == scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
