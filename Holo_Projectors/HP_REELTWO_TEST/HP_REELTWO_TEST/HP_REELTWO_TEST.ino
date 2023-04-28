@@ -1335,9 +1335,9 @@ void setup(){
   
   //Initialize the ReelTwo Library
   SetupEvent::ready();
-  frontHolo.assignServos(&ServoDispatchPCA9685, 1, 2);
-  topHolo.assignServos(&ServoDispatchPCA9685, 3, 4);
-  rearHolo.assignServos(&ServoDispatchPCA9685, 5, 6);
+  frontHolo.assignServos(&servoDispatch, 1, 2);
+  topHolo.assignServos(&servoDispatch, 3, 4);
+  rearHolo.assignServos(&servoDispatch, 5, 6);
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
