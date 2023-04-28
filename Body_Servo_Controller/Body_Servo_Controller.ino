@@ -522,7 +522,7 @@ void processESPNOWIncomingMessage(){
   if (incomingTargetID == "BS" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
-    Debug.ESPNOW("Recieved command from Lora Droid\n");
+    Debug.ESPNOW("Recieved command from $sn", incomingSenderID);
 
   }
 }
