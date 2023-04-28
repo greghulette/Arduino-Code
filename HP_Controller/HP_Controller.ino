@@ -560,8 +560,7 @@ void processESPNOWIncomingMessage(){
   /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
-#
-define HOLO_HSERVO        0x1000
+#define HOLO_HSERVO        0x1000
 #define HOLO_VSERVO        0x2000
 
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
