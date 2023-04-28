@@ -8,9 +8,9 @@
 
 // Support for RSeries Logic Engine FLD and/or RLD lights (requires FastLED library)
 // Define USE_RSERIES_FLD to enable support for RSeries FLD
-#define USE_RSERIES_FLD  //I ucommented this out for my setup
+#define USE_RSERIES_FLD
 // Define USE_RSERIES_RLD to enable support for RSeries RLD
-#define USE_RSERIES_RLD  //I ucommented this out for my setup
+#define USE_RSERIES_RLD
 // Define USE_RSERIES_RLD_CURVED to enable support for RSeries RLD curved (AUX5 becomes clock pin)
 //#define USE_RSERIES_RLD_CURVED
 
@@ -37,12 +37,12 @@
 
 // Replace with your network credentials
 #ifdef USE_WIFI
-#define REMOTE_ENABLED       false     // default disabled
-#define WIFI_ENABLED         false     // default enabled
+#define REMOTE_ENABLED       true     // default disabled
+#define WIFI_ENABLED         true     // default enabled
 // Set these to your desired WiFi credentials.
 #define WIFI_AP_NAME         "AstroPixels"
 #define WIFI_AP_PASSPHRASE   "Astromech"
-#define WIFI_ACCESS_POINT    false  /* true if access point: false if joining existing wifi */
+#define WIFI_ACCESS_POINT    true  /* true if access point: false if joining existing wifi */
 #endif
 
 // SMQ device name for ESPNOW
@@ -129,8 +129,8 @@
 
 ////////////////////////////////
 
-#define SERIAL2_RX_PIN 14   //I changed from 16
-#define SERIAL2_TX_PIN 27   //I changed from 17
+#define SERIAL2_RX_PIN 16
+#define SERIAL2_TX_PIN 17
 #define COMMAND_SERIAL Serial2
 
 ////////////////////////////////
@@ -186,7 +186,7 @@
 #define PIN_REAR_PSI 23
 #define PIN_FRONT_HOLO 25
 #define PIN_REAR_HOLO 26
-#define PIN_TOP_HOLO 17   //I changed from 27
+#define PIN_TOP_HOLO 27
 #define PIN_AUX1 2
 #define PIN_AUX2 4
 #define PIN_AUX3 5
