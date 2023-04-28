@@ -1,3 +1,4 @@
 *.DS_Store
 Arduino-Code.code-workspace
 *.log
+libraries/Reeltwo/
