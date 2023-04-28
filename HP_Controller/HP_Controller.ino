@@ -1,16 +1,16 @@
-//////////////////////////////////////\\///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                        *****///
-///*****                                          Created by Greg Hulette.                                      *****///
-///*****                                                                                                        *****///
+///*****                                Created by Greg Hulette.  I                                             *****///
 ///*****   I started with the code from flthymcnsty from from which I used the basic command structure and      *****///
-///*****  serial input method.                                                                                  *****///
-///*****                                                                                                        *****///                                                                                                                                                           *****///
-///*****                                 So exactly what does this all do.....?                                 *****///
-///*****                       - Receives commands via Serial or ESP-NOW                                        *****///
-///*****                       - Sends Serial commands to the Uppity Spinner and other gadgets                  *****///                                                     *****///
-///*****                                                                                                        *****///                                                                                                                                                           *****///
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///*****  serial input method.  This code also relies on the ReelTwo library for all it's servo movements.     *****///
+///*****                                                                                                       *****///
+///*****                                     So exactly what does this all do.....?                            *****///
+///*****                       - Receives commands via Serial or ESP-NOW                                       *****///
+///*****                       - Controls the body servos                                                      *****///
+///*****                                                                                                       *****///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 
@@ -36,23 +36,25 @@
 #include "esp_wifi.h"
 #include <esp_now.h>
 
-//Used for Status LEDs
+//Used for the Status LED
 #include <Adafruit_NeoPixel.h>
 
-//pin definitions
-#include "dome_plate_controller_pin_map.h"
+//Used for pin definition
+#include "hp_controller_pin_map.h"
 
 // Debug Functions  - Using my own library for this
 #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 //ReelTwo libaries - Using my forked version of this libarary
-#include "ReelTwo.h"
+#include <ReelTwo.h>
 #include "core/DelayCall.h"
+#include "dome/HoloLights.h"
+#include "ServoDispatchDirect.h"
+#include "ServoDispatchPCA9685.h"
 
-// Used for Software Serial to allow more useful naming
-#include <SoftwareSerial.h>
 
-
+// //Used for PC9685 - Servo Expansion Board
+#include <Wire.h>
 
 
 
@@ -64,65 +66,68 @@
  // ESPNOW Password - This must be the same across all devices
   String ESPNOWPASSWORD = "GregsAstromech";
 
-  // R2 Control Network Details
+  // R2 Control Network Details for OTA
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
   //Enables status tracking on the LoRa Droid
   bool STATUS_TRACKING = 1;
   
-  // Keepalive timer to send status messages to the Kill Switch (Droid)
+    // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
 
-// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the peers
 // Change this to work with how your droid performs
   int defaultESPNOWSendDuration = 50;  
 
-    // Serial Baud Rates
-  #define US_BAUD_RATE 9600
-  #define SERIAL1_BAUD_RATE 115200 
-  #define SERIAL2_BAUD_RATE 9600  //Should be lower than 57600
-  #define SERIAL3_BAUD_RATE 9600  //Should be lower than 57600
-  #define SERIAL4_BAUD_RATE 57600 //Should be lower than 57600
+  // Serial Baud Rates
+  #define SERIAL1_BAUD_RATE 115200
+
+
+
+
 
 
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
-  String HOSTNAME = "Dome Plate Controller";
+  String HOSTNAME = "HP Controller";
   
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
-  
+
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
   
   int commandLength;
-
+  
   String serialStringCommand;
   String serialPort;
   String serialSubStringCommand;
 
- uint32_t Local_Command[6]  = {0,0,0,0,0,0};
-  int localCommandFunction     = 0;
+  uint32_t Local_Command[6]  = {0,0,0,0,0,0};
+  int localCommandFunction = 0;
 
   String ESPNOWStringCommand;
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
 
+  String HPStringCommand;
+  String HPFullStringCommand;
+
   debugClass Debug;
   String debugInputIdentifier ="";
 
-
-
-
-
-
-
-
-//////////////////////////////////////////////////////////////////////
+  
+  
+  
+  
+  
+  
+  
+  //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
   
@@ -130,7 +135,7 @@
   boolean isStartUp = true;
   
   //Main Loop Timers
-  unsigned long mainLoopTime; 
+  unsigned long mainLoopTime;
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
 
@@ -141,60 +146,60 @@
 
   unsigned long keepAliveMillis;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   //////////////////////////////////////////////////////////////////
   ///******       Serial Ports Definitions                  *****///
   //////////////////////////////////////////////////////////////////
 
-  #define usSerial Serial1
   #define s1Serial Serial2
-  SoftwareSerial s2Serial;
-  SoftwareSerial s3Serial;
-  SoftwareSerial s4Serial;
-  
 
 
-  //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
-  
+
 //Droid Remote ESP          192.168.4.101   
 //Droid Gateway ESP         192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Controller ESP       192.168.4.109   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
@@ -207,11 +212,11 @@
 //Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,112);
+  IPAddress local_IP(192,168,4,113);
   IPAddress subnet(255,255,255,0);
   IPAddress gateway(192,168,4,101);
   
-  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x15};    //used when connecting to WiFi for OTA
+  uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x16};    //used when connecting to WiFi for OTA
 
   AsyncWebServer server(80);
   
@@ -241,7 +246,9 @@
 
   Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
 
-
+HoloLights frontHolo(25, HoloLights::kRGB);		// PIN 25
+HoloLights rearHolo(18, HoloLights::kRGB);			// PIN 18
+HoloLights topHolo(16, HoloLights::kRGB);			// PIN 16
 
 
 
@@ -514,7 +521,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingCommand = commandsToReceiveFromBroadcast.structCommand;
         processESPNOWIncomingMessage();
         }
-    }  else if (IncomingMacAddress == hpControllerMACAddressString) {
+    } else if (IncomingMacAddress == hpControllerMACAddressString) {
       memcpy(&commandsToReceiveFromHPController, incomingData, sizeof(commandsToReceiveFromHPController));
       incomingPassword = commandsToReceiveFromHPController.structPassword;
       if (incomingPassword != ESPNOWPASSWORD){
@@ -536,13 +543,42 @@ void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
-  if (incomingTargetID == "DP" || incomingTargetID == "BR"){
+  if (incomingTargetID == "HP" || incomingTargetID == "BR"){
     inputString = incomingCommand;
     stringComplete = true; 
-    Debug.ESPNOW("Recieved command from $sn", incomingSenderID);
+    Debug.ESPNOW("Recieved command from Lora Droid\n");
 
   }
 }
+//////////////////////////////////////////////////////////////////////
+///       *****   Servo Values, Containers, Flags & Timers   *****////
+//////////////////////////////////////////////////////////////////////
+
+  char stringToSend[25];
+
+
+  /////////////////////////////////////////////////////////////////////////
+///*****              ReelTwo Servo Set Up                       *****///
+/////////////////////////////////////////////////////////////////////////
+#
+define HOLO_HSERVO        0x1000
+#define HOLO_VSERVO        0x2000
+
+// Group ID is used by the ServoSequencer and some ServoDispatch functions to
+// identify a group of servos.
+
+//     Pin  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
+const ServoSettings servoSettings[] PROGMEM = {
+    { 1,   800, 1600, HOLO_HSERVO },  /* 0: horizontal front holo */
+    { 2,   800, 1800, HOLO_VSERVO },  /* 1: vertical front holo */
+    { 3,   800, 1600, HOLO_HSERVO },  /* 2: horizontal top holo */
+    { 4,   800, 1325, HOLO_VSERVO },  /* 3: vertical top holo */
+    { 5,   900, 1000, HOLO_VSERVO },  /* 4: vertical rear holo */
+    { 6, 1300, 1600, HOLO_HSERVO },  /* 5: horizontal rear holo */
+  };
+
+ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -624,59 +660,7 @@ void connectWiFi(){
 
 /////////////////////////////////////////////////////////
 ///*****          Serial Event Function          *****///
-/////////////////////////////////////////////////////////
-
-void writeSerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    Serial.write(completeString[i]);
-  }
-}
-
-void writeUsSerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    usSerial.write(completeString[i]);
-  }
-}
-void writeS1SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s1Serial.write(completeString[i]);
-  }
-}
-
-void writeS2SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s2Serial.write(completeString[i]);
-  }
-}
-
-void writeS3SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s3Serial.write(completeString[i]);
-  }
-}
-
-void writeS4SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s4Serial.write(completeString[i]);
-  }
-}
-//
-//
-//      /////////////////////////////////////////////////////////
-//      ///*****          Serial Event Function          *****///
-//      /////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////                                  
 
 void serialEvent() {
   while (Serial.available()) {
@@ -687,17 +671,7 @@ void serialEvent() {
       }
   }
   Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
-}
-void usSerialEvent() {
-  while (usSerial.available()) {
-    char inChar = (char)usSerial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Uppity Spinner Serial Input: %s \n",inputString);
-}
+};
 
 void s1SerialEvent() {
   while (s1Serial.available()) {
@@ -708,37 +682,30 @@ void s1SerialEvent() {
       }
   }
   Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
-}
-void s2SerialEvent() {
-  while (s2Serial.available()) {
-    char inChar = (char)s2Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+};
+
+
+//      /////////////////////////////////////////////////////////
+//      ///*****          Serial Write Function          *****///
+//      /////////////////////////////////////////////////////////
+
+void writeSerialString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    Serial.write(completeString[i]);
   }
-  Debug.SERIAL_EVENT("Serial 2 Input: %s \n",inputString);
-}
-void s3SerialEvent() {
-  while (s3Serial.available()) {
-    char inChar = (char)s3Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+};
+
+void writes1Serial(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    s1Serial.write(completeString[i]);
   }
-  Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString);
-}
-void s4SerialEvent() {
-  while (s4Serial.available()) {
-    char inChar = (char)s4Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString);
-}
+    Debug.SERIAL_EVENT("Writing to Serial 1\n");
+
+};
 
 
 //////////////////////////////////////////////////////////////////////
@@ -755,10 +722,10 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
 };
 
 void sendESPNOWCommand(String starget, String scomm){
-  String senderID = "DP";   // change to match location (BC/BS/DC/DP/LD)
+  String senderID = "HP";   // change to match location (BC/BS/DC/DP/LD)
   String scommEval = "";
   bool hasCommand;
-  if (scommEval == scomm){
+  if (scommEval = scomm){
     hasCommand = 0;
   } else {hasCommand = 1;};
 
@@ -797,9 +764,181 @@ void sendESPNOWCommand(String starget, String scomm){
        esp_err_t result = esp_now_send(hpControllerMACAddress, (uint8_t *) &commandsToSendtoHPController, sizeof(commandsToSendtoHPController));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
     }else {Debug.ESPNOW("Error sending the data\n");}
-  }else {Debug.ESPNOW("No valid destination \n");}
+  } else {Debug.ESPNOW("No valid destination \n");}
 };
 
+
+ /*   * //////////////////////////////////////////////////////////////////////
+      *             Command structure for HPs                      
+      * //////////////////////////////////////////////////////////////////////
+      * 
+      * Command Prefix: :H
+      *
+      * DT##C or DT##CS or DT##R or DT##P
+      *
+      * D - the HP designator
+      *     F - Front HP
+      *     R - Rear HP
+      *     T - Top HP
+      *     D - Radar Eye
+      *     O - Other HP
+      *     A - All 3 HPs
+      *     X - Front & Rear HPs
+      *     Y - Front & Top HPs
+      *     Z - Rear & Top HPs
+      *     S - Sequences (See Below)
+      * 
+      * T - the Sequence Type is either 0-Led Fuctions and 1-Servo Functions
+      * 
+      *     ## - the Sequence Value including leading zero if necessary, ie sequence 3 is 03
+      * 
+      *     C - (Optional), the Color integer value from list below:
+      *         Basic Color Integer Values
+      *             1 = Red
+      *             2 = Yellow
+      *             3 = Green
+      *             4 = Cyan (Aqua)
+      *             5 = Blue
+      *             6 = Magenta
+      *             7 = Orange
+      *             8 = Purple
+      *             9 = White
+      *             0 = Random
+      * 
+      *     S - (Optional), Speed setting integer for the Dim Pulse LED function below (0-9)
+      * 
+      *     R - (Optional), Random State for clearing LED displays
+      *         Random State Integer Values
+      *             1 = Use Default Sequences
+      *             2 = Use Random Sequences
+      * 
+      *     P - (Optional), the Position integer value from list below:
+      *         Preset Position Integer Values
+      *             0 = Down
+      *             1 = Center
+      *             2 = Up
+      *             3 = Left
+      *             4 = Upper Left
+      *             5 = Lower Left
+      *             6 = Right
+      *             7 = Upper Right
+      *             8 = Lower Right
+      * 
+      *     D001    - Leia Sequence, Random shades of blue to mimic Leia Hologram
+      *     D002C   - Color Projector Sequence, Like Leia above but using color command value
+      *     D003CS  - Dim Pulse Sequence, Color slowly pulses on and off
+      *     D004C   - Cycle Sequence, using color command value
+      *     D005C   - Toggles Color, Simply sets LEDs tp solid color value
+      *     D006    - Rainbow Sequence
+      *     D007C   - Short Circuit, Led flashes on and off with interval slowing over time
+      *     D096    - Clears LED, Disables Auto LED Sequence & "Off Color"
+      *     D0971   - Clears LED, Enables Auto LED Sequence,Enables Default Sequences, Disables "Off Color"
+      *     D0972   - Clears LED, Enables Auto LED Sequence,Enables Random Sequences, Disables "Off Color"
+      *     D098    - Clears LED, Disables Auto LED Sequence, enables "Off Color"
+      *     D0991   - Clears LED, Enables Auto LED Sequence,Enables Default Sequences, Enables "Off Color"
+      *     D0992   - Clears LED, Enables Auto LED Sequence,Enables Random Sequences, Enables "Off Color"
+      * 
+      *     D101P   - Sends HP to a Preset Position
+      *     D102    - Enables RC Control on HP (Left/Right)
+      *     D103    - Enables RC Control on HP (Up/Down)
+      *     D104    - Sends HP to a Random Position
+      *     D105    - Wags HP Left/Right 5 times
+      *     D106    - Wags HP Up/Down 5 times
+      *     D198    - Disables Auto HP Twitch
+      *     D199    - Enables Auto HP Twitch
+      * 
+      *       S1    - Leia Mode (Front HP in Down Position, Leia LED Sequence, all other HPs disabled)*
+      *       S2    - Play R2 Cartoon [OLED]
+      *       S3    - Play Deathstar Plans movie [OLED]
+      *       S4    - Clear all LEDs, Disable Auto HP Twitch, Disable Auto LED Sequence, Disables Off Color
+      *       S5    - Clear all LEDs, Enable Auto HP Twitch, Enable Auto LED Sequence (w/ default seqs.),
+      *               Disables Off
+      *       S9    - Clear all LEDs, Enable Auto HP Twitch, Enable Auto LED Sequence (w/ random seqs.),
+      *               Disables Off Color
+      *       S7    - Clear all LEDs, Disable Auto HP Twitch, Disable Auto LED Sequence, Enables Off Color
+      *       S8    - Clear all LEDs, Enable Auto HP Twitch, Enable Auto LED Sequence (w/ default seqs.),
+      *               Enables Off Color
+      *       S9    - Clear all LEDs, Enable Auto HP Twitch, Enable Auto LED Sequence (w/ random seqs.),
+      *               Enables Off Color
+      * 
+      * Runtime values can be added to any command string by appending a pipe (|) followed by a
+      * numeric value indicating the desired time in seconds you wish the sequence to run.
+      * 
+      * e.g.  A007|25 would run the Rainbow Sequence on all 3 HPs for 25 seconds then clear each
+      *       one, returning to the system's last known auto twitch mode.
+      */
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////                                                                                               /////
+///////                             Miscellaneous Functions                                           /////
+///////                                                                                               /////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+//////////////////////////////////////////////////////////////////////
+///*****          Scan I2C for devices                        *****///
+//////////////////////////////////////////////////////////////////////
+
+void scan_i2c()
+{
+    unsigned nDevices = 0;
+    for (byte address = 1; address < 127; address++)
+    {
+        String name = "<unknown>";
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+        if (address == 0x70)
+        {
+            // All call address for PCA9685
+            name = "PCA9685:all";
+        }
+        if (address == 0x40)
+        {
+            // Adafruit PCA9685
+            name = "PCA9685";
+        }
+        if (address == 0x14)
+        {
+            // IA-Parts magic panel
+            name = "IA-Parts Magic Panel";
+        }
+        if (address == 0x20)
+        {
+            // IA-Parts periscope
+            name = "IA-Parts Periscope";
+        }
+        if (address == 0x16)
+        {
+            // PSIPro
+            name = "PSIPro";
+        }
+
+        if (error == 0)
+        {
+            Serial.print("I2C device found at address 0x");
+            if (address < 16)
+                Serial.print("0");
+            Serial.print(address, HEX);
+            Serial.print(" ");
+            Serial.println(name);
+            nDevices++;
+        }
+        else if (error == 4)
+        {
+            Serial.print("Unknown error at address 0x");
+            if (address < 16)
+                Serial.print("0");
+            Serial.println(address, HEX);
+        }
+    }
+    if (nDevices == 0)
+        Serial.println("No I2C devices found\n");
+    else
+        Serial.println("done\n");
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -811,33 +950,38 @@ void sendESPNOWCommand(String starget, String scomm){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-
 void setup(){
-
-
+  //Initialize the Serial Ports
   Serial.begin(115200);
-  usSerial.begin(US_BAUD_RATE,SERIAL_8N1,SERIAL_RX_US,SERIAL_TX_US);
-  s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
-  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);  
-  s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
-  s3Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
-
+  s1Serial.begin(SERIAL1_BAUD_RATE, SERIAL_8N1, SERIAL1_RX_PIN, SERIAL1_TX_PIN);
+  
+  delay(500);
+  
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
 
+
+
+  //Initialize I2C for the Servo Expander Board
+  Wire.begin();
+  
+  //Initialize the ReelTwo Library
+  SetupEvent::ready();
+  frontHolo.assignServos(&servoDispatch, 1, 2);
+  topHolo.assignServos(&servoDispatch, 3, 4);
+  rearHolo.assignServos(&servoDispatch, 5, 6);
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &domePlateControllerMACAddress[0]);
+  esp_wifi_set_mac(WIFI_IF_STA, &hpControllerMACAddress[0]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
-  
-//Initialize ESP-NOW
+  //Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
   return;
@@ -882,47 +1026,52 @@ void setup(){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
   } 
-// // Dome Plate Controller
-//   memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
-//   if (esp_now_add_peer(&peerInfo) != ESP_OK){
-//     Serial.println("Failed to add Broadcast ESP-NOW peer");
-//     return;
-//   } 
-
-// HP Controller
-  memcpy(peerInfo.peer_addr, hpControllerMACAddress, 6);
+// Dome Plate Controller
+  memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
   }
+  // // HP Controller
+  // memcpy(peerInfo.peer_addr, hpControllerMACAddress, 6);
+  // if (esp_now_add_peer(&peerInfo) != ESP_OK){
+  //   Serial.println("Failed to add Broadcast ESP-NOW peer");
+  //   return;
+  // }
 
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,10);
   
+
+   	CommandEvent::process("HPA0026|20");
+
+
 }   // end of setup
 
 void loop(){
+  AnimatedEvent::process();
+
   if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
+      MLMillis = millis();
+
     if(startUp) {
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
-    }
+  colorWipeStatus("ES",blue,10);
 
+    }  
     keepAlive();
-    // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
     if(Serial.available()){serialEvent();}
-    if(usSerial.available()){usSerialEvent();}
     if(s1Serial.available()){s1SerialEvent();}
-    if(s2Serial.available()){s2SerialEvent();}
-    if(s3Serial.available()){s3SerialEvent();}
-    if(s4Serial.available()){s4SerialEvent();}
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-        if (inputBuffer[0] == '#'){
+        else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+              if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
             inputBuffer[1]=='d' ||          // Command for debugging
@@ -961,24 +1110,44 @@ void loop(){
                         ESP.restart();
                         Local_Command[0]   = '\0';                                                           break;
                   case 3: connectWiFi();                                                                          break;
-                  case 4: ; break;  //reserved for future use
-                  case 5: ; break;  //reserved for future use
-                  case 6: ; break;  //reserved for future use
+                  case 4: CommandEvent::process("HPA0012|20"); Local_Command[0]   = '\0'; break;  //reserved for future use
+                  case 5: CommandEvent::process("HPA006|20"); Local_Command[0]   = '\0'; break;  //reserved for future use
+                  case 6: CommandEvent::process("HPA007|20"); Local_Command[0]   = '\0'; break;  //reserved for future use
                   case 7: ; break;  //reserved for future use
                   case 8: ; break;  //reserved for future use                                                         break;  //reserved for future use
-                  case 9: ;break;  //reserved for future use
+                  case 9: scan_i2c(); ;break;  //reserved for future use
 
                 }
               }
 
         }else if (inputBuffer[0] == ':'){
-      if( inputBuffer[1]=='E' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[1]=='e' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
-        ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          Debug.DBG("Command Length is: %i\n" , commandLength);
-          if(commandLength >= 3) {
+       if(  inputBuffer[1]=='H' ||        // Door Designator
+            inputBuffer[1]=='H' ||        // Door Designator
+            inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+            inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+            inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
+            inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
+
+
+         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
+            Debug.LOOP("Command: %s with a length of %d \n", inputBuffer, commandLength);
+            if(commandLength >= 3) {
+                if(inputBuffer[1]=='H' || inputBuffer[1]=='H') {
+                  for (int i=2; i<=commandLength; i++){
+                    char inCharRead = inputBuffer[i];
+                    HPStringCommand += inCharRead;                   // add it to the inputString:
+                  }
+                  Debug.LOOP("\nFull Command Recieved: %s \n",HPStringCommand.c_str());
+                  sprintf(stringToSend, "HP%s", HPStringCommand);
+                  CommandEvent::process(stringToSend);
+                  
+                  // reset HP Variables
+                  HPStringCommand = "";
+                  HPFullStringCommand = "";                  
+                  } 
+
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
@@ -993,50 +1162,70 @@ void loop(){
                   // reset ESP-NOW Variables
                   ESPNOWStringCommand = "";
                   ESPNOWSubStringCommand = "";
-                  ESPNOWTarget = "";  
-                  }  
-            if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-                    for (int i=2; i<commandLength-1;i++ ){
-                      char inCharRead = inputBuffer[i];
-                      serialStringCommand += inCharRead;  // add it to the inputString:
-                    }
-                    serialPort = serialStringCommand.substring(0,2);
-                    serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-                    Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);  
-              if (serialPort == "US"){
-                writeUsSerialString(serialStringCommand);
-              } else if (serialPort == "S1"){
-                writeS1SerialString(serialStringCommand);
-              } else if (serialPort == "S2"){
-                writeS2SerialString(serialStringCommand);
-              }else if (serialPort == "S3"){
-                writeS3SerialString(serialStringCommand);
-              } else if (serialPort == "S4"){
-                writeS4SerialString(serialStringCommand);
-              }
-              serialStringCommand = "";
-              serialPort = "";
-            } else {Debug.LOOP("No valid serial port given \n");}
-
+                  ESPNOWTarget = "";                  
+                  } 
+              if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
+                for (int i=1; i<commandLength-1;i++ ){
+                  char inCharRead = inputBuffer[i];
+                  serialStringCommand += inCharRead;  // add it to the inputString:
+                }
+                serialPort = serialStringCommand.substring(0,2);
+                serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+                Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
+                if (serialPort == "BC"){
+                  // writeBcSerial(serialSubStringCommand);
+                } else if (serialPort == "FU"){
+                  writes1Serial(serialSubStringCommand);
+                } 
+                
+                serialStringCommand = "";
+                serialSubStringCommand = "";
+                serialPort = "";
+              } 
+            }
           }
-        }
         }
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
-        inputBuffer[1] = '\0';
-      
+        
         // reset Local ESP Command Variables
-        int espCommandFunction;
+        int localCommandFunction;
 
-                
+
+      // reset Door Variables
+        int door = -1;
+        int doorFunction;
+        int doorBoard;
+        int doorEasingMethod;
+        uint32_t cVarSpeedMin;
+        uint32_t cVarSpeedMax;
+        uint32_t delayCallTime; 
 
       Debug.LOOP("command Proccessed\n");
 
-    }  
+    }
 
-  if(isStartUp) {
+
+    if(Local_Command[0]){
+      switch (Local_Command[0]){
+        case 1: Serial.println(HOSTNAME);
+                Local_Command[0]   = '\0';                                                                break;
+        case 2: Serial.println("Resetting the ESP in 3 Seconds");
+                DelayCall::schedule([] {ESP.restart();}, 3000) ;                                        
+                Local_Command[0]   = '\0';                                                                break;
+        case 3: connectWiFi();                                                                          break;
+        case 4: ESP.restart();                                                                          break;
+        case 5: break;
+        case 6: break;
+        case 7: break;
+        case 8: break;
+        case 9: scan_i2c();Local_Command[0]='\0';                                                         break;
+        }
+    }
+
+    if(isStartUp) {
       isStartUp = false;
       delay(500);
 

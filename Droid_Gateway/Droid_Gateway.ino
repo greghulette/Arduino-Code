@@ -40,7 +40,7 @@
 #include <Adafruit_NeoPixel.h>
 
 //Used for pin definition
-#include "kill_switch_droid_pin_map.h"
+#include "droid_gateway_pin_map.h"
 
 // Debug Functions  - Using my own library for this
 #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
@@ -87,7 +87,7 @@
 //////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
-  String HOSTNAME = " Kill Switch (Droid) LoRa to ESP-NOW Gateway";
+  String HOSTNAME = "Droid Gateway";
 
   char inputBuffer[100];
   String inputString;         // a string to hold incoming data
@@ -194,14 +194,15 @@ String debugInputIdentifier ="";
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
 
-//LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109    (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Remote ESP          192.168.4.101   
+//Droid Gateway ESP         192.168.4.108    ************ (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Droid Raspberry Pi        192.168.4.113
-//Remote Raspberry Pi       192.168.4.114
+//HP Controller ESP         192.168.4.113   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.114
+//Remote Raspberry Pi       192.168.4.115
 //Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP

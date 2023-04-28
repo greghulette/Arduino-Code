@@ -198,14 +198,15 @@
   ///******             WiFi Specific Setup                     *****///
   //////////////////////////////////////////////////////////////////////
 
-//LoRa Remote ESP           192.168.4.101   
-//LoRa Droid ESP            192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Body Controller ESP       192.168.4.109   ************(Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Remote ESP          192.168.4.101   
+//Droid Gateway ESP         192.168.4.108   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Body Controller ESP       192.168.4.109   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Body Servo ESP            192.168.4.110   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Controller ESP       192.168.4.111   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
 //Dome Plate Controller ESP 192.168.4.112   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
-//Droid Raspberry Pi        192.168.4.113
-//Remote Raspberry Pi       192.168.4.114
+//HP Controller ESP         192.168.4.113   (Only used for OTA, Remote LoRa ESP must be on and close to Droid)
+//Droid Raspberry Pi        192.168.4.114
+//Remote Raspberry Pi       192.168.4.115
 //Developer Laptop          192.168.4.125
 
 // IP Address config of local ESP
