@@ -578,26 +578,6 @@ void processESPNOWIncomingMessage(){
 #define HOLO_HSERVO        0x1000
 #define HOLO_VSERVO        0x2000
 
-// #define TOP_UTILITY_ARM       0x0001 //b000000000001
-// #define BOTTOM_UTILITY_ARM    0x0002 //b000000000010
-// #define LARGE_LEFT_DOOR       0x0004 //b000000000100
-// #define LARGE_RIGHT_DOOR      0x0008 //b000000001000
-// #define CHARGE_BAY_DOOR       0x0010 //b000000010000
-// #define DATA_PANEL_DOOR       0x0020 //b000000100000
-// #define DRAWER_S1             0X0040 //b000001000000
-// #define DRAWER_S2             0x0080 //b000010000000
-// #define DRAWER_S3             0x0100 //b000100000000
-// #define DRAWER_S4             0x0200 //b001000000000
-// #define REAR_LEFT_DOOR        0x0400 //b010000000000
-// #define REAR_RIGHT_DOOR       0x0800 //b100000000000
-
-// #define UTILITY_ARMS_MASK     (TOP_UTILITY_ARM|BOTTOM_UTILITY_ARM)
-// #define LARGE_DOORS_MASK      (LARGE_LEFT_DOOR|LARGE_RIGHT_DOOR)
-// #define SMALL_DOORS_MASK      (CHARGE_BAY_DOOR|DATA_PANEL_DOOR)
-// #define DRAWERS_MASK          (DRAWER_S1|DRAWER_S2|DRAWER_S3|DRAWER_S4)
-// #define ALL_DOORS_MASK        (LARGE_DOORS_MASK|SMALL_DOORS_MASK|DRAWERS_MASK)
-// #define ALL_SERVOS_MASK       (ALL_DOORS_MASK|UTILITY_ARMS_MASK)
-
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
