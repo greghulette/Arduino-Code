@@ -55,8 +55,9 @@
 // Used to parse status from the ATMEGA2560 status messages
 #include "ArduinoJson.h"
 
+// #include <hcr.h>
 
-
+#include <Wire.h>
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Preferences/Items to change        *****///
@@ -68,7 +69,7 @@
   const char* ssid = "R2D2_Control_Network";
   const char* password =  "astromech";
 
-    //Enables status tracking on the LoRa Droid
+    //Enables status tracking on the Droid Gateway
   bool STATUS_TRACKING = 1;
   
   // Keepalive timer to send status messages to the Kill Switch (Droid)
@@ -103,26 +104,35 @@
   
   int commandLength;
   
-  String serialStringCommand;
+  String serialCommandString;
   String serialPort;
-  String serialSubStringCommand;
+  String serialCommandSubString;
 
- uint32_t Local_Command[6]  = {0,0,0,0,0,0};
-  int localCommandFunction     = 0;
-
-  String ESPNOWStringCommand;
+  String ESPNOWCommandString;
   String ESPNOWTarget;
-  String ESPNOWSubStringCommand;
+  String ESPNOWTargetCommand;
+    
+  String mp3CommandString;
+  String mp3CommandSubString;
+    
+  String ledCommandString;
+
+  String radhCommandString;
+
+  String controllerCommandString;
+
+  uint32_t Internal_Command[6]  = {0,0,0,0,0,0};
+  int internalCommandFunction = 0;
+
+  uint32_t Animation_Command[6]  = {0,0,0,0,0,0};
+  int AnimationCommandFunction = 0;
 
   debugClass Debug;
   String debugInputIdentifier ="";
 
-  String LEDCommandString;
-
   int mp3Track;
   String mp3Comm;
   String mp3TriggerResponseString;
-
 
 
 //////////////////////////////////////////////////////////////////////
@@ -193,6 +203,7 @@
   SoftwareSerial s1Serial;
   SoftwareSerial s2Serial;
  
+// HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -644,7 +655,7 @@ void printKeepaliveStatus(){
     Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
     Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
   }
-  Local_Command[0]   = '\0';
+  Internal_Command[0]   = '\0';
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -689,7 +700,7 @@ void connectWiFi(){
   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
   server.begin();
 
-  Local_Command[0]   = '\0';
+  Internal_Command[0]   = '\0';
 } ;
 
 /////////////////////////////////////////////////////////
@@ -867,7 +878,7 @@ void writeMpSerial(String stringData){
   Debug.SERIAL_EVENT("Writing to the Stealth Controller\n");
 };
 
-void writes1Serial(String stringData){
+void writeS1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s1Serial.write(completeString[i]);
@@ -875,7 +886,7 @@ void writes1Serial(String stringData){
   Debug.SERIAL_EVENT("Writing to Serial 1\n");
 };
 
-void writes2Serial(String stringData){
+void writeS2Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s2Serial.write(completeString[i]);
@@ -1134,9 +1145,9 @@ void loop(){
       startUp = false;
       Serial.println("Startup completed, now running loop");
       // Play Startup Sound
-      mp3Trigger("v",16);
-      mp3Trigger("t",1);
-      mp3Trigger("v",0);
+      // mp3Trigger("v",16);
+      // mp3Trigger("t",1);
+      // mp3Trigger("v",0);
 
     }
     if(Serial.available()){serialEvent();}
@@ -1152,14 +1163,15 @@ void loop(){
     if (stringComplete || autoComplete) {
       if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-       if (inputBuffer[0] == '#'){
+      if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
             inputBuffer[1]=='d' ||          // Command for debugging
-            inputBuffer[1]=='L' ||          // Command designator for internal functions
-            inputBuffer[1]=='l' ||          // Command designator for internal functions
+            inputBuffer[1]=='I' ||          // Command designator for internal functions
+            inputBuffer[1]=='i' ||          // Command designator for internal functions
             inputBuffer[1]=='E' ||          // Command designator for storing EEPROM data
-            inputBuffer[1]=='e'           // Command designator for storing EEPROM data
+            inputBuffer[1]=='e'             // Command designator for storing EEPROM data
+
           ){commandLength = strlen(inputBuffer); 
             if (inputBuffer[1]=='D' || inputBuffer[1]=='d'){
               debugInputIdentifier = "";                            // flush the string
@@ -1171,9 +1183,9 @@ void loop(){
               Debug.toggle(debugInputIdentifier);
               debugInputIdentifier = "";                             // flush the string
               } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
-                localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-                Local_Command[0]   = '\0';                                                            // Flushes Array
-                Local_Command[0] = localCommandFunction;
+                internalCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                Internal_Command[0]   = '\0';                                                            // Flushes Array
+                Internal_Command[0] = internalCommandFunction;
               Debug.LOOP("Entered the Local Command Structure /n");
               } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
                 Debug.LOOP("EEPROM configuration selected /n");
@@ -1182,14 +1194,14 @@ void loop(){
               } else {Debug.LOOP("No valid command entered /n");}
               
           }
-              if(Local_Command[0]){
-                switch (Local_Command[0]){
+              if(Internal_Command[0]){
+                switch (Internal_Command[0]){
                   case 1: Serial.println(HOSTNAME);
-                        Local_Command[0]   = '\0';                                                           break;
+                        Internal_Command[0]   = '\0';                                                           break;
                   case 2: Serial.println("Resetting the ESP in 3 Seconds");
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
-                        Local_Command[0]   = '\0';                                                           break;
+                        Internal_Command[0]   = '\0';                                                           break;
                   case 3: break;  //reserved for commonality. Used for connecting to WiFi and enabling OTA on ESP-NOW Boards 
                   case 4: break;  //reserved for future use
                   case 5:   ;                                                                    break;  //reserved for future use
@@ -1201,82 +1213,135 @@ void loop(){
                 }
               }
 
-        }else if (inputBuffer[0] == ':'){
+        } else if (inputBuffer[0] == ':'){
      
-         if( inputBuffer[1]=='E'     ||        // Command designatore for internal ESP functions
-          inputBuffer[1]=='e'     ||        // Command designatore for internal ESP functions
-          inputBuffer[1]=='S'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[1]=='s'     ||        // Command for sending Serial Strings out Serial ports
-          inputBuffer[1]=='N'     ||        // Command for receiving status/info from other boards
-          inputBuffer[1]=='n'     ||         // Command for receiving status/info from other boards
-          inputBuffer[1]=='L'     ||        // Command for receiving status/info from other boards
-          inputBuffer[1]=='l'               // Command for receiving status/info from other boards
+          if( inputBuffer[1]=='E'     ||        // Command designator for sending ESP-NOW messages
+              inputBuffer[1]=='e'     ||        // Command designator for sending ESP-NOW messages
+              inputBuffer[1]=='S'     ||        // Command designator for sending Serial Strings out Serial ports
+              inputBuffer[1]=='s'     ||        // Command designator for sending Serial Strings out Serial ports
+              inputBuffer[1]=='L'     ||        // Command designator for LED Control
+              inputBuffer[1]=='l'     ||        // Command designator for LED Control
+              inputBuffer[1]=='A'     ||        // Command designator for Animations
+              inputBuffer[1]=='a'     ||        // Command designator for Animations
+              inputBuffer[1]=='M'     ||        // Command designator for MP3 Commands(HCR Vocalizer)
+              inputBuffer[1]=='m'     ||        // Command designator for MP3 Commands(HCR Vocalizer)
+              inputBuffer[1]=='R'     ||        // Command designator for Roam-A-Dome Home
+              inputBuffer[1]=='r'     ||        // Command designator for Roam-A-Dome Home
+              inputBuffer[1]=='C'     ||        // Command designator for Main Controller(Stealth/Shadow)
+              inputBuffer[1]=='c'               // Command designator for Main Controller(Stealth/Shadow)
+            ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
+              Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
-        ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
-          Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
-
-          if(commandLength >= 3) {
+              if(commandLength >= 3) {
      
-              if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-                for (int i=2; i<=commandLength; i++){
-                  char inCharRead = inputBuffer[i];
-                  ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
-                  }
-                  Debug.LOOP("\nFull Command Recieved: %s \n",ESPNOWStringCommand.c_str());
-                  ESPNOWTarget = ESPNOWStringCommand.substring(0,2);
+                if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+                  for (int i=2; i<=commandLength; i++){
+                    char inCharRead = inputBuffer[i];
+                    ESPNOWCommandString += inCharRead;                   // add it to the inputString:
+                    }
+                  Debug.LOOP("\nFull Command Recieved: %s \n",ESPNOWCommandString.c_str());
+                  ESPNOWTarget = ESPNOWCommandString.substring(0,2);
                   Debug.LOOP("ESP NOW Target: %s\n", ESPNOWTarget.c_str());
-                  ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
-                  Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
-                  sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
+                  ESPNOWTargetCommand = ESPNOWCommandString.substring(2,commandLength+1);
+                  Debug.LOOP("Command to Forward: %s\n", ESPNOWTargetCommand.c_str());
+                  sendESPNOWCommand(ESPNOWTarget, ESPNOWTargetCommand);
                   // reset ESP-NOW Variables
-                  ESPNOWStringCommand = "";
-                  ESPNOWSubStringCommand = "";
+                  ESPNOWCommandString = "";
+                  ESPNOWTargetCommand = "";
                   ESPNOWTarget = "";  
                 } 
-              if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-              // serialPort =  (inputBuffer[1]-'0')*10+(inputBuffer[2]-'0');
-              for (int i=1; i<commandLength;i++ ){
-                char inCharRead = inputBuffer[i];
-                serialStringCommand += inCharRead;  // add it to the inputString:
+                if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+                  for (int i=1; i<commandLength;i++ ){
+                    char inCharRead = inputBuffer[i];
+                    serialCommandString += inCharRead;  // add it to the inputString:
+                  }
+                  Debug.DBG("Full Serial Command Captured: %s\n", serialCommandString.c_str());
+                  serialPort = serialCommandString.substring(0,2);
+                  serialCommandSubString = serialCommandString.substring(2,commandLength);
+                  Debug.DBG("Serial Command: %s to Serial Port: %s\n", serialCommandSubString.c_str(), serialPort);
+                  if (serialPort == "S1"){
+                    writeS1Serial(serialCommandSubString);
+                    Debug.DBG("Sending out AUX1 Serial\n");
+                  } else if (serialPort == "S2"){
+                    writeS2Serial(serialCommandSubString);
+                    Debug.DBG("Sending out Aux 2 Serial\n");
+                  } else { Debug.DBG("No valid Serial port identified\n");}
+                  serialCommandString = "";
+                  serialPort = "";
+                  serialCommandSubString = "";
+                }
+                if(inputBuffer[1]=='L' || inputBuffer[1]=='l') {
+                  for (int i=2; i<commandLength;i++ ){
+                    char inCharRead = inputBuffer[i];
+                    ledCommandString += inCharRead;  // add it to the inputString:
+                  }              
+                  writeBlSerial(ledCommandString);
+                  Debug.LOOP("Sent ATMEGA2560 command of %s \n", ledCommandString);
+                  ledCommandString = "";
+                }
+                if(inputBuffer[1] == 'A' || inputBuffer[1] == 'a'){
+                    AnimationCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                    Animation_Command[0]   = '\0';                                                            // Flushes Array
+                    Animation_Command[0] = AnimationCommandFunction;
+                }
+                if(inputBuffer[1]=='R' || inputBuffer[1]=='r') {
+                    for (int i=2; i<commandLength;i++ ){
+                      char inCharRead = inputBuffer[i];
+                      radhCommandString += inCharRead;  // add it to the inputString:
+                    }              
+                    writeRdSerial(radhCommandString);
+                    Debug.LOOP("Sent RADH command of %s \n", radhCommandString);
+                    radhCommandString = "";
+                }
+                if(inputBuffer[1]=='M' || inputBuffer[1]=='m') {
+                  for (int i=2; i<commandLength;i++ ){
+                    char inCharRead = inputBuffer[i];
+                    mp3CommandString += inCharRead;  // add it to the inputString:
+                  }              
+                  writeMpSerial(mp3CommandString);
+                  Debug.LOOP("Sent HCR command of %s \n", mp3CommandString);
+                  mp3CommandString = "";
+                }
+                if(inputBuffer[1]=='C' || inputBuffer[1]=='c') {
+                  for (int i=2; i<commandLength;i++ ){
+                    char inCharRead = inputBuffer[i];
+                    controllerCommandString += inCharRead;  // add it to the inputString:
+                  }              
+                  writeStSerial(controllerCommandString);
+                  Debug.LOOP("Sent Stealth command of %s \n", controllerCommandString);
+                  controllerCommandString = "";
+                }
               }
-              Debug.DBG("Full Serial Command Captured: %s\n", serialStringCommand.c_str());
-              serialPort = serialStringCommand.substring(0,2);
-              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-              Debug.DBG("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);
-              if (serialPort == "BL"){
-                writeBlSerial(serialSubStringCommand);
-                Debug.DBG("Sending out BL Serial\n");
-              } else if (serialPort == "EN"){
-                writes1Serial(serialSubStringCommand);
-                Debug.DBG("Sending out EN Serial\n");
-              } else if (serialPort == "ST"){
-                writeStSerial(serialSubStringCommand);
-                Debug.DBG("Sending out ST Serial\n");
-              }else if (serialPort == "MP"){
-                mp3Comm = serialStringCommand.substring(3,4);
-                mp3Track = (inputBuffer[5]-'0')*100+(inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                Debug.DBG("Command: %s, Track: %i\n",mp3Comm, mp3Track);
-                mp3Trigger(mp3Comm,mp3Track);
-                Debug.DBG("Sending out MP Serial\n ");
-              } else { Debug.DBG("No valid Serial identified\n");}
-              serialStringCommand = "";
-              serialPort = "";
-              serialSubStringCommand = "";
-              int mp3Track;
             }
-            if(inputBuffer[1]=='L' || inputBuffer[1]=='l') {
-              for (int i=2; i<commandLength;i++ ){
-                char inCharRead = inputBuffer[i];
-                LEDCommandString += inCharRead;  // add it to the inputString:
-              }              
-              writeBlSerial(LEDCommandString);
-              Debug.LOOP("Sent ATMEGA2560 command of %s \n", LEDCommandString);
-              LEDCommandString ="";
+        
+          if(Animation_Command[0]){
+            switch (AnimationCommandFunction) {
+              case 1:    Animation_Command[0]   = '\0'; break;
+              case 2: break;
+              case 3: break;
+              case 4: break;
+              case 5: break;
+              case 6: break;
+              case 7: break;
+              case 8: break;
+              case 9: break;
+              case 10: break;
+              case 11: break;
+              case 12: break;
+              case 13: break;
+              case 14: break;
+              case 15: break;
+              case 16: break;
+              case 17: break;
+              case 18: break;
+              case 19: break;
+              case 20: break;
+            
+            }
+          }       
+        }
 
-            }
-          }
-        }
-        }
+
 
       ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;

@@ -31,7 +31,7 @@
 #define I2C_SDA             21 // Y // I2C SDA
 #define I2C_SCL             22 // Y // I2C SCL
 #define UP_23	            23 // Y // Unused Pin 
-#define NONEXISTENT_PIN_24  24 // N // There is no GPIO20
+#define NONEXISTENT_PIN_24  24 // N // There is no GPIO24
 #define SERIAL1_RX_PIN      25 // Y //	Unused Pin
 #define SERIAL1_TX_PIN	    26 // Y //  Unused Pin
 #define UP_27	            27 // Y //  Unused Pin
