@@ -253,6 +253,6 @@ if (debugType == "DBG"){
     debugflag_json = 0;
     debugflag_status = 0;
     Serial.println("All Debugging Turned Off");
-     } else {Serial.println("No valid debug given");}
+} else {Serial.println("No valid debug given");}
 
 };
