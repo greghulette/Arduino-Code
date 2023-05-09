@@ -2,7 +2,7 @@
 
 #ifndef HCRAPI_F
 #define HCRAPI_F
-#define TwoWire_h
+// #define TwoWire_h
 #ifdef ARDUINO
 #if (ARDUINO >= 100)
 #include <Arduino.h>
