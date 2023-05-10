@@ -1,4 +1,4 @@
-<img src="./Images/r2logo.png" style="width: 200px; display:inline; float: left"><h5 style="display: inline; font-size:70px;">Code for my R2D2 sketches</h5>
+<img src="./Images/r2logo.png" style="width: 200px; display:inline; float: left"><h1 style="display: inline; font-size:70px;">Code for my R2D2 sketches</h1>
 # Board Names with Descriptions
 ## Custom Boards
 1. Body Controller (BC)
