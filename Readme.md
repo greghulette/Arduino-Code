@@ -52,6 +52,6 @@ There are a few different transmission protocols used in my system.  Below is a 
 
 ![picture for communication overview](./Images/Communication_Overview.png)
 ## Command Structure
-You can find the current set of commands/structure on a Google Sheets [here](https://sheets.google.com)
+You can find the current set of commands/structure on a Google Sheets [here](https://docs.google.com/spreadsheets/d/1DH-6CJmIpjQx04wJDilbzKNY-XPePc0232BGUaSPBnk/edit?usp=sharing
 
 
