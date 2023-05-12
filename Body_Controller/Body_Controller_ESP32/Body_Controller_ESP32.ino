@@ -112,6 +112,9 @@
     
   String mp3CommandString;
   String mp3CommandSubString;
+
+  String eepromCommandString;
+  String eepromCommandSubString;
     
   String ledCommandString;
 
@@ -1188,7 +1191,19 @@ void loop(){
               } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
                 Debug.LOOP("EEPROM configuration selected /n");
                 // need to actually add the code to implement this.
-
+                if (inputBuffer[2] == 'E'){
+                  for (int i=2; i<=commandLength-2; i++){
+                  char inCharRead = inputBuffer[i];
+                  eepromCommandString += inCharRead;                   // add it to the inputString:
+                  }
+                }
+                if (inputBuffer[2] == 'A'){
+                  for (int i=2; i<=commandLength-2; i++){
+                    char inCharRead = inputBuffer[i];
+                    eepromCommandString += inCharRead;                   // add it to the inputString:
+                  }
+                  writeBlSerial(eepromCommandString);
+                }
               } else {Debug.LOOP("No valid command entered /n");}
               
           }

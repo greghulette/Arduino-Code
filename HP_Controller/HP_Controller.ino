@@ -1120,8 +1120,8 @@ void loop(){
               }
 
         }else if (inputBuffer[0] == ':'){
-       if(  inputBuffer[1]=='H' ||        // Door Designator
-            inputBuffer[1]=='H' ||        // Door Designator
+       if(  inputBuffer[1]=='H' ||        // Command designator for Holo Projector functions
+            inputBuffer[1]=='H' ||        // Command designator for Holo Projector functions
             inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
             inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
             inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
