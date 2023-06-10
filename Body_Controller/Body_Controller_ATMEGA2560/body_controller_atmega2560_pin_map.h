@@ -28,7 +28,7 @@
 #define DATAIN_PIN	        3 // Y // Unused Pin
 #define CLOCK_PIN           4 // Y // Unused Pin
 #define LOAD_PIN            5 // N // TUnused Pin
-#define D6                  6 // Y // Unused Pin
+#define STATUS_LED_DATA_PIN 6 // Y // Unused Pin
 #define D7                  7 // Y // Unused Pin
 #define D8	                8 // Y // Unused Pin 
 #define D9                  9 // N // Unused Pin
@@ -60,7 +60,7 @@
 #define D35                 35 // N // TUnused Pin
 #define LDP_CLOCK_PIN       36 // Y // Unused Pin
 #define D37                 37 // Y // Unused Pin
-#define CS1_DATA_PIN	    38 // Y // Unused Pin 
+#define CS1_DATA_PIN	      38 // Y // Unused Pin 
 #define D39                 39 // N // Unused Pin
 #define CS1_CLOCK_PIN       40 // Y // Unused Pin
 #define D41                 41 // Y // Unused Pin
@@ -70,7 +70,7 @@
 #define D45                 45 // N // TUnused Pin
 #define VU1_DATA_PIN        46 // Y // Unused Pin
 #define D47                 47 // Y // Unused Pin
-#define VU1_CLOCK_PIN	    48 // Y // Unused Pin 
+#define VU1_CLOCK_PIN	      48 // Y // Unused Pin 
 #define RED_LED             49 // N // Unused Pin
 #define VU2_DATA_PIN        50 // Y // Unused Pin
 #define YELLOW_LED	        51 // Y //  Unused Pin

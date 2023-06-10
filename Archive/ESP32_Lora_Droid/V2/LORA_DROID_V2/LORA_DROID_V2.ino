@@ -140,9 +140,9 @@
   int colorState1;
   int speedState;
   
-  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, ESP_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel RELAY_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, RELAY_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, ESP_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel RELAY_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, RELAY_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
   boolean startUp = true;
   boolean isStartUp = true;
   
@@ -371,24 +371,24 @@ void printKeepaliveStatus(){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else if (statusled == "RS"){
-    RELAY_LED.setBrightness(brightness);
-    RELAY_LED.setPixelColor(0, c);
-    RELAY_LED.show();
-  }else if (statusled == "LS"){
-    LORA_LED.setBrightness(brightness);
-    LORA_LED.setPixelColor(0, c);
-    LORA_LED.show();
-  }
-else{
-  // DBG("No LED was chosen \n");
-  }
-  };
+// void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+//   if(statusled == "ES"){
+//     ESP_LED.setBrightness(brightness);
+//     ESP_LED.setPixelColor(0, c);
+//     ESP_LED.show();
+//   } else if (statusled == "RS"){
+//     RELAY_LED.setBrightness(brightness);
+//     RELAY_LED.setPixelColor(0, c);
+//     RELAY_LED.show();
+//   }else if (statusled == "LS"){
+//     LORA_LED.setBrightness(brightness);
+//     LORA_LED.setPixelColor(0, c);
+//     LORA_LED.show();
+//   }
+// else{
+//   // DBG("No LED was chosen \n");
+//   }
+//   };
 
 
 
@@ -562,11 +562,11 @@ void onReceive(int packetSize) {
   Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
   
-  if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
-    colorWipeStatus("LS", green, 10);
-  }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
-     colorWipeStatus("LS", yellow, 10);
-  } else{ colorWipeStatus("LS", red, 10);}
+  // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
+  //   colorWipeStatus("LS", green, 10);
+  // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
+  //   //  colorWipeStatus("LS", yellow, 10);
+  // } else{ colorWipeStatus("LS", red, 10);}
 
   inputString = incoming;
   stringComplete = true; 
@@ -691,12 +691,12 @@ void setup() {
   
   //Button for relay setup
   pinMode(ON_BUTTON_PIN, INPUT);
-  // // pinMode(RELAY_STATE_OUTPUT, OUTPUT);
-  // RELAY_STATUS = LOW;
-  // // digitalWrite(RELAY_STATE_OUTPUT, RELAY_STATUS);
-  // delay(200);
-  // RELAY_STATUS = HIGH;
-  // digitalWrite(RELAY_STATE_OUTPUT, RELAY_STATUS);
+  pinMode(RELAY_STATE_OUTPUT, OUTPUT);
+  RELAY_STATUS = LOW;
+  digitalWrite(RELAY_STATE_OUTPUT, RELAY_STATUS);
+  delay(200);
+  RELAY_STATUS = HIGH;
+  digitalWrite(RELAY_STATE_OUTPUT, RELAY_STATUS);
 
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
@@ -734,24 +734,24 @@ void setup() {
   // esp_now_register_recv_cb(OnDataRecv);
 
 
-ESP_LED.begin();
-ESP_LED.show();
-colorWipeStatus("ES", blue, 10);
+// ESP_LED.begin();
+// ESP_LED.show();
+// colorWipeStatus("ES", blue, 10);
 
-RELAY_LED.begin();
-RELAY_LED.show();
-colorWipeStatus("RS", green, 10);
+// RELAY_LED.begin();
+// RELAY_LED.show();
+// colorWipeStatus("RS", green, 10);
 
-LORA_LED.begin();
-LORA_LED.show();
-colorWipeStatus("LS", blue, 10);  
+// LORA_LED.begin();
+// LORA_LED.show();
+// colorWipeStatus("LS", blue, 10);  
 delay(3000);
   //LoRa Setup
-SPI.begin(14, 12, 13, 15);
-LoRa.setPins(15, 27, 26);
+// SPI.begin(14, 12, 13, 15);
+// LoRa.setPins(15, 27, 26);
 
   // Serial.println("LoRa Receiver");
-  // LoRa.setPins(5, 14, 2);// set CS, reset, IRQ pin
+  LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
 
   if (!LoRa.begin(915E6,true)) {
     Serial.println("Starting LoRa failed!");
@@ -775,10 +775,10 @@ void loop() {
     newState = digitalRead(ON_BUTTON_PIN);
     if(newState == LOW) {      // Yes, still low
        if (RELAY_STATUS == LOW) {
-                colorWipeStatus("RS", red, 10);
+                // colorWipeStatus("RS", red, 10);
        }
              if (RELAY_STATUS == HIGH){
-                colorWipeStatus("RS", green, 10);
+                // colorWipeStatus("RS", green, 10);
        }
        
        RELAY_STATUS = !RELAY_STATUS;

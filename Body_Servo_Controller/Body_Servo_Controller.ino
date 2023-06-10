@@ -443,7 +443,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         }
      } else if (IncomingMacAddress == bodyControllerMACAddressString){
     memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
-   if (incomingPassword != ESPNOWPASSWORD){
+    incomingPassword = commandsToReceiveFromBodyController.structPassword;
+    if (incomingPassword != ESPNOWPASSWORD){
         Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
       } else {
         incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
@@ -592,18 +593,18 @@ void processESPNOWIncomingMessage(){
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
-//     Pin  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
+//     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  1688, 700, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
-    { 2,  2300, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
-    { 3,  1600, 2240, LARGE_LEFT_DOOR },      /* 2: Large Left Door as viewing from looking at R2 */
-    { 4,  1650, 937, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
-    { 5,  1526, 726, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door*/
-    { 6,  2030, 1549, DATA_PANEL_DOOR },      /* 5: Data Panel Door */
+    { 1,  2300, 975, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
+    { 2,  2300, 960, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
+    { 3,  1900, 1000, LARGE_LEFT_DOOR },      /* 2: Large Left Door as viewing from looking at R2 */
+    { 4,  1200, 1900, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
+    { 5,  1900 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1100*/
+    { 6,  700, 1400, DATA_PANEL_DOOR },      /* 5: Data Panel Door */
     { 7,  2050, 700, DRAWER_S1 },             /* 5: Data Panel Door */
     { 8,  2345, 700, DRAWER_S2 },             /* 5: Data Panel Door */
     { 9,  550, 2300, DRAWER_S3 },             /* 5: Data Panel Door */
-    { 10,  2070, 650, DRAWER_S4 },            /* 5: Data Panel Door */
+    { 10,  1200, 2500, DRAWER_S4 },            /* 5: Data Panel Door */
     { 11,  2030, 1549, REAR_LEFT_DOOR },      /* 5: Data Panel Door */
     { 12,  2030, 1549, REAR_RIGHT_DOOR }      /* 5: Data Panel Door */
   };
@@ -965,7 +966,7 @@ void closeAllDoors(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   snprintf(stringToSend, sizeof(stringToSend),":D204E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); sendESPNOWCommand("BC", ":LV98");break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;

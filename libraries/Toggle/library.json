@@ -1,0 +1,24 @@
+{
+  "name": "Toggle",
+  "version": "3.1.8",
+  "description": "Arduino button debounce library for various switch types, port expanders and other 8-bit data sources. Fast and robust debounce algorithm.",
+  "keywords": "debounce, toggle, button, switch, data, deglitch",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/Dlloydev/Toggle"
+  },
+  "authors":
+  [
+    {
+      "name": "David Lloyd",
+      "email": "dlloydev@testcor.ca",
+      "url": "https://github.com/Dlloydev/Toggle",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/Dlloydev/Toggle",
+  "frameworks": "arduino",
+  "platforms": "*"
+}

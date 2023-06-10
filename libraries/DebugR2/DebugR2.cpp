@@ -107,6 +107,14 @@ void debugClass::STATUS(const char *format, ...) {
         vfprintf(stderr, format, ap);
         va_end(ap);
 }
+void debugClass::PARAM(const char *format, ...) {
+        if (!debugflag_param)
+                return;
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(stderr, format, ap);
+        va_end(ap);
+}
 
 void debugClass::toggle_Debug(){
   debugflag = !debugflag;
@@ -206,6 +214,16 @@ void debugClass::toggle_JSON(){
   }
 }
 
+void debugClass::toggle_PARAM(){
+  debugflag_param = !debugflag_param;
+  if (debugflag_param == 1){
+    Serial.println("Parameter Debugging Enabled");
+    }
+  else{
+    Serial.println("Parameter Debugging Disabled");
+  }
+}
+
 void debugClass::toggle_STATUS(){
   debugflag_status = !debugflag_status;
   if (debugflag_status == 1){
@@ -238,6 +256,8 @@ if (debugType == "DBG"){
   toggle_LORA();
 } else if (debugType == "JSON"){
   toggle_JSON();
+} else if (debugType == "PARAM"){
+  toggle_PARAM();
 } else if (debugType == "STATUS"){
   toggle_STATUS();
 } else if (debugType == "OFF"){
@@ -252,6 +272,7 @@ if (debugType == "DBG"){
     debugflag_lora = 0;
     debugflag_json = 0;
     debugflag_status = 0;
+    debugflag_param = 0;
     Serial.println("All Debugging Turned Off");
 } else {Serial.println("No valid debug given");}
 

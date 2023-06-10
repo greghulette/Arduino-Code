@@ -156,12 +156,12 @@
 //////////////////////////////////////////////////////////////////////
 
 // Spectrum Analyzer
-#define SPECTRUM_LEFT_PIN     1
-#define SPECTRUM_RIGHT_PIN    0
+// #define SPECTRUM_LEFT_PIN     1
+// #define SPECTRUM_RIGHT_PIN    0
 
 // Analog Sensors
-#define EXTERNAL_MIC_PIN      2
-#define VOLTAGE_SENSOR_PIN    7
+// #define EXTERNAL_MIC_PIN      2
+// #define VOLTAGE_SENSOR_PIN    7
 
 
 //////////////////////////////////////////////////////////////////////
@@ -171,7 +171,8 @@
   #define LDP_PIXELS  32      //32
   #define MAINT_PIXELS  42    //New to sketch
   #define CS_PIXELS    6      //6
-  #define VU_PIXELS    9      //9
+  #define VU_PIXELS    9      //9  
+  #define STATUS_PIXELS    1      //9
 
 
 //////////////////////////////////////////////////////////////////////
@@ -244,7 +245,7 @@
     float vout = 0.0;       // for voltage out measured analog input
     int value = 0;          // used to hold the analog value coming out of the voltage divider
     float vin = 0.0;        // voltage calulcated... since the divider allows for 15 volts
-
+    int  showBattery = 0;
 //////////////////////////////////////////////////////////////////////
 ///*****                   CBI Config Settings                *****///
 //////////////////////////////////////////////////////////////////////
@@ -408,7 +409,7 @@ Adafruit_DotStar stripCS2 = Adafruit_DotStar(CS_PIXELS, CS2_DATA_PIN, CS2_CLOCK_
 Adafruit_DotStar stripVU1  = Adafruit_DotStar(VU_PIXELS, VU1_DATA_PIN, VU1_CLOCK_PIN, DOTSTAR_RBG);
 Adafruit_DotStar stripVU2 = Adafruit_DotStar(VU_PIXELS, VU2_DATA_PIN, VU2_CLOCK_PIN, DOTSTAR_RBG);
 
-Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, 6, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel StatusLED = Adafruit_NeoPixel(1, STATUS_LED_DATA_PIN, NEO_GRB + NEO_KHZ800);
 
 
 //////////////////////////////////////////////////////////////////////
@@ -688,6 +689,10 @@ void setup()
    stripCS2.show();
    showCS();
 
+
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
    //***     VU METER SET UP     ***///
    stripVU1.begin();
    stripVU2.begin();
@@ -923,7 +928,7 @@ if(Serial2.available()){serialEvent2();}
         case 5: changetIntVUOffset(varNameNum1, varNameNum2, varNameNum3);                        break;
         case 6: changetIntVUBaseline(varNameNum1, varNameNum2, varNameNum3);                      break;
         case 7: sendUpdates();                                                                    break;  //ext vu offset
-        case 8: break;  //ext vu baseline
+        case 8: toggleShowBattery();break;  //ext vu baseline
         case 9:  clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
         case 10: toggleDebug();  break;
         case 11: toggleDebug1();  break;
@@ -2046,6 +2051,28 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
 
 
 
+void toggleShowBattery(){
+
+// showBattery = !showBattery;
+  if(showBattery == 0){
+    Serial.println("enetered 0 condition");
+    showBattery = 1;
+      Serial.println(showBattery);
+
+  } else if(showBattery == 1) {
+        Serial.println("enetered 1 condition");
+
+    showBattery = 0;
+      Serial.println(showBattery);
+
+
+  }
+  Serial.print("Changed to: ");
+  Serial.println(showBattery);
+    Prog_command[0] = '0';
+
+};
+
 
 
       /////////////////////////////////////////////////////////
@@ -2571,10 +2598,12 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
 
 //        Serial.print("Battery Val 2:");Serial.println(BatVal);
 //        DBG("Battery Level: %d \n",BatVal);
+        if(showBattery == 1){
         if (BatVal >= 40) {batColor = green;l23on();l22off();l21off();}
         else if (BatVal >= 20) {batColor = yellow;l23off();l22on();l21off();}
         else if (BatVal >= 5)  {batColor = red;l23off();l22off();l21on();}
         else {batColor = off;}
+       }else {batColor = off;l23off();l22off();l21off();}
        }
 
       /////////////////////////////////////////////////////////

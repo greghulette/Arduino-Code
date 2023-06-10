@@ -443,7 +443,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         }
      } else if (IncomingMacAddress == bodyControllerMACAddressString){
     memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
-   if (incomingPassword != ESPNOWPASSWORD){
+    incomingPassword = commandsToReceiveFromBodyController.structPassword;
+    if (incomingPassword != ESPNOWPASSWORD){
         Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
       } else {
         incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
@@ -1560,6 +1561,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       startUp = false;
       Serial.println("Startup completed, now running loop");
       colorWipeStatus("ES",blue,10);
+      // RadarEye_LED(basicColors[5], 5);
+      
 
   }
   keepAlive();
@@ -1568,7 +1571,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   if(rsSerial.available()){rsSerialEvent();}
   if(s1Serial.available()){s1SerialEvent();}
 
-//  RadarEye_LED(blue, 5); // blue
+ RadarEye_LED(blue, 5); // blue
 
   if (stringComplete) {autoComplete=false;}
   if (stringComplete || autoComplete) {

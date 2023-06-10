@@ -1,0 +1,66 @@
+##########################################
+# Syntax Coloring Map For Toggle Library
+##########################################
+
+##########################################
+# Datatypes (KEYWORD1)
+##########################################
+
+Toggle	KEYWORD1
+myInput	KEYWORD1
+myButton	KEYWORD1
+sw	KEYWORD1
+sw0	KEYWORD1
+sw1	KEYWORD1
+sw2	KEYWORD1
+sw3	KEYWORD1
+sw4	KEYWORD1
+sw5	KEYWORD1
+sw6	KEYWORD1
+sw7	KEYWORD1
+sw8	KEYWORD1
+sw9	KEYWORD1
+
+##########################################
+# Methods and Functions (KEYWORD2)
+##########################################
+
+poll	KEYWORD2
+setInputMode	KEYWORD2
+setInputInvert	KEYWORD2
+toggle	KEYWORD2
+setToggleState	KEYWORD2
+setToggleTrigger	KEYWORD2
+setSamplePeriodUs	KEYWORD2
+clearTimer	KEYWORD2
+getElapsedMs	KEYWORD2
+isPressed	KEYWORD2
+isReleased	KEYWORD2
+onPress	KEYWORD2
+onRelease	KEYWORD2
+onChange	KEYWORD2
+blink	KEYWORD2
+pressedFor	KEYWORD2
+releasedFor	KEYWORD2
+retrigger	KEYWORD2
+pressCode	KEYWORD2
+debouncer	KEYWORD2
+isUP	KEYWORD2
+isMID	KEYWORD2
+isDN	KEYWORD2
+UPtoMID	KEYWORD2
+MIDtoDN	KEYWORD2
+DNtoMID	KEYWORD2
+MIDtoUP	KEYWORD2
+
+##########################################
+# Constants (LITERAL1)
+##########################################
+
+input	LITERAL1
+input_pullup	LITERAL1
+input_pulldown	LITERAL1
+input_bit	LITERAL1
+input_byte	LITERAL1
+FAST	LITERAL1
+DONE	LITERAL1

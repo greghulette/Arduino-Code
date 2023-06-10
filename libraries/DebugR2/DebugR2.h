@@ -23,6 +23,7 @@ class debugClass {
     bool debugflag_lora = 0;
     bool debugflag_json = 0;
     bool debugflag_status = 0;
+    bool debugflag_param = 0;
 
 
   //constructor
@@ -40,6 +41,7 @@ class debugClass {
     void LORA(const char *format, ...);
     void JSON(const char *format, ...);
     void STATUS(const char *format, ...);
+    void PARAM(const char *format, ...);
     void toggle(String debugType);
     void toggle_Debug();
     void toggle_Debug1();
@@ -52,6 +54,7 @@ class debugClass {
     void toggle_LORA();
     void toggle_JSON();
     void toggle_STATUS();
+    void toggle_PARAM();
     
 
 

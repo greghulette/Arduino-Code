@@ -450,6 +450,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         }
      } else if (IncomingMacAddress == bodyControllerMACAddressString){
     memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
+          incomingPassword = commandsToReceiveFromBodyController.structPassword;
+
    if (incomingPassword != ESPNOWPASSWORD){
         Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
       } else {
@@ -1124,7 +1126,7 @@ void loop(){
             inputBuffer[1]=='H' ||        // Command designator for Holo Projector functions
             inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
             inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
-            inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messag=es
             inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
             inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
             inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports

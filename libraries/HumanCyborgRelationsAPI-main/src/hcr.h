@@ -2,7 +2,7 @@
 
 #ifndef HCRAPI_F
 #define HCRAPI_F
-// #define TwoWire_h
+#define TwoWire_h
 #ifdef ARDUINO
 #if (ARDUINO >= 100)
 #include <Arduino.h>
@@ -11,6 +11,7 @@
 #include <pins_arduino.h>
 #endif
 #endif
+
 
 #include <String.h>
 #include <SoftwareSerial.h>
@@ -62,7 +63,9 @@ public:
      * @param addr the I2C Address in hexidecimal
      * @param i2c the I2C interface (aka "Wire")
      */
-    HCRVocalizer(const uint8_t addr, TwoWire &i2c);
+    // if (esp32bool != true){
+        // HCRVocalizer(const uint8_t addr, TwoWire &i2c);
+    // }    
 
     /**
      * @brief Configure the HCRVocalizer for I2C with a baud rate
@@ -71,7 +74,7 @@ public:
      * @param i2c the I2C interface (aka "Wire")
      * @param baud the baud rate
      */
-    HCRVocalizer(const uint8_t addr, TwoWire &i2c, int baud);
+    // HCRVocalizer(const uint8_t addr, TwoWire &i2c, int baud);
     
     /**
      * @brief Configure the HCRVocalizer for Hardware Serial with a baud rate
@@ -310,8 +313,8 @@ public:
     void dfPlayer();
 
 private:
-    uint8_t _i2caddr=0;
-    TwoWire *_i2c;
+    // uint8_t _i2caddr=0;
+    // TwoWire *_i2c;
     HardwareSerial *_serial;
     SoftwareSerial *_softserial;
     int _serialBaud;

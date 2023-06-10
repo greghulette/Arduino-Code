@@ -26,7 +26,7 @@
 #include <Arduino.h>
 
 // Used for OTA
-#include "ESPAsyncWebServer.h"
+#include "ESPAsyncWebServer.h"              //https://github.com/me-no-dev/ESPAsyncWebServer
 #include <AsyncElegantOTA.h>
 #include <elegantWebpage.h>
 #include <AsyncTCP.h>
@@ -55,7 +55,7 @@
 // Used to parse status from the ATMEGA2560 status messages
 #include "ArduinoJson.h"
 
-// #include <hcr.h>
+#include <hcr.h>
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Preferences/Items to change        *****///
@@ -79,7 +79,7 @@
 
   // Serial Baud Rates
   #define BL_BAUD_RATE 9600
-  #define RD_BAUD_RATE 115200 
+  #define RD_BAUD_RATE 9600 
   #define ST_BAUD_RATE 9600  //Should be lower than 57600
   #define MP_BAUD_RATE 9600  //Should be lower than 57600
   #define SERIAL1_BAUD_RATE 57600 //Should be lower than 57600
@@ -135,7 +135,15 @@
   String mp3Comm;
   String mp3TriggerResponseString;
 
-
+  int* getEmotions;
+  int getEmotion;
+  float getDuration;
+  int getOverride;
+  bool isPlaying;
+  int getMuse;
+  int getWAVCount;
+  int getPlayingWAV;
+  int HCRVolume;
 //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -204,7 +212,7 @@
   SoftwareSerial s1Serial;
   SoftwareSerial s2Serial;
  
-// HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
+HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -795,10 +803,12 @@ void serialStEvent() {
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
+        inputString = ":" + inputString;
+        stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.SERIAL_EVENT("Stealth Serial Input: %s \n",inputString);
+  // inputString = ":" + inputString;
+  Debug.SERIAL_EVENT("Stealth Serial Input: %s \n",inputString.c_str());
 };
 
 void serialMpEvent() {
@@ -950,7 +960,7 @@ void sendESPNOWCommand(String starget, String scomm){
   } else if (starget == "BS"){
     setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to Body Servo Controller\n", scomm.c_str());
     }else {Debug.ESPNOW("Error sending the data\n");}
   }  else if (starget == "DC"){
     setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
@@ -960,7 +970,7 @@ void sendESPNOWCommand(String starget, String scomm){
   } else if (starget == "DP"){
     setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to the Dome Plate Controller\n", scomm.c_str());
     }else {Debug.ESPNOW("Error sending the data\n");}
   } else if (starget == "BR"){
     setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
@@ -997,7 +1007,34 @@ void resetArduino(int delayperiod){
 //////////////////////////////////////////////////////////////////////
 ///*****         Function for MP3 Trigger                     *****///
 //////////////////////////////////////////////////////////////////////
-
+// enum hcrCommand {update = 1,
+//                   setEmote, 
+//                   trigger, 
+//                   stimulate, 
+//                   overload, 
+//                   muse, 
+//                   museMinMax, 
+//                   stop, 
+//                   stopEmote,
+//                   overrideEmotions,
+//                   resetEmotions,
+//                   setEmotions,
+//                   setMuse,
+//                   playWAVInt,
+//                   playWAVString,
+//                   stopWAV,
+//                   setVolume,
+//                   getEmotions,
+//                   getEmotion,
+//                   getDuration,
+//                   getOverride,
+//                   isPlaying,
+//                   isPlayingChannel,
+//                   getWAVCount,
+//                   getPlayingWAV,
+//                   getVolume,
+//                   getUpdate
+//                   };
 /*
 NEED TO WRITE NEW FUNCTION TO WORK WITH THE HCR
 */
@@ -1007,8 +1044,147 @@ void mp3Trigger(String comm, int track){
   mpSerial.write(track);
 }
 
+void HCRFunction(int command = 0, int chan = 0, int track = 0, String filename= ""){
+
+    switch (command) {
+    case 1: HCR.update();                               break;
+    case 2: HCR.SetEmotion(chan, track);                break;
+    case 3: HCR.Trigger(chan, track);                   break;
+    case 4: HCR.Stimulate(chan, track);                 break;
+    case 5: HCR.Overload();                             break;
+    case 6: HCR.Muse();                                 break;
+    case 7: HCR.Muse(chan, track);                      break;
+    case 8: HCR.Stop();                                 break;
+    case 9: HCR.StopEmote();                            break;
+    case 10: HCR.OverrideEmotions(chan);                break;
+    case 11: HCR.ResetEmotions();                       break;
+    case 12: HCR.SetEmotion(chan, track);               break;
+    case 13: HCR.SetMuse(track);                        break;
+    case 14: HCR.PlayWAV(chan, track); HCR.update();                 break;
+    case 15: HCR.PlayWAV(chan, filename);               break;
+    case 16: HCR.StopWAV(chan);                         break;
+    case 17: HCR.SetVolume(chan, track);                break;
+    case 18: getEmotions = HCR.GetEmotions();           break;
+    case 19: getEmotion = HCR.GetEmotion(chan);         break;
+    case 20: getDuration = HCR.GetDuration();           break;
+    case 21: getOverride = HCR.GetOverride();           break;
+    case 22: isPlaying = HCR.IsPlaying();               break;
+    case 24: isPlaying = HCR.IsPlaying(chan);           break;
+    case 25: getWAVCount = HCR.GetWAVCount();           break;
+    case 26: getPlayingWAV = HCR.GetPlayingWAV(chan);   break;
+    case 27: HCR.getUpdate();                           break;
+    case 28: HCRVolume = HCR.getVolume(chan);           break;
+    // case 29: HCR.dfPlayer();                            break;
+    };
+  
+}
 
 
+String getValue(String data, char separator, int index){
+  int found=0;
+  int strIndex[] = {0,-1};
+  int maxIndex = data.length()-1;
+  for (int i=0; i <= maxIndex && found <= index; i++){
+    if(data.charAt(i) == separator || i == maxIndex){
+      found++;
+      strIndex[0] = strIndex[1]+1;
+      strIndex[1] = (i == maxIndex)? i+1 : i;
+
+    }
+  }
+  return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+
+
+/*///////////////////////////////////////////////////////////////////////////////////////////////////////
+                    Animations
+              case 1: normalOperations();   break;
+              case 2: panelWave();                                          break;
+              case 3: panelWaveFast();                                      break;
+              case 4: domePeriscope();                                      break;
+              case 5: allOpenClose();                                       break;
+              case 6: HarlemShake();                                        break;
+              case 7: allClose();                                           break;
+*////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+void normalOperations(){
+writeBlSerial("A99");
+sendESPNOWCommand("BS", ":D304");
+HCR.Stop();
+ Animation_Command[0]   = '\0'; 
+};
+
+void panelWave(){
+  sendESPNOWCommand("BS", ":D310D02125");
+ Animation_Command[0]   = '\0'; 
+};
+
+void panelWaveFast(){
+  sendESPNOWCommand("BS", ":D311D01000");
+   Animation_Command[0]   = '\0'; 
+};
+
+void domePeriscope(){
+    sendESPNOWCommand("DP", ":SUS:PS4");
+    // writeRdSerial(":S4");
+ Animation_Command[0]   = '\0'; 
+};
+
+void allOpenClose(){
+    sendESPNOWCommand("BS", ":D306");
+ Animation_Command[0]   = '\0'; 
+};
+
+void HarlemShake(){
+  sendESPNOWCommand("BS", ":D313");
+  HCR.PlayWAV(1,1800);  //Figure out which is the correct track to play
+ Animation_Command[0]   = '\0'; 
+};
+
+void allClose(){
+    sendESPNOWCommand("BS", ":D304");
+
+ Animation_Command[0]   = '\0'; 
+};
+bool doorsOpen = false;
+void toggleDoors(){
+  if (doorsOpen){
+    sendESPNOWCommand("BS", ":D304");
+    doorsOpen = false;
+  } else{
+    doorsOpen = true;
+    sendESPNOWCommand("BS", ":D303");
+  }
+   Animation_Command[0]   = '\0'; 
+
+}
+
+void allFlutter(){
+  sendESPNOWCommand("DC", ":R0112");
+  sendESPNOWCommand("BS", ":D308");  
+  DelayCall::schedule([]{sendESPNOWCommand("DC", ":R0155");}, 1000);
+
+     Animation_Command[0]   = '\0'; 
+
+}
+
+bool lightsOn = true;
+
+void allLightsToggle(){
+if (lightsOn){
+  writeBlSerial("E98");
+  // writeBlSerial("B98");
+
+  lightsOn = false;
+} else {
+  lightsOn = true;
+  writeBlSerial("E99");
+  // writeBlSerial("B99");
+
+}
+     Animation_Command[0]   = '\0'; 
+
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1168,8 +1344,8 @@ void loop(){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
             inputBuffer[1]=='d' ||          // Command for debugging
-            inputBuffer[1]=='I' ||          // Command designator for internal functions
-            inputBuffer[1]=='i' ||          // Command designator for internal functions
+            inputBuffer[1]=='L' ||          // Command designator for internal functions
+            inputBuffer[1]=='l' ||          // Command designator for internal functions
             inputBuffer[1]=='E' ||          // Command designator for storing EEPROM data
             inputBuffer[1]=='e'             // Command designator for storing EEPROM data
 
@@ -1311,9 +1487,19 @@ void loop(){
                     char inCharRead = inputBuffer[i];
                     mp3CommandString += inCharRead;  // add it to the inputString:
                   }              
-                  writeMpSerial(mp3CommandString);
-                  Debug.LOOP("Sent HCR command of %s \n", mp3CommandString);
-                  mp3CommandString = "";
+                  String hcrCommandFunction = getValue(mp3CommandString, ',', 0);
+                  String hcrCommandChannel = getValue(mp3CommandString, ',', 1);
+                  String hcrCommandTrack = getValue(mp3CommandString, ',', 2);
+                  String hcrCommandString = getValue(mp3CommandString, ',', 3);
+
+                  Debug.LOOP("HCR Function %i \n", hcrCommandFunction.toInt());
+                  Debug.LOOP("HCR Channel: %i \n", hcrCommandChannel.toInt());
+                  Debug.LOOP("HCR Track: %i \n", hcrCommandTrack.toInt());
+                  Debug.LOOP("HCR String: %s \n", hcrCommandString.c_str());
+                  HCRFunction(hcrCommandFunction.toInt(), hcrCommandChannel.toInt(), hcrCommandTrack.toInt(),hcrCommandTrack);
+                  // writeMpSerial(mp3CommandString);
+                  // Debug.LOOP("Sent HCR command of %s \n", mp3CommandString);
+                   mp3CommandString = "";
                 }
                 if(inputBuffer[1]=='C' || inputBuffer[1]=='c') {
                   for (int i=2; i<commandLength;i++ ){
@@ -1329,16 +1515,16 @@ void loop(){
         
           if(Animation_Command[0]){
             switch (AnimationCommandFunction) {
-              case 1:    Animation_Command[0]   = '\0'; break;
-              case 2: break;
-              case 3: break;
-              case 4: break;
-              case 5: break;
-              case 6: break;
-              case 7: break;
-              case 8: break;
-              case 9: break;
-              case 10: break;
+              case 1: normalOperations(); Animation_Command[0]   = '\0';    break;
+              case 2: panelWave();                                          break;
+              case 3: panelWaveFast();                                      break;
+              case 4: domePeriscope();                                      break;
+              case 5: allOpenClose();                                       break;
+              case 6: HarlemShake();                                        break;
+              case 7: allClose();                                           break;
+              case 8: allFlutter();                                         break;
+              case 9: toggleDoors();                                        break;
+              case 10: allLightsToggle();                                   break;
               case 11: break;
               case 12: break;
               case 13: break;

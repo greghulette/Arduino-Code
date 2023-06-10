@@ -13,7 +13,7 @@
 #include <SPI.h>
 #include "LoRa.h"
 #include "pin-map.h"
-// #include "ds3231.h"
+#include "ds3231.h"
 // #include <SD.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -22,6 +22,8 @@
 //#define USE_SERVO_DEBUG
 // #include "ReelTwo.h"
 // #include "core/DelayCall.h"
+
+#include <Toggle.h>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,8 +110,8 @@ float voltValue;
 
   byte msgCount = 0;            // count of outgoing messages
   byte receiveMsgCount =0;      // count of incoming messages
-  byte localAddress = 0xBC;     // address of this device
-  byte destination = 0xFF;      // destination to send to
+  byte localAddress = 0xFF;     // address of this device
+  byte destination = 0xBC;      // destination to send to
   long lastSendTime = 0;        // last send time
   int interval = 500;          // interval between sends
   const int csPin = 18;          // LoRa radio chip select
@@ -134,7 +136,15 @@ float voltValue;
   unsigned long dlkeepAliveAge;
   unsigned long dlkeepaliveAgeMillis;
   //declare OLED 
-  // OLED_CLASS_OBJ display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
+  OLED_CLASS_OBJ display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
+
+  int buttonState = 0;            // the current reading from the input pin
+// int lastButtonState = 0;  // the previous reading from the input pin
+
+// unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+// unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+
+Toggle button(BUTTON);
 
   //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
@@ -376,68 +386,68 @@ void toggleDebug2(){
 ///*****    Checks the age of the Status Variables            *****///
 //////////////////////////////////////////////////////////////////////
 
-// void checkAgeofkeepAlive(){    //checks for the variable's age
-//   if (domeControllerStatus=="Online"){
-//     if (millis()-dckeepAliveAge>=keepAliveTimeOut){
-//       domeControllerStatus="Offline";
-//       DBG_2("Dome Controller Offline\n");
-//     }
-//   }
-//   if (periscopeControllerStatus=="Online"){
-//     if (millis()-pckeepAliveAge>=keepAliveTimeOut){
-//       periscopeControllerStatus="Offline";
-//       DBG_2("Periscope Controller Offline\n");
-//     }
-//   }
-//   if (bodyServoControllerStatus=="Online"){
-//     if (millis()-bskeepAliveAge>=keepAliveTimeOut){
-//       bodyServoControllerStatus="Offline";
-//       DBG_2("Body Servo Controller Offline\n");
-//     }
-//   }
-//     if (bodyLEDControllerStatus=="Online"){
-//     if (millis()-bckeepAliveAge>=keepAliveTimeOut){
-//       bodyLEDControllerStatus="Offline";
-//       BL_BatteryPercentage = 0;
-//       BL_BatteryVoltage = 0.0;
-//       DBG_2("Body LED Controller Offline\n");
-//     }
-//   }
-// }
+void checkAgeofkeepAlive(){    //checks for the variable's age
+  // if (domeControllerStatus=="Online"){
+  //   if (millis()-dckeepAliveAge>=keepAliveTimeOut){
+  //     domeControllerStatus="Offline";
+  //     DBG_2("Dome Controller Offline\n");
+  //   }
+  // }
+  // if (periscopeControllerStatus=="Online"){
+  //   if (millis()-pckeepAliveAge>=keepAliveTimeOut){
+  //     periscopeControllerStatus="Offline";
+  //     DBG_2("Periscope Controller Offline\n");
+  //   }
+  // }
+  // if (bodyServoControllerStatus=="Online"){
+  //   if (millis()-bskeepAliveAge>=keepAliveTimeOut){
+  //     bodyServoControllerStatus="Offline";
+  //     DBG_2("Body Servo Controller Offline\n");
+  //   }
+  // }
+  //   if (bodyLEDControllerStatus=="Online"){
+  //   if (millis()-bckeepAliveAge>=keepAliveTimeOut){
+  //     bodyLEDControllerStatus="Offline";
+  //     BL_BatteryPercentage = 0;
+  //     BL_BatteryVoltage = 0.0;
+  //     DBG_2("Body LED Controller Offline\n");
+  //   }
+  // }
+}
 
-// void checkAgeofBLKeepAlive(){
-//   if (BL_LDP_Bright > 0){
-//     }
-// }
+void checkAgeofBLKeepAlive(){
+  if (BL_LDP_Bright > 0){
+    }
+}
 
-// void printKeepaliveStatus(){
+void printKeepaliveStatus(){
 
-//   DBG("Dome Controller Status: %s\n", domeControllerStatus);
-//   DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
-//   DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
-//   DBG("Body LED Controller Status: %s\n", bodyLEDControllerStatus);
+  // DBG("Dome Controller Status: %s\n", domeControllerStatus);
+  // DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
+  // DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
+  // DBG("Body LED Controller Status: %s\n", bodyLEDControllerStatus);
 
-//   ESP_command[0]   = '\0';
+  ESP_command[0]   = '\0';
 
-// }
+}
 
-// void displayOLEDString(String StringtoDisplay){
-//    display.clear();
-//     display.setFont(ArialMT_Plain_16);
-//     display.setTextAlignment(TEXT_ALIGN_CENTER);
-//     display.drawString(72,0,"Remote");
-//     display.setFont(ArialMT_Plain_10);
-//     display.setTextAlignment(TEXT_ALIGN_RIGHT);
-//     display.drawString(128, 0, LoRaRSSI);
-//     display.setTextAlignment(TEXT_ALIGN_LEFT);
-//     display.drawString(0, 0, "V: " + BATVoltage);
-//     display.drawString(0, 12, String(roundedpercent) + "%");
-//     display.setTextAlignment(TEXT_ALIGN_LEFT);
-//     display.drawString(0,25,"Network: " + WiFi.SSID());
-//     display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
-//     display.drawString(0,45, StringtoDisplay);
-//     display.display();
-// }
+void displayOLEDString(String StringtoDisplay){
+   display.clear();
+    display.setFont(ArialMT_Plain_16);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(72,0,"Remote");
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_RIGHT);
+    display.drawString(128, 0, LoRaRSSI);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(0, 0, "V: " + BATVoltage);
+    display.drawString(0, 12, String(roundedpercent) + "%");
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(0,25,"Network: " + WiFi.SSID());
+    display.drawString(0,35, "IP:" + WiFi.softAPIP().toString());
+    display.drawString(0,45, StringtoDisplay);
+    display.display();
+}
 
 
 
@@ -552,7 +562,7 @@ void updateStatus(){
 
   if (millis() - updateStatusPreviousMillis >= updateStatusDuration){
   updateStatusPreviousMillis = millis();
-  sendLoRaMessage("E07");
+  sendLoRaMessage("#L07");
   statusCounter++;
   adcValue = analogRead(ADCPIN);
   voltValue = (adcValue /4095.0) * 2 * 1.1 * 3.3;
@@ -563,7 +573,7 @@ void updateStatus(){
 
    BATVoltage = String(voltValue);
    String displayTest = "Sc:" + String(statusCounter) + " Lc:" + String(receiveMsgCount);
-  //  displayOLEDString(displayTest);
+   displayOLEDString(displayTest);
 
   }
 
@@ -586,7 +596,11 @@ float round_to_dp(float in_value, int decimal_place){
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
-
+  // pinMode(BUTTON, INPUT);
+  button.begin(BUTTON);
+  button.setToggleState(0);
+  button.setToggleTrigger(0);
+  button.setInputInvert(1);
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
@@ -596,49 +610,49 @@ void setup(){
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
   // Initialize the OLED
-  // Wire.begin();
+  Wire.begin();
    
-  // if (OLED_RST > 0) {
-  //       pinMode(OLED_RST, OUTPUT);
-  //       digitalWrite(OLED_RST, HIGH);
-  //       delay(100);
-  //       digitalWrite(OLED_RST, LOW);
-  //       delay(100);
-  //       digitalWrite(OLED_RST, HIGH);
-  //   }
+  if (OLED_RST > 0) {
+        pinMode(OLED_RST, OUTPUT);
+        digitalWrite(OLED_RST, HIGH);
+        delay(100);
+        digitalWrite(OLED_RST, LOW);
+        delay(100);
+        digitalWrite(OLED_RST, HIGH);
+    }
 
-  //   display.init();
-    // display.flipScreenVertically();
-    // display.clear();
-    // display.setFont(ArialMT_Plain_10);
-    // display.setTextAlignment(TEXT_ALIGN_CENTER);
-    // display.drawString(display.getWidth() / 2, display.getHeight() / 2, LORA_SENDER ? "LoRa Sender" : "LoRa Receiver");
-    // display.display();
-    // delay(1000);
-
-
+    display.init();
+    display.flipScreenVertically();
+    display.clear();
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(display.getWidth() / 2, display.getHeight() / 2, LORA_SENDER ? "LoRa Sender" : "LoRa Receiver");
+    display.display();
+    delay(1000);
 
 
-    //  String info = ds3231_test();
-    //  if (info != "") {
-    //      display.clear();
-    //      display.setFont(ArialMT_Plain_16);
-    //      display.setTextAlignment(TEXT_ALIGN_LEFT);
-    //      display.drawString(display.getWidth() / 2, display.getHeight() / 2, info);
-    //      display.display();
-    //      delay(2000);
-    //  }
-  // //Initialize the Soft Access Point
-  // WiFi.mode(WIFI_AP);
-  // Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
-  // delay(200);
-  // Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
-  // delay(200);
-  // Serial.print("Soft-AP IP address = ");
-  // Serial.println(WiFi.softAPIP());
-  // disp/lay.clear();
-  // display.drawString(display.getWidth() / 2, display.getHeight() / 2, "WiFi Ready");
-  // display.display();
+
+
+     String info = ds3231_test();
+     if (info != "") {
+         display.clear();
+         display.setFont(ArialMT_Plain_16);
+         display.setTextAlignment(TEXT_ALIGN_LEFT);
+         display.drawString(display.getWidth() / 2, display.getHeight() / 2, info);
+         display.display();
+         delay(2000);
+     }
+  //Initialize the Soft Access Point
+  WiFi.mode(WIFI_AP);
+  Serial.println(WiFi.softAP(ssid,password,channel,broadcastSSID,maxConnections) ? "AP Ready" : "Failed!");
+  delay(200);
+  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "AP IP Configured" : "Failed!");
+  delay(200);
+  Serial.print("Soft-AP IP address = ");
+  Serial.println(WiFi.softAPIP());
+  display.clear();
+  display.drawString(display.getWidth() / 2, display.getHeight() / 2, "WiFi Ready");
+  display.display();
 
   delay(1000);
 
@@ -652,111 +666,111 @@ void setup(){
   }
 
   Serial.println("LoRa init succeeded.");
-  // displayOLEDString("LoRa Ready");
+  displayOLEDString("LoRa Ready");
 
-//        display.clear();
-//        display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
-//        display.display();
+      //  display.clear();
+      //  display.drawString(display.getWidth() / 2, display.getHeight() / 2, "Lora Ready");
+      //  display.display();
   delay(1000);
 
-  // displayOLEDString("Bootup Complete");
+  displayOLEDString("Bootup Complete");
 
  //Setup the webpage and accept the GET requests, and parses the variables 
-//   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-//     combinedString = "";
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    combinedString = "";
 
-//     int paramsNr = request->params();               // Gets the number of parameters sent
-// //    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
-//     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-//       AsyncWebParameter* p = request->getParam(i);
+    int paramsNr = request->params();               // Gets the number of parameters sent
+//    DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
+    for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
+      AsyncWebParameter* p = request->getParam(i);
 
-// ////////////////////////////////////////////////////////////////////////////////////////////////////
-// //////////                                                                //////////////////////////        
-// //////////  These If statements choose where to send the commands         //////////////////////////
-// //////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
-// //////////                                                                //////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////                                                                //////////////////////////        
+//////////  These If statements choose where to send the commands         //////////////////////////
+//////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
+//////////                                                                //////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
         
-//     if ((p->name())== "param0" & (p->value()) == "LR"){
-//         DBG_1("LoRa Remote Chosen with If Statement\n");
-//         paramVar = 0;
-//         };
-//     if ((p->name())== "param0" & (p->value()) == "LD"){
-//         DBG_1("LoRa Droid Chosen with If Statement\n");
-//         paramVar = 1;
-//         };
+    if ((p->name())== "param0" & (p->value()) == "LR"){
+        DBG_1("LoRa Remote Chosen with If Statement\n");
+        paramVar = 0;
+        };
+    if ((p->name())== "param0" & (p->value()) == "LD"){
+        DBG_1("LoRa Droid Chosen with If Statement\n");
+        paramVar = 1;
+        };
         
-//         DBG_1("Param name: %s\n", (p->name()));
-//         DBG_1("Param value: %s\n", (p->value()).c_str());
+        DBG_1("Param name: %s\n", (p->name()));
+        DBG_1("Param value: %s\n", (p->value()).c_str());
   
-//         if (paramVar == 0){
-//           DBG_1("Executing on local ESP device\n");
-//           if ((p->name())== "param0" & (p->value()) == "LR"){
-//             DBG_1("Skipping param 0 in the EspNowSerial Write\n");
-//           } 
-//           else {
-//           inputString = (p->value());
-//           stringComplete = true;            
-//           };
-//         };
-//         if (paramVar == 1){
-//           DBG_1("Sending out LoRa Link\n"); 
-// //          delay(100);     
-//         if ((p->name())== "param0"){
-//             DBG_1("Skipping param 0 in the Lora Message\n");
-//           } 
-//           else {      
-//             combinedString = combinedString + p->value();
-//             //  LoRaOutgoing = (p->value());
-//             // sendLoRaMessage(LoRaOutgoing);
-//             // delay(10);
-//             // displayOLEDString(p->value());
-//           };
-//           DBG_1("Combined Value: %s\n",combinedString.c_str());
-//           // sendLoRaMessage(combinedString);
-//           delay(1500);
-//         } ;      
+        if (paramVar == 0){
+          DBG_1("Executing on local ESP device\n");
+          if ((p->name())== "param0" & (p->value()) == "LR"){
+            DBG_1("Skipping param 0 in the EspNowSerial Write\n");
+          } 
+          else {
+          inputString = (p->value());
+          stringComplete = true;            
+          };
+        };
+        if (paramVar == 1){
+          DBG_1("Sending out LoRa Link\n"); 
+//          delay(100);     
+        if ((p->name())== "param0"){
+            DBG_1("Skipping param 0 in the Lora Message\n");
+          } 
+          else {      
+            combinedString = combinedString + p->value();
+            //  LoRaOutgoing = (p->value());
+            // sendLoRaMessage(LoRaOutgoing);
+            // delay(10);
+            // displayOLEDString(p->value());
+          };
+          DBG_1("Combined Value: %s\n",combinedString.c_str());
+          // sendLoRaMessage(combinedString);
+          delay(1500);
+        } ;      
           
-//         DBG_1("------\n");
-//         delay(75);
-//     }
+        DBG_1("------\n");
+        delay(75);
+    }
 
-//     request->send(200, "text/plain", "Message Received on Remote LoRa Controller");
-//   });
+    request->send(200, "text/plain", "Message Received on Remote LoRa Controller");
+  });
 
-// server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-//       AsyncResponseStream *response = request->beginResponseStream("application/json");
-//       DynamicJsonDocument json(2048);
-//       json["remoteLoRaControllerStatus"] = 1;
-//       json["droidLoRaControllerStatus"] = droidGatewayStatus;
-//       json["LoRaRSSI"] = LoRaRSSI;
-//       json["bodyControllerStatus"] = bodyControllerStatus;
-//       json["bodyLEDControllerStatus"] = bodyLEDControllerStatus;
-//       json["bodyServoControllerStatus"] = bodyServoStatus;
-//       json["domeControllerStatus"] = domeControllerStatus;
-//       json["periscopeControllerStatus"] = domePlateControllerStatus;
-//       json["BL_LDP_Bright"] = BL_LDP_Bright;
-//       json["BL_MAINT_Bright"] = BL_MAINT_Bright;
-//       json["BL_VU_Bright"] = BL_VU_Bright;
-//       json["BL_CS_Bright"] = BL_CS_Bright;
-//       json["BL_vuOffsetInt"] = BL_vuOffsetInt;
-//       json["BL_vuBaselineInt"] = BL_vuBaselineInt;
-//       json["BL_vuOffsetExt"] = BL_vuOffsetExt;
-//       json["BL_vuBaselineExt"] = BL_vuBaselineExt;
-//       json["BL_BatteryVoltage"] = BL_BatteryVoltage;
-//       json["BL_BatteryPercentage"] = BL_BatteryPercentage;
+server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+      AsyncResponseStream *response = request->beginResponseStream("application/json");
+      DynamicJsonDocument json(2048);
+      json["remoteLoRaControllerStatus"] = 1;
+      json["droidLoRaControllerStatus"] = droidGatewayStatus;
+      json["LoRaRSSI"] = LoRaRSSI;
+      json["bodyControllerStatus"] = bodyControllerStatus;
+      json["bodyLEDControllerStatus"] = bodyLEDControllerStatus;
+      json["bodyServoControllerStatus"] = bodyServoStatus;
+      json["domeControllerStatus"] = domeControllerStatus;
+      json["periscopeControllerStatus"] = domePlateControllerStatus;
+      json["BL_LDP_Bright"] = BL_LDP_Bright;
+      json["BL_MAINT_Bright"] = BL_MAINT_Bright;
+      json["BL_VU_Bright"] = BL_VU_Bright;
+      json["BL_CS_Bright"] = BL_CS_Bright;
+      json["BL_vuOffsetInt"] = BL_vuOffsetInt;
+      json["BL_vuBaselineInt"] = BL_vuBaselineInt;
+      json["BL_vuOffsetExt"] = BL_vuOffsetExt;
+      json["BL_vuBaselineExt"] = BL_vuBaselineExt;
+      json["BL_BatteryVoltage"] = BL_BatteryVoltage;
+      json["BL_BatteryPercentage"] = BL_BatteryPercentage;
 
-//       serializeJson(json, *response);
-//       request->send(response);
-//   });
+      serializeJson(json, *response);
+      request->send(response);
+  });
 
   
-//   //Enable Access-Control-Allow-Origin to mitigate errors from website polling
-//   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-//   AsyncElegantOTA.begin(&server);    // Start ElegantOTA
+  //Enable Access-Control-Allow-Origin to mitigate errors from website polling
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
 
-//   //Initialize the AsycWebServer
-//   server.begin();
+  //Initialize the AsycWebServer
+  server.begin();
 
 // ESP_LED.begin();
 // ESP_LED.show();
@@ -776,6 +790,65 @@ void setup(){
 
 void loop(){
   updateStatus();
+  onReceive(LoRa.parsePacket());
+
+//   // read the state of the switch into a local variable:
+//   int reading = digitalRead(BUTTON);
+
+//   // check to see if you just pressed the button
+//   // (i.e. the input went from LOW to HIGH), and you've waited long enough
+//   // since the last press to ignore any noise:
+
+//   // If the switch changed, due to noise or pressing:
+//   if (reading != lastButtonState) {
+//     // reset the debouncing timer
+//     lastDebounceTime = millis();
+//  Serial.println("In if");
+
+//   if ((millis() - lastDebounceTime) > debounceDelay) {
+//     // whatever the reading is at, it's been there for longer than the debounce
+//     // delay, so take it as the actual current state:
+
+//     // if the button state has changed:
+//     if (reading != buttonState) {
+//       buttonState = reading;
+
+//       // only toggle the LED if the new button state is HIGH
+//       if (buttonState == HIGH) {
+//       Serial.println("High") ; 
+//       buttonState = !buttonState;    
+//       }
+//       if (buttonState == LOW) {
+//       Serial.println("Low");            
+//       buttonState = !buttonState;    
+
+//       }
+//     }
+//      }
+//   }
+//     lastButtonState = reading;
+button.poll();
+// buttonState = button.toggle();
+// if (buttonState != lastButtonState){
+//   buttonState = lastButtonState;
+//   Serial.println("Changed")
+// }
+if (button.onPress()) {
+  Serial.println("Changed");
+  buttonState = !buttonState;
+  if (buttonState == 0){
+    Serial.println("Relay OFF");
+    displayOLEDString("RELAY OFF");
+  }  if (buttonState == 1){
+    Serial.println("Relay ON");
+    displayOLEDString("RELAY ON");
+  }
+}
+// if(button.onChange() == 2){
+//   Serial.println("Changed");
+//   button.retrigger(20);
+// }
+// Serial.println(buttonState);
 
   // if (millis() - lastSendTime > interval) {
   //   String message = "Hello from R2's Remote";   // send a message
@@ -786,7 +859,7 @@ void loop(){
   // }
 
   // parse for a packet, and call onReceive with the result:
-  onReceive(LoRa.parsePacket());
+  // onReceive(LoRa.parsePacket());
   
 
   if (millis() - MLMillis >= mainLoopDelayVar){
@@ -797,11 +870,11 @@ void loop(){
       Serial.println("Startup");
       sendLoRaMessage("Bootup of Remote Complete");
       // delay(2000);
+      displayOLEDString("Running Loop");
     }
     
     if(Serial.available()){serialEvent();}
-    onReceive(LoRa.parsePacket());
-
+// 
       //  readLoRa();
 
     if (stringComplete) {autoComplete=false;}
@@ -829,7 +902,7 @@ void loop(){
               }
               DBG_2("I Command Proccessing: %s \n", infoCommandString.c_str());
               loRaCommandSubString = loRaCommandString.substring(0,commandLength+1);
-              // DBG("LoRa in Loop : %s\n", loRaCommandSubString);
+              DBG("LoRa in Loop : %s\n", loRaCommandSubString);
               sendLoRaMessage(loRaCommandSubString);
               loRaCommandString="";
             }     

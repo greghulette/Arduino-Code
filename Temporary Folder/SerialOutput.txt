@@ -1,18 +1,570 @@
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/Holo_Projectors/HP_REELTWO_TEST/HP_REELTWO_TEST/HP_REELTWO_TEST.ino: In function 'void loop()':
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/Holo_Projectors/HP_REELTWO_TEST/HP_REELTWO_TEST/HP_REELTWO_TEST.ino:1620:60: error: no matching function for call to 'CommandEvent::process(String&)'
-                   CommandEvent::process(HPFullStringCommand);
-                                                            ^
-In file included from /Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/dome/HoloLights.h:8,
-                 from /Users/gregoryhulette/Documents/GitHub/Arduino-Code/Holo_Projectors/HP_REELTWO_TEST/HP_REELTWO_TEST/HP_REELTWO_TEST.ino:51:
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:33:14: note: candidate: 'static void CommandEvent::process(char*)'
-  static void process(char* cmd)
-              ^~~~~~~
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:33:14: note:   no known conversion for argument 1 from 'String' to 'char*'
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:54:17: note: candidate: 'static void CommandEvent::process(const char*)'
-     static void process(const char* cmd)
-                 ^~~~~~~
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:54:17: note:   no known conversion for argument 1 from 'String' to 'const char*'
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:68:14: note: candidate: 'static void CommandEvent::process(PROGMEMString)'
-  static void process(PROGMEMString pcmd)
-              ^~~~~~~
-/Users/gregoryhulette/Documents/GitHub/Arduino-Code/libraries/Reeltwo-master/src/core/CommandEvent.h:68:14: note:   no known conversion for argument 1 from 'String' to 'PROGMEMString' {aka 'const __FlashStringHelper*'}
+PWM: 0 (pulse: 1525 [1000:2000:1500])
+PWM: 9 (pulse: 1549 [1000:2000:1500])
+ST: -12
+ST: -12
+ST: -12
+ST: -12
+PWM: 14 (pulse: 1573 [1000:2000:1500])
+ST: -18
+ST: -18
+ST: -18
+ST: -18
+PWM: 19 (pulse: 1597 [1000:2000:1500])
+ST: -24
+ST: -24
+ST: -24
+ST: -24
+PWM: 24 (pulse: 1622 [1000:2000:1500])
+ST: -30
+ST: -30
+ST: -30
+ST: -30
+PWM: 29 (pulse: 1647 [1000:2000:1500])
+ST: -37
+ST: -37
+ST: -37
+ST: -37
+PWM: 34 (pulse: 1671 [1000:2000:1500])
+ST: -43
+ST: -43
+ST: -43
+ST: -43
+PWM: 39 (pulse: 1695 [1000:2000:1500])
+ST: -49
+ST: -49
+[ OFF] pos=33
+ST: -49
+PWM: 44 (pulse: 1720 [1000:2000:1500])
+ST: -55
+ST: -55
+[ OFF] pos=34
+ST: -55
+PWM: 48 (pulse: 1744 [1000:2000:1500])
+ST: -61
+[ OFF] pos=35
+ST: -61
+PWM: 53 (pulse: 1769 [1000:2000:1500])
+[ OFF] pos=36
+ST: -68
+PWM: 58 (pulse: 1793 [1000:2000:1500])
+ST: -74
+[ OFF] pos=37
+ST: -74
+PWM: 63 (pulse: 1818 [1000:2000:1500])
+ST: -80
+[ OFF] pos=38
+ST: -80
+PWM: 68 (pulse: 1842 [1000:2000:1500])
+ST: -86
+[ OFF] pos=41
+ST: -86
+ST: -86
+PWM: 73 (pulse: 1867 [1000:2000:1500])
+ST: -93
+ST: -93
+ST: -93
+ST: -93
+PWM: 78 (pulse: 1891 [1000:2000:1500])
+ST: -99
+ST: -99
+ST: -99
+ST: -99
+PWM: 83 (pulse: 1916 [1000:2000:1500])
+ST: -105
+[ OFF] pos=42
+ST: -105
+PWM: 88 (pulse: 1940 [1000:2000:1500])
+ST: -111
+ST: -111
+ST: -111
+ST: -111
+PWM: 93 (pulse: 1965 [1000:2000:1500])
+ST: -118
+ST: -118
+ST: -118
+ST: -118
+PWM: 97 (pulse: 1989 [1000:2000:1500])
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+ST: -124
+PWM: 90 (pulse: 1950 [1000:2000:1500])
+ST: -114
+ST: -114
+ST: -114
+ST: -114
+PWM: 85 (pulse: 1926 [1000:2000:1500])
+ST: -108
+ST: -108
+ST: -108
+ST: -108
+PWM: 80 (pulse: 1901 [1000:2000:1500])
+ST: -101
+ST: -101
+ST: -101
+ST: -101
+PWM: 75 (pulse: 1877 [1000:2000:1500])
+ST: -95
+ST: -95
+ST: -95
+ST: -95
+PWM: 70 (pulse: 1852 [1000:2000:1500])
+ST: -89
+ST: -89
+ST: -89
+ST: -89
+PWM: 65 (pulse: 1827 [1000:2000:1500])
+ST: -83
+ST: -83
+ST: -83
+ST: -83
+PWM: 60 (pulse: 1803 [1000:2000:1500])
+ST: -76
+ST: -76
+ST: -76
+ST: -76
+PWM: 55 (pulse: 1779 [1000:2000:1500])
+ST: -70
+ST: -70
+ST: -70
+ST: -70
+PWM: 50 (pulse: 1754 [1000:2000:1500])
+ST: -64
+ST: -64
+ST: -64
+ST: -64
+PWM: 46 (pulse: 1730 [1000:2000:1500])
+ST: -58
+ST: -58
+ST: -58
+ST: -58
+PWM: 41 (pulse: 1705 [1000:2000:1500])
+ST: -52
+ST: -52
+ST: -52
+ST: -52
+PWM: 36 (pulse: 1681 [1000:2000:1500])
+ST: -45
+[ OFF] pos=43
+ST: -45
+PWM: 31 (pulse: 1656 [1000:2000:1500])
+ST: -39
+ST: -39
+ST: -39
+ST: -39
+PWM: 26 (pulse: 1632 [1000:2000:1500])
+ST: -33
+ST: -33
+ST: -33
+[ OFF] pos=44
+ST: -33
+PWM: 21 (pulse: 1608 [1000:2000:1500])
+ST: -27
+ST: -27
+PWM: 16 (pulse: 1584 [1000:2000:1500])
+[ OFF] pos=45
+ST: -21
+ST: -21
+PWM: 11 (pulse: 1559 [1000:2000:1500])
+[ OFF] pos=47
+ST: -14
+ST: -14
+PWM: 6 (pulse: 1534 [1000:2000:1500])
+[ OFF] pos=50
+ST: -8
+ST: -8
+PWM: 0 (pulse: 1510 [1000:2000:1500])
+[ OFF] pos=51
+ST: 0
+[ OFF] pos=53
+[ OFF] pos=55
+[ OFF] pos=56
+[ OFF] pos=59
+[ OFF] pos=60
+[ OFF] pos=65
+[ OFF] pos=67
+[ OFF] pos=69
+[ OFF] pos=72
+[ OFF] pos=74
+[ OFF] pos=76
+[ OFF] pos=78
+[ OFF] pos=82
+[ OFF] pos=85
+[ OFF] pos=90
+[ OFF] pos=93
+[ OFF] pos=97
+[ OFF] pos=99
+[ OFF] pos=102
+[ OFF] pos=103
+[ OFF] pos=107
+PWM: 0 (pulse: 1475 [1000:2000:1500])
+[ OFF] pos=111
+PWM: -9 (pulse: 1451 [1000:2000:1500])
+[ OFF] pos=113
+ST: 12
+PWM: -14 (pulse: 1426 [1000:2000:1500])
+[ OFF] pos=116
+ST: 18
+[ OFF] pos=117
+ST: 18
+PWM: -19 (pulse: 1402 [1000:2000:1500])
+[ OFF] pos=119
+ST: 24
+PWM: -24 (pulse: 1378 [1000:2000:1500])
+[ OFF] pos=127
+ST: 30
+PWM: -29 (pulse: 1353 [1000:2000:1500])
+[ OFF] pos=130
+ST: 37
+[ OFF] pos=133
+ST: 37
+PWM: -34 (pulse: 1329 [1000:2000:1500])
+[ OFF] pos=137
+ST: 43
+PWM: -39 (pulse: 1304 [1000:2000:1500])
+[ OFF] pos=139
+ST: 49
+PWM: -44 (pulse: 1280 [1000:2000:1500])
+[ OFF] pos=143
+ST: 55
+PWM: -49 (pulse: 1255 [1000:2000:1500])
+[ OFF] pos=144
+ST: 62
+[ OFF] pos=146
+ST: 62
+PWM: -53 (pulse: 1231 [1000:2000:1500])
+[ OFF] pos=153
+ST: 68
+PWM: -58 (pulse: 1206 [1000:2000:1500])
+[ OFF] pos=156
+ST: 74
+PWM: -63 (pulse: 1182 [1000:2000:1500])
+[ OFF] pos=158
+ST: 80
+[ OFF] pos=163
+ST: 80
+PWM: -68 (pulse: 1158 [1000:2000:1500])
+[ OFF] pos=168
+ST: 86
+PWM: -73 (pulse: 1133 [1000:2000:1500])
+[ OFF] pos=175
+ST: 93
+PWM: -78 (pulse: 1109 [1000:2000:1500])
+[ OFF] pos=180
+ST: 99
+[ OFF] pos=183
+ST: 99
+PWM: -83 (pulse: 1084 [1000:2000:1500])
+[ OFF] pos=187
+ST: 105
+PWM: -88 (pulse: 1059 [1000:2000:1500])
+[ OFF] pos=194
+ST: 112
+PWM: -93 (pulse: 1035 [1000:2000:1500])
+[ OFF] pos=201
+ST: 118
+[ OFF] pos=204
+ST: 118
+PWM: -97 (pulse: 1011 [1000:2000:1500])
+[ OFF] pos=210
+ST: 124
+[ OFF] pos=218
+ST: 124
+[ OFF] pos=222
+ST: 124
+[ OFF] pos=227
+ST: 124
+[ OFF] pos=238
+ST: 124
+[ OFF] pos=243
+ST: 124
+PWM: -90 (pulse: 1050 [1000:2000:1500])
+[ OFF] pos=247
+ST: 114
+PWM: -85 (pulse: 1074 [1000:2000:1500])
+[ OFF] pos=255
+ST: 108
+[ OFF] pos=262
+ST: 108
+PWM: -80 (pulse: 1099 [1000:2000:1500])
+[ OFF] pos=267
+ST: 101
+PWM: -75 (pulse: 1123 [1000:2000:1500])
+[ OFF] pos=278
+ST: 95
+PWM: -70 (pulse: 1148 [1000:2000:1500])
+[ OFF] pos=282
+ST: 89
+PWM: -65 (pulse: 1172 [1000:2000:1500])
+[ OFF] pos=287
+ST: 83
+[ OFF] pos=295
+ST: 83
+PWM: -60 (pulse: 1197 [1000:2000:1500])
+[ OFF] pos=303
+ST: 76
+PWM: -55 (pulse: 1223 [1000:2000:1500])
+[ OFF] pos=309
+ST: 70
+PWM: -50 (pulse: 1246 [1000:2000:1500])
+[ OFF] pos=316
+ST: 64
+PWM: -46 (pulse: 1270 [1000:2000:1500])
+[ OFF] pos=322
+ST: 58
+[ OFF] pos=327
+ST: 58
+PWM: -41 (pulse: 1295 [1000:2000:1500])
+[ OFF] pos=334
+ST: 52
+PWM: -36 (pulse: 1319 [1000:2000:1500])
+[ OFF] pos=339
+ST: 45
+PWM: -31 (pulse: 1343 [1000:2000:1500])
+[ OFF] pos=345
+ST: 39
+PWM: -26 (pulse: 1367 [1000:2000:1500])
+[ OFF] pos=351
+ST: 33
+[ OFF] pos=355
+ST: 33
+PWM: -21 (pulse: 1391 [1000:2000:1500])
+[ OFF] pos=4
+ST: 27
+PWM: -16 (pulse: 1416 [1000:2000:1500])
+[ OFF] pos=6
+ST: 21
+PWM: -12 (pulse: 1440 [1000:2000:1500])
+[ OFF] pos=8
+ST: 15
+[ OFF] pos=14
+ST: 15
+PWM: -7 (pulse: 1465 [1000:2000:1500])
+[ OFF] pos=19
+ST: 8
+PWM: 0 (pulse: 1489 [1000:2000:1500])
+[ OFF] pos=21
+ST: 0
+[ OFF] pos=25
+[ OFF] pos=29
+[ OFF] pos=32
+[ OFF] pos=35
+[ OFF] pos=37
+[ OFF] pos=38
+[ OFF] pos=42
+[ OFF] pos=45
+[ OFF] pos=50
+[ OFF] pos=52
+[ OFF] pos=55
+[ OFF] pos=57
+[ OFF] pos=60
+[ OFF] pos=64
+[ OFF] pos=67
+[ OFF] pos=69
+[ OFF] pos=72
+[ OFF] pos=75
+[ OFF] pos=76
+[ OFF] pos=78
+[ OFF] pos=82
+[ OFF] pos=87
+[ OFF] pos=91
+[ OFF] pos=93
+[ OFF] pos=96
+[ OFF] pos=99
+[ OFF] pos=102
+[ OFF] pos=104
+[ OFF] pos=107
+[ OFF] pos=111
+[ OFF] pos=113
+[ OFF] pos=116
+[ OFF] pos=117
+[ OFF] pos=119
+[ OFF] pos=127
+[ OFF] pos=130
+[ OFF] pos=133
+[ OFF] pos=137
+[ OFF] pos=139
+[ OFF] pos=143
+[ OFF] pos=144
+[ OFF] pos=145
+[ OFF] pos=147
+[ OFF] pos=153
+[ OFF] pos=156
+[ OFF] pos=157
+[ OFF] pos=158
+[ OFF] pos=163
+[ OFF] pos=167
+[ OFF] pos=168
+[ OFF] pos=170
+[ OFF] pos=178
+[ OFF] pos=180
+[ OFF] pos=183
+[ OFF] pos=184
+[ OFF] pos=186
+[ OFF] pos=190
+[ OFF] pos=195
+[ OFF] pos=196
+[ OFF] pos=199
+[ OFF] pos=204
+[ OFF] pos=207
+[ OFF] pos=208
+[ OFF] pos=213
+[ OFF] pos=218
+[ OFF] pos=222
+[ OFF] pos=223
+[ OFF] pos=224
+[ OFF] pos=227
+[ OFF] pos=235
+[ OFF] pos=238
+[ OFF] pos=241
+[ OFF] pos=242
+[ OFF] pos=243
+[ OFF] pos=247
+[ OFF] pos=250
+[ OFF] pos=254
+[ OFF] pos=258
+[ OFF] pos=262
+[ OFF] pos=263
+[ OFF] pos=265
+[ OFF] pos=266
+[ OFF] pos=273
+[ OFF] pos=276
+[ OFF] pos=278
+[ OFF] pos=281
+[ OFF] pos=282
+[ OFF] pos=283
+[ OFF] pos=287
+[ OFF] pos=290
+[ OFF] pos=294
+[ OFF] pos=298
+[ OFF] pos=301
+[ OFF] pos=305
+[ OFF] pos=307
+[ OFF] pos=311
+[ OFF] pos=314
+[ OFF] pos=318
+[ OFF] pos=322
+[ OFF] pos=324
+[ OFF] pos=327
+[ OFF] pos=332
+[ OFF] pos=334
+[ OFF] pos=338
+[ OFF] pos=340
+[ OFF] pos=345
+[ OFF] pos=348
+[ OFF] pos=351
+[ OFF] pos=354
+[ OFF] pos=355
+[ OFF] pos=4
+[ OFF] pos=6
+[ OFF] pos=7
+[ OFF] pos=12
+[ OFF] pos=14
+[ OFF] pos=17
+[ OFF] pos=20
+[ OFF] pos=22
+[ OFF] pos=25
+[ OFF] pos=28
+[ OFF] pos=29
+[ OFF] pos=32
+[ OFF] pos=35
+[ OFF] pos=37
+[ OFF] pos=38
+[ OFF] pos=42
+[ OFF] pos=43
+[ OFF] pos=47
+[ OFF] pos=50
+[ OFF] pos=54
+[ OFF] pos=55
+[ OFF] pos=58
+[ OFF] pos=60
+[ OFF] pos=65
+[ OFF] pos=68
+[ OFF] pos=70
+[ OFF] pos=72
+[ OFF] pos=75
+[ OFF] pos=76
+[ OFF] pos=79
+[ OFF] pos=83
+[ OFF] pos=87
+[ OFF] pos=92
+[ OFF] pos=94
+[ OFF] pos=97
+[ OFF] pos=100
+[ OFF] pos=103
+[ OFF] pos=104
+[ OFF] pos=110
+[ OFF] pos=112
+[ OFF] pos=116
+[ OFF] pos=117
+[ OFF] pos=118
+[ OFF] pos=119
+[ OFF] pos=125
+[ OFF] pos=127
+[ OFF] pos=128
+[ OFF] pos=130
+[ OFF] pos=131

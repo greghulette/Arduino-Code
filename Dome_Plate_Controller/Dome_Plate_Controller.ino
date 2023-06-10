@@ -443,8 +443,9 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         }
      } else if (IncomingMacAddress == bodyControllerMACAddressString){
     memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
+    incomingPassword = commandsToReceiveFromBodyController.structPassword;
    if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+        Debug.ESPNOW("Wrong ESP-NOW Password of %s was sent.  Message Ignored\n", incomingPassword.c_str());  
       } else {
         incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;

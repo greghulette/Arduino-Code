@@ -1,6 +1,6 @@
 #include "hcr.h"
 #include <Stream.h>
-#include <Wire.h>
+// #include <Wire.h>
 
 #if defined(ARDUINO) && ARDUINO >=100
 #include <Arduino.h>
@@ -31,17 +31,17 @@
     refreshSpeed = refreshRate;
 }; */
 
-HCRVocalizer::HCRVocalizer(const uint8_t addr, TwoWire &i2c)
-    : _i2caddr(addr), _i2c(&i2c), _serialBaud(400000)
-{
-    connectionType=0x03;
-}
+// HCRVocalizer::HCRVocalizer(const uint8_t addr, TwoWire &i2c)
+//     : _i2caddr(addr), _i2c(&i2c), _serialBaud(400000)
+// {
+//     connectionType=0x03;
+// }
 
-HCRVocalizer::HCRVocalizer(const uint8_t addr, TwoWire &i2c, int baud)
-    : _i2caddr(addr), _i2c(&i2c), _serialBaud(baud)
-{
-    connectionType=0x03;
-}
+// HCRVocalizer::HCRVocalizer(const uint8_t addr, TwoWire &i2c, int baud)
+//     : _i2caddr(addr), _i2c(&i2c), _serialBaud(baud)
+// {
+//     connectionType=0x03;
+// }
 
 HCRVocalizer::HCRVocalizer(HardwareSerial *conn,int baud)
     : _serial(conn), _serialBaud(baud)
@@ -105,11 +105,11 @@ void HCRVocalizer::begin(const uint16_t refspeed)
             _softserial->println("Begin _softserial");
             break;
         case 0x03:
-            if (_i2caddr>0){
-                _i2c->begin();
-                _i2c->setClock(_serialBaud);
-                _i2c->setWireTimeout(3000 /* us */, true /* reset_on_timeout */);
-            }
+            // if (_i2caddr>0){
+            //     _i2c->begin();
+            //     _i2c->setClock(_serialBaud);
+            //     _i2c->setWireTimeout(3000 /* us */, true /* reset_on_timeout */);
+            // }
             break;
         default:
             Serial.print("HCR: No Connection Setup Specified");
@@ -165,24 +165,24 @@ void HCRVocalizer::transmit(String command, bool retry)
             _softserial->write((command + "\n").c_str());
             break;
         case 0x03:
-            int i2cStatus = 0;
+            // int i2cStatus = 0;
 
-            _i2c->beginTransmission((byte)_i2caddr);
-            _i2c->write((command + "\n").c_str());
-            i2cStatus = _i2c->endTransmission();
+            // _i2c->beginTransmission((byte)_i2caddr);
+            // _i2c->write((command + "\n").c_str());
+            // i2cStatus = _i2c->endTransmission();
 
-            // Serial.print(command); Serial.print("-"); Serial.print(i2cStatus); Serial.println(";");
+            // // Serial.print(command); Serial.print("-"); Serial.print(i2cStatus); Serial.println(";");
 
-            if (i2cStatus > 2)
-            {
-                _i2c->endTransmission();
-                if (!retry)
-                {
-                    delay(100);
-                    Serial.print("->");
-                    transmit(command,true);
-                }
-            }
+            // if (i2cStatus > 2)
+            // {
+            //     _i2c->endTransmission();
+            //     if (!retry)
+            //     {
+            //         delay(100);
+            //         Serial.print("->");
+            //         transmit(command,true);
+            //     }
+            // }
             break;
         default: break;
     }
@@ -207,24 +207,24 @@ void HCRVocalizer::receive(void)
             }
             break;
         case 0x03:
-            int bytes = _i2c->requestFrom((int)_i2caddr,(int)8);
-            Serial.print("i2c {");
-            Serial.print(bytes);
-            if (_i2c->available())
-            {
-                Serial.print("} receive: ");
-                while (_i2c->available())
-                {
-                    byte ch = _i2c->read();
-                    Serial.print((char)ch);
-                    receiveData(ch);
-                }
-                Serial.println(";");
-            }
-            else
-            {
-                Serial.println("} - No Response;");
-            }
+            // int bytes = _i2c->requestFrom((int)_i2caddr,(int)8);
+            // Serial.print("i2c {");
+            // Serial.print(bytes);
+            // if (_i2c->available())
+            // {
+            //     Serial.print("} receive: ");
+            //     while (_i2c->available())
+            //     {
+            //         byte ch = _i2c->read();
+            //         Serial.print((char)ch);
+            //         receiveData(ch);
+            //     }
+            //     Serial.println(";");
+            // }
+            // else
+            // {
+            //     Serial.println("} - No Response;");
+            // }
             break;
         default: break;
     }
