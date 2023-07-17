@@ -318,10 +318,10 @@ private:
     static void rxBitISR(UARTBase* self);
     static void rxBitSyncISR(UARTBase* self);
 
-    static inline uint32_t IRAM_ATTR microsToTicks(uint32_t micros) __attribute__((always_inline)) {
+    static inline uint32_t IRAM_ATTR microsToTicks(uint32_t micros) ALWAYS_INLINE_ATTR {
         return micros << 1;
     }
-    static inline uint32_t ticksToMicros(uint32_t ticks) __attribute__((always_inline)) {
+    static inline uint32_t ticksToMicros(uint32_t ticks) ALWAYS_INLINE_ATTR {
         return ticks >> 1;
     }
 
@@ -366,8 +366,8 @@ private:
     // the ISR stores the relative bit times in the buffer. The inversion corrected level is used as sign bit (2's complement):
     // 1 = positive including 0, 0 = negative.
     std::unique_ptr<circular_queue<uint32_t, UARTBase*> > m_isrBuffer;
-    const Delegate<void(uint32_t&&), UARTBase*> m_isrBufferForEachDel = { [](UARTBase* self, uint32_t&& isrTick) { self->rxBits(isrTick); }, this };
-    std::atomic<bool> m_isrOverflow;
+    const Delegate<void(uint32_t&&), UARTBase*> m_isrBufferForEachDel { [](UARTBase* self, uint32_t&& isrTick) { self->rxBits(isrTick); }, this };
+    std::atomic<bool> m_isrOverflow { false };
     uint32_t m_isrLastTick;
     bool m_rxCurParity = false;
     Delegate<void(), void*> m_rxHandler;
@@ -432,6 +432,7 @@ using UART = BasicUART< GpioCapabilities >;
 using SoftwareSerial = EspSoftwareSerial::UART;
 using namespace EspSoftwareSerial;
 
+#if __GNUC__ < 12
 // The template member functions below must be in IRAM, but due to a bug GCC doesn't currently
 // honor the attribute. Instead, it is possible to do explicit specialization and adorn
 // these with the IRAM attribute:
@@ -442,6 +443,7 @@ extern template void delegate::detail::DelegateImpl<void*, void>::operator()() c
 extern template size_t circular_queue<uint32_t, EspSoftwareSerial::UARTBase*>::available() const;
 extern template bool circular_queue<uint32_t, EspSoftwareSerial::UARTBase*>::push(uint32_t&&);
 extern template bool circular_queue<uint32_t, EspSoftwareSerial::UARTBase*>::push(const uint32_t&);
+#endif // __GNUC__ < 12
 
 #endif // __SoftwareSerial_h
 

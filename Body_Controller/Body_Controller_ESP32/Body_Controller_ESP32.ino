@@ -144,6 +144,10 @@
   int getWAVCount;
   int getPlayingWAV;
   int HCRVolume;
+  int happyEmotionValue;
+  int sadEmotionValue;
+  int madEmotionValue;
+  int scaredEmotionValue;
 //////////////////////////////////////////////////////////////////////
   ///*****       Startup and Loop Variables                     *****///
   //////////////////////////////////////////////////////////////////////
@@ -1048,8 +1052,8 @@ void HCRFunction(int command = 0, int chan = 0, int track = 0, String filename= 
 
     switch (command) {
     case 1: HCR.update();                               break;
-    case 2: HCR.SetEmotion(chan, track);                break;
-    case 3: HCR.Trigger(chan, track);                   break;
+    case 2: HCR.SetEmotion(chan, track);   HCR.update();              break;
+    case 3: HCR.Trigger(chan, track);   HCR.update();                 break;
     case 4: HCR.Stimulate(chan, track);                 break;
     case 5: HCR.Overload();                             break;
     case 6: HCR.Muse();                                 break;
@@ -1074,6 +1078,7 @@ void HCRFunction(int command = 0, int chan = 0, int track = 0, String filename= 
     case 26: getPlayingWAV = HCR.GetPlayingWAV(chan);   break;
     case 27: HCR.getUpdate();                           break;
     case 28: HCRVolume = HCR.getVolume(chan);           break;
+    case 29: HCR.getUpdate(); getHCRStatus();                        break;
     // case 29: HCR.dfPlayer();                            break;
     };
   
@@ -1095,6 +1100,17 @@ String getValue(String data, char separator, int index){
   return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
+void getHCRStatus(){
+  happyEmotionValue = HCR.GetEmotion(0);
+  sadEmotionValue = HCR.GetEmotion(1);
+  madEmotionValue = HCR.GetEmotion(2);
+  scaredEmotionValue = HCR.GetEmotion(3);
+  float vocalizerVolume = HCR.getVolume(0);
+  float chan_AVolume = HCR.getVolume(1);
+  float chan_BVolume = HCR.getVolume(2);
+  Debug.STATUS("Happy: %i\nSad: %i\nMad: %i\nScared: %i\n", happyEmotionValue, sadEmotionValue, madEmotionValue, scaredEmotionValue);
+  Debug.STATUS("Vocalizer Volume: %f\nChannel A Volume: %f\nChanel B Volume: %f\n\n", vocalizerVolume, chan_AVolume, chan_BVolume);
+};
 
 /*///////////////////////////////////////////////////////////////////////////////////////////////////////
                     Animations
@@ -1136,8 +1152,11 @@ void allOpenClose(){
 };
 
 void HarlemShake(){
+  float currentVolume = HCR.getVolume(1);
   sendESPNOWCommand("BS", ":D313");
+  HCR.SetVolume(1,100);
   HCR.PlayWAV(1,1800);  //Figure out which is the correct track to play
+  HCR.SetVolume(1,currentVolume);
  Animation_Command[0]   = '\0'; 
 };
 
@@ -1171,18 +1190,17 @@ void allFlutter(){
 bool lightsOn = true;
 
 void allLightsToggle(){
-if (lightsOn){
-  writeBlSerial("E98");
-  // writeBlSerial("B98");
+  if (lightsOn){
+    writeBlSerial("E98");
+    // writeBlSerial("B98");
+    lightsOn = false;
+  } else {
+    lightsOn = true;
+    writeBlSerial("E99");
+    // writeBlSerial("B99");
 
-  lightsOn = false;
-} else {
-  lightsOn = true;
-  writeBlSerial("E99");
-  // writeBlSerial("B99");
-
-}
-     Animation_Command[0]   = '\0'; 
+  }
+  Animation_Command[0]   = '\0'; 
 
 }
 
@@ -1499,7 +1517,7 @@ void loop(){
                   HCRFunction(hcrCommandFunction.toInt(), hcrCommandChannel.toInt(), hcrCommandTrack.toInt(),hcrCommandTrack);
                   // writeMpSerial(mp3CommandString);
                   // Debug.LOOP("Sent HCR command of %s \n", mp3CommandString);
-                   mp3CommandString = "";
+                  mp3CommandString = "";
                 }
                 if(inputBuffer[1]=='C' || inputBuffer[1]=='c') {
                   for (int i=2; i<commandLength;i++ ){

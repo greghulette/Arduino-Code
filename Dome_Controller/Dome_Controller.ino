@@ -62,16 +62,16 @@
 ///*****       Preferences/Items to change        *****///
 //////////////////////////////////////////////////////////////////////
  //ESPNOW Password - This must be the same across all devices
-  String ESPNOWPASSWORD = "GregsAstromech";
+  String ESPNOWPASSWORD = "GregsAstromech";  //Please change this to your own.
 
   ////R2 Control Network Details for OTA only
   const char* ssid = "R2D2_Control_Network";
-  const char* password =  "astromech";
+  const char* password =  "astromech";   //Please change this to your own.
 
-  //Enables status tracking on the LoRa Droid
+  //Enables status tracking on the Droid Gateway.  Not needed for most builds.  
   bool STATUS_TRACKING = 1;
   
-  // Keepalive timer to send status messages to the Kill Switch (Droid)
+  // Keepalive timer to send status messages to the Droid Gateway
   int keepAliveDuration= 4000;  // 4 seconds
   
   // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
