@@ -637,15 +637,15 @@ void setup(){
 //////////  This way we can control multiple serial ports from one ESP32. //////////////////////////
 //////////                                                                //////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-  String pvalueSubString = (p->value().substring(0,1));
-    if ((p->name())== "param0" & (p->value()) == "#"){
-        Debug.PARAM("Executing command for local device \n");
-        paramVar = 0;
-        };
-    if ((p->name())== "param0" & (p->value()) == ":"){
-        Debug.PARAM("LoRa Droid Chosen with If Statement\n");
-        paramVar = 1;
-        };
+  // String pvalueSubString = (p->value().substring(0,1));
+    // if ((p->name())== "param0" & (p->value()) == "#"){
+    //     Debug.PARAM("Executing command for local device \n");
+    //     paramVar = 0;
+    //     };
+    // if ((p->name())== "param0" & (p->value()) == ":"){
+    //     Debug.PARAM("LoRa Droid Chosen with If Statement\n");
+    //     paramVar = 1;
+    //     };
         
         // Debug.PARAM("Param name: %s\n", (p->name()));
         // Debug.PARAM("Param value: %s\n", (p->value()).c_str());
@@ -660,7 +660,7 @@ void setup(){
 //           stringComplete = true;            
 //           };
 //         };
-        if (paramVar == 1){
+        // if (paramVar == 1){
           Debug.PARAM("Executing Command\n"); 
 //          delay(100);     
         if ((p->name())== "param0"){
@@ -674,14 +674,14 @@ void setup(){
           inputString = (p->value());
           stringComplete = true;  
           Debug.PARAM("sent to loop: %s \n", inputString.c_str());
-          delay(5);
+          delay(75);
             // displayOLEDString(p->value());
           };
           // Debug.PARAM("Combined Value: %s \n",combinedString.c_str());
           // sendLoRaMessage(combinedString);
           // combinedString = "";
           // delay(1500);
-        } ;      
+        // } ;      
           
 //         Debug.DBG_1("------\n");
     }
@@ -884,7 +884,6 @@ void sendLoRaMessage(String outgoing) {
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   msgCount++;                           // increment message ID
-  Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing);
-  delay(500);
+  Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing.c_str());
 
 }
