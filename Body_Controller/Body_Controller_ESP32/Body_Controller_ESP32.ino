@@ -1053,7 +1053,7 @@ void HCRFunction(int command = 0, int chan = 0, int track = 0, String filename= 
     switch (command) {
     case 1: HCR.update();                               break;
     case 2: HCR.SetEmotion(chan, track);   HCR.update();              break;
-    case 3: HCR.Trigger(chan, track);   HCR.update();                 break;
+    case 3: HCR.Trigger(chan, track);                   break;
     case 4: HCR.Stimulate(chan, track);                 break;
     case 5: HCR.Overload();                             break;
     case 6: HCR.Muse();                                 break;
@@ -1346,7 +1346,7 @@ void loop(){
 
     }
     if(Serial.available()){serialEvent();}
-    if(rdSerial.available()){serialRdEvent();}
+    // if(rdSerial.available()){serialRdEvent();}
     if(blSerial.available()){serialBlEvent();}
     if(stSerial.available()){serialStEvent();}
     if(mpSerial.available()){serialMpEvent();}

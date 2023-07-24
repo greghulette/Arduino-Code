@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                                                                           *****///
 ///*****                                                       FlthyRhyno Astromech Body Fx Sketch v2.0                                                            *****///
 ///*****                                                For use with the FlthyRhyno Astromech Body Fx Shield v8                                                    *****///
@@ -1476,7 +1476,7 @@ void clearCLStatus() {
           stripLDP.setBrightness(LDP_bright);
            
            byte arr[] = {LDP_bright};
-            saveToEEPROMRemotely(arr,1,0);
+            saveToEEPROMR17emotely(arr,1,0);
             Prog_command[0] = {0}; 
             Prog_command[1] = {0}; 
             Prog_command[2] = {0}; 

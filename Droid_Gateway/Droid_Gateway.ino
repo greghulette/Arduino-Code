@@ -70,6 +70,8 @@
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
   int keepAliveDuration= 4000;  // 4 seconds
+  bool sendUpdateStatus = true;
+  int sendStatusFrequency = 4000;
 
 // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
 // Change this to work with how your droid performs
@@ -164,7 +166,8 @@ String debugInputIdentifier ="";
   unsigned long drkeepAliveAge;
   unsigned long hpkeepaliveAgeMillis;
   unsigned long hpkeepAliveAge;
-
+  unsigned long sendStatusMillis;
+  unsigned long sendStatusAge;
     // variables for storing status and settings from ATMEGA2560
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
@@ -668,6 +671,8 @@ else{Debug.DBG("No LED was chosen \n");}
 /*****    Checks the age of the Status Variables            *****///
 ////////////////////////////////////////////////////////////////////
 
+
+
 void checkAgeofkeepAlive(){    //checks for the variable's age
   if (domeControllerStatus== 1){
     if (millis() - dckeepAliveAge>=keepAliveTimeOut){
@@ -920,7 +925,14 @@ void sendESPNOWCommand(String starget, String scomm){
 //////////////////////////////////////////////////////////////////////
 ///*****             LoRa Functions                           *****///
 //////////////////////////////////////////////////////////////////////
-
+void sendStatusToRemote(){
+  if (sendUpdateStatus){
+    if (millis() - sendStatusMillis >= sendStatusFrequency) {
+      sendStatusMillis = millis();
+      sendStatusMessage("Status Update");
+    } 
+  }
+}
 void sendStatusMessage(String outgoing) {
   LoRa.beginPacket();                   // start packet
   LoRa.write(destination);              // add destination address
@@ -1016,6 +1028,8 @@ void onReceive(int packetSize) {
 void MainRelayOn(){
   RELAY_STATUS = HIGH;
   digitalWrite(RELAY_CONTROL, RELAY_STATUS);
+          colorWipeStatus("RS", green, 10);
+
   Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
   Local_Command[0]   = '\0';
 }
@@ -1023,6 +1037,8 @@ void MainRelayOn(){
 void MainRelayOff(){
   RELAY_STATUS = LOW;
   digitalWrite(RELAY_CONTROL, RELAY_STATUS);
+          colorWipeStatus("RS", red, 10);
+
   Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
   Local_Command[0]   = '\0';
 }
@@ -1157,15 +1173,19 @@ SPI.begin(SCK_LORA, MISO_LORA, MOSI_LORA, NSS_LORA);
 LoRa.setPins(NSS_LORA, RESET_LORA, DIO_LORA);
 
   if (!LoRa.begin(915E6,true)) {
+  // if (!LoRa.begin(915E6)) {
     Serial.println("Starting LoRa failed!");
-    while (1);
+    while (true);
   }
 }
 
 void loop() {
+  
   checkAgeofkeepAlive();
+  sendStatusToRemote();
   checkButton();
   onReceive(LoRa.parsePacket());
+  yield();
   oldState = newState;
 
   if (millis() - MLMillis >= mainLoopDelayVar){
@@ -1299,7 +1319,7 @@ void loop() {
      delay(500);
    }
  }
-
+// LoRa.receive();
 }
 
 

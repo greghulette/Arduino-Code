@@ -83,9 +83,7 @@ float voltValue;
     uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
 
-  int debugflag = 1;
-  int debugflag1 = 1;  // Used for debugging params recieved from clients
-  int debugflag2 = 0;
+
 
 debugClass Debug;
 String debugInputIdentifier ="";
@@ -100,6 +98,7 @@ String debugInputIdentifier ="";
   boolean bodyServoStatus = 0;
   boolean domePlateControllerStatus = 0;
   boolean domeControllerStatus = 0;
+
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
@@ -141,6 +140,7 @@ String debugInputIdentifier ="";
   unsigned long bckeepaliveAgeMillis;
   unsigned long dlkeepAliveAge;
   unsigned long dlkeepaliveAgeMillis;
+
   //declare OLED 
   OLED_CLASS_OBJ display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
 
@@ -179,10 +179,6 @@ Toggle button(BUTTON);
     const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
   #define STATUS_LED_COUNT 1
-  #define ESP_STATUS_DATA_PIN 19
-  #define RELAY_STATUS_DATA_PIN 5
-  #define LORA_STATUS_DATA_PIN 20
-  //#define CAMERA_LENS_CLOCK_PIN 13
   int dim = 75;
   unsigned long CLMillis;
   byte CLSpeed = 50;
@@ -192,10 +188,6 @@ Toggle button(BUTTON);
   
   int colorState1;
   int speedState;
-  
-  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, ESP_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel RELAY_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, RELAY_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_STATUS_DATA_PIN, NEO_GRB + NEO_KHZ800);
   
   boolean startUp = true;
   boolean isStartUp = true;
@@ -210,12 +202,6 @@ Toggle button(BUTTON);
   ///******       Serial Ports Specific Setup                   *****///
   //////////////////////////////////////////////////////////////////////
 
-  #define TX 16
-  #define RX 17 
-
-  #define bsSerial Serial1
-
-  #define BAUD_RATE 115200
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -255,25 +241,8 @@ AsyncWebServer server(80);
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else if (statusled == "RS"){
-    RELAY_LED.setBrightness(brightness);
-    RELAY_LED.setPixelColor(0, c);
-    RELAY_LED.show();
-  }else if (statusled == "LS"){
-    LORA_LED.setBrightness(brightness);
-    LORA_LED.setPixelColor(0, c);
-    LORA_LED.show();
-  }
-else{
-  // Debug.DBG("No LED was chosen \n");
-  }
-  };
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
 /////                             Serial Communication Functions                                    /////
@@ -521,7 +490,7 @@ void updateStatus(){
 
   if (millis() - updateStatusPreviousMillis >= updateStatusDuration){
   updateStatusPreviousMillis = millis();
-  sendLoRaMessage("#L07");
+  // sendLoRaMessage("#L07");
   statusCounter++;
   adcValue = analogRead(ADCPIN);
   voltValue = (adcValue /4095.0) * 2 * 1.1 * 3.3;
@@ -561,53 +530,6 @@ String getValue(String data, char separator, int index){
 }
 
 
-#include <hcr.h>
-HCRVocalizer HCR(&Serial,115200); // Serial (Stream Port, baud rate)
-
-int* getEmotions;
-int getEmotion;
-float getDuration;
-int getOverride;
-bool isPlaying;
-int getMuse;
-int getWAVCount;
-int getPlayingWAV;
-int HCRVolume;
-
-void HCRFunction(int command = 0, int chan = 0, int track = 0, String filename= ""){
-
-    switch (command) {
-    case 1: HCR.update();                               break;
-    case 2: HCR.SetEmotion(chan, track);                break;
-    case 3: HCR.Trigger(chan, track);                   break;
-    case 4: HCR.Stimulate(chan, track);                 break;
-    case 5: HCR.Overload();                             break;
-    case 6: HCR.Muse();                                 break;
-    case 7: HCR.Muse(chan, track);                      break;
-    case 8: HCR.Stop();                                 break;
-    case 9: HCR.StopEmote();                            break;
-    case 10: HCR.OverrideEmotions(chan);                break;
-    case 11: HCR.ResetEmotions();                       break;
-    case 12: HCR.SetEmotion(chan, track);               break;
-    case 13: HCR.SetMuse(track);                        break;
-    case 14: HCR.PlayWAV(chan, track);                  break;
-    case 15: HCR.PlayWAV(chan, filename);               break;
-    case 16: HCR.StopWAV(chan);                         break;
-    case 17: HCR.SetVolume(chan, track);                break;
-    case 18: getEmotions = HCR.GetEmotions();           break;
-    case 19: getEmotion = HCR.GetEmotion(chan);         break;
-    case 20: getDuration = HCR.GetDuration();           break;
-    case 21: getOverride = HCR.GetOverride();           break;
-    case 22: isPlaying = HCR.IsPlaying();               break;
-    case 24: isPlaying = HCR.IsPlaying(chan);           break;
-    case 25: getWAVCount = HCR.GetWAVCount();           break;
-    case 26: getPlayingWAV = HCR.GetPlayingWAV(chan);   break;
-    case 27: HCR.getUpdate();                           break;
-    case 28: HCRVolume = HCR.getVolume(chan);           break;
-    // case 29: HCR.dfPlayer();                            break;
-    };
-  
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -680,7 +602,7 @@ void setup(){
   display.display();
 
   delay(1000);
-
+ SPI.begin(SCK_PIN,MISO_PIN, MOSI_PIN, SS_PIN);
   LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
 
 // SPI.begin(14, 12, 13, 15);
@@ -725,8 +647,8 @@ void setup(){
         paramVar = 1;
         };
         
-        Debug.PARAM("Param name: %s\n", (p->name()));
-        Debug.PARAM("Param value: %s\n", (p->value()).c_str());
+        // Debug.PARAM("Param name: %s\n", (p->name()));
+        // Debug.PARAM("Param value: %s\n", (p->value()).c_str());
   
 //         if (paramVar == 0){
 //           Debug.DBG_1("Executing on local ESP device\n");
@@ -746,11 +668,13 @@ void setup(){
           } 
           else {      
             // combinedString = combinedString + p->value();
-             LoRaOutgoing = (p->value());
-            sendLoRaMessage(LoRaOutgoing);
-          // inputString = (p->value());
-          // stringComplete = true;  
-            // delay(10);
+            //  LoRaOutgoing = (p->value());
+            // sendLoRaMessage(LoRaOutgoing);
+           
+          inputString = (p->value());
+          stringComplete = true;  
+          Debug.PARAM("sent to loop: %s \n", inputString.c_str());
+          delay(5);
             // displayOLEDString(p->value());
           };
           // Debug.PARAM("Combined Value: %s \n",combinedString.c_str());
@@ -818,7 +742,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
 void loop(){
   updateStatus();
   onReceive(LoRa.parsePacket());
-
+  yield();
 button.poll();
 if (button.onPress()) {
   Serial.println("Changed");
@@ -920,7 +844,7 @@ if (button.onPress()) {
                 char inCharRead = inputBuffer[i];
                 loRaCommandString += inCharRead;  // add it to the inputString:
               }
-              Debug.LOOP("L Command Proccessing: %s \n", infoCommandString.c_str());
+              Debug.LOOP("L Command Proccessing: %s \n", loRaCommandString.c_str());
               loRaCommandSubString = loRaCommandString.substring(0,commandLength+1);
               Debug.DBG_1("LoRa in Loop : %s\n", loRaCommandString);
               sendLoRaMessage(loRaCommandString);
@@ -934,9 +858,12 @@ if (button.onPress()) {
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
+        inputBuffer[1] = '\0';
 
         // reset Local ESP Command Variables
         int espCommandFunction;
+        loRaCommandString = "";
+
       }
     }
     if(isStartUp) {
@@ -944,6 +871,7 @@ if (button.onPress()) {
       delay(500);
     }
   }
+  // LoRa.receive();
 }  // end of main loop
 
 
@@ -956,12 +884,7 @@ void sendLoRaMessage(String outgoing) {
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   msgCount++;                           // increment message ID
-  // Serial.println("Sent LoRa Message");
   Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing);
-  // delay(10);
-  // LoRa.end();
-  // if (!LoRa.begin(915E6, true)) {             // initialize ratio at 915 MHz
-  //   Serial.println("LoRa init failed. Check your connections.");
-  //   while (true);                       // if failed, do nothing
-  // }
+  delay(500);
+
 }

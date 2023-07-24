@@ -150,7 +150,7 @@ void HCRVocalizer::transmit(String command)
 }
 
 void HCRVocalizer::transmit(String command, bool retry)
-{
+{ 
     if (command == "")
     {
         return;
