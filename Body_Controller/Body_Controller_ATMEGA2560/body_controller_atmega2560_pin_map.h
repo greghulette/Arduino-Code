@@ -9,12 +9,12 @@
 
 #define SPECTRUM_RIGHT_PIN  0   // W // Unused Pin
 #define SPECTRUM_LEFT_PIN   1   // N // Unused Pin
-#define A2				    2   // Y // Unused Pin
-#define EXTERNAL_MIC_PIN    3   // N // high at boot
-#define A4        		    4   // Y // Unused Pin
-#define A5				    5   // Y // Unused Pin 
+#define EXTERNAL_MIC_PIN		2   // Y // Unused Pin
+#define VOLTAGE_SENSOR_PIN  3   // N // high at boot
+#define A4        		      4   // Y // Unused Pin
+#define A5				          5   // Y // Unused Pin 
 #define A6                  6   // N // Unused Pin
-#define VOLTAGE_SENSOR_PIN  7   // N // Unused Pin
+#define A7                  7   // N // Unused Pin
 #define A8                  8   // N // Unused Pin
 #define A9                  9   // N // Unused Pin
 #define A10                 10 // N // Unused Pin

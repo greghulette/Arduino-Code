@@ -98,6 +98,8 @@ String debugInputIdentifier ="";
   boolean bodyServoStatus = 0;
   boolean domePlateControllerStatus = 0;
   boolean domeControllerStatus = 0;
+  boolean hpControllerStatus = 0;
+  boolean domeLogicsControllerStatus = 0;
 
   int BL_LDP_Bright;
   int BL_MAINT_Bright;
@@ -390,6 +392,8 @@ bodyLEDControllerStatus = LoRa.read();
 bodyServoStatus = LoRa.read();
 domePlateControllerStatus = LoRa.read();
 domeControllerStatus = LoRa.read();
+hpControllerStatus = LoRa.read();
+domeLogicsControllerStatus = LoRa.read();
 BL_LDP_Bright = LoRa.read();
 BL_MAINT_Bright = LoRa.read();
 BL_VU_Bright = LoRa.read();
@@ -647,8 +651,8 @@ void setup(){
     //     paramVar = 1;
     //     };
         
-        // Debug.PARAM("Param name: %s\n", (p->name()));
-        // Debug.PARAM("Param value: %s\n", (p->value()).c_str());
+        Debug.PARAM("Param name: %s\n", (p->name()));
+        Debug.PARAM("Param value: %s\n", (p->value()).c_str());
   
 //         if (paramVar == 0){
 //           Debug.DBG_1("Executing on local ESP device\n");
@@ -692,14 +696,16 @@ void setup(){
 server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncResponseStream *response = request->beginResponseStream("application/json");
       DynamicJsonDocument json(2048);
-      json["remoteLoRaControllerStatus"] = 1;
-      json["droidLoRaControllerStatus"] = droidGatewayStatus;
+      json["droidremoteControllerStatus"] = 1;
+      json["droidgatewayControllerStatus"] = droidGatewayStatus;
+      json["relayStatus"] = relayStatus;
       json["LoRaRSSI"] = LoRaRSSI;
       json["bodyControllerStatus"] = bodyControllerStatus;
       json["bodyLEDControllerStatus"] = bodyLEDControllerStatus;
       json["bodyServoControllerStatus"] = bodyServoStatus;
       json["domeControllerStatus"] = domeControllerStatus;
-      json["periscopeControllerStatus"] = domePlateControllerStatus;
+      json["domePlateControllerStatus"] = domePlateControllerStatus;
+      json["hpControllerStatus"] = hpControllerStatus;
       json["BL_LDP_Bright"] = BL_LDP_Bright;
       json["BL_MAINT_Bright"] = BL_MAINT_Bright;
       json["BL_VU_Bright"] = BL_VU_Bright;
@@ -830,12 +836,10 @@ if (button.onPress()) {
         }else if (inputBuffer[0] == ':'){
      
       if( 
-          // inputBuffer[1]=='M'     ||        // Command for sending Serial Strings out Serial ports
-          // inputBuffer[1]=='m'     ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[1]=='L'     ||        // Command designator for sending LoRa messages
           inputBuffer[1]=='l'               // Command fdesignator for sending LoRa messages
         ){commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
-          Debug.DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
+          Debug.LOOP("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
           if(commandLength >= 3) {
 
@@ -846,7 +850,6 @@ if (button.onPress()) {
               }
               Debug.LOOP("L Command Proccessing: %s \n", loRaCommandString.c_str());
               loRaCommandSubString = loRaCommandString.substring(0,commandLength+1);
-              Debug.DBG_1("LoRa in Loop : %s\n", loRaCommandString);
               sendLoRaMessage(loRaCommandString);
               loRaCommandString="";
             }     
@@ -871,7 +874,6 @@ if (button.onPress()) {
       delay(500);
     }
   }
-  // LoRa.receive();
 }  // end of main loop
 
 

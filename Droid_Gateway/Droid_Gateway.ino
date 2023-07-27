@@ -149,7 +149,8 @@ String debugInputIdentifier ="";
   bool domeControllerStatus = 0;
   bool droidRemoteStatus = 0;
   bool hpControllerStatus = 0;
-  
+  bool domeLogicsControllerStatus = 0;
+
 
   int keepAliveTimeOut = 15000;
   unsigned long keepAliveMillis;
@@ -947,6 +948,8 @@ void sendStatusMessage(String outgoing) {
   LoRa.write(bodyServoControllerStatus);
   LoRa.write(domePlateControllerStatus);
   LoRa.write(domeControllerStatus);
+  LoRa.write(hpControllerStatus);
+  LoRa.write(domeLogicsControllerStatus);
   LoRa.write(BL_LDP_Bright);
   LoRa.write(BL_MAINT_Bright);
   LoRa.write(BL_VU_Bright);

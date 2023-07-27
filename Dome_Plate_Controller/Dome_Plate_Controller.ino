@@ -900,6 +900,11 @@ void setup(){
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
   
+
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,10);
+
 }   // end of setup
 
 void loop(){
@@ -908,6 +913,7 @@ void loop(){
     if(startUp) {
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
+      colorWipeStatus("ES",blue,10);
     }
 
     keepAlive();
