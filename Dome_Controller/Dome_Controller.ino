@@ -80,7 +80,7 @@
 
 // Serial Baud Rates
   #define HP_BAUD_RATE 9600
-  #define RS_BAUD_RATE 9600
+  #define DL_BAUD_RATE 9600
   #define PS_BAUD_RATE 9600 //Should be lower than 57600
   #define SERIAL1_BAUD_RATE 9600  //Should be lower than 57600
 
@@ -184,7 +184,7 @@
   //////////////////////////////////////////////////////////////////
   
   #define hpSerial Serial1
-  #define rsSerial Serial2
+  #define dlSerial Serial2
   SoftwareSerial s1Serial;
   SoftwareSerial psSerial;
 
@@ -712,9 +712,9 @@ void hpSerialEvent() {
   Debug.SERIAL_EVENT("HP Serial Input: %s \n",inputString);
 }
 
-void rsSerialEvent() {
-  while (rsSerial.available()) {
-    char inChar = (char)rsSerial.read();
+void dlSerialEvent() {
+  while (dlSerial.available()) {
+    char inChar = (char)dlSerial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
         stringComplete = true;            // set a flag so the main loop can do something about it.
@@ -757,11 +757,11 @@ void writeSerialString(String stringData){
   }
 }
 
-void writeRsSerial(String stringData){
+void writeDlSerial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++)
   {
-    rsSerial.write(completeString[i]);
+    dlSerial.write(completeString[i]);
   }
   Debug.SERIAL_EVENT("Writing to Dome Logics\n");
 }
@@ -1449,7 +1449,7 @@ void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);                                                                   // Initialize Serial Connection at 115200:
   hpSerial.begin(HP_BAUD_RATE,SERIAL_8N1,SERIAL_RX_HP_PIN,SERIAL_TX_HP_PIN);
-  rsSerial.begin(RS_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RS_PIN,SERIAL_TX_RS_PIN);
+  dlSerial.begin(DL_BAUD_RATE,SERIAL_8N1,SERIAL_RX_DL_PIN,SERIAL_TX_DL_PIN);
   psSerial.begin(PS_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_PSI_PIN,SERIAL_TX_PSI_PIN,false,95); 
   s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);  
  
@@ -1568,7 +1568,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
   keepAlive();
   if(Serial.available()){serialEvent();}
   if(hpSerial.available()){hpSerialEvent();}
-  if(rsSerial.available()){rsSerialEvent();}
+  if(dlSerial.available()){dlSerialEvent();}
   if(s1Serial.available()){s1SerialEvent();}
 
  RadarEye_LED(blue, 5); // blue
@@ -1732,7 +1732,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                   ESPNOWTarget = "";                  
                   }  
                 if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-                    for (int i=2; i<commandLength-1;i++ ){
+                    for (int i=2; i<commandLength+1;i++ ){
                       char inCharRead = inputBuffer[i];
                       serialStringCommand += inCharRead;  // add it to the inputString:
                     }
@@ -1741,12 +1741,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
                     Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
               if (serialPort == "HP"){
                 writeHpSerial(serialStringCommand);
-              } else if (serialPort == "RS"){
-                writeRsSerial(serialStringCommand);
-              }  else if (serialPort == "FU"){
-                writeS1Serial(serialStringCommand);
+              } else if (serialPort == "DL"){
+                writeDlSerial(serialSubStringCommand);
+              }  else if (serialPort == "PS"){
+                writePsSerial(serialSubStringCommand);
               } else if (serialPort == "DS"){
-                inputString = serialStringCommand;
+                inputString = serialSubStringCommand;
                 stringComplete = true; 
               }
               serialStringCommand = "";
@@ -1857,11 +1857,12 @@ if (millis() - MLMillis >= mainLoopDelayVar){
         case 96: enableRadarEyeAuto = 0;                                                                      break;     // Disable Auto Mode
         case 97: enableRadarEyeAuto = 1;                                                                      break;     // Enables Auto Mode
         case 98:  RE_command[0] = '\0'; 
-                  clearRE();
-                  enableRadarEyeAuto = 0;                                                                     break;
+                  enableRadarEyeAuto = 0;                                                                     
+                  clearRE();break;
         case 99:  RE_command[0] = '\0'; 
+          enableRadarEyeAuto = 1;  
                   clearRE();
-                  enableRadarEyeAuto = 1;                                                                     break;
+                                                                                   break;
       }
     }
 

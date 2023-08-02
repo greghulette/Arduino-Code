@@ -245,7 +245,7 @@
     float vout = 0.0;       // for voltage out measured analog input
     int value = 0;          // used to hold the analog value coming out of the voltage divider
     float vin = 0.0;        // voltage calulcated... since the divider allows for 15 volts
-    int  showBattery = 0;
+    bool  showBattery = false;
 //////////////////////////////////////////////////////////////////////
 ///*****                   CBI Config Settings                *****///
 //////////////////////////////////////////////////////////////////////
@@ -731,11 +731,7 @@ void setup()
     lc.shutdown(CBI,false);                       // take out of shutdown
     lc.clearDisplay(CBI);                         // clear
     lc.setIntensity(CBI,CBIINTENSITY);    
-
-  #ifdef  TEST// test LEDs
-    singleTest(); 
-    delay(2000);
-  #endif
+l23off();l22off();l21off();
 
 
 
@@ -2054,15 +2050,15 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
 void toggleShowBattery(){
 
 // showBattery = !showBattery;
-  if(showBattery == 0){
+  if(showBattery == true){
     Serial.println("enetered 0 condition");
-    showBattery = 1;
+    showBattery = false;
       Serial.println(showBattery);
 
-  } else if(showBattery == 1) {
+  } else if(showBattery == false) {
         Serial.println("enetered 1 condition");
 
-    showBattery = 0;
+    showBattery = true;
       Serial.println(showBattery);
 
 
@@ -2588,22 +2584,24 @@ void toggleShowBattery(){
         BatAve.push(analogRead(VOLTAGE_SENSOR_PIN));
         BatVal = BatAve.mean();
         vout = (BatVal*4.8)/1023;
-       Serial.print("Measured Voltage: ");Serial.println(vout);
+      //  Serial.print("Measured Voltage: ");Serial.println(vout);
         vin = vout/(R2/(R1+R2))+1;
-       Serial.print("BatVal: ");Serial.println(BatVal);
-       Serial.print("Actual Voltage: ");Serial.println(vin);
+      //  Serial.print("BatVal: ");Serial.println(BatVal);
+      //  Serial.print("Actual Voltage: ");Serial.println(vin);
         BatVal = map(BatVal, 0,1023, 0, 2500);
 //        Serial.print("Battery Val 1:");Serial.println(BatVal);
         BatVal = map(BatVal, BatLevMin,  BatLevMax,  0,  100);
 
-//        Serial.print("Battery Val 2:");Serial.println(BatVal);
+      //  Serial.print("Battery Val 2:");Serial.println(BatVal);
 //        DBG("Battery Level: %d \n",BatVal);
-        if(showBattery == 1){
-        if (BatVal >= 40) {batColor = green;l23on();l22off();l21off();}
+        if(showBattery == true){
+          Serial.println(("Battery showing on LEDs"));
+        if (BatVal >= 30) {batColor = green;l23on();l22off();l21off();}
         else if (BatVal >= 20) {batColor = yellow;l23off();l22on();l21off();}
         else if (BatVal >= 5)  {batColor = red;l23off();l22off();l21on();}
         else {batColor = off;}
-       }else {batColor = off;l23off();l22off();l21off();}
+       }
+       else {batColor = off;l23off();l22off();l21off();}
        }
 
       /////////////////////////////////////////////////////////

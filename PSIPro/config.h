@@ -24,7 +24,7 @@ bool alwaysOn = false;
 // If your JEDI Device can send at 9600 baud, uncomment this line.
 // The Current Teeces interface runs at a mindnumbingly slow 2400 only!
 
-//#define _9600BAUDSJEDI_
+#define _9600BAUDSJEDI_
 
 
 ///////////////////////////////////////////////////

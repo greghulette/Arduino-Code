@@ -6,266 +6,266 @@
  * 
  */
 // //Used for ESP-NOW
-#include "esp_wifi.h"
-#include <esp_now.h>
-// //Used for Status LEDs
-// // #include <Adafruit_NeoPixel.h>
+// #include "esp_wifi.h"
+// #include <esp_now.h>
+// // //Used for Status LEDs
+// // // #include <Adafruit_NeoPixel.h>
 
 
-// // Debug Functions  - Using my own library for this
-// #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
-
-// //////////////////////////////////////////////////////////////////////
-// ///*****        Command Varaiables, Containers & Flags        *****///
-// //////////////////////////////////////////////////////////////////////
-//   String HOSTNAME = "Dome Logics Controller";
-  String ESPNOWPASSWORD = "GregsAstromech";
-  
-//   // R2 Control Network Details
-//   const char* ssid = "R2D2_Control_Network";
-//   const char* password =  "astromech";
-
-//   //Enables status tracking on the LoRa Droid
-//   bool STATUS_TRACKING = 1;
-  
-//   // Keepalive timer to send status messages to the Kill Switch (Droid)
-//   int keepAliveDuration= 4000;  // 4 seconds
-
-// // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
-// // Change this to work with how your droid performs
-  int defaultESPNOWSendDuration = 50;  
-
-//   char inputBuffer[100];
-  String inputString;         // a string to hold incoming data
-  
-  volatile boolean stringComplete  = false;      // whether the serial string is complete
-//   String autoInputString;         // a string to hold incoming data
-//   volatile boolean autoComplete    = false;    // whether an Auto command is setA
-  
-//   int commandLength;
-
-//   String serialStringCommand;
-//   String serialPort;
-//   String serialSubStringCommand;
-
-//  uint32_t Local_Command[6]  = {0,0,0,0,0,0};
-//   int localCommandFunction     = 0;
-
-  String ESPNOWStringCommand;
-  String ESPNOWTarget;
-  String ESPNOWSubStringCommand;
-
-//   debugClass Debug;
-//   String debugInputIdentifier ="";
-
-
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-//   ///*****       Startup and Loop Variables                     *****///
-//   //////////////////////////////////////////////////////////////////////
-  
-//   boolean startUp = true;
-//   boolean isStartUp = true;
-  
-//   //Main Loop Timers
-//   unsigned long mainLoopTime; 
-//   unsigned long MLMillis;
-//   byte mainLoopDelayVar = 5;
-
-
-// ///////////////////////////////////////////////////////////////////////
-//   ///*****                Status Variables                     *****///
-//   /////////////////////////////////////////////////////////////////////
-
-//   unsigned long keepAliveMillis;
-
-
-// //////////////////////////////////////////////////////////////////////
-// ///*****            Status LED Variables and settings       *****///
-// //////////////////////////////////////////////////////////////////////
-  
-// // -------------------------------------------------
-// // Define some constants to help reference objects,
-// // pins, leds, colors etc by name instead of numbers
-// // -------------------------------------------------
-// //    CAMERA LENS LED VARIABLES
-//   // const uint32_t red     = 0xFF0000;
-//   // const uint32_t orange  = 0xFF8000;
-//   // const uint32_t yellow  = 0xFFFF00;
-//   // const uint32_t green   = 0x00FF00;
-//   // const uint32_t cyan    = 0x00FFFF;
-//   // const uint32_t blue    = 0x0000FF;
-//   // const uint32_t magenta = 0xFF00FF;
-//   // const uint32_t white   = 0xFFFFFF;
-//   // const uint32_t off     = 0x000000;
-
-//   // const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
-//   // #define STATUS_LED_PIN 4
-//   // #define STATUS_LED_COUNT 1
-
-//   // Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+// // // Debug Functions  - Using my own library for this
+// // #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
 
 // // //////////////////////////////////////////////////////////////////////
-// // ///*****   ColorWipe Function for Status LED                  *****///
+// // ///*****        Command Varaiables, Containers & Flags        *****///
 // // //////////////////////////////////////////////////////////////////////
-// void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-//   if(statusled == "ES"){
-//     // ESP_LED.setBrightness(brightness);
-//     // ESP_LED.setPixelColor(0, c);
-//     // ESP_LED.show();
-//   } 
-//   else{
-//     // Debug.DBG("No LED was chosen \n");
+// //   String HOSTNAME = "Dome Logics Controller";
+//   String ESPNOWPASSWORD = "GregsAstromech";
+  
+// //   // R2 Control Network Details
+// //   const char* ssid = "R2D2_Control_Network";
+// //   const char* password =  "astromech";
+
+// //   //Enables status tracking on the LoRa Droid
+// //   bool STATUS_TRACKING = 1;
+  
+// //   // Keepalive timer to send status messages to the Kill Switch (Droid)
+// //   int keepAliveDuration= 4000;  // 4 seconds
+
+// // // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
+// // // Change this to work with how your droid performs
+//   int defaultESPNOWSendDuration = 50;  
+
+// //   char inputBuffer[100];
+//   String inputString;         // a string to hold incoming data
+  
+//   volatile boolean stringComplete  = false;      // whether the serial string is complete
+// //   String autoInputString;         // a string to hold incoming data
+// //   volatile boolean autoComplete    = false;    // whether an Auto command is setA
+  
+// //   int commandLength;
+
+// //   String serialStringCommand;
+// //   String serialPort;
+// //   String serialSubStringCommand;
+
+// //  uint32_t Local_Command[6]  = {0,0,0,0,0,0};
+// //   int localCommandFunction     = 0;
+
+//   String ESPNOWStringCommand;
+//   String ESPNOWTarget;
+//   String ESPNOWSubStringCommand;
+
+// //   debugClass Debug;
+// //   String debugInputIdentifier ="";
+
+
+
+
+
+
+
+
+// // //////////////////////////////////////////////////////////////////////
+// //   ///*****       Startup and Loop Variables                     *****///
+// //   //////////////////////////////////////////////////////////////////////
+  
+// //   boolean startUp = true;
+// //   boolean isStartUp = true;
+  
+// //   //Main Loop Timers
+// //   unsigned long mainLoopTime; 
+// //   unsigned long MLMillis;
+// //   byte mainLoopDelayVar = 5;
+
+
+// // ///////////////////////////////////////////////////////////////////////
+// //   ///*****                Status Variables                     *****///
+// //   /////////////////////////////////////////////////////////////////////
+
+// //   unsigned long keepAliveMillis;
+
+
+// // //////////////////////////////////////////////////////////////////////
+// // ///*****            Status LED Variables and settings       *****///
+// // //////////////////////////////////////////////////////////////////////
+  
+// // // -------------------------------------------------
+// // // Define some constants to help reference objects,
+// // // pins, leds, colors etc by name instead of numbers
+// // // -------------------------------------------------
+// // //    CAMERA LENS LED VARIABLES
+// //   // const uint32_t red     = 0xFF0000;
+// //   // const uint32_t orange  = 0xFF8000;
+// //   // const uint32_t yellow  = 0xFFFF00;
+// //   // const uint32_t green   = 0x00FF00;
+// //   // const uint32_t cyan    = 0x00FFFF;
+// //   // const uint32_t blue    = 0x0000FF;
+// //   // const uint32_t magenta = 0xFF00FF;
+// //   // const uint32_t white   = 0xFFFFFF;
+// //   // const uint32_t off     = 0x000000;
+
+// //   // const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+// //   // #define STATUS_LED_PIN 4
+// //   // #define STATUS_LED_COUNT 1
+
+// //   // Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// // // //////////////////////////////////////////////////////////////////////
+// // // ///*****   ColorWipe Function for Status LED                  *****///
+// // // //////////////////////////////////////////////////////////////////////
+// // void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+// //   if(statusled == "ES"){
+// //     // ESP_LED.setBrightness(brightness);
+// //     // ESP_LED.setPixelColor(0, c);
+// //     // ESP_LED.show();
+// //   } 
+// //   else{
+// //     // Debug.DBG("No LED was chosen \n");
+// //     }
+// // }
+
+// //     /////////////////////////////////////////////////////////////////////////
+// // ///*****                  ESP NOW Set Up                         *****///
+// // /////////////////////////////////////////////////////////////////////////
+
+// //  ESP-NOW MAC Addresses used in the Droid. 
+//   const uint8_t droidLoRaMACAddress[] =             {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+//   const uint8_t bodyControllerMACAddress[] =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
+//   const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
+//   const uint8_t domeControllerMACAddress[]=         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
+//   const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
+//   const uint8_t hpControllerMACAddress[] =          {0x02, 0x00, 0x00, 0x00, 0x00, 0x06};
+//   const uint8_t broadcastMACAddress[] =             {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+// // Uses these Strings for comparators
+//   String droidLoRaMACAddressString =            "02:00:00:00:00:01";
+//   String bodyControllerMACAddressString =       "02:00:00:00:00:02";
+//   String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
+//   String domeControllerMACAddressString =       "02:00:00:00:00:04";
+//   String domePlateControllerMACAddressString =  "02:00:00:00:00:05";
+//   String hpControllerMACAddressString =         "02:00:00:00:00:06";
+//   String broadcastMACAddressString =            "FF:FF:FF:FF:FF:FF";
+
+// // Define variables to store commands to be sent
+//   String  senderID;
+//   String  targetID;
+//   bool    commandIncluded;
+//   String  command;
+
+// // Define variables to store incoming commands
+//   String  incomingPassword;
+//   String  incomingTargetID;  
+//   String  incomingSenderID;
+//   bool    incomingCommandIncluded;
+//   String  incomingCommand;
+  
+
+
+
+
+
+
+
+
+
+
+
+
+// // Variable to store if sending data was successful
+//   String success;
+
+// //Structure example to send data
+// //Must match the receiver structure
+// typedef struct espnow_struct_message {
+//       char structPassword[20];
+//       char structSenderID[4];
+//       char structTargetID[4];
+//       bool structCommandIncluded;
+//       char structCommand[100];
+//   } espnow_struct_message;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // Create a struct_message calledcommandsTosend to hold variables that will be sent
+//   espnow_struct_message commandsToSendtoBroadcast;
+//   espnow_struct_message commandsToSendtoDroidLoRa;
+//   espnow_struct_message commandsToSendtoBodyController;
+//   espnow_struct_message commandsToSendtoBodyServoController;
+//   espnow_struct_message commandsToSendtoDomeController;
+//   espnow_struct_message commandsToSendtoDomePlateController;
+//   espnow_struct_message commandsToSendtoHPController;
+
+// // Create a espnow_struct_message to hold variables that will be received
+//   espnow_struct_message commandsToReceiveFromBroadcast;
+//   espnow_struct_message commandsToReceiveFromDroidLoRa;
+//   espnow_struct_message commandsToReceiveFromBodyController;
+//   espnow_struct_message commandsToReceiveFromBodyServoController;
+//   espnow_struct_message commandsToReceiveFromDomeController;
+//   espnow_struct_message commandsToReceiveFromDomePlateController;
+//   espnow_struct_message commandsToReceiveFromHPController;
+// //
+//   esp_now_peer_info_t peerInfo;
+
+//  // Callback when data is sent
+// void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+//   // if (Debug.debugflag_espnow == 1){
+//     Serial.print("\r\nLast Packet Send Status:\t");
+//     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+//     if (status ==0){
+//       success = "Delivery Success :)";
 //     }
+//     else{
+//       success = "Delivery Fail :(";
+//     }
+//   // }
 // }
 
-//     /////////////////////////////////////////////////////////////////////////
-// ///*****                  ESP NOW Set Up                         *****///
-// /////////////////////////////////////////////////////////////////////////
-
-//  ESP-NOW MAC Addresses used in the Droid. 
-  const uint8_t droidLoRaMACAddress[] =             {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-  const uint8_t bodyControllerMACAddress[] =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-  const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-  const uint8_t domeControllerMACAddress[]=         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-  const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-  const uint8_t hpControllerMACAddress[] =          {0x02, 0x00, 0x00, 0x00, 0x00, 0x06};
-  const uint8_t broadcastMACAddress[] =             {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-// Uses these Strings for comparators
-  String droidLoRaMACAddressString =            "02:00:00:00:00:01";
-  String bodyControllerMACAddressString =       "02:00:00:00:00:02";
-  String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
-  String domeControllerMACAddressString =       "02:00:00:00:00:04";
-  String domePlateControllerMACAddressString =  "02:00:00:00:00:05";
-  String hpControllerMACAddressString =         "02:00:00:00:00:06";
-  String broadcastMACAddressString =            "FF:FF:FF:FF:FF:FF";
-
-// Define variables to store commands to be sent
-  String  senderID;
-  String  targetID;
-  bool    commandIncluded;
-  String  command;
-
-// Define variables to store incoming commands
-  String  incomingPassword;
-  String  incomingTargetID;  
-  String  incomingSenderID;
-  bool    incomingCommandIncluded;
-  String  incomingCommand;
-  
-
-
-
-
-
-
-
-
-
-
-
-
-// Variable to store if sending data was successful
-  String success;
-
-//Structure example to send data
-//Must match the receiver structure
-typedef struct espnow_struct_message {
-      char structPassword[20];
-      char structSenderID[4];
-      char structTargetID[4];
-      bool structCommandIncluded;
-      char structCommand[100];
-  } espnow_struct_message;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Create a struct_message calledcommandsTosend to hold variables that will be sent
-  espnow_struct_message commandsToSendtoBroadcast;
-  espnow_struct_message commandsToSendtoDroidLoRa;
-  espnow_struct_message commandsToSendtoBodyController;
-  espnow_struct_message commandsToSendtoBodyServoController;
-  espnow_struct_message commandsToSendtoDomeController;
-  espnow_struct_message commandsToSendtoDomePlateController;
-  espnow_struct_message commandsToSendtoHPController;
-
-// Create a espnow_struct_message to hold variables that will be received
-  espnow_struct_message commandsToReceiveFromBroadcast;
-  espnow_struct_message commandsToReceiveFromDroidLoRa;
-  espnow_struct_message commandsToReceiveFromBodyController;
-  espnow_struct_message commandsToReceiveFromBodyServoController;
-  espnow_struct_message commandsToReceiveFromDomeController;
-  espnow_struct_message commandsToReceiveFromDomePlateController;
-  espnow_struct_message commandsToReceiveFromHPController;
-//
-  esp_now_peer_info_t peerInfo;
-
- // Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  // if (Debug.debugflag_espnow == 1){
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    if (status ==0){
-      success = "Delivery Success :)";
-    }
-    else{
-      success = "Delivery Fail :(";
-    }
-  // }
-}
-
-  // Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  // colorWipeStatus("ES", orange ,255);
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  String IncomingMacAddress(macStr);
-  if (IncomingMacAddress == droidLoRaMACAddressString) {
-      memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
-      incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
-        incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
-        processESPNOWIncomingMessage();
-        }
-     } else if (IncomingMacAddress == bodyControllerMACAddressString){
-    memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
-    incomingPassword = commandsToReceiveFromBodyController.structPassword;
-   if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password of %s was sent.  Message Ignored\n", incomingPassword.c_str());  
-      } else {
-        incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
-        incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBodyController.structCommand;
+//   // Callback when data is received
+// void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+//   // colorWipeStatus("ES", orange ,255);
+//   char macStr[18];
+//   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+//             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+//   String IncomingMacAddress(macStr);
+//   if (IncomingMacAddress == droidLoRaMACAddressString) {
+//       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
+//       incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
+//         incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//      } else if (IncomingMacAddress == bodyControllerMACAddressString){
+//     memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
+//     incomingPassword = commandsToReceiveFromBodyController.structPassword;
+//    if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password of %s was sent.  Message Ignored\n", incomingPassword.c_str());  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
+//         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromBodyController.structCommand;
         
         
         
@@ -280,87 +280,87 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         
         
         
-        processESPNOWIncomingMessage();
-        }
-    }else if (IncomingMacAddress == bodyServosControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
-      incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
-        incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == domeControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
-      incomingPassword = commandsToReceiveFromDomeController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDomeController.structSenderID;
-        incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDomeController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
-      incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDomePlateController.structSenderID;
-        incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == broadcastMACAddressString) {
-      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      incomingPassword = commandsToReceiveFromBroadcast.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-        incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBroadcast.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    }  else if (IncomingMacAddress == hpControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromHPController, incomingData, sizeof(commandsToReceiveFromHPController));
-      incomingPassword = commandsToReceiveFromHPController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromHPController.structSenderID;
-        incomingTargetID = commandsToReceiveFromHPController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromHPController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromHPController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    }  else {
-      // Debug.ESPNOW("ESP-NOW Mesage ignored \n");
-      }  
-  // colorWipeStatus("ES",blue,10);
-  IncomingMacAddress ="";  
-} 
+//         processESPNOWIncomingMessage();
+//         }
+//     }else if (IncomingMacAddress == bodyServosControllerMACAddressString) {
+//       memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
+//       incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
+//         incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//     } else if (IncomingMacAddress == domeControllerMACAddressString) {
+//       memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
+//       incomingPassword = commandsToReceiveFromDomeController.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromDomeController.structSenderID;
+//         incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromDomeController.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//     } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
+//       memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
+//       incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromDomePlateController.structSenderID;
+//         incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//     } else if (IncomingMacAddress == broadcastMACAddressString) {
+//       memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
+//       incomingPassword = commandsToReceiveFromBroadcast.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
+//         incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromBroadcast.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromBroadcast.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//     }  else if (IncomingMacAddress == hpControllerMACAddressString) {
+//       memcpy(&commandsToReceiveFromHPController, incomingData, sizeof(commandsToReceiveFromHPController));
+//       incomingPassword = commandsToReceiveFromHPController.structPassword;
+//       if (incomingPassword != ESPNOWPASSWORD){
+//         // Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
+//       } else {
+//         incomingSenderID = commandsToReceiveFromHPController.structSenderID;
+//         incomingTargetID = commandsToReceiveFromHPController.structTargetID;
+//         incomingCommandIncluded = commandsToReceiveFromHPController.structCommandIncluded;
+//         incomingCommand = commandsToReceiveFromHPController.structCommand;
+//         processESPNOWIncomingMessage();
+//         }
+//     }  else {
+//       // Debug.ESPNOW("ESP-NOW Mesage ignored \n");
+//       }  
+//   // colorWipeStatus("ES",blue,10);
+//   IncomingMacAddress ="";  
+// } 
 
-void processESPNOWIncomingMessage(){
-  // Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
-  // Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
-  // Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
-  // Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
-  if (incomingTargetID == "DP" || incomingTargetID == "BR"){
-    inputString = incomingCommand;
-    stringComplete = true; 
-    // Debug.ESPNOW("Recieved command from $sn", incomingSenderID);
+// void processESPNOWIncomingMessage(){
+//   // Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
+//   // Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
+//   // Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
+//   // Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
+//   if (incomingTargetID == "DP" || incomingTargetID == "BR"){
+//     inputString = incomingCommand;
+//     stringComplete = true; 
+//     // Debug.ESPNOW("Recieved command from $sn", incomingSenderID);
 
-  }
-}
+//   }
+// }
 
 // Support for RSeries Logic Engine FLD and/or RLD lights (requires FastLED library)
 // Define USE_RSERIES_FLD to enable support for RSeries FLD
@@ -485,13 +485,13 @@ void processESPNOWIncomingMessage(){
 
 ////////////////////////////////
 
-#define SERIAL2_RX_PIN 16
-#define SERIAL2_TX_PIN 17
+#define SERIAL2_RX_PIN 14
+#define SERIAL2_TX_PIN 27
 #define COMMAND_SERIAL Serial2
 
 ////////////////////////////////
 
-#define MARC_SERIAL2_BAUD_RATE          2400
+#define MARC_SERIAL2_BAUD_RATE          9600
 #define MARC_SERIAL_PASS                true
 #define MARC_SERIAL_ENABLED             true
 #define MARC_WIFI_ENABLED               true
@@ -542,7 +542,7 @@ void processESPNOWIncomingMessage(){
 #define PIN_REAR_PSI 23
 #define PIN_FRONT_HOLO 25
 #define PIN_REAR_HOLO 26
-#define PIN_TOP_HOLO 27
+#define PIN_TOP_HOLO 17
 #define PIN_AUX1 2
 #define PIN_AUX2 4
 #define PIN_AUX3 5
@@ -1454,6 +1454,10 @@ void mainLoop()
     if (Serial.available())
     {
         int ch = Serial.read();
+        if(preferences.getBool(PREFERENCE_MARCSERIAL_PASS, MARC_SERIAL_PASS))
+        {
+          COMMAND_SERIAL.write(ch); // send it out COMMAND_SERIAL
+        }
         if (ch == 0x0A || ch == 0x0D)
         {
             Marcduino::processCommand(player, sBuffer);

@@ -1123,9 +1123,9 @@ void loop(){
 
         }else if (inputBuffer[0] == ':'){
        if(  inputBuffer[1]=='H' ||        // Command designator for Holo Projector functions
-            inputBuffer[1]=='H' ||        // Command designator for Holo Projector functions
+            inputBuffer[1]=='h' ||        // Command designator for Holo Projector functions
             inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
-            inputBuffer[1]=='E' ||        // Command designator for ESP-NOW functions
+            inputBuffer[1]=='e' ||        // Command designator for ESP-NOW functions
             inputBuffer[1]=='N' ||        // Command for Sending ESP-NOW Messag=es
             inputBuffer[1]=='n' ||        // Command for Sending ESP-NOW Messages
             inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
@@ -1135,7 +1135,7 @@ void loop(){
          ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
             Debug.LOOP("Command: %s with a length of %d \n", inputBuffer, commandLength);
             if(commandLength >= 3) {
-                if(inputBuffer[1]=='H' || inputBuffer[1]=='H') {
+                if(inputBuffer[1]=='H' || inputBuffer[1]=='h') {
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     HPStringCommand += inCharRead;                   // add it to the inputString:

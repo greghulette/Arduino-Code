@@ -439,13 +439,13 @@ public:
             case 4:
                 effectCycle(fLEDOption1);
                 break;
-            case 5:
+            case 15:
                 setColor(fLEDOption1);
                 break;
-            case 6:
+            case 5:
                 effectRainbow();
                 break;
-            case 7:
+            case 14:
                 effectShortCircuit(fLEDOption1);
                 break; 
             case 96:
