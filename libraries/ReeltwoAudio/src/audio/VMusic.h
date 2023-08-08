@@ -152,9 +152,16 @@ public:
             {
                 fPlaying = false;
             }
+            else if (strncmp(str, "Playing ", 8) == 0)
+            {
+            }
+            else if (*str == 'T')
+            {
+                // fPlaying = false;
+            }
             else
             {
-                DEBUG_PRINT("[VMUSIC] "); DEBUG_PRINTLN(str);
+                DEBUG_PRINT("[VMUSIC] \""); DEBUG_PRINT(str); DEBUG_PRINTLN("\"");
             }
         }
     }
@@ -577,6 +584,8 @@ public:
     {
         if (changeDirectory(dir))
         {
+            if (!getVolume() || *snd == '\0')
+                return true;
             size_t size;
             sendCommand("VPF", snd);
             char* str = (char*)getResponse(size);
@@ -596,6 +605,8 @@ public:
     {
         if (changeDirectory(dir))
         {
+            if (!getVolume() || *snd == '\0')
+                return true;
             size_t size;
             sendCommand("VRF", snd);
             char* str = (char*)getResponse(size);
@@ -616,6 +627,8 @@ public:
     {
         if (changeDirectory(dir))
         {
+            if (!getVolume())
+                return true;
             size_t size;
             sendCommand("V3A");
             char* str = (char*)getResponse(size);
@@ -636,6 +649,8 @@ public:
     {
         if (changeDirectory(dir))
         {
+            if (!getVolume())
+                return true;
             size_t size;
             sendCommand("VRA");
             char* str = (char*)getResponse(size);
@@ -656,6 +671,8 @@ public:
     {
         if (changeDirectory(dir))
         {
+            if (!getVolume())
+                return true;
             size_t size;
             sendCommand("VRR");
             char* str = (char*)getResponse(size);
@@ -744,19 +761,36 @@ public:
             return false;
         fPlaying = false;
         sendCommand("VST");
-        return expectResponse("Command Failed");
+        return expectResponse("Stopped");
+    }
+
+    inline uint8_t getVolume() const
+    {
+        return fVolume;
     }
 
     /*
      * Set the volume for both left and right channels (0 silent - 100 maximum)
      * Volume settings is logarithmic. Every tic is 0.5db, quite reliably (ie, 20 tics is 10db, etc)
      */
+    bool setVolumeNoResponse(uint8_t volumePercent)
+    {
+        if (fVolume == volumePercent)
+            return true;
+        fVolume = volumePercent;
+        if (available())
+        {
+            sendByteCommand("VSV", map(min(volumePercent, 100), 0, 100, 100, 0));
+            return true;
+        }
+        return false;
+    }
+
     bool setVolume(uint8_t volumePercent)
     {
-        if (!available())
-            return false;
-        sendByteCommand("VSV", map(min(volumePercent, 100), 0, 100, 100, 0));
-        return expectResponse();
+        if (fVolume == volumePercent)
+            return true;
+        return (setVolumeNoResponse(volumePercent)) ? expectResponse() : false;
     }
 
     /*
@@ -843,7 +877,7 @@ public:
      */
     void sendCommand(const char* cmd = nullptr, const char* arg1 = nullptr, const char* arg2 = nullptr)
     {
-        process();
+        // process();
 
         fPos = 0;
         if (cmd != nullptr)
@@ -894,7 +928,7 @@ public:
      */
     void sendByteCommand(const char* cmd, uint8_t arg)
     {
-        process();
+        // process();
 
         // DEBUG_PRINTLN(cmd);
         fPos = 0;
@@ -914,7 +948,7 @@ public:
      */
     void sendByteWordCommand(const char* cmd, uint8_t arg, uint16_t word)
     {
-        process();
+        // process();
 
         fPos = 0;
         // output command
@@ -957,7 +991,6 @@ public:
             return true;
         }
         DEBUG_PRINT("VMUSIC UNEXPECTED RESPONSE: \"");
-        DEBUG_PRINT("\"");
         DEBUG_PRINT((char*)str);
         DEBUG_PRINTLN('"');
         return false;
@@ -1109,6 +1142,7 @@ private:
     bool fDriveInserted = false;
     bool fPlaying = false;
     char fBuffer[32];
+    uint8_t fVolume = 0;
     unsigned fPos = 0;
 };
 

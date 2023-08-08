@@ -772,13 +772,19 @@ if(Serial2.available()){serialEvent2();}
       if(inputBuffer[0]=='S') {inputBuffer[0]='E';}
       if( inputBuffer[0]=='C' ||        // Coin Slots Designator
           inputBuffer[0]=='L' ||        // LDP Designator
-          inputBuffer[0]=='M' ||        // //New to sketch Maintenece Lights Designator
+          inputBuffer[0]=='M' ||        // Maintenece Lights Designator
           inputBuffer[0]=='V' ||        // VU Designator
-          inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU
+          inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU & Maint
           inputBuffer[0]=='I' ||        // CBI Designator
           inputBuffer[0]=='D' ||        // Data Port Panel Designator
           inputBuffer[0]=='B' ||        // Both CBI & Data Port Panel Designator
-          inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, CBI & Data Port Panel Logicis Designator
+          inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, Maint, CBI & Data Port Panel Logicis Designator
+
+          inputBuffer[0]=='T' ||        // Maint & LDP Designator
+          inputBuffer[0]=='U' ||        // Maint and Coin
+          inputBuffer[0]=='W' ||        // Maint and VU
+          inputBuffer[0]=='F' ||        // Coin Slots & LDP Designator & VU
+
           inputBuffer[0]=='X' ||        // Coin Slots & LDP Designator
           inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
           inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
@@ -825,7 +831,7 @@ if(Serial2.available()){serialEvent2();}
                     colorState2 = defaultSecondaryColorInt;
                 }
 
-                if(inputBuffer[0]=='C' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Y' || inputBuffer[0]=='E') {
+                if(inputBuffer[0]=='C' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Y' || inputBuffer[0]=='E'|| inputBuffer[0]=='U'|| inputBuffer[0]=='F') {
                   CS_command[0]   = '\0';                                                            // Flushes Array
                   CS_command[0] = displayState;
                   CS_command[1] = typeState;
@@ -836,7 +842,7 @@ if(Serial2.available()){serialEvent2();}
                   CSCount = 0;
                   if(!autoComplete) {enableCSAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='L' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E') {
+                if(inputBuffer[0]=='L' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='T'|| inputBuffer[0]=='F') {
                   LDP_command[0]   = '\0';                                                            // Flushes Array
                   LDP_command[0] = displayState;
                   LDP_command[1] = typeState;
@@ -847,7 +853,7 @@ if(Serial2.available()){serialEvent2();}
                   LDPCount = 0;
                   if(!autoComplete) {enableLDPAuto = 0;}                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='M' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E') {
+                if(inputBuffer[0]=='M' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='U'|| inputBuffer[0]=='T'|| inputBuffer[0]=='W') {
                   MAINT_command[0]   = '\0';                                                            // Flushes Array
                   MAINT_command[0] = displayState;
                   MAINT_command[1] = typeState;
@@ -858,7 +864,7 @@ if(Serial2.available()){serialEvent2();}
                   MAINTCount = 0;
                   if(!autoComplete) {enableMAINTAuto = 0;}                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='V' || inputBuffer[0]=='A' || inputBuffer[0]=='Y' || inputBuffer[0]=='Z' || inputBuffer[0]=='E') {
+                if(inputBuffer[0]=='V' || inputBuffer[0]=='A' || inputBuffer[0]=='Y' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='W'|| inputBuffer[0]=='F') {
                   VU_command[0]   = '\0';                                                            // Flushes Array
                   VU_command[0] = displayState;
                   VU_command[1] = typeState;
