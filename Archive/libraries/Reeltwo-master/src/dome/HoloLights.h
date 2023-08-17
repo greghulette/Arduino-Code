@@ -433,7 +433,7 @@ public:
             case 2:
                 effectColorProjectorLED(fLEDOption1);
                 break; 
-            case 3:
+            case 7:
                 effectDimPulse(fLEDOption1, fLEDOption2);
                 break;
             case 4:

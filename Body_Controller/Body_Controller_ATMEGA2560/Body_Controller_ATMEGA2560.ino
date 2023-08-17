@@ -282,7 +282,7 @@
    byte enableVUAuto   = 1;   //1
    byte enableDPAuto   = 1;   //1
    byte enableCBIAuto  = 1;   //1
-   byte enableMAINTAuto = 1;  //New to sketch
+   byte enableMAINTAuto = 0;  //New to sketch
 
 //////////////////////////////////////////////////////////////////////
 ///*****             Auto Mode Interval Settings               *****///
@@ -770,25 +770,56 @@ if(Serial2.available()){serialEvent2();}
     if(stringComplete) {inputString.toCharArray(inputBuffer, 10);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 10);autoInputString="";}
       if(inputBuffer[0]=='S') {inputBuffer[0]='E';}
-      if( inputBuffer[0]=='C' ||        // Coin Slots Designator
-          inputBuffer[0]=='L' ||        // LDP Designator
-          inputBuffer[0]=='M' ||        // Maintenece Lights Designator
-          inputBuffer[0]=='V' ||        // VU Designator
-          inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU & Maint
-          inputBuffer[0]=='I' ||        // CBI Designator
-          inputBuffer[0]=='D' ||        // Data Port Panel Designator
+      if( inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU & Maint
           inputBuffer[0]=='B' ||        // Both CBI & Data Port Panel Designator
+          inputBuffer[0]=='C' ||        // Coin Slots Designator
+          inputBuffer[0]=='D' ||        // Data Port Panel Designator
           inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, Maint, CBI & Data Port Panel Logicis Designator
+          inputBuffer[0]=='F' ||        // Coin Slots & LDP  & VU
+          inputBuffer[0]=='G' ||        // LDP & Maint & VU
+          inputBuffer[0]=='H' ||        // VU & Data Panel Logics
+          inputBuffer[0]=='I' ||        // CBI Logics
+          inputBuffer[0]=='J' ||        // VU & Data Panel & CBI
+          inputBuffer[0]=='K' ||        // LDP & Coin & VU & CBI & Data Panel Logics
+          inputBuffer[0]=='L' ||        // LDP
+          inputBuffer[0]=='M' ||        // Maint
+          inputBuffer[0]=='N' ||        // LDP & Maint & VU
+          inputBuffer[0]=='O' ||        // Unused at this point
+          inputBuffer[0]=='P' ||        // Programming Designator ((EPROM))
+          inputBuffer[0]=='Q' ||        // Maint & Coin & VU
+          inputBuffer[0]=='R' ||        // LDP & Maint & Coin
+          inputBuffer[0]=='S' ||        // Every -  Coin Slots, LDP, VU, Maint, CBI & Data Port Panel Logicis Designator
+          inputBuffer[0]=='T' ||        // LDP & Maint
+          inputBuffer[0]=='U' ||        // Maint & Coin
+          inputBuffer[0]=='V' ||        // VU
+          inputBuffer[0]=='W' ||        // Maint & Vu
+          inputBuffer[0]=='X' ||        // LDP & Coin
+          inputBuffer[0]=='Y' ||        // Coin & VU
+          inputBuffer[0]=='Z'         // LDP & VU
 
-          inputBuffer[0]=='T' ||        // Maint & LDP Designator
-          inputBuffer[0]=='U' ||        // Maint and Coin
-          inputBuffer[0]=='W' ||        // Maint and VU
-          inputBuffer[0]=='F' ||        // Coin Slots & LDP Designator & VU
+        
+        
+        
+        
+        // // inputBuffer[0]=='C' ||        // Coin Slots Designator
+        //   inputBuffer[0]=='L' ||        // LDP Designator
+        //   inputBuffer[0]=='M' ||        // Maintenece Lights Designator
+        //   inputBuffer[0]=='V' ||        // VU Designator
+        //   // inputBuffer[0]=='A' ||        // All DotStar (RGB LEDs) -  Coin Slots, LDP, & VU & Maint
+        //   inputBuffer[0]=='I' ||        // CBI Designator
+        //   // inputBuffer[0]=='D' ||        // Data Port Panel Designator
+        //   // inputBuffer[0]=='B' ||        // Both CBI & Data Port Panel Designator
+        //   // inputBuffer[0]=='E' ||        // Every -  Coin Slots, LDP, VU, Maint, CBI & Data Port Panel Logicis Designator
 
-          inputBuffer[0]=='X' ||        // Coin Slots & LDP Designator
-          inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
-          inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
-          inputBuffer[0]=='P'           // Programming variables remotely instead of trimpots
+        //   inputBuffer[0]=='T' ||        // Maint & LDP Designator
+        //   inputBuffer[0]=='U' ||        // Maint and Coin
+        //   inputBuffer[0]=='W' ||        // Maint and VU
+        //   // inputBuffer[0]=='F' ||        // Coin Slots & LDP Designator & VU
+
+        //   inputBuffer[0]=='X' ||        // Coin Slots & LDP Designator
+        //   inputBuffer[0]=='Y' ||        // Coin Slots & VU/Data Panel Designator
+        //   inputBuffer[0]=='Z' ||        // LDP Designator & VU/Data Panel Designator
+        //   inputBuffer[0]=='P'           // Programming variables remotely instead of trimpots
         ) {commandLength = strlen(inputBuffer);                                                                                  //  Determines length of command character array.
             DBG("Command: %s with a length of %d \n", inputBuffer, commandLength);
 
@@ -831,7 +862,10 @@ if(Serial2.available()){serialEvent2();}
                     colorState2 = defaultSecondaryColorInt;
                 }
 
-                if(inputBuffer[0]=='C' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Y' || inputBuffer[0]=='E'|| inputBuffer[0]=='U'|| inputBuffer[0]=='F') {
+
+
+
+                if(inputBuffer[0]=='A' || inputBuffer[0]=='C' || inputBuffer[0]=='E' || inputBuffer[0]=='F' || inputBuffer[0]=='K'|| inputBuffer[0]=='Q'|| inputBuffer[0]=='R'|| inputBuffer[0]=='S'|| inputBuffer[0]=='U'|| inputBuffer[0]=='X'|| inputBuffer[0]=='Y') {
                   CS_command[0]   = '\0';                                                            // Flushes Array
                   CS_command[0] = displayState;
                   CS_command[1] = typeState;
@@ -842,7 +876,8 @@ if(Serial2.available()){serialEvent2();}
                   CSCount = 0;
                   if(!autoComplete) {enableCSAuto = 0; }                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='L' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='T'|| inputBuffer[0]=='F') {
+
+                if(inputBuffer[0]=='A' || inputBuffer[0]=='E' || inputBuffer[0]=='F' || inputBuffer[0]=='G' || inputBuffer[0]=='K'|| inputBuffer[0]=='L'||  inputBuffer[0]=='R'|| inputBuffer[0]=='S'|| inputBuffer[0]=='T'|| inputBuffer[0]=='X'|| inputBuffer[0]=='Z') {
                   LDP_command[0]   = '\0';                                                            // Flushes Array
                   LDP_command[0] = displayState;
                   LDP_command[1] = typeState;
@@ -853,7 +888,8 @@ if(Serial2.available()){serialEvent2();}
                   LDPCount = 0;
                   if(!autoComplete) {enableLDPAuto = 0;}                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='M' || inputBuffer[0]=='A' || inputBuffer[0]=='X' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='U'|| inputBuffer[0]=='T'|| inputBuffer[0]=='W') {
+
+                if(inputBuffer[0]=='A' || inputBuffer[0]=='E' || inputBuffer[0]=='G' || inputBuffer[0]=='M'|| inputBuffer[0]=='Q'|| inputBuffer[0]=='R'|| inputBuffer[0]=='S'|| inputBuffer[0]=='T'|| inputBuffer[0]=='U'|| inputBuffer[0]=='W') {
                   MAINT_command[0]   = '\0';                                                            // Flushes Array
                   MAINT_command[0] = displayState;
                   MAINT_command[1] = typeState;
@@ -864,7 +900,9 @@ if(Serial2.available()){serialEvent2();}
                   MAINTCount = 0;
                   if(!autoComplete) {enableMAINTAuto = 0;}                                            //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='V' || inputBuffer[0]=='A' || inputBuffer[0]=='Y' || inputBuffer[0]=='Z' || inputBuffer[0]=='E'|| inputBuffer[0]=='W'|| inputBuffer[0]=='F') {
+
+
+                if(inputBuffer[0]=='A' || inputBuffer[0]=='E' || inputBuffer[0]=='F' || inputBuffer[0]=='G' || inputBuffer[0]=='H'|| inputBuffer[0]=='J'|| inputBuffer[0]=='K'|| inputBuffer[0]=='Q'|| inputBuffer[0]=='S'|| inputBuffer[0]=='V'|| inputBuffer[0]=='W'|| inputBuffer[0]=='Y'|| inputBuffer[0]=='Z') {
                   VU_command[0]   = '\0';                                                            // Flushes Array
                   VU_command[0] = displayState;
                   VU_command[1] = typeState;
@@ -875,8 +913,9 @@ if(Serial2.available()){serialEvent2();}
                   VUCount = 0;
                   if(!autoComplete) {enableVUAuto = 0;}                                             //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='D' || inputBuffer[0]=='B' || inputBuffer[0]=='E') {
-                  DP_command     = displayState;
+
+                if(inputBuffer[0]=='B' || inputBuffer[0]=='D' || inputBuffer[0]=='E' || inputBuffer[0]=='H' || inputBuffer[0]=='J'|| inputBuffer[0]=='K'|| inputBuffer[0]=='S') {
+                    DP_command     = displayState;
                   DPMillis       = millis();
                   SCCountDP      = 0;
                   SCCount2DP     = 0;
@@ -884,7 +923,8 @@ if(Serial2.available()){serialEvent2();}
                   DPFrame        = 0;
                   enableDPAuto   = 0;                                                                 //  Disables Automode to keep it from overriding User selected commands
                 }
-                if(inputBuffer[0]=='I' || inputBuffer[0]=='B' || inputBuffer[0]=='E') {
+
+                if(inputBuffer[0]=='B' || inputBuffer[0]=='E' || inputBuffer[0]=='I' || inputBuffer[0]=='J' || inputBuffer[0]=='K'|| inputBuffer[0]=='S') {
                   CBI_command    = displayState;
                   CBIMillis      = millis();
                   SCCountCBI     = 0;
@@ -894,7 +934,7 @@ if(Serial2.available()){serialEvent2();}
                   enableCBIAuto  = 0;               //  Disables Automode to keep it from overriding User selected commands
                 }
 
-                if(inputBuffer[0]=='P' || inputBuffer[0]=='p') {
+                if(inputBuffer[0]=='P') {
                   Prog_command[0]   = '\0';                                                            // Flushes Array
                   Prog_command[0] = varName;
                   Prog_command[1] = varNameNum1;
@@ -923,7 +963,7 @@ if(Serial2.available()){serialEvent2();}
 
     if(Prog_command[0]) {
       switch (Prog_command[0]) {                                                                                   //  Determine what sequence function to execute.
-        case 1:  changeLDPBrightness(varNameNum1, varNameNum2, varNameNum3);                      break;
+        case 1:  changeLDPBrightness(Prog_command[1], Prog_command[2], Prog_command[3]);                      break;
         case 2:  changeMAINTBrightness(varNameNum1, varNameNum2, varNameNum3);                    break;
         case 3:  changeCSBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
         case 4:  changeVUBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
@@ -5798,7 +5838,8 @@ uint8_t splitColor ( uint32_t c, char value )
             stringComplete = true;            // set a flag so the main loop can do something about it.
           }
         }
-          Serial.println("Received Command over Serial2");
+          Serial.print("Received Command over Serial2: ");
+          Serial.println(inputString);
           colorWipeStatus(blue,10);
 
       }

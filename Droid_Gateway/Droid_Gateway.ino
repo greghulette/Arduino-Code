@@ -1085,7 +1085,7 @@ void setup() {
   
   //Button for relay setup
   pinMode(RELAY_BUTTON, INPUT);
-
+  pinMode(RELAY_CONTROL, OUTPUT);
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);

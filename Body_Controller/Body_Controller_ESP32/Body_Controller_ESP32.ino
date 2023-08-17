@@ -1142,7 +1142,7 @@ void panelWaveFast(){
 
 void domePeriscope(){
     sendESPNOWCommand("DP", ":SUS:PS4");
-    // writeRdSerial(":S4");
+    writeRdSerial(":DPS4");
  Animation_Command[0]   = '\0'; 
 };
 
@@ -1152,16 +1152,23 @@ void allOpenClose(){
 };
 
 void HarlemShake(){
-  float currentVolume = HCR.getVolume(1);
+  // float currentVolume = HCR.getVolume(1);
   sendESPNOWCommand("BS", ":D313");
-  HCR.SetVolume(1,100);
+  // HCR.SetVolume(1,100);
   HCR.PlayWAV(1,1800);  //Figure out which is the correct track to play
-  HCR.SetVolume(1,currentVolume);
+  HCR.update();
+  // HCR.SetVolume(1,currentVolume);
  Animation_Command[0]   = '\0'; 
 };
 
 void allClose(){
     sendESPNOWCommand("BS", ":D304");
+
+ Animation_Command[0]   = '\0'; 
+};
+
+void allOpen(){
+    sendESPNOWCommand("BS", ":D303");
 
  Animation_Command[0]   = '\0'; 
 };
@@ -1392,11 +1399,12 @@ void loop(){
                   }
                 }
                 if (inputBuffer[2] == 'A'){
-                  for (int i=2; i<=commandLength-2; i++){
+                  for (int i=3; i<=commandLength-1; i++){
                     char inCharRead = inputBuffer[i];
                     eepromCommandString += inCharRead;                   // add it to the inputString:
                   }
                   writeBlSerial(eepromCommandString);
+                  eepromCommandString = "";
                 }
               } else {Debug.LOOP("No valid command entered /n");}
               
@@ -1533,7 +1541,7 @@ void loop(){
         
           if(Animation_Command[0]){
             switch (AnimationCommandFunction) {
-              case 1: normalOperations(); Animation_Command[0]   = '\0';    break;
+              case 1: normalOperations();                                   break;
               case 2: panelWave();                                          break;
               case 3: panelWaveFast();                                      break;
               case 4: domePeriscope();                                      break;
@@ -1543,7 +1551,7 @@ void loop(){
               case 8: allFlutter();                                         break;
               case 9: toggleDoors();                                        break;
               case 10: allLightsToggle();                                   break;
-              case 11: break;
+              case 11: allOpen();                                           break;
               case 12: break;
               case 13: break;
               case 14: break;
