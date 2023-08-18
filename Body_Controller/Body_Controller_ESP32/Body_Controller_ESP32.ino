@@ -1194,6 +1194,23 @@ void allFlutter(){
 
 }
 
+void CompleteshortCircuit(){
+  writeBlSerial("E14");
+  sendESPNOWCommand("HP", ":HA014");
+  sendESPNOWCommand("DC", ":SDL@APLE20530");
+  DelayCall::schedule([]{sendESPNOWCommand("DC", ":SPS0T4");}, 75);
+  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D105");}, 125);
+  
+  DelayCall::schedule([]{resetLightsafterShortCircuit();}, 18000);
+  Animation_Command[0]   = '\0'; 
+
+}
+
+void resetLightsafterShortCircuit(){
+  writeBlSerial("K99");
+  sendESPNOWCommand("HP", ":HA0025");
+}
+
 bool lightsOn = true;
 
 void allLightsToggle(){
@@ -1554,7 +1571,7 @@ void loop(){
               case 11: allOpen();                                           break;
               case 12: break;
               case 13: break;
-              case 14: break;
+              case 14: CompleteshortCircuit();                              break;
               case 15: break;
               case 16: break;
               case 17: break;

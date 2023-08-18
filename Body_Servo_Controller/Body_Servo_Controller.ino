@@ -595,8 +595,8 @@ void processESPNOWIncomingMessage(){
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  2300, 975, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
-    { 2,  2300, 960, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
+    { 1,  2350, 675, TOP_UTILITY_ARM },       /* 0: Top Utility Arm */
+    { 2,  1950, 960, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm */
     { 3,  1900, 1000, LARGE_LEFT_DOOR },      /* 2: Large Left Door as viewing from looking at R2 */
     { 4,  1200, 1900, LARGE_RIGHT_DOOR },      /* 3: Large Right door as viewing from looking at R2 */
     { 5,  1900 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1100*/
@@ -984,7 +984,7 @@ void shortCircuit(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
 
-  // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
   D_command[0] = '\0';
 };
 

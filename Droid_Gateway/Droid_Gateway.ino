@@ -963,6 +963,7 @@ void sendStatusMessage(String outgoing) {
 
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
+  LoRa.receive();
   msgCount++;                           // increment message ID
   Debug.LORA("Status Sent\n");
   Local_Command[0]   = '\0';

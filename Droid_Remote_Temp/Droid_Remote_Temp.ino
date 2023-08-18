@@ -885,6 +885,7 @@ void sendLoRaMessage(String outgoing) {
   LoRa.write(outgoing.length());        // add payload length
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
+  LoRa.receive();
   msgCount++;                           // increment message ID
   Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing.c_str());
 

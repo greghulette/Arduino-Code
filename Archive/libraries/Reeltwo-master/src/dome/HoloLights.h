@@ -374,11 +374,11 @@ public:
                     }
                     else
                     {
-                        fLEDOption1 = (functionState == 7) ? fShortColor : fDefaultColor;
+                        fLEDOption1 = (functionState == 14) ? fShortColor : fDefaultColor;
                     }
-                    if (optionState2 >= 0 && functionState == 3)
+                    if (optionState2 >= 0 && functionState == 7)
                         fLEDOption2 = optionState2;
-                    else if (optionState2 < 0 && functionState == 3)
+                    else if (optionState2 < 0 && functionState == 7)
                         fLEDOption2 = kDimPulseSpeed;
                     fLEDHalt = (durationSec >= 1) ? durationSec : -1;
                     fLEDHaltTime = millis();
