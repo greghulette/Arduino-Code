@@ -1008,11 +1008,11 @@ void onReceive(int packetSize) {
   Serial.println();
   }
   
-  if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
-    colorWipeStatus("LS", green, 10);
-  }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
-    colorWipeStatus("LS", yellow, 10);
-  } else{ colorWipeStatus("LS", red, 10);}
+  // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
+  //   colorWipeStatus("LS", green, 10);
+  // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
+  //   colorWipeStatus("LS", yellow, 10);
+  // } else{ colorWipeStatus("LS", red, 10);}
 
   inputString = incoming;
   stringComplete = true; 
