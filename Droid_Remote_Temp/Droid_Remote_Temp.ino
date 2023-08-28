@@ -16,6 +16,8 @@
 #include "ds3231.h"
 // #include <SD.h>
 #include <Adafruit_NeoPixel.h>
+#include "ArduinoJson.h"
+
 
 //ReelTwo libaries
 //#define USE_DEBUG
@@ -54,6 +56,8 @@
 float voltValue;
 
   char inputBuffer[100];
+  #define MAX_LINE_LENGTH 100
+  char buffer[MAX_LINE_LENGTH];
   String inputString;         // a string to hold incoming data
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
@@ -95,7 +99,7 @@ String debugInputIdentifier ="";
   boolean relayStatus;
   boolean bodyControllerStatus = 0;
   boolean bodyLEDControllerStatus = 0;  
-  boolean bodyServoStatus = 0;
+  boolean bodyServoControllerStatus = 0;
   boolean domePlateControllerStatus = 0;
   boolean domeControllerStatus = 0;
   boolean hpControllerStatus = 0;
@@ -131,18 +135,24 @@ String debugInputIdentifier ="";
   float batteryFraction;
   int roundedpercent;
 
-  int keepAliveTimeOut = 15000;
-  unsigned long dckeepAliveAge;
-  unsigned long dckeepaliveAgeMillis;
-  unsigned long pckeepAliveAge;
-  unsigned long pckeepaliveAgeMillis;
-  unsigned long bskeepAliveAge;
-  unsigned long bskeepaliveAgeMillis;
-  unsigned long bckeepAliveAge;
-  unsigned long bckeepaliveAgeMillis;
-  unsigned long dlkeepAliveAge;
-  unsigned long dlkeepaliveAgeMillis;
 
+  int keepAliveTimeOut = 15000;
+  unsigned long keepAliveMillis;
+  unsigned long dckeepAliveAge;
+  unsigned long dckeepAliveAgeMillis;
+  unsigned long dpkeepAliveAge;
+  unsigned long dpkeepAliveAgeMillis;
+  unsigned long bskeepAliveAge;
+  unsigned long bskeepAliveAgeMillis;
+  unsigned long bckeepAliveAge;
+  unsigned long bckeepAliveAgeMillis;
+  unsigned long blkeepAliveAge;
+  unsigned long blkeepAliveAgeMillis;
+  unsigned long drkeepAliveAge;
+  unsigned long hpkeepAliveAgeMillis;
+  unsigned long hpkeepAliveAge;
+  unsigned long dgkeepAliveAgeMillis;
+  unsigned long dgkeepAliveAge;
   //declare OLED 
   OLED_CLASS_OBJ display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
 
@@ -260,20 +270,47 @@ AsyncWebServer server(80);
       /// bytes of data may be available.                   ///
       /////////////////////////////////////////////////////////
 
+// void serialEvent() {
+//   while (Serial.available()) {
+//     // get the new byte:
+//     char inChar = (char)Serial.read();
+//     // add it to the inputString:
+//     inputString += inChar;
+//     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+//       // stringComplete = true;            // set a flag so the main loop can do something about it.
+//       enqueueCommand(inputString);
+//     };
+//   };
+//   Debug.DBG("InputString: %s \n",inputString);
+// };
+
 void serialEvent() {
-  while (Serial.available()) {
-    // get the new byte:
-    char inChar = (char)Serial.read();
-    // add it to the inputString:
-    inputString += inChar;
-    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
-  };
-  Debug.DBG("InputString: %s \n",inputString);
+  if (readLine() > 0) //Did we receive something?
+  {
+    char *token = strtok(buffer, " "); //Start tokenization
+    while (token) //While a token is available
+    {
+      Serial.println(token); //Print current token
+      enqueueCommand(token);
+      token = strtok(NULL, ","); //Fetch next token
+    }
+  }
 };
 
-
+int readLine()
+{
+  int cc = 0; //Number of chars read
+  bool done = false;
+  while (Serial.available() && (!done) && (cc < MAX_LINE_LENGTH - 1))
+  {
+    char cur = Serial.read(); //Read a char
+    if (cur == '\r') done = true; //If the received char is \n then we are done
+    else buffer[cc++] = cur; //Append to buffer and increment the index
+  }
+  buffer[cc] = 0; //Terminate the line with a \0
+  // delay(50);
+  return cc; //Return line length
+}
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
   /////////////////////////////////////////////////////////
@@ -309,33 +346,60 @@ void writeSerialString(String stringData){
 ///*****    Checks the age of the Status Variables            *****///
 //////////////////////////////////////////////////////////////////////
 
+
 void checkAgeofkeepAlive(){    //checks for the variable's age
-  // if (domeControllerStatus=="Online"){
-  //   if (millis()-dckeepAliveAge>=keepAliveTimeOut){
-  //     domeControllerStatus="Offline";
-  //     Debug.DBG_2("Dome Controller Offline\n");
+  if (droidGatewayStatus== true){
+    if (millis() - dgkeepAliveAge>=keepAliveTimeOut){
+      droidGatewayStatus = false;
+      Debug.STATUS("Dome Controller Offline\n");
+    }
+  }  if (domeControllerStatus== true){
+    if (millis() - dckeepAliveAge>=keepAliveTimeOut){
+      domeControllerStatus = false;
+      Debug.STATUS("Dome Controller Offline\n");
+    }
+  }
+  if (domePlateControllerStatus== true){
+    if (millis()-dpkeepAliveAge>=keepAliveTimeOut){
+      domePlateControllerStatus= false;
+      Debug.STATUS("Dome Plate Controller Offline\n");
+    }
+  }
+  if (bodyServoControllerStatus == true){
+    if (millis()-bskeepAliveAge>=keepAliveTimeOut){
+      bodyServoControllerStatus = false;
+      Debug.STATUS("Body Servo Controller Offline\n");
+    }
+  }
+  if (bodyControllerStatus == true){
+    if (millis()-bckeepAliveAge>=keepAliveTimeOut){
+      bodyControllerStatus = false;
+      BL_LDP_Bright =0;
+      BL_MAINT_Bright = 0;
+      BL_VU_Bright = 0;
+      BL_CS_Bright =0;
+      BL_vuOffsetInt = 0;
+      BL_vuBaselineInt = 0;
+      BL_vuOffsetExt = 0;
+      BL_vuBaselineExt =0;
+      BL_BatteryPercentage = 0;
+      BL_BatteryVoltage = 0.0;
+      Debug.STATUS("Body Controller Offline\n");
+    }
+  }
+  // if (droidRemoteStatus == true){
+  //   if (millis()-drkeepAliveAge>=keepAliveTimeOut){
+  //     droidRemoteStatus = false;
+  //     colorWipeStatus("LS", red, 20);
+  //     Debug.STATUS("Droid Remote Offline\n");
   //   }
   // }
-  // if (periscopeControllerStatus=="Online"){
-  //   if (millis()-pckeepAliveAge>=keepAliveTimeOut){
-  //     periscopeControllerStatus="Offline";
-  //     Debug.DBG_2("Periscope Controller Offline\n");
-  //   }
-  // }
-  // if (bodyServoControllerStatus=="Online"){
-  //   if (millis()-bskeepAliveAge>=keepAliveTimeOut){
-  //     bodyServoControllerStatus="Offline";
-  //     Debug.DBG_2("Body Servo Controller Offline\n");
-  //   }
-  // }
-  //   if (bodyLEDControllerStatus=="Online"){
-  //   if (millis()-bckeepAliveAge>=keepAliveTimeOut){
-  //     bodyLEDControllerStatus="Offline";
-  //     BL_BatteryPercentage = 0;
-  //     BL_BatteryVoltage = 0.0;
-  //     Debug.DBG_2("Body LED Controller Offline\n");
-  //   }
-  // }
+    if (hpControllerStatus == true){
+    if (millis()-hpkeepAliveAge>=keepAliveTimeOut){
+      hpControllerStatus = false;
+      Debug.STATUS("HP Controller Offline\n");
+    }
+  }
 }
 
 void checkAgeofBLKeepAlive(){
@@ -345,10 +409,10 @@ void checkAgeofBLKeepAlive(){
 
 void printKeepaliveStatus(){
 
-  // Debug.DBG("Dome Controller Status: %s\n", domeControllerStatus);
-  // Debug.DBG("Body Servo Controller Status: %s\n", bodyServoControllerStatus);
-  // Debug.DBG("Periscope Controller Status: %s\n", periscopeControllerStatus);
-  // Debug.DBG("Body LED Controller Status: %s\n", bodyLEDControllerStatus);
+  Debug.DBG("Dome Controller Status: %i\n", domeControllerStatus);
+  Debug.DBG("Body Servo Controller Status: %i\n", bodyServoControllerStatus);
+    Debug.DBG("Periscope Controller Status: %i\n", domePlateControllerStatus);
+  Debug.DBG("Body LED Controller Status: %i\n", bodyLEDControllerStatus);
 
   Local_Command[0]   = '\0';
 
@@ -374,7 +438,6 @@ void displayOLEDString(String StringtoDisplay){
     display.drawString(0,45, StringtoDisplay);
     display.display();
 }
-//GreenSpiderMan@18 
 
 
 void onReceive(int packetSize) {
@@ -389,7 +452,7 @@ void onReceive(int packetSize) {
   relayStatus = LoRa.read();
 bodyControllerStatus = LoRa.read();
 bodyLEDControllerStatus = LoRa.read();
-bodyServoStatus = LoRa.read();
+bodyServoControllerStatus = LoRa.read();
 domePlateControllerStatus = LoRa.read();
 domeControllerStatus = LoRa.read();
 hpControllerStatus = LoRa.read();
@@ -436,7 +499,7 @@ String recipientString = String(recipient, HEX);
   Debug.STATUS("Main Relay Status: %d\n", relayStatus);
   Debug.STATUS("Body Controller Status: %d\n", bodyControllerStatus);
   Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
-  Debug.STATUS("Body Servo Status: %d\n", bodyServoStatus);
+  Debug.STATUS("Body Servo Status: %d\n", bodyServoControllerStatus);
   Debug.STATUS("Dome Plate Controller Status: %d\n", domePlateControllerStatus);  
   Debug.STATUS("Dome Controller Status: %d\n", domeControllerStatus);
   Debug.STATUS("LDP Brightness: %d\n", BL_LDP_Bright);
@@ -456,6 +519,16 @@ String recipientString = String(recipient, HEX);
   receiveMsgCount++;
   // displayOLEDString(" ");
   // LoRaRSSI = "";
+  if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
+  if (bodyControllerStatus == true) {bckeepAliveAge = millis();};
+  if (bodyServoControllerStatus == true){bskeepAliveAge = millis();};
+  if (domePlateControllerStatus == true) {dpkeepAliveAge = millis();};
+  if (domeControllerStatus == true){dckeepAliveAge = millis();};
+  if (hpControllerStatus == true){hpkeepAliveAge = millis();};
+
+  
+
+
 }
 int updateStatusDuration = 5000;
 unsigned long updateStatusPreviousMillis;
@@ -490,12 +563,49 @@ int getBatteryPercentage(){
   
 
 }
+
+void sendUpdates(){
+//  Serial.println("Executing JSON");
+  DynamicJsonDocument doc(2048);
+  doc["droidremoteControllerStatus"] = true;
+  doc["droidgatewayControllerStatus"] = droidGatewayStatus;
+  doc["relayStatus"] = relayStatus;
+  doc["LoRaRSSI"] = LoRaRSSI;
+  doc["bodyControllerStatus"] = bodyControllerStatus;
+  doc["bodyLEDControllerStatus"] = bodyLEDControllerStatus;
+  doc["bodyServoControllerStatus"] = bodyServoControllerStatus;
+  doc["domeControllerStatus"] = domeControllerStatus;
+  doc["domePlateControllerStatus"] = domePlateControllerStatus;
+  doc["hpControllerStatus"] = hpControllerStatus;
+  doc["LDPBright"] = BL_LDP_Bright;
+  doc["MaintBright"] = BL_MAINT_Bright;
+  doc["VUBright"] = BL_VU_Bright;
+  doc["CoinBright"] = BL_CS_Bright;
+  doc["VUIntBaseline"] = BL_vuBaselineInt;
+  doc["VUIntOffset"] = BL_vuOffsetInt;
+  doc["VUExtBaseline"] = BL_vuBaselineExt;
+  doc["VUExtOffset"] = BL_vuOffsetExt;
+  doc["BatteryVoltage"] = BL_BatteryVoltage;
+  doc["BatteryPercent"] = BL_BatteryPercentage;
+  doc["JSONDone"] = true;
+  
+  serializeJson(doc, Serial);
+  Serial.println("");
+
+}
+
+
+
+
+
+
 void updateStatus(){
 
   if (millis() - updateStatusPreviousMillis >= updateStatusDuration){
   updateStatusPreviousMillis = millis();
   // sendLoRaMessage("#L07");
   statusCounter++;
+  sendUpdates();
   adcValue = analogRead(ADCPIN);
   voltValue = (adcValue /4095.0) * 2 * 1.1 * 3.3;
   batteryFraction = (voltValue / MAX_BATTERY_VOLTAGE)*100;
@@ -506,7 +616,6 @@ void updateStatus(){
    BATVoltage = String(voltValue);
    String displayTest = "Sc:" + String(statusCounter) + " Lc:" + String(receiveMsgCount);
    displayOLEDString(displayTest);
-
   }
 
 }
@@ -533,6 +642,80 @@ String getValue(String data, char separator, int index){
   return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
+
+// <-- code from Mimir for queueing incoming commands from GET params-->
+////////////////////////////////////////////////////
+
+#define MAX_QUEUE_DEPTH 5
+
+////////////////////////////////////////////////////
+
+template<class T, int maxitems>
+class Queue {
+  private:
+    int _front = 0, _back = 0, _count = 0;
+    T _data[maxitems + 1];
+    int _maxitems = maxitems;
+  public:
+    inline int count() { return _count; }
+    inline int front() { return _front; }
+    inline int back()  { return _back;  }
+
+    void push(const T &item) {
+      if(_count < _maxitems) { // Drops out when full
+        _data[_back++]=item;
+        ++_count;
+        // Check wrap around
+        if (_back > _maxitems)
+          _back -= (_maxitems + 1);
+      }
+    }
+
+    T peek() {
+      return (_count <= 0) ? T() : _data[_front];
+    }
+
+    T pop() {
+      if (_count <= 0)
+        return T(); // Returns empty
+
+      T result = _data[_front];
+      _front++;
+      --_count;
+      // Check wrap around
+      if (_front > _maxitems) 
+        _front -= (_maxitems + 1);
+      return result; 
+    }
+
+    void clear() {
+      _front = _back;
+      _count = 0;
+    }
+};
+
+template <int maxitems = MAX_QUEUE_DEPTH>
+using CommandQueue = Queue<String, maxitems>;
+
+////////////////////////////////////////////////////
+
+
+CommandQueue<> commandQueue;
+
+bool havePendingCommands()
+{
+  return (commandQueue.count() > 0);
+}
+
+String getNextCommand()
+{
+  return commandQueue.pop();
+}
+
+void enqueueCommand(String command)
+{
+  commandQueue.push(command);
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -671,23 +854,14 @@ void setup(){
             Debug.PARAM("Skipping param 0 in the Lora Message\n");
           } 
           else {      
-            // combinedString = combinedString + p->value();
-            //  LoRaOutgoing = (p->value());
-            // sendLoRaMessage(LoRaOutgoing);
-           
-          inputString = (p->value());
-          stringComplete = true;  
+            enqueueCommand(p->value());
+
+          // inputString = (p->value());
+          // stringComplete = true;  
+
           Debug.PARAM("sent to loop: %s \n", inputString.c_str());
           delay(75);
-            // displayOLEDString(p->value());
           };
-          // Debug.PARAM("Combined Value: %s \n",combinedString.c_str());
-          // sendLoRaMessage(combinedString);
-          // combinedString = "";
-          // delay(1500);
-        // } ;      
-          
-//         Debug.DBG_1("------\n");
     }
 
     request->send(200, "text/plain", "Message Received on Remote LoRa Controller");
@@ -696,13 +870,13 @@ void setup(){
 server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncResponseStream *response = request->beginResponseStream("application/json");
       DynamicJsonDocument json(2048);
-      json["droidremoteControllerStatus"] = 1;
+      json["droidremoteControllerStatus"] = true;
       json["droidgatewayControllerStatus"] = droidGatewayStatus;
       json["relayStatus"] = relayStatus;
       json["LoRaRSSI"] = LoRaRSSI;
       json["bodyControllerStatus"] = bodyControllerStatus;
       json["bodyLEDControllerStatus"] = bodyLEDControllerStatus;
-      json["bodyServoControllerStatus"] = bodyServoStatus;
+      json["bodyServoControllerStatus"] = bodyServoControllerStatus;
       json["domeControllerStatus"] = domeControllerStatus;
       json["domePlateControllerStatus"] = domePlateControllerStatus;
       json["hpControllerStatus"] = hpControllerStatus;
@@ -747,6 +921,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 void loop(){
   updateStatus();
+  checkAgeofkeepAlive();
   onReceive(LoRa.parsePacket());
   yield();
 button.poll();
@@ -769,7 +944,7 @@ if (button.onPress()) {
     if(startUp) {
       startUp = false;
       Serial.println("Startup");
-      sendLoRaMessage("Bootup of Remote Complete");
+      // sendLoRaMessage("Bootup of Remote Complete");
       // delay(2000);
       displayOLEDString("Running Loop");
     }
@@ -778,10 +953,23 @@ if (button.onPress()) {
 // 
       //  readLoRa();
 
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+  if (havePendingCommands()) {Serial.println("HasCommands");autoComplete=false;}
+  if (havePendingCommands() || autoComplete) {
+      
+    if(havePendingCommands()) {inputString = getNextCommand();  displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
+    else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+
+    
+// if (havePendingCommands()){ inputString = getNextCommand(); Serial.print("Param Recieved and passed havePending: ");Serial.println(inputString);}
+//     if (havePendingCommands()) {autoComplete=false;}
+//     if (havePendingCommands() || autoComplete) {
+// //     //   inputString = "";
+//      inputString = getNextCommand();
+//       if(havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+// //       // if(stringComplete || havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);}
+//   // if (stringComplete) {autoComplete=false;}
+//   // if (stringComplete || autoComplete) {
+//     if(havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);inputString="";} else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
 
       if (inputBuffer[0] == '#'){
         if (
@@ -834,6 +1022,7 @@ if (button.onPress()) {
               }
 
         }else if (inputBuffer[0] == ':'){
+          Serial.println("Enetered Execution of Commands");
      
       if( 
           inputBuffer[1]=='L'     ||        // Command designator for sending LoRa messages
@@ -885,7 +1074,7 @@ void sendLoRaMessage(String outgoing) {
   LoRa.write(outgoing.length());        // add payload length
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
-  LoRa.receive();
+  // LoRa.receive();
   msgCount++;                           // increment message ID
   Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing.c_str());
 

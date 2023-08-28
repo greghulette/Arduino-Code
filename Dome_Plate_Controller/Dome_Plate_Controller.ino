@@ -1003,7 +1003,7 @@ void loop(){
                   ESPNOWTarget = "";  
                   }  
             if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-                    for (int i=2; i<commandLength-1;i++ ){
+                    for (int i=2; i<commandLength;i++ ){
                       char inCharRead = inputBuffer[i];
                       serialStringCommand += inCharRead;  // add it to the inputString:
                     }

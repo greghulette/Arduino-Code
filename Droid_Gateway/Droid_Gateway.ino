@@ -825,7 +825,8 @@ void serialEvent() {
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+      enqueueCommand(inputString);
     };
   };
   Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
@@ -838,8 +839,10 @@ void s1SerialEvent() {
     // add it to the inputString:
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      stringComplete = true;            // set a flag so the main loop can do something about it.
-    };
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+      enqueueCommand(inputString);
+
+};
   };
   Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
@@ -969,6 +972,8 @@ void sendStatusMessage(String outgoing) {
   Local_Command[0]   = '\0';
 };
 
+
+
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
 
@@ -977,7 +982,7 @@ void onReceive(int packetSize) {
   byte sender = LoRa.read();            // sender address
   byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
-
+  
   String incoming = "";
   droidRemoteStatus = 1;
   drkeepAliveAge =millis();
@@ -985,10 +990,10 @@ void onReceive(int packetSize) {
     incoming += (char)LoRa.read();
   }
 
-  if (incomingLength != incoming.length()) {   // check length for error
-    if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
-    return;                             // skip rest of function
-  }
+  // if (incomingLength != incoming.length()) {   // check length for error
+  //   if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
+  //   return;                             // skip rest of function
+  // }
 
   // if the recipient isn't this device or broadcast,
   if (recipient != localAddress && recipient != 0xFF) {
@@ -1007,17 +1012,47 @@ void onReceive(int packetSize) {
   Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
   }
-  
+  parseStrings(incoming);
   // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
   //   colorWipeStatus("LS", green, 10);
   // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
   //   colorWipeStatus("LS", yellow, 10);
   // } else{ colorWipeStatus("LS", red, 10);}
 
-  inputString = incoming;
-  stringComplete = true; 
+  // inputString = incoming;
+  // stringComplete = true; 
       // sendMessage("Message Revieved");
 };
+// String LoRaStringReceived = "";
+String queuecommand ="";
+void parseStrings(String data){
+// Convert from String Object to String.
+    char buf[100];
+    data.toCharArray(buf, sizeof(buf));
+    // char *p = buf;
+    // char *str;
+    // while ((str = strtok(p, ".", &p)) != NULL) // delimiter is the period
+    //   // Serial.println(str);
+    //    queuecommand = String(str);
+    //   Serial.println(queuecommand);
+      // enqueueCommand(queuecommand);
+
+      char *token;
+      const char *delimiter =".";
+
+
+   token = strtok(buf, delimiter);
+
+   while (token != NULL) {
+      Serial.println(token);
+      enqueueCommand(token);
+      token=strtok(NULL, delimiter);
+   }
+
+
+  }
+
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1066,6 +1101,79 @@ void checkButton(){
   } 
 }
 
+// <-- code from Mimir for queueing incoming commands from GET params-->
+////////////////////////////////////////////////////
+
+#define MAX_QUEUE_DEPTH 5
+
+////////////////////////////////////////////////////
+
+template<class T, int maxitems>
+class Queue {
+  private:
+    int _front = 0, _back = 0, _count = 0;
+    T _data[maxitems + 1];
+    int _maxitems = maxitems;
+  public:
+    inline int count() { return _count; }
+    inline int front() { return _front; }
+    inline int back()  { return _back;  }
+
+    void push(const T &item) {
+      if(_count < _maxitems) { // Drops out when full
+        _data[_back++]=item;
+        ++_count;
+        // Check wrap around
+        if (_back > _maxitems)
+          _back -= (_maxitems + 1);
+      }
+    }
+
+    T peek() {
+      return (_count <= 0) ? T() : _data[_front];
+    }
+
+    T pop() {
+      if (_count <= 0)
+        return T(); // Returns empty
+
+      T result = _data[_front];
+      _front++;
+      --_count;
+      // Check wrap around
+      if (_front > _maxitems) 
+        _front -= (_maxitems + 1);
+      return result; 
+    }
+
+    void clear() {
+      _front = _back;
+      _count = 0;
+    }
+};
+
+template <int maxitems = MAX_QUEUE_DEPTH>
+using CommandQueue = Queue<String, maxitems>;
+
+////////////////////////////////////////////////////
+
+
+CommandQueue<> commandQueue;
+
+bool havePendingCommands()
+{
+  return (commandQueue.count() > 0);
+}
+
+String getNextCommand()
+{
+  return commandQueue.pop();
+}
+
+void enqueueCommand(String command)
+{
+  commandQueue.push(command);
+}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1201,11 +1309,15 @@ void loop() {
 
   if(Serial.available()){serialEvent();}
 
-  if (stringComplete) {autoComplete=false;}
-  if (stringComplete || autoComplete) {
-    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+  // if (stringComplete) {autoComplete=false;}
+  // if (stringComplete || autoComplete) {
+  //   if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+  //   else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+  if (havePendingCommands()) {autoComplete=false;}
+  if (havePendingCommands() || autoComplete) {
+    if(havePendingCommands()) {inputString = getNextCommand(); inputString.toCharArray(inputBuffer, 100);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-    
+
       if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging

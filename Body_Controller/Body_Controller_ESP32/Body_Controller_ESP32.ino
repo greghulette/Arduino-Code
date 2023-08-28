@@ -1131,7 +1131,7 @@ HCR.Stop();
 };
 
 void panelWave(){
-  sendESPNOWCommand("BS", ":D310D02125");
+  sendESPNOWCommand("BS", ":D310D03125");
  Animation_Command[0]   = '\0'; 
 };
 
@@ -1196,10 +1196,12 @@ void allFlutter(){
 
 void CompleteshortCircuit(){
   writeBlSerial("E14");
+  HCR.Overload();
+  DelayCall::schedule([]{HCR.Stimulate(3, 1);},1500);
   sendESPNOWCommand("HP", ":HA014");
   sendESPNOWCommand("DC", ":SDL@APLE20530");
   DelayCall::schedule([]{sendESPNOWCommand("DC", ":SPS0T4");}, 75);
-  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D105");}, 125);
+  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D305");}, 125);
   
   DelayCall::schedule([]{resetLightsafterShortCircuit();}, 18000);
   Animation_Command[0]   = '\0'; 
@@ -1229,6 +1231,50 @@ void allLightsToggle(){
 }
 
 
+void drawerWave(){
+  sendESPNOWCommand("BS", ":D118");
+  Animation_Command[0]   = '\0'; 
+};
+
+void OpenClosewithEasing(){
+  sendESPNOWCommand("BS", ":D306B312000400000050");
+  Animation_Command[0]   = '\0'; 
+};
+
+void StarWarsThemeSong(){
+  HCR.PlayWAV(1, 0001);
+  Animation_Command[0]   = '\0'; 
+};
+
+void VaderThemeSong(){
+  HCR.PlayWAV(1, 0002);
+  Animation_Command[0]   = '\0'; 
+};
+
+void PeriscopeSeq2(){
+  sendESPNOWCommand("DP", ":SUS:PS2");
+  Animation_Command[0]   = '\0'; 
+};
+
+void PerisopeSeq10(){
+  sendESPNOWCommand("DP", ":SUS:PS10");
+  Animation_Command[0]   = '\0'; 
+};
+
+void LightsOff(){
+  writeBlSerial("K98");
+  Animation_Command[0]   = '\0'; 
+};
+
+void LightsOn(){
+  writeBlSerial("K99");
+  Animation_Command[0]   = '\0'; 
+};
+
+void FartNoise(){
+  HCR.PlayWAV(1, 0004);
+  Animation_Command[0]   = '\0'; 
+};
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1569,15 +1615,16 @@ void loop(){
               case 9: toggleDoors();                                        break;
               case 10: allLightsToggle();                                   break;
               case 11: allOpen();                                           break;
-              case 12: break;
-              case 13: break;
+              case 12: drawerWave();                                        break;
+              case 13: OpenClosewithEasing();                               break;
               case 14: CompleteshortCircuit();                              break;
-              case 15: break;
-              case 16: break;
-              case 17: break;
-              case 18: break;
-              case 19: break;
-              case 20: break;
+              case 15: StarWarsThemeSong();                                 break;
+              case 16: VaderThemeSong();                                    break;
+              case 17: PeriscopeSeq2();                                     break;
+              case 18: PerisopeSeq10();                                     break;
+              case 19: LightsOff();                                         break;
+              case 20: LightsOn();                                          break;
+              case 21: FartNoise();                                         break;
             
             }
           }       
