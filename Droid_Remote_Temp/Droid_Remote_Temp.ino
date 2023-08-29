@@ -448,25 +448,26 @@ void onReceive(int packetSize) {
   byte sender = LoRa.read();            // sender address
   byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
+  
   droidGatewayStatus = LoRa.read();
   relayStatus = LoRa.read();
-bodyControllerStatus = LoRa.read();
-bodyLEDControllerStatus = LoRa.read();
-bodyServoControllerStatus = LoRa.read();
-domePlateControllerStatus = LoRa.read();
-domeControllerStatus = LoRa.read();
-hpControllerStatus = LoRa.read();
-domeLogicsControllerStatus = LoRa.read();
-BL_LDP_Bright = LoRa.read();
-BL_MAINT_Bright = LoRa.read();
-BL_VU_Bright = LoRa.read();
-BL_CS_Bright = LoRa.read();
-BL_vuOffsetInt = LoRa.read();
-BL_vuBaselineInt = LoRa.read();
-BL_vuOffsetExt = LoRa.read();
-BL_vuBaselineExt = LoRa.read();
-BL_BatteryVoltage = LoRa.read();
-BL_BatteryPercentage = LoRa.read();
+  bodyControllerStatus = LoRa.read();
+  bodyLEDControllerStatus = LoRa.read();
+  bodyServoControllerStatus = LoRa.read();
+  domePlateControllerStatus = LoRa.read();
+  domeControllerStatus = LoRa.read();
+  hpControllerStatus = LoRa.read();
+  domeLogicsControllerStatus = LoRa.read();
+  BL_LDP_Bright = LoRa.read();
+  BL_MAINT_Bright = LoRa.read();
+  BL_VU_Bright = LoRa.read();
+  BL_CS_Bright = LoRa.read();
+  BL_vuOffsetInt = LoRa.read();
+  BL_vuBaselineInt = LoRa.read();
+  BL_vuOffsetExt = LoRa.read();
+  BL_vuBaselineExt = LoRa.read();
+  BL_BatteryVoltage = LoRa.read();
+  BL_BatteryPercentage = LoRa.read();
   String incoming = "";
 
   while (LoRa.available()) {
