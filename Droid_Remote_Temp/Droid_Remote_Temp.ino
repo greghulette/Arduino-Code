@@ -940,36 +940,19 @@ if (button.onPress()) {
 }
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
-    // AnimatedEvent::process();
     if(startUp) {
       startUp = false;
       Serial.println("Startup");
-      // sendLoRaMessage("Bootup of Remote Complete");
-      // delay(2000);
       displayOLEDString("Running Loop");
     }
     
     if(Serial.available()){serialEvent();}
-// 
-      //  readLoRa();
 
-  if (havePendingCommands()) {Serial.println("HasCommands");autoComplete=false;}
+  if (havePendingCommands()) {autoComplete=false;}
   if (havePendingCommands() || autoComplete) {
       
     if(havePendingCommands()) {inputString = getNextCommand();  displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
-
-    
-// if (havePendingCommands()){ inputString = getNextCommand(); Serial.print("Param Recieved and passed havePending: ");Serial.println(inputString);}
-//     if (havePendingCommands()) {autoComplete=false;}
-//     if (havePendingCommands() || autoComplete) {
-// //     //   inputString = "";
-//      inputString = getNextCommand();
-//       if(havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-// //       // if(stringComplete || havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);}
-//   // if (stringComplete) {autoComplete=false;}
-//   // if (stringComplete || autoComplete) {
-//     if(havePendingCommands()) {inputString.toCharArray(inputBuffer, 100);inputString="";} else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
 
       if (inputBuffer[0] == '#'){
         if (
@@ -1022,7 +1005,6 @@ if (button.onPress()) {
               }
 
         }else if (inputBuffer[0] == ':'){
-          Serial.println("Enetered Execution of Commands");
      
       if( 
           inputBuffer[1]=='L'     ||        // Command designator for sending LoRa messages
