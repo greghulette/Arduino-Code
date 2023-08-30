@@ -448,7 +448,7 @@ void onReceive(int packetSize) {
   byte sender = LoRa.read();            // sender address
   byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
-  
+
   droidGatewayStatus = LoRa.read();
   relayStatus = LoRa.read();
   bodyControllerStatus = LoRa.read();
@@ -952,7 +952,7 @@ if (button.onPress()) {
   if (havePendingCommands()) {autoComplete=false;}
   if (havePendingCommands() || autoComplete) {
       
-    if(havePendingCommands()) {inputString = getNextCommand();  displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
+    if(havePendingCommands()) {inputString = getNextCommand(); Serial.println(inputString); displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
 
       if (inputBuffer[0] == '#'){
