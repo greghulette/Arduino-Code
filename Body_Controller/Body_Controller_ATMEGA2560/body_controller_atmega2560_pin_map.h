@@ -7,8 +7,8 @@
 // This pinout is for a ATMEGA2560
 ////////////////////////////////
 
-#define SPECTRUM_RIGHT_PIN  0   // W // Unused Pin
-#define SPECTRUM_LEFT_PIN   1   // N // Unused Pin
+#define SPECTRUM_RIGHT_PIN  1   // W // Unused Pin
+#define SPECTRUM_LEFT_PIN   0   // N // Unused Pin
 #define EXTERNAL_MIC_PIN		2   // Y // Unused Pin
 #define VOLTAGE_SENSOR_PIN  3   // N // high at boot
 #define A4        		      4   // Y // Unused Pin

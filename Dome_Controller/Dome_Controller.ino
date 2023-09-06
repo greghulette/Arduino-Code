@@ -1030,9 +1030,9 @@ if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}     
   snprintf(stringToSend, sizeof(stringToSend),":D105E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: sendESPNOWCommand("BC", stringToSend); break;
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
     case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
-    case 3: sendESPNOWCommand("BC", stringToSend); 
+    case 3: sendESPNOWCommand("BS", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelShortCircuit, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
     case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelShortCircuit, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("BC", stringToSend);}, delayCallDuration); break;

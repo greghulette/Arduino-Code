@@ -963,18 +963,19 @@ if(Serial2.available()){serialEvent2();}
 
     if(Prog_command[0]) {
       switch (Prog_command[0]) {                                                                                   //  Determine what sequence function to execute.
-        case 1:  changeLDPBrightness(Prog_command[1], Prog_command[2], Prog_command[3]);                      break;
-        case 2:  changeMAINTBrightness(varNameNum1, varNameNum2, varNameNum3);                    break;
-        case 3:  changeCSBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
-        case 4:  changeVUBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
+        case 1: changeLDPBrightness(Prog_command[1], Prog_command[2], Prog_command[3]);                      break;
+        case 2: changeMAINTBrightness(varNameNum1, varNameNum2, varNameNum3);                    break;
+        case 3: changeCSBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
+        case 4: changeVUBrightness(varNameNum1, varNameNum2, varNameNum3);                       break;
         case 5: changetIntVUOffset(varNameNum1, varNameNum2, varNameNum3);                        break;
         case 6: changetIntVUBaseline(varNameNum1, varNameNum2, varNameNum3);                      break;
-        case 7: sendUpdates();                                                                    break;  //ext vu offset
-        case 8: toggleShowBattery();break;  //ext vu baseline
-        case 9:  clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
-        case 10: toggleDebug();  break;
-        case 11: toggleDebug1();  break;
-        case 12: toggleDebug2();  break;
+        case 7: changetExtVUBaseline(varNameNum1, varNameNum2, varNameNum3);                      break;
+        case 8: changetExtVUOffset(varNameNum1, varNameNum2, varNameNum3);                        break;
+        case 9: sendUpdates();                                                                    break;  //ext vu offset
+        case 10: toggleShowBattery();                                                             break;  //ext vu baseline
+        case 11: clearEEPROMSettingsRemotely();                                                   break;   // erase EEPROM
+        case 12: break;
+        case 13: break;
         };
   };
   
@@ -1591,6 +1592,52 @@ void clearCLStatus() {
 
             Serial.print("Saved Spectrum Internal Offset with Value: ");
             Serial.println(vuOffsetInt);
+             return;
+        }
+
+
+
+
+        void changetExtVUBaseline(int a, int b, int c) {
+          String aString = String(a);
+          String bString = String(b);
+          String cString = String(c);
+          String fullString = aString+bString+cString;
+    
+          vuBaselineExt = fullString.toInt();        
+          
+          byte arr[] = { vuBaselineExt };
+           saveToEEPROMRemotely(arr,1,9);
+           Prog_command[0] = {0}; 
+            Prog_command[1] = {0}; 
+            Prog_command[2] = {0}; 
+            Prog_command[3] = {0}; 
+
+          Serial.print("Saved Spectrum External Baseline with Value: ");
+          Serial.println(vuBaselineExt);
+
+          return;
+        }
+
+        
+        void changetExtVUOffset(int a, int b, int c) {
+          String aString = String(a);
+          String bString = String(b);
+          String cString = String(c);
+          String fullString = aString+bString+cString;
+       
+          vuOffsetExt = fullString.toInt(); 
+
+        
+          byte arr[] = { vuOffsetExt };
+           saveToEEPROMRemotely(arr,1,8);
+           Prog_command[0] = {0}; 
+            Prog_command[1] = {0}; 
+            Prog_command[2] = {0}; 
+            Prog_command[3] = {0}; 
+
+            Serial.print("Saved Spectrum External Offset with Value: ");
+            Serial.println(vuOffsetExt);
              return;
         }
 
@@ -3161,7 +3208,7 @@ void toggleShowBattery(){
 
 
       void getVU_LDP(int type,uint32_t color1, uint32_t color2) {
-          int span = 2;
+          int span = 10;
           for(int i = 0; i<LDP_PIXELS;i++) {stripLDP.setPixelColor(i,  off);}
            if(type == 2 || type == 3 || type == 4) {
               uint32_t c;

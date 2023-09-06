@@ -290,7 +290,7 @@ void serialEvent() {
     char *token = strtok(buffer, " "); //Start tokenization
     while (token) //While a token is available
     {
-      Serial.println(token); //Print current token
+      // Serial.println(token); //Print current token
       enqueueCommand(token);
       token = strtok(NULL, ","); //Fetch next token
     }
@@ -417,6 +417,7 @@ void printKeepaliveStatus(){
   Local_Command[0]   = '\0';
 
 }
+bool commandSent = false;
 
 void displayOLEDString(String StringtoDisplay){
    display.clear();
@@ -438,17 +439,30 @@ void displayOLEDString(String StringtoDisplay){
     display.drawString(0,45, StringtoDisplay);
     display.display();
 }
+unsigned long AckKeepAliveAge;
+// unsigned long AckKeepAliveMillis;
+int AckDuration = 750;
+String lastCommand;
+bool incomingMsgAck;
 
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
-
+  String incoming = "";
+  int msgAckID = 0;
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address
   byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
+  incomingMsgAck = LoRa.read();
 
+ if (incomingMsgAck == true){
+   msgAckID = LoRa.read();
+  Serial.print("Received ACK with ID of: ");
+  Serial.println(msgAckID);
+  commandSent = false;
+ } else {
   droidGatewayStatus = LoRa.read();
   relayStatus = LoRa.read();
   bodyControllerStatus = LoRa.read();
@@ -468,8 +482,7 @@ void onReceive(int packetSize) {
   BL_vuBaselineExt = LoRa.read();
   BL_BatteryVoltage = LoRa.read();
   BL_BatteryPercentage = LoRa.read();
-  String incoming = "";
-
+ }
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
   }
@@ -531,6 +544,36 @@ String recipientString = String(recipient, HEX);
 
 
 }
+
+void MonitorAck( int msgAckIDtoMonitor=0){
+  if (commandSent == true){
+    if (millis() - AckKeepAliveAge >= AckDuration){
+      sendLoRaMessage(lastCommand);
+    }
+  } else {
+
+  }
+}
+
+void sendLoRaMessage(String outgoing) {
+  lastCommand = outgoing;
+  LoRa.beginPacket();                   // start packet
+  LoRa.write(destination);              // add destination address
+  LoRa.write(localAddress);             // add sender address
+  LoRa.write(msgCount);                 // add message ID
+  LoRa.write(outgoing.length());        // add payload length
+  LoRa.print(outgoing);                 // add payload
+  LoRa.endPacket();                     // finish packet and send it
+  Debug.DBG_1("\n\n Sent Message of: %s ", outgoing.c_str());
+  Debug.DBG_1("Sent ID of: %i\n\n", msgCount);
+  commandSent = true;
+  // MonitorAck(msgCount);
+  AckKeepAliveAge = millis();
+  msgCount++;                           // increment message ID
+    // LoRa.receive();
+
+}
+
 int updateStatusDuration = 5000;
 unsigned long updateStatusPreviousMillis;
 int statusCounter =1;
@@ -921,6 +964,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       int counter123 = 1;
 
 void loop(){
+  MonitorAck();
   updateStatus();
   checkAgeofkeepAlive();
   onReceive(LoRa.parsePacket());
@@ -952,7 +996,7 @@ if (button.onPress()) {
   if (havePendingCommands()) {autoComplete=false;}
   if (havePendingCommands() || autoComplete) {
       
-    if(havePendingCommands()) {inputString = getNextCommand(); Serial.println(inputString); displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
+    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString); displayOLEDString(inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
 
       if (inputBuffer[0] == '#'){
@@ -966,7 +1010,7 @@ if (button.onPress()) {
           ){commandLength = strlen(inputBuffer); 
             if (inputBuffer[1]=='D' || inputBuffer[1]=='d'){
               debugInputIdentifier = "";                            // flush the string
-              for (int i=2; i<=commandLength-2; i++){
+              for (int i=2; i<=commandLength-1; i++){
                 char inCharRead = inputBuffer[i];
                 debugInputIdentifier += inCharRead;                   // add it to the inputString:
               }
@@ -1049,16 +1093,4 @@ if (button.onPress()) {
 }  // end of main loop
 
 
-void sendLoRaMessage(String outgoing) {
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(destination);              // add destination address
-  LoRa.write(localAddress);             // add sender address
-  LoRa.write(msgCount);                 // add message ID
-  LoRa.write(outgoing.length());        // add payload length
-  LoRa.print(outgoing);                 // add payload
-  LoRa.endPacket();                     // finish packet and send it
-  // LoRa.receive();
-  msgCount++;                           // increment message ID
-  Debug.DBG_1("\n\n Sent Message of: %s \n\n", outgoing.c_str());
 
-}

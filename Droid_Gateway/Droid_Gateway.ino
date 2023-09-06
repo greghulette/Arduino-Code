@@ -620,7 +620,7 @@ void processESPNOWIncomingMessage(){
   boolean oldState = HIGH;
   boolean newState ;
 
-  byte msgCount = 0;            // count of outgoing messages
+  int msgCount = 0;            // count of outgoing messages
   byte localAddress = 0xBC;     // address of this device
   byte destination = 0xFF;      // destination to send to
   long lastSendTime = 0;        // last send time
@@ -938,12 +938,13 @@ void sendStatusToRemote(){
   }
 }
 void sendStatusMessage(String outgoing) {
+  bool ACKBool = false;
   LoRa.beginPacket();                   // start packet
   LoRa.write(destination);              // add destination address
   LoRa.write(localAddress);             // add sender address
   LoRa.write(msgCount);                 // add message ID
   LoRa.write(outgoing.length());        // add payload length
-  
+  LoRa.write(ACKBool);                    // not a messsage ACK
   LoRa.write(droidGatewayStatus);
   LoRa.write(RELAY_STATUS);
   LoRa.write(bodyControllerStatus);
@@ -968,9 +969,23 @@ void sendStatusMessage(String outgoing) {
   LoRa.endPacket();                     // finish packet and send it
   LoRa.receive();
   msgCount++;                           // increment message ID
-  Debug.LORA("Status Sent\n");
+  Debug.LORA("Status Sent with ID: %d \n", msgCount);
   Local_Command[0]   = '\0';
 };
+
+void sendACK(int msgAckID){
+  bool AckBool = true;
+Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
+  LoRa.beginPacket();                   // start packet
+  LoRa.write(destination);              // add destination address
+  LoRa.write(localAddress);             // add sender address
+  LoRa.write(msgCount);                 // add message ID
+  LoRa.write(outgoing.length());        // add payload length
+  LoRa.write(AckBool);
+  LoRa.write(msgAckID);
+  LoRa.print("");
+  LoRa.endPacket();
+}
 
 
 
@@ -990,10 +1005,10 @@ void onReceive(int packetSize) {
     incoming += (char)LoRa.read();
   }
 
-  // if (incomingLength != incoming.length()) {   // check length for error
-  //   if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
-  //   return;                             // skip rest of function
-  // }
+  if (incomingLength != incoming.length()) {   // check length for error
+    if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
+    return;                             // skip rest of function
+  }
 
   // if the recipient isn't this device or broadcast,
   if (recipient != localAddress && recipient != 0xFF) {
@@ -1013,6 +1028,7 @@ void onReceive(int packetSize) {
   Serial.println();
   }
   parseStrings(incoming);
+  sendACK(incomingMsgId);
   // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
   //   colorWipeStatus("LS", green, 10);
   // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
