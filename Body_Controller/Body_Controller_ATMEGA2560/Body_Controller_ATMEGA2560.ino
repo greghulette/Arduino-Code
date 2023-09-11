@@ -103,7 +103,7 @@
 //#include <Servos.h>                            // Source: https://drive.google.com/file/d/0B5B8A65frsBgZ3VpeGxpM1lzaFE/edit  Thanks BHD!
 #include <Average.h>                           // Source: https://github.com/MajenkoLibraries/Average
 //#include <MemoryFree.h>                        // Source: https://github.com/maniacbug/MemoryFree
-#include <avr/pgmspace.h>
+// #include <avr/pgmspace.h>
 #include "ArduinoJson.h"
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>

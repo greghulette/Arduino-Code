@@ -595,8 +595,8 @@ void processESPNOWIncomingMessage(){
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  2170, 675, TOP_UTILITY_ARM },       /* 0: Top Utility Arm 2350,675*/
-    { 2,  1630, 960, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
+    { 1,  2370, 675, TOP_UTILITY_ARM },       /* 0: Top Utility Arm 2350,675*/
+    { 2,  1630, 860, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
     { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
     { 4,  1400, 1900, LARGE_RIGHT_DOOR },      /* 3: Left Right door as viewing from looking at R2 1200,1900*/
     { 5,  1590 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1900,758*/
@@ -1005,6 +1005,16 @@ void drawerWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
 
   SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDrawerWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+  D_command[0] = '\0';
+};
+
+void WaveUtilityArm(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  // Command: Dx05
+  // add sequence for this routine.  
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+
+  SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveUtilityArms, TOP_UTILITY_ARM, fVarSpeedMin, fVarSpeedMax);
   D_command[0] = '\0';
 };
 
@@ -1725,27 +1735,27 @@ void loop(){
       }
       else {
         switch (D_command[0]) {
-case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);                     break;
-          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);          break;
-          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
-          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                   break;
-          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
-          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                    break;
-          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
-          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
-          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);              break;
-          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
-          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
-          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
-          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                   break;
-          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                 break;
-          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
-          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
-          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
-          case 18: drawerWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
-          // case 95: servoTest(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
-          case 98: closeAllDoors(2,0,0,0,0);                                                              break;
-          case 99: closeAllDoors(2,0,0,0,0);                                                              break;
+case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);                         break;
+          case 2: closeDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5]);              break;
+          case 3: openAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 4: closeAllDoors(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);          break;
+          case 5: shortCircuit(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 6: allOpenClose(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 7: allOpenCloseLong(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);       break;
+          case 8: allFlutter(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);             break;
+          case 9: allOpenCloseRepeat(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);     break;
+          case 10: panelWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);             break;
+          case 11: panelWaveFast(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
+          case 12: openCloseWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);         break;
+          case 13: marchingAnts(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);          break;
+          case 14: panelAlternate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
+          case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);            break;
+          case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);             break;
+          case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);       break;
+          case 18: drawerWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);            break;
+          case 19: WaveUtilityArm(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
+          case 98: closeAllDoors(2,0,0,0,0);                                                                break;
+          case 99: closeAllDoors(2,0,0,0,0);                                                                break;
           default: break;
         }
       }

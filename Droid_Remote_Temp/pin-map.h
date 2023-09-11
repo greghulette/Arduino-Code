@@ -3,4 +3,6 @@
 #define MISO_PIN		19
 #define SCK_PIN     	5
 #define BUTTON          2
+#define SERIAL1_TX      25
+#define SERIAL1_RX      4
 

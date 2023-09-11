@@ -311,6 +311,50 @@ int readLine()
   // delay(50);
   return cc; //Return line length
 }
+
+void serial1Event() {
+  if (readLine1() > 0) //Did we receive something?
+  {
+    char *token = strtok(buffer, " "); //Start tokenization
+    while (token) //While a token is available
+    {
+      // Serial.println(token); //Print current token
+      enqueueCommand(token);
+      token = strtok(NULL, ","); //Fetch next token
+    }
+  }
+};
+
+// int readLine()
+// {
+//   int cc = 0; //Number of chars read
+//   bool done = false;
+//   while (Serial.available() && (!done) && (cc < MAX_LINE_LENGTH - 1))
+//   {
+//     char cur = Serial.read(); //Read a char
+//     if (cur == '\r') done = true; //If the received char is \n then we are done
+//     else buffer[cc++] = cur; //Append to buffer and increment the index
+//   }
+//   buffer[cc] = 0; //Terminate the line with a \0
+//   // delay(50);
+//   return cc; //Return line length
+// }
+
+
+int readLine1()
+{
+  int cc = 0; //Number of chars read
+  bool done = false;
+  while (Serial1.available() && (!done) && (cc < MAX_LINE_LENGTH - 1))
+  {
+    char cur = Serial1.read(); //Read a char
+    if (cur == '\r') done = true; //If the received char is \n then we are done
+    else buffer[cc++] = cur; //Append to buffer and increment the index
+  }
+  buffer[cc] = 0; //Terminate the line with a \0
+  // delay(50);
+  return cc; //Return line length
+}
   /////////////////////////////////////////////////////////
   ///*****          Serial Write Function          *****///
   /////////////////////////////////////////////////////////
@@ -326,7 +370,12 @@ void writeSerialString(String stringData){
   };
 };
 
-
+void writeSerial1String(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+      Serial1.write(completeString[i]);
+  };
+};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -633,8 +682,8 @@ void sendUpdates(){
   doc["BatteryPercent"] = BL_BatteryPercentage;
   doc["JSONDone"] = true;
   
-  serializeJson(doc, Serial);
-  Serial.println("");
+  serializeJson(doc, Serial1);
+  Serial1.println("");
 
 }
 
@@ -773,6 +822,7 @@ void enqueueCommand(String command)
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
+  Serial1.begin(115200, SERIAL_8N1,SERIAL1_RX, SERIAL1_TX);
   // pinMode(BUTTON, INPUT);
   button.begin(BUTTON);
   // button.setToggleState(0);
@@ -992,6 +1042,7 @@ if (button.onPress()) {
     }
     
     if(Serial.available()){serialEvent();}
+    if(Serial1.available()){serial1Event();}
 
   if (havePendingCommands()) {autoComplete=false;}
   if (havePendingCommands() || autoComplete) {
