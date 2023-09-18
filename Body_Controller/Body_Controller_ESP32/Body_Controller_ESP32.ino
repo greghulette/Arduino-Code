@@ -1286,6 +1286,11 @@ void FartNoise(){
   HCR.PlayWAV(1, 0004);
   Animation_Command[0]   = '\0'; 
 };
+
+void WaveUtilityArm(){
+  sendESPNOWCommand("BS", ":D119");
+  Animation_Command[0]   = '\0'; 
+};
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1636,7 +1641,7 @@ void loop(){
               case 19: LightsOff();                                         break;
               case 20: LightsOn();                                          break;
               case 21: FartNoise();                                         break;
-              case 22: break;
+              case 22: WaveUtilityArm();                                    break;
               case 23: break;
               case 24: break;
               case 25: break;

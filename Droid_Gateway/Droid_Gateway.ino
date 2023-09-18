@@ -170,7 +170,7 @@ String debugInputIdentifier ="";
   unsigned long sendStatusMillis;
   unsigned long sendStatusAge;
     // variables for storing status and settings from ATMEGA2560
-  int BL_LDP_Bright;
+  int   ;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
   int BL_CS_Bright;
