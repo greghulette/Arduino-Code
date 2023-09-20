@@ -991,7 +991,6 @@ void sendACK(int msgAckID){
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
-  Serial.println("LoRa Message Received");
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address

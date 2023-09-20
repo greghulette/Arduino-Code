@@ -499,7 +499,6 @@ bool incomingMsgAck;
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
-  Serial.println("LoRa Message Received");
 
   String incoming = "";
   int msgAckID = 0;
