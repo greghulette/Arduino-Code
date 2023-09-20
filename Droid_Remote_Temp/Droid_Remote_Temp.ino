@@ -12,6 +12,8 @@
 
 #include <SPI.h>
 #include "LoRa.h"
+#include <LoRa.h>
+
 #include "pin-map.h"
 #include "ds3231.h"
 // #include <SD.h>
@@ -126,7 +128,7 @@ String debugInputIdentifier ="";
   long lastSendTime = 0;        // last send time
   int interval = 500;          // interval between sends
   const int csPin = 18;          // LoRa radio chip select
-  const int resetPin = 14;       // LoRa radio reset
+  const int resetPin = 23;       // LoRa radio reset
   const int irqPin = 26;         // change for your board; must be a hardware interrupt pin
 
   String LoRaRSSI;
@@ -497,6 +499,8 @@ bool incomingMsgAck;
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
+  Serial.println("LoRa Message Received");
+
   String incoming = "";
   int msgAckID = 0;
   // read packet header bytes:
@@ -888,7 +892,8 @@ void setup(){
 
 // SPI.begin(14, 12, 13, 15);
 // LoRa.setPins(15, 27, 26);
-  if (!LoRa.begin(915E6, true)) {             // initialize ratio at 915 MHz
+  // if (!LoRa.begin(915E6, true)) {             // initialize ratio at 915 MHz
+  if (!LoRa.begin(915E6)) {             // initialize ratio at 915 MHz
     Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }

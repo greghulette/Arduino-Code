@@ -19,10 +19,10 @@
 #define UP_9                9  //  // connected to SPI flash
 #define UP_10               10 //  // connected to SPI flash
 #define UP_11               11 //  // connected to SPI flash
-#define MISO_LORA			12 //  // Unused Pin (must be LOW during boot)
+#define MISO_LORA			      12 //  // Unused Pin (must be LOW during boot)
 #define MOSI_LORA           13 //  // Unused Pin
 #define SCK_LORA            14 //  // Unused Pin
-#define NSS_LORA       		15 //  // Unused Pin (must be HIGH during boot)
+#define NSS_LORA       		  15 //  // Unused Pin (must be HIGH during boot)
 #define UP_16               16 //  // Unused Pin
 #define UP_17               17 //  // Unused Pin
 #define UP_18	            18 //  // Unused Pin

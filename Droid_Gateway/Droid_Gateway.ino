@@ -51,7 +51,8 @@
 
 //Used for LoRa
 #include <SPI.h>
-#include "LoRa.h"  // Using the ReelTwo LoRa library.  Files included in this sketch's folder.
+// #include "LoRa.h"  // Using the ReelTwo LoRa library.  Files included in this sketch's folder.
+#include <LoRa.h>
 
 
 
@@ -170,7 +171,7 @@ String debugInputIdentifier ="";
   unsigned long sendStatusMillis;
   unsigned long sendStatusAge;
     // variables for storing status and settings from ATMEGA2560
-  int   ;
+  int BL_LDP_Bright;
   int BL_MAINT_Bright;
   int BL_VU_Bright;
   int BL_CS_Bright;
@@ -964,10 +965,9 @@ void sendStatusMessage(String outgoing) {
   LoRa.write(BL_vuBaselineExt);
   LoRa.write(BL_BatteryVoltage);
   LoRa.write(BL_BatteryPercentage);
-
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
-  LoRa.receive();
+  // LoRa.receive();
   msgCount++;                           // increment message ID
   Debug.LORA("Status Sent with ID: %d \n", msgCount);
   Local_Command[0]   = '\0';
@@ -975,7 +975,7 @@ void sendStatusMessage(String outgoing) {
 
 void sendACK(int msgAckID){
   bool AckBool = true;
-Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
+  Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
   LoRa.beginPacket();                   // start packet
   LoRa.write(destination);              // add destination address
   LoRa.write(localAddress);             // add sender address
@@ -983,7 +983,7 @@ Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
   LoRa.write(outgoing.length());        // add payload length
   LoRa.write(AckBool);
   LoRa.write(msgAckID);
-  LoRa.print("");
+  LoRa.print("42");
   LoRa.endPacket();
 }
 
@@ -991,7 +991,7 @@ Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
-
+  Serial.println("LoRa Message Received");
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address
@@ -1300,8 +1300,8 @@ colorWipeStatus("LS", red, 10);
 SPI.begin(SCK_LORA, MISO_LORA, MOSI_LORA, NSS_LORA);
 LoRa.setPins(NSS_LORA, RESET_LORA, DIO_LORA);
 
-  if (!LoRa.begin(915E6,true)) {
-  // if (!LoRa.begin(915E6)) {
+  // if (!LoRa.begin(915E6,true)) {
+  if (!LoRa.begin(915E6)) {
     Serial.println("Starting LoRa failed!");
     while (true);
   }
