@@ -24,8 +24,8 @@
 #define SERIAL_RX_US        14 // Y // Unused Pin
 #define SERIAL1_TX_PIN      15 // Y // Unused Pin (must be HIGH during boot)
 #define SERIAL1_RX_PIN      16 // Y // Unused Pin
-#define STROBE_DATA      17 // Y // Unused Pin
-#define STROBE_CLOCK	    18 // Y // Unused Pin
+#define STROBE_DATA      18 // Y // Unused Pin
+#define STROBE_CLOCK	   17 // Y // Unused Pin
 #define UP_19               19 // Y // Unused Pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA

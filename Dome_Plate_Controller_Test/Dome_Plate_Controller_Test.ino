@@ -119,8 +119,10 @@
 
   debugClass Debug;
   String debugInputIdentifier ="";
-
-
+  int accessoryFunction;
+  int colorState1;
+  int colorState2;
+  int typeState;
 
 
 
@@ -575,7 +577,7 @@ void processESPNOWIncomingMessage(){
 
   int door = -1;
   // Door Command Container
-  uint32_t D_command[7]  = {0,0,0,0,0,0,0};
+  uint32_t Accessory_Command[7]  = {0,0,0,0,0,0,0};
   int doorFunction = 0;
   int doorBoard = 0; 
   int doorEasingMethod;
@@ -641,7 +643,7 @@ void launchSaber(){
   	  //  servoDispatch.moveServosTo(SABER_LAUNCHER, 150, 1000, 1.0);
 
 
-    D_command[0]   = '\0';
+    Accessory_Command[0]   = '\0';
 
 }
 void armSaber(){
@@ -653,41 +655,42 @@ void armSaber(){
 
     // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER);
 
-    D_command[0]   = '\0';
+    Accessory_Command[0]   = '\0';
 
 }
 
 void fansOn(){
   digitalWrite(FANS, HIGH);
-      D_command[0]   = '\0';
+      Accessory_Command[0]   = '\0';
 };
 
 void fansOff(){
   digitalWrite(FANS, LOW);
-      D_command[0]   = '\0';
+      Accessory_Command[0]   = '\0';
 };
 
 void smokeOn(){
   digitalWrite(SMOKE, HIGH);
-  D_command[0]   = '\0';
+  Accessory_Command[0]   = '\0';
 };
 
 void smokeOff(){
   digitalWrite(SMOKE, LOW);
-  D_command[0]   = '\0';
+  Accessory_Command[0]   = '\0';
 };
 
 void smokeSequece(){
   Debug.DBG("Smoke Sequence Initialized\n");
   fansOn();
-  inputString = ":D109"; stringComplete = true;
+   smokeOn();
+
+  inputString = ":A09115 "; stringComplete = true;
   // ShortCircuitStrobe(1, red, blue);
-  smokeOn();
   DelayCall::schedule([]{fansOff();}, 14000);
-  DelayCall::schedule([]{clearStrobe();}, 14000);
+  DelayCall::schedule([]{inputString = ":A98"; stringComplete = true;}, 14000);
   DelayCall::schedule([]{smokeOff();}, 14000);
   Debug.DBG("Ended Sequence");
-    // D_command[0]   = '\0';
+    // Accessory_Command[0]   = '\0';
 
 }
 
@@ -738,18 +741,19 @@ void altColorsStrobe(int type, uint32_t color1,uint32_t color2) {
         }
       StrobeCount++;
       if(runelapsed>=1+StrobeCount) {showStrobe();SCruntimeStrobe = millis();}
+   
       }
   }
 
       void clearStrobe() {
-        // if(StrobeFrame>0) {StrobeFrame=1;}
-        // if(StrobeFrame==0) {
+        if(StrobeFrame>0) {StrobeFrame=1;}
+        if(StrobeFrame==0) {
           for(int i=0;i<STROBE_LED_COUNT;i++) {
             strobe_LED.setPixelColor(i,off);
           }
-          // StrobeFrame++;
+          StrobeFrame++;
           showStrobe();
-        // }
+        }
       }
 
 
@@ -1168,84 +1172,26 @@ void loop(){
         }else if (inputBuffer[0] == ':'){
       if( inputBuffer[1]=='E' ||        // Command for Sending ESP-NOW Messages
           inputBuffer[1]=='e' ||        // Command for Sending ESP-NOW Messages
-          inputBuffer[1]=='D' ||        // Command for Sending ESP-NOW Messages
-
+          inputBuffer[1]=='A' ||        // Command for processing Accessory commands
+          inputBuffer[1]=='a' ||        // Command for processing Accessory commands
           inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           Debug.DBG("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
-             if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {                                                            // specifies the overall door command
-              doorBoard = inputBuffer[2]-'0';                                                                           // Sets the board to call the command on.
-              doorFunction = (inputBuffer[3]-'0')*10+(inputBuffer[4]-'0');                                              // Sets the door command to a specific function
-              if (doorFunction == 1 || doorFunction == 2){                                                              // Checks the door command to see if it's calling to open a single door
-                door = (inputBuffer[5]-'0')*10+(inputBuffer[6]-'0');                                                    // Sets the specific door to move
-                if (inputBuffer[7] == 'D' || inputBuffer[7] == 'd'){
-                  Debug.LOOP("with DelayCall \n");
-                  delayCallTime =  (inputBuffer[8]-'0')*10000+(inputBuffer[9]-'0')*1000+(inputBuffer[10]-'0')*100+(inputBuffer[11]-'0')*10+(inputBuffer[12]-'0');  // converts 5 digit character to uint32_t
-                  doorEasingMethod = 0;                                                                                                                           // Sets Easing Method to 0-Off
-                  cVarSpeedMin = 0;
-                  cVarSpeedMax = 0;                                                                                                                        // Sets Easing duration to 0-Off
-                } else if (inputBuffer[7] == 'E' ||inputBuffer[7] == 'e'){
-                  Debug.LOOP("with Easing \n");
-                  doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                  doorEasingDuration = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
-                  delayCallTime = 0;
-                } else if (inputBuffer[7] == 'B' || inputBuffer[7] == 'b'){
-                  Debug.LOOP("with Both Easing and Delay Call \n");
-                  doorEasingMethod = (inputBuffer[8]-'0')*10+(inputBuffer[9]-'0');
-                  cVarSpeedMin = (inputBuffer[10]-'0')*1000+(inputBuffer[11]-'0')*100+(inputBuffer[12]-'0')*10+(inputBuffer[13]-'0');                
-                  cVarSpeedMax = (inputBuffer[14]-'0')*1000+(inputBuffer[15]-'0')*100+(inputBuffer[16]-'0')*10+(inputBuffer[17]-'0');
-                  delayCallTime =  (inputBuffer[18]-'0')*10000+(inputBuffer[19]-'0')*1000+(inputBuffer[20]-'0')*100+(inputBuffer[21]-'0')*10+(inputBuffer[22]-'0');
-                }else{
-                  Debug.LOOP("No easing or Delay time specified \n");
-                  delayCallTime = 0;
-                  doorEasingMethod = 0;
-                  cVarSpeedMin = 0;
-                  cVarSpeedMax = 0;                
-                }
+            if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {                                                            // specifies the overall accessory commanD      
+              accessoryFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+              if (commandLength >=6){
+                typeState = inputBuffer[4]-'0';
               }
-              else if (doorFunction != 1 || doorFunction != 2) {
-                Debug.LOOP("Other Door Function Called \n");
-                if (inputBuffer[5] == 'D' || inputBuffer[5] == 'd'){
-                  Debug.LOOP("with DelayCall \n");
-                  delayCallTime =  (inputBuffer[6]-'0')*10000+(inputBuffer[7]-'0')*1000+(inputBuffer[8]-'0')*100+(inputBuffer[9]-'0')*10+(inputBuffer[10]-'0');
-                  doorEasingMethod = 0;
-                  cVarSpeedMin = 0;
-                  cVarSpeedMax = 0;
-                } else if (inputBuffer[5] == 'E' ||inputBuffer[5] == 'e'){
-                  Debug.LOOP("with Easing \n");
-                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  if (commandLength >= 13){
-                    Debug.LOOP("Variable Speed Selected\n");
-                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
-                    cVarSpeedMax = (inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');  
-                  } else {
-                    Debug.LOOP("No Variable Speed selected\n");
-                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
-                    cVarSpeedMax = cVarSpeedMin; 
-                  }              
-                  delayCallTime = 0;
-                } else if (inputBuffer[5] == 'B' || inputBuffer[5] == 'b'){
-                  Debug.LOOP("Both Easing and Delay Call \n");
-                  doorEasingMethod = (inputBuffer[6]-'0')*10+(inputBuffer[7]-'0');
-                  if (commandLength >= 17){
-                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
-                    cVarSpeedMax = (inputBuffer[12]-'0')*1000+(inputBuffer[13]-'0')*100+(inputBuffer[14]-'0')*10+(inputBuffer[15]-'0');
-                    delayCallTime =  (inputBuffer[16]-'0')*10000+(inputBuffer[17]-'0')*1000+(inputBuffer[18]-'0')*100+(inputBuffer[19]-'0')*10+(inputBuffer[20]-'0');
-                  } else {
-                    cVarSpeedMin = (inputBuffer[8]-'0')*1000+(inputBuffer[9]-'0')*100+(inputBuffer[10]-'0')*10+(inputBuffer[11]-'0');                
-                    cVarSpeedMax = cVarSpeedMin;
-                    delayCallTime =  (inputBuffer[12]-'0')*10000+(inputBuffer[13]-'0')*1000+(inputBuffer[14]-'0')*100+(inputBuffer[15]-'0')*10+(inputBuffer[16]-'0');
-                  }
-                }else{
-                  Debug.LOOP("No easing or DelayCall time specified \n");
-                  delayCallTime = 0;
-                  doorEasingMethod = 0;
-                  cVarSpeedMin = 0;
-                  cVarSpeedMax = 0;
+              if (commandLength >= 7){colorState1 = inputBuffer[5]-'0'; }
+              if (commandLength >=8){colorState2 = inputBuffer[6]-'0';}
+
+
+                  if(colorState1 < 0 || colorState1 > 9) {
+                    colorState1 = defaultPrimaryColorInt;
                 }
-              }
+
             }  
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
                   for (int i=2; i<=commandLength; i++){
@@ -1284,20 +1230,16 @@ void loop(){
             } else {Debug.LOOP("No valid serial port given \n");}
 
           }
-                      if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {
-              D_command[0]   = '\0';                                                            // Flushes Array
-              D_command[0] = doorFunction;
-              D_command[1] = doorBoard;
-                if(door>=0) {D_command[2] = door;}
-              D_command[3] = doorEasingMethod;
-              D_command[4] = cVarSpeedMin;
-              D_command[5] = cVarSpeedMax;
-              D_command[6] = delayCallTime;
+              if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {
+              Accessory_Command[0]   = '\0';                                                            // Flushes Array
+              Accessory_Command[0] = accessoryFunction;
+              Accessory_Command[1] = typeState;
+              Accessory_Command[2] = colorState1;
+              Accessory_Command[3] = colorState2;
+              StrobeMillis = millis();
+              StrobeFrame = 0;
+              StrobeCount = 0;
 
-              Debug.LOOP("Door Function Called: %d\n",doorFunction);
-              Debug.LOOP("Easing Method: %d \n",doorEasingMethod);
-              Debug.LOOP("VarSpeed - Min:%d, Max:%d \n",cVarSpeedMin, cVarSpeedMax);
-              Debug.LOOP("DelayCall Duration: %d\n",delayCallTime);
             }
         }
       }
@@ -1315,31 +1257,31 @@ void loop(){
       
         // reset Local ESP Command Variables
         int espCommandFunction;
-
+       int typeState;
+       int accessoryFunction;
+       int colorState1;
+       int colorState2;
                 
 
       Debug.LOOP("command Proccessed\n");
 
-if(D_command[0]) {
-      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-        Debug.LOOP("Incorrect Door Value Specified, Command Aborted!");
-        D_command[0] = '\0';
-      }
-      else {
-        switch (D_command[0]) {
+if(Accessory_Command[0]) {
+
+        switch (Accessory_Command[0]) {
           case 3: launchSaber(); break;
           case 4: armSaber(); break;
           case 5: fansOn(); break;
           case 6: fansOff(); break;
-          case 7: solidStrobe(blue); break;
-          case 8: altColorsStrobe(1, red, white); break;
-          case 9: ShortCircuitStrobe(1, red, white); break;
+          case 7: solidStrobe(basicColors[Accessory_Command[2]]); break;
+          case 8: altColorsStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 9: ShortCircuitStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 10: smokeOn(); break;
+          case 11: smokeOff(); break;
           case 14: smokeSequece(); break;
           case 98: clearStrobe();break;
-          default: break;
+          default: Accessory_Command[0] = '\0'; clearStrobe(); break;
         }
       }
-    }
   if(isStartUp) {
       isStartUp = false;
       delay(500);
