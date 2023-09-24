@@ -1268,16 +1268,19 @@ void loop(){
 if(Accessory_Command[0]) {
 
         switch (Accessory_Command[0]) {
-          case 3: launchSaber(); break;
-          case 4: armSaber(); break;
-          case 5: fansOn(); break;
-          case 6: fansOff(); break;
-          case 7: solidStrobe(basicColors[Accessory_Command[2]]); break;
-          case 8: altColorsStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
-          case 9: ShortCircuitStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
-          case 10: smokeOn(); break;
-          case 11: smokeOff(); break;
-          case 14: smokeSequece(); break;
+          case 6: altColorsStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 14: ShortCircuitStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 15: solidStrobe(basicColors[Accessory_Command[2]]); break;
+          
+          case 50: smokeOn(); break;
+          case 51: smokeOff(); break;
+          case 52: fansOn(); break;
+          case 53: fansOff(); break;
+          case 54: smokeSequece(); break;
+          
+          case 60: launchSaber(); break;
+          case 61: armSaber(); break;
+
           case 98: clearStrobe();break;
           default: Accessory_Command[0] = '\0'; clearStrobe(); break;
         }
