@@ -635,9 +635,11 @@ void launchSaber(){
   Debug.SERVO("Launched Light Saber\n");   
     fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
   fVarSpeedMax = varSpeedMax;    
-  sendESPNOWCommand("DC", ":D20109");      
-  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 1000);
-  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 2000);
+  sendESPNOWCommand("DC", ":D20109");    
+  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R:DPA5");}, 50);
+  
+  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 2000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 3000);
   
   // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER);
   	  //  servoDispatch.moveServosTo(SABER_LAUNCHER, 150, 1000, 1.0);
@@ -647,11 +649,21 @@ void launchSaber(){
 
 }
 void armSaber(){
-  Debug.SERVO("Armed Light Saber\n");     
-  sendESPNOWCommand("DC", ":D20109");      
+  Debug.SERVO("Armed Light Saber\n");  
+  sendESPNOWCommand("BC", ":R#DPAUTO0");
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 50);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 100);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 150);
+  // sendESPNOWCommand("DC", ":D20109");      
+
+  // sendESPNOWCommand("DC", ":D20110");      
+
   SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER);
   DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 7000);
-  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 15000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 20000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 20050);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 20100);
+  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R#DPAUTO1");}, 20150);
 
     // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER);
 
