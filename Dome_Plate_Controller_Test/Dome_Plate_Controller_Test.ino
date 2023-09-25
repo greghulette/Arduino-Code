@@ -1118,7 +1118,7 @@ void loop(){
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);Debug.LOOP("inputString: %s \n", inputString.c_str());inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
         if (inputBuffer[0] == '#'){
         if (
@@ -1177,23 +1177,27 @@ void loop(){
           inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          Debug.DBG("Command Length is: %i\n" , commandLength);
+          Debug.LOOP("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
-            if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {                                                            // specifies the overall accessory commanD      
+            if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {                                                            // specifies the overall accessory commanD  
+            Debug.LOOP("Accessory Function Called: %s \n", inputBuffer);    
               accessoryFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-              if (commandLength >=6){
+              if (commandLength >=5){
                 typeState = inputBuffer[4]-'0';
               }
-              if (commandLength >= 7){colorState1 = inputBuffer[5]-'0'; }
-              if (commandLength >=8){colorState2 = inputBuffer[6]-'0';}
+              if (commandLength >= 6){colorState1 = inputBuffer[5]-'0'; }
+              if (commandLength >=7){colorState2 = inputBuffer[6]-'0';}
 
 
                   if(colorState1 < 0 || colorState1 > 9) {
                     colorState1 = defaultPrimaryColorInt;
                 }
-
+              Debug.LOOP("Function: %i\n", accessoryFunction);
+              Debug.LOOP("Type State: %i\n", typeState);
+              Debug.LOOP("Color 1: %i\n", basicColors[colorState1]);
+              Debug.LOOP("Color 2: %i\n", basicColors[colorState2]);
             }  
-                if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+               else if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
@@ -1209,7 +1213,7 @@ void loop(){
                   ESPNOWSubStringCommand = "";
                   ESPNOWTarget = "";  
                   }  
-            if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+          else  if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength;i++ ){
                       char inCharRead = inputBuffer[i];
                       serialStringCommand += inCharRead;  // add it to the inputString:
@@ -1224,10 +1228,10 @@ void loop(){
               } else if (serialPort == "S2"){
               }else if (serialPort == "S3"){
               } else if (serialPort == "S4"){
-              }
+              }else {Debug.LOOP("No valid serial port given \n");}
               serialStringCommand = "";
               serialPort = "";
-            } else {Debug.LOOP("No valid serial port given \n");}
+            } 
 
           }
               if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {
@@ -1246,6 +1250,7 @@ void loop(){
 
 
     
+      Debug.LOOP("command Proccessed\n");
 
 
     }  
@@ -1263,7 +1268,6 @@ void loop(){
        int colorState2;
                 
 
-      Debug.LOOP("command Proccessed\n");
 
 if(Accessory_Command[0]) {
 
