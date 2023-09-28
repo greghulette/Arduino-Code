@@ -1166,13 +1166,17 @@ void panelWaveFast(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   snprintf(stringToSend, sizeof(stringToSend),":D211E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWaveFast, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
             DelayCall::schedule([] {sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend);
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 4500);
   D_command[0]   = '\0';                                             
 };
 
@@ -1184,13 +1188,17 @@ void openCloseWave(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, 
   snprintf(stringToSend, sizeof(stringToSend), ":D212E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);
             DelayCall::schedule([] {sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend);
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelOpenCloseWave, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 4500);
   D_command[0]   = '\0';                                             
 };
 
@@ -1203,13 +1211,17 @@ void marchingAnts(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   snprintf(stringToSend, sizeof(stringToSend),":D213E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend); 
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelMarchingAnts, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 15500);
   D_command[0]   = '\0';                                             
 };
 
@@ -1222,13 +1234,17 @@ void panelAlternate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
   snprintf(stringToSend, sizeof(stringToSend),";D214E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend); 
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAlternate, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 2500);
   D_command[0]   = '\0';                                             
 };                                                          
 
@@ -1241,13 +1257,17 @@ void panelDance(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uin
   snprintf(stringToSend, sizeof(stringToSend),":D215E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend); 
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
   D_command[0]   = '\0';                                             
 };
 
@@ -1260,13 +1280,17 @@ void longDisco(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint
   snprintf(stringToSend, sizeof(stringToSend),":D216E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend); 
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongDisco, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 3500);
   D_command[0]   = '\0';                                             
 };
 
@@ -1279,13 +1303,17 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   snprintf(stringToSend, sizeof(stringToSend),":D217E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
   setServoEasingMethod(servoEasingMethod);
   switch(servoBoard){
-    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
-    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
-    case 4: sendESPNOWCommand("DC", stringToSend); 
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelLongHarlemShake, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 11000);
   D_command[0]   = '\0';                                             
 };                                                      
 

@@ -693,16 +693,55 @@ void smokeOff(){
 
 void smokeSequece(){
   Debug.DBG("Smoke Sequence Initialized\n");
-  fansOn();
+  // fansOn();
    smokeOn();
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20107");}, 50);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 200);
+  inputString = ":A14115 "; stringComplete = true;
+  DelayCall::schedule([]{fansOn();}, 8000);
+  DelayCall::schedule([]{smokeOff();}, 8010);
 
-  inputString = ":A09115 "; stringComplete = true;
-  // ShortCircuitStrobe(1, red, blue);
   DelayCall::schedule([]{fansOff();}, 14000);
   DelayCall::schedule([]{inputString = ":A98"; stringComplete = true;}, 14000);
-  DelayCall::schedule([]{smokeOff();}, 14000);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D204");}, 15050);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 15100);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 15200);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 15300);
+  // Debug.DBG("Ended Sequence");
+    // Accessory_Command[0]   = '\0';
+
+}
+
+void shortCircuitSequece(){
+  Debug.DBG("Smoke Sequence Initialized\n");
+  // fansOn();
+   smokeOn();
+
+  inputString = ":A14115 "; stringComplete = true;
+  DelayCall::schedule([]{fansOn();}, 8000);
+  DelayCall::schedule([]{smokeOff();}, 9010);
+
+  DelayCall::schedule([]{fansOff();}, 14000);
+  DelayCall::schedule([]{inputString = ":A98"; stringComplete = true;}, 14000);
   Debug.DBG("Ended Sequence");
     // Accessory_Command[0]   = '\0';
+
+}
+void evacuateDomeSmoke(){
+  fansOn();
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20107");}, 50);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 200);
+
+    DelayCall::schedule([]{fansOff();}, 6000);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20207");}, 6050);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 6100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 6150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 6200);
+  Accessory_Command[0]   = '\0';
 
 }
 
@@ -1293,6 +1332,8 @@ if(Accessory_Command[0]) {
           case 52: fansOn(); break;
           case 53: fansOff(); break;
           case 54: smokeSequece(); break;
+          case 55: evacuateDomeSmoke(); break;
+          case 56: shortCircuitSequece(); break;
           
           case 60: launchSaber(); break;
           case 61: armSaber(); break;

@@ -21,7 +21,8 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                            Roam A Dome Home Stored Sequences                                           *****///
 ///*****      [4] H:A170,55:W1:D500,40:W1:D-360:W1:A90:A45:A135:W2:H                                            *****///
-///*****      [14] H:D90,100:D-90,100:D65,70:D-180,90:D-420,80:A0:D100,50:H     Short Circuit                   *****///
+///*****      [[7] H:D90,100:D-90,100:D65,70:D-180,90:D-420,80:A0:D100,50:H                                     *****///
+///*****      [14] H:D90,100:D-90,100:W1:D65,70:D-80,70:A0,30:W1:D-25,20:W5:A0    Short Circuit                 *****///
 ///*****                                                                                                        *****///
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1211,9 +1212,11 @@ void CompleteshortCircuit(){
   sendESPNOWCommand("DC", ":SDL@APLE20530");
   writeRdSerial(":DPS14");  // #DPS14:H:D90,100:D-90,100:D65,70:D-180,90:D-420,80:A0:D100,50:H,30
   sendESPNOWCommand("DP", ":SUS:PS14");
-  DelayCall::schedule([]{sendESPNOWCommand("DC", ":SPS0T4");}, 75);
-  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D305");}, 125);
-  
+
+  DelayCall::schedule([]{sendESPNOWCommand("DC", ":SPS0T4");}, 50);
+  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D305");}, 100);
+    DelayCall::schedule([]{sendESPNOWCommand("DP", ":A54");}, 150);
+
   DelayCall::schedule([]{resetLightsafterShortCircuit();}, 18000);
   Animation_Command[0]   = '\0'; 
 
