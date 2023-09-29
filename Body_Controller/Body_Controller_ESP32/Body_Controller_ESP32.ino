@@ -1294,6 +1294,21 @@ void WaveUtilityArm(){
   sendESPNOWCommand("BS", ":D119");
   Animation_Command[0]   = '\0'; 
 };
+
+void LaunchSaber(){
+  sendESPNOWCommand("DP", ":A60");
+    Animation_Command[0]   = '\0'; 
+}
+
+void ArmSaber(){
+  sendESPNOWCommand("DP", ":A61");
+    Animation_Command[0]   = '\0'; 
+}
+
+void SmokeSequence(){
+  sendESPNOWCommand("DP", ":A54");
+    Animation_Command[0]   = '\0'; 
+}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1645,9 +1660,9 @@ void loop(){
               case 20: LightsOn();                                          break;
               case 21: FartNoise();                                         break;
               case 22: WaveUtilityArm();                                    break;
-              case 23: break;
-              case 24: break;
-              case 25: break;
+              case 23: ArmSaber();                                          break;
+              case 24: LaunchSaber();                                       break;
+              case 25: SmokeSequence();                                     break;
               case 26: break;
               case 27: break;
               case 28: break;

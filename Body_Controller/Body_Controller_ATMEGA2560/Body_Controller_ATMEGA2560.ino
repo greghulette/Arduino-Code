@@ -279,9 +279,9 @@
 ///////////////////////////////////////////////////////////////////////
    byte enableCSAuto   = 1;   //1
    byte enableLDPAuto  = 1;   //1
-   byte enableVUAuto   = 1;   //1
-   byte enableDPAuto   = 1;   //1
-   byte enableCBIAuto  = 1;   //1
+   byte enableVUAuto   = 0;   //1
+   byte enableDPAuto   = 0;   //1
+   byte enableCBIAuto  = 0;   //1
    byte enableMAINTAuto = 0;  //New to sketch
 
 //////////////////////////////////////////////////////////////////////
