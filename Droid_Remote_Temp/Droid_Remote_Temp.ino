@@ -117,6 +117,7 @@ String debugInputIdentifier ="";
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
+  int FunctionSWState;
   
   String outgoing;
   String LoRaOutgoing;
@@ -534,6 +535,7 @@ void onReceive(int packetSize) {
   BL_vuBaselineExt = LoRa.read();
   BL_BatteryVoltage = LoRa.read();
   BL_BatteryPercentage = LoRa.read();
+  FunctionSWState = LoRa.read();
  }
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
@@ -578,6 +580,7 @@ String recipientString = String(recipient, HEX);
   Debug.STATUS("vu Baseline External: %d\n", BL_vuBaselineExt);
   Debug.STATUS("Droid Battery Voltage: %d\n", BL_BatteryVoltage);
   Debug.STATUS("Droid Battery Percentage: %d\n", BL_BatteryPercentage);
+  Debug.STATUS("Function Switch State %i\n", FunctionSWState);
 
   LoRaRSSI = String(LoRa.packetRssi());
 
@@ -683,6 +686,7 @@ void sendUpdates(){
   doc["VUExtOffset"] = BL_vuOffsetExt;
   doc["BatteryVoltage"] = BL_BatteryVoltage;
   doc["BatteryPercent"] = BL_BatteryPercentage;
+  doc["FunctionSwState"] = FunctionSWState;
   doc["JSONDone"] = true;
   
   serializeJson(doc, Serial1);
@@ -988,6 +992,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BL_vuBaselineExt"] = BL_vuBaselineExt;
       json["BL_BatteryVoltage"] = BL_BatteryVoltage;
       json["BL_BatteryPercentage"] = BL_BatteryPercentage;
+      json["FunctionSWState"] = FunctionSWState;
 
       serializeJson(json, *response);
       request->send(response);

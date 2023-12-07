@@ -63,23 +63,21 @@
 ///*****          Preferences/Items to change                 *****///
 //////////////////////////////////////////////////////////////////////
  // ESPNOW Password - This must be the same across all devices
-  String ESPNOWPASSWORD = "GregsAstromech";
+  String ESPNOWPASSWORD = "MattsAstromech";
 
-    // R2 Control Network Details
-  const char* ssid = "R2D2_Control_Network";
-  const char* password =  "astromech";
 
   // Keepalive timer to send status messages to the Kill Switch (Droid)
-  int keepAliveDuration= 4000;  // 4 seconds
-  bool sendUpdateStatus = true;
-  int sendStatusFrequency = 4000;
+  // int keepAliveDuration= 4000;  // 4 seconds
+  // bool sendUpdateStatus = true;
+  // int sendStatusFrequency = 4000;
 
 // used to sync timing with the dome controller better, allowing time for the ESP-NOW messages to travel to the dome
 // Change this to work with how your droid performs
   int defaultESPNOWSendDuration = 50;  
 
   // Serial Baud Rates
-  #define SERIAL1_BAUD_RATE 115200
+  #define SERIAL1_BAUD_RATE 9600
+  #define SERIAL2_BAUD_RATE 9600
 
 
 
@@ -107,6 +105,10 @@
 
   uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
+
+    uint32_t Animation_Command[6]  = {0,0,0,0,0,0};
+  int AnimationCommandFunction = 0;
+
 
   String ESPNOWStringCommand;
   String ESPNOWTarget;
@@ -138,50 +140,50 @@ String debugInputIdentifier ="";
 ///////////////////////////////////////////////////////////////////////
   ///*****                Status Variables                     *****///
   /////////////////////////////////////////////////////////////////////
-  unsigned long statusCurrentMillis;
-  unsigned long statusPreviousMillis;
-  unsigned long statusDelayInterval = 5000;
+  // unsigned long statusCurrentMillis;
+  // unsigned long statusPreviousMillis;
+  // unsigned long statusDelayInterval = 5000;
 
-  bool droidGatewayStatus = 1;
-  bool bodyControllerStatus = 0;
-  bool bodyLEDControllerStatus = 0;  
-  bool bodyServoControllerStatus = 0;
-  bool domePlateControllerStatus = 0;
-  bool domeControllerStatus = 0;
-  bool droidRemoteStatus = 0;
-  bool hpControllerStatus = 0;
-  bool domeLogicsControllerStatus = 0;
+  // bool droidGatewayStatus = 1;
+  // bool bodyControllerStatus = 0;
+  // bool bodyLEDControllerStatus = 0;  
+  // bool bodyServoControllerStatus = 0;
+  // bool domePlateControllerStatus = 0;
+  // bool domeControllerStatus = 0;
+  // bool droidRemoteStatus = 0;
+  // bool hpControllerStatus = 0;
+  // bool domeLogicsControllerStatus = 0;
 
 
-  int keepAliveTimeOut = 15000;
-  unsigned long keepAliveMillis;
-  unsigned long dckeepAliveAge;
-  unsigned long dckeepaliveAgeMillis;
-  unsigned long dpkeepAliveAge;
-  unsigned long dpkeepaliveAgeMillis;
-  unsigned long bskeepAliveAge;
-  unsigned long bskeepaliveAgeMillis;
-  unsigned long bckeepAliveAge;
-  unsigned long bckeepaliveAgeMillis;
-  unsigned long blkeepAliveAge;
-  unsigned long blkeepaliveAgeMillis;
-  unsigned long drkeepAliveAge;
-  unsigned long hpkeepaliveAgeMillis;
-  unsigned long hpkeepAliveAge;
-  unsigned long sendStatusMillis;
-  unsigned long sendStatusAge;
-    // variables for storing status and settings from ATMEGA2560
-  int BL_LDP_Bright;
-  int BL_MAINT_Bright;
-  int BL_VU_Bright;
-  int BL_CS_Bright;
-  int BL_vuOffsetInt;
-  int BL_vuBaselineInt;
-  int BL_vuOffsetExt;
-  int BL_vuBaselineExt;
-  float BL_BatteryVoltage;
-  int BL_BatteryPercentage;
-  String FunctionSWState;
+  // int keepAliveTimeOut = 15000;
+  // unsigned long keepAliveMillis;
+  // unsigned long dckeepAliveAge;
+  // unsigned long dckeepaliveAgeMillis;
+  // unsigned long dpkeepAliveAge;
+  // unsigned long dpkeepaliveAgeMillis;
+  // unsigned long bskeepAliveAge;
+  // unsigned long bskeepaliveAgeMillis;
+  // unsigned long bckeepAliveAge;
+  // unsigned long bckeepaliveAgeMillis;
+  // unsigned long blkeepAliveAge;
+  // unsigned long blkeepaliveAgeMillis;
+  // unsigned long drkeepAliveAge;
+  // unsigned long hpkeepaliveAgeMillis;
+  // unsigned long hpkeepAliveAge;
+  // unsigned long sendStatusMillis;
+  // unsigned long sendStatusAge;
+  //   // variables for storing status and settings from ATMEGA2560
+  // int BL_LDP_Bright;
+  // int BL_MAINT_Bright;
+  // int BL_VU_Bright;
+  // int BL_CS_Bright;
+  // int BL_vuOffsetInt;
+  // int BL_vuBaselineInt;
+  // int BL_vuOffsetExt;
+  // int BL_vuBaselineExt;
+  // float BL_BatteryVoltage;
+  // int BL_BatteryPercentage;
+  // String FunctionSWState;
 
 
   //////////////////////////////////////////////////////////////////
@@ -189,6 +191,7 @@ String debugInputIdentifier ="";
   //////////////////////////////////////////////////////////////////
 
   #define s1Serial Serial1
+  #define s2Serial Serial2
 
 
 
@@ -212,9 +215,9 @@ String debugInputIdentifier ="";
 //Developer Laptop          192.168.4.125
   
   // IP Address config of local ESP
-  IPAddress local_IP(192,168,4,108);
-  IPAddress subnet(255,255,255,0);
-  IPAddress gateway(192,168,4,101);
+  // IPAddress local_IP(192,168,4,108);
+  // IPAddress subnet(255,255,255,0);
+  // IPAddress gateway(192,168,4,101);
   
   const uint8_t oldLocalMACAddress[] = {0x24, 0x0A, 0xC4, 0xED, 0x30, 0x11};    //used when connecting to WiFi for OTA
 
@@ -230,23 +233,23 @@ String debugInputIdentifier ="";
 // pins, leds, colors etc by name instead of numbers
 // -------------------------------------------------
 //    CAMERA LENS LED VARIABLES
-    const uint32_t red     = 0xFF0000;
-    const uint32_t orange  = 0xFF8000;
-    const uint32_t yellow  = 0xFFFF00;
-    const uint32_t green   = 0x00FF00;
-    const uint32_t cyan    = 0x00FFFF;
-    const uint32_t blue    = 0x0000FF;
-    const uint32_t magenta = 0xFF00FF;
-    const uint32_t white   = 0xFFFFFF;
-    const uint32_t off     = 0x000000;
+  //   const uint32_t red     = 0xFF0000;
+  //   const uint32_t orange  = 0xFF8000;
+  //   const uint32_t yellow  = 0xFFFF00;
+  //   const uint32_t green   = 0x00FF00;
+  //   const uint32_t cyan    = 0x00FFFF;
+  //   const uint32_t blue    = 0x0000FF;
+  //   const uint32_t magenta = 0xFF00FF;
+  //   const uint32_t white   = 0xFFFFFF;
+  //   const uint32_t off     = 0x000000;
 
-    const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+  //   const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
-  #define STATUS_LED_COUNT 1
+  // #define STATUS_LED_COUNT 1
   
-  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel RELAY_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, RELAY_LED_PIN, NEO_GRB + NEO_KHZ800);
-  Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_LED_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel RELAY_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, RELAY_LED_PIN, NEO_GRB + NEO_KHZ800);
+  // Adafruit_NeoPixel LORA_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, LORA_LED_PIN, NEO_GRB + NEO_KHZ800);
 
 
 
@@ -349,18 +352,18 @@ String debugInputIdentifier ="";
   String incomingSenderID;
   bool incomingCommandIncluded;
   String incomingCommand;
-  int incomingstructBL_LDP_Bright;
-  int incomingstructBL_MAINT_Bright;
-  int incomingstructBL_VU_Bright;
-  int incomingstructBL_CS_Bright;
-  int incomingstructBL_vuOffsetInt;
-  int incomingstructBL_vuBaselineInt;
-  int incomingstructBL_vuOffsetExt;
-  int incomingstructBL_vuBaselineExt;
-  float incomingstructBL_BatteryVoltage;
-  int incomingstructBL_BatteryPercentage;
-  String incomingstructFunctionSWState;
-  bool incomingstructbodyLEDControllerStatus;
+  // int incomingstructBL_LDP_Bright;
+  // int incomingstructBL_MAINT_Bright;
+  // int incomingstructBL_VU_Bright;
+  // int incomingstructBL_CS_Bright;
+  // int incomingstructBL_vuOffsetInt;
+  // int incomingstructBL_vuBaselineInt;
+  // int incomingstructBL_vuOffsetExt;
+  // int incomingstructBL_vuBaselineExt;
+  // float incomingstructBL_BatteryVoltage;
+  // int incomingstructBL_BatteryPercentage;
+  // String incomingstructFunctionSWState;
+  // bool incomingstructbodyLEDControllerStatus;
   
 // Variable to store if sending data was successful
   String success;
@@ -379,18 +382,18 @@ typedef struct bodyControllerStatus_struct_message{
       char structPassword[25];
       char structSenderID[15];
       char structTargetID[5];
-      int structBL_LDP_Bright;
-      int structBL_MAINT_Bright;
-      int structBL_VU_Bright;
-      int structBL_CS_Bright;
-      int structBL_vuOffsetInt;
-      int structBL_vuBaselineInt;
-      int structBL_vuOffsetExt;
-      int structBL_vuBaselineExt;
-      float structBL_BatteryVoltage;
-      int structBL_BatteryPercentage;
-      bool structbodyLEDControllerStatus;
-      char structFunctionSWState[10];
+      // int structBL_LDP_Bright;
+      // int structBL_MAINT_Bright;
+      // int structBL_VU_Bright;
+      // int structBL_CS_Bright;
+      // int structBL_vuOffsetInt;
+      // int structBL_vuBaselineInt;
+      // int structBL_vuOffsetExt;
+      // int structBL_vuBaselineExt;
+      // float structBL_BatteryVoltage;
+      // int structBL_BatteryPercentage;
+      // bool structbodyLEDControllerStatus;
+      // char structFunctionSWState[10];
       bool structCommandIncluded;
       char structCommand[100];
   } bodyControllerStatus_struct_message;
@@ -430,7 +433,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 //   Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  colorWipeStatus("ES",orange,255);
+  // colorWipeStatus("ES",orange,255);
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -458,18 +461,18 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       } else {
         incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
         incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
-        BL_LDP_Bright = commandsToReceiveFromBodyController.structBL_LDP_Bright;
-        BL_MAINT_Bright = commandsToReceiveFromBodyController.structBL_MAINT_Bright;
-        BL_VU_Bright = commandsToReceiveFromBodyController.structBL_VU_Bright;
-        BL_CS_Bright = commandsToReceiveFromBodyController.structBL_CS_Bright;
-        BL_vuOffsetInt = commandsToReceiveFromBodyController.structBL_vuOffsetInt;
-        BL_vuBaselineInt = commandsToReceiveFromBodyController.structBL_vuBaselineInt;
-        BL_vuOffsetExt = commandsToReceiveFromBodyController.structBL_vuOffsetExt;
-        BL_vuBaselineExt = commandsToReceiveFromBodyController.structBL_vuBaselineExt;
-        BL_BatteryVoltage = commandsToReceiveFromBodyController.structBL_BatteryVoltage;
-        BL_BatteryPercentage = commandsToReceiveFromBodyController.structBL_BatteryPercentage;
-        bodyLEDControllerStatus = commandsToReceiveFromBodyController.structbodyLEDControllerStatus;
-        FunctionSWState = commandsToReceiveFromBodyController.structFunctionSWState;
+        // BL_LDP_Bright = commandsToReceiveFromBodyController.structBL_LDP_Bright;
+        // BL_MAINT_Bright = commandsToReceiveFromBodyController.structBL_MAINT_Bright;
+        // BL_VU_Bright = commandsToReceiveFromBodyController.structBL_VU_Bright;
+        // BL_CS_Bright = commandsToReceiveFromBodyController.structBL_CS_Bright;
+        // BL_vuOffsetInt = commandsToReceiveFromBodyController.structBL_vuOffsetInt;
+        // BL_vuBaselineInt = commandsToReceiveFromBodyController.structBL_vuBaselineInt;
+        // BL_vuOffsetExt = commandsToReceiveFromBodyController.structBL_vuOffsetExt;
+        // BL_vuBaselineExt = commandsToReceiveFromBodyController.structBL_vuBaselineExt;
+        // BL_BatteryVoltage = commandsToReceiveFromBodyController.structBL_BatteryVoltage;
+        // BL_BatteryPercentage = commandsToReceiveFromBodyController.structBL_BatteryPercentage;
+        // bodyLEDControllerStatus = commandsToReceiveFromBodyController.structbodyLEDControllerStatus;
+        // FunctionSWState = commandsToReceiveFromBodyController.structFunctionSWState;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromBodyController.structCommand;
         processESPNOWIncomingMessage();
@@ -535,7 +538,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-  colorWipeStatus("ES",blue,10);
+  // colorWipeStatus("ES",blue,10);
   IncomingMacAddress ="";
 
 }
@@ -547,34 +550,34 @@ void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
     if (incomingTargetID == "DG" || incomingTargetID == "BR"){
       if (incomingSenderID == "BC"){
-        bodyControllerStatus = 1;
-        bckeepAliveAge =millis();
-        if (bodyLEDControllerStatus == 1){
-          blkeepAliveAge = millis();
-        }
+      //   bodyControllerStatus = 1;
+      //   bckeepAliveAge =millis();
+      //   if (bodyLEDControllerStatus == 1){
+      //     blkeepAliveAge = millis();
+      //   }
         if (incomingCommandIncluded == 1){
           inputString = incomingCommand;
           stringComplete = true; 
         }
         //debug statements
-        Debug.STATUS("\nBody Controller Status Update \n");
-        Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
-        Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
-        Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
-        Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
-        Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
-        Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
-        Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
-        Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
-        Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
-        Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
-        Debug.STATUS("Function Sw State %s \n", FunctionSWState);
-        Debug.STATUS("Body LED Controller Status: %d \n", bodyLEDControllerStatus);
-        Debug.ESPNOW("ESP NOW Message Received from Body Controller \n");
+        // Debug.STATUS("\nBody Controller Status Update \n");
+        // Debug.STATUS("LDP Bright: %i\n", BL_LDP_Bright);
+        // Debug.STATUS("Maintenence Bright: %i\n", BL_MAINT_Bright);
+        // Debug.STATUS("VU Bright: %i\n", BL_VU_Bright);
+        // Debug.STATUS("Coin SLots Bright: %i\n", BL_CS_Bright);
+        // Debug.STATUS("vuOffsetInt: %i\n", BL_vuOffsetInt);
+        // Debug.STATUS("vuBaselineInt: %i\n", BL_vuBaselineInt);
+        // Debug.STATUS("vuOffsetExt: %i\n", BL_vuOffsetExt);
+        // Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
+        // Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
+        // Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+        // Debug.STATUS("Function Sw State %s \n", FunctionSWState);
+        // Debug.STATUS("Body LED Controller Status: %d \n", bodyLEDControllerStatus);
+        // Debug.ESPNOW("ESP NOW Message Received from Body Controller \n");
 
       }else if (incomingSenderID == "BS"){
-        bodyServoControllerStatus = 1;
-        bskeepAliveAge =millis();
+        // bodyServoControllerStatus = 1;
+        // bskeepAliveAge =millis();
 
         if (incomingCommandIncluded == 1){
           inputString = incomingCommand;
@@ -585,8 +588,8 @@ void processESPNOWIncomingMessage(){
         Debug.ESPNOW("ESP NOW Message Received from Body Servo Controller \n");
       }
       else if (incomingSenderID == "DC"){
-        domeControllerStatus = 1;
-        dckeepAliveAge =millis();
+        // domeControllerStatus = 1;
+        // dckeepAliveAge =millis();
         if (incomingCommandIncluded == 1){
           inputString = incomingCommand;
           stringComplete = true; 
@@ -595,8 +598,8 @@ void processESPNOWIncomingMessage(){
         Debug.STATUS("Dome Controller Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from Dome Controller \n");
       } else if (incomingSenderID == "DP"){
-        domePlateControllerStatus = 1;
-        dpkeepAliveAge =millis();
+        // domePlateControllerStatus = 1;
+        // dpkeepAliveAge =millis();
         if (incomingCommandIncluded == 1){
           inputString = incomingCommand;
           stringComplete = true; 
@@ -604,8 +607,8 @@ void processESPNOWIncomingMessage(){
         Debug.STATUS("Dome Plate Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from Dome Plate Controller \n");
       } else if (incomingSenderID == "HP"){
-        hpControllerStatus = 1;
-        hpkeepAliveAge =millis();
+        // hpControllerStatus = 1;
+        // hpkeepAliveAge =millis();
         if (incomingCommandIncluded == 1){
           inputString = incomingCommand;
           stringComplete = true; 
@@ -620,19 +623,19 @@ void processESPNOWIncomingMessage(){
 //////////////////////////////////////////////////////////////
 ///*****        LoRa Variables       *****///
 //////////////////////////////////////////////////////////////////////
-  String outgoing;
-  String LoRaOutgoing;
+  // String outgoing;
+  // String LoRaOutgoing;
 
-  boolean oldState = HIGH;
-  boolean newState ;
+  // boolean oldState = HIGH;
+  // boolean newState ;
 
-  int msgCount = 0;            // count of outgoing messages
-  byte localAddress = 0xBC;     // address of this device
-  byte destination = 0xFF;      // destination to send to
-  long lastSendTime = 0;        // last send time
-  int interval = 2000;          // interval between sends
+  // int msgCount = 0;            // count of outgoing messages
+  // byte localAddress = 0xBC;     // address of this device
+  // byte destination = 0xFF;      // destination to send to
+  // long lastSendTime = 0;        // last send time
+  // int interval = 2000;          // interval between sends
 
-  int LoRaRSSI;
+  // int LoRaRSSI;
 
 
 //////////////////////////////////////////////////////////////
@@ -656,22 +659,22 @@ void processESPNOWIncomingMessage(){
 ///*****   ColorWipe Function for Status LED                  *****///
 //////////////////////////////////////////////////////////////////////
 
-void colorWipeStatus(String statusled, uint32_t c, int brightness) {
-  if(statusled == "ES"){
-    ESP_LED.setBrightness(brightness);
-    ESP_LED.setPixelColor(0, c);
-    ESP_LED.show();
-  } else if (statusled == "RS"){
-    RELAY_LED.setBrightness(brightness);
-    RELAY_LED.setPixelColor(0, c);
-    RELAY_LED.show();
-  }else if (statusled == "LS"){
-    LORA_LED.setBrightness(brightness);
-    LORA_LED.setPixelColor(0, c);
-    LORA_LED.show();
-  }
-else{Debug.DBG("No LED was chosen \n");}
-  };
+// void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+//   if(statusled == "ES"){
+//     ESP_LED.setBrightness(brightness);
+//     ESP_LED.setPixelColor(0, c);
+//     ESP_LED.show();
+//   } else if (statusled == "RS"){
+//     RELAY_LED.setBrightness(brightness);
+//     RELAY_LED.setPixelColor(0, c);
+//     RELAY_LED.show();
+//   }else if (statusled == "LS"){
+//     LORA_LED.setBrightness(brightness);
+//     LORA_LED.setPixelColor(0, c);
+//     LORA_LED.show();
+//   }
+// else{Debug.DBG("No LED was chosen \n");}
+//   };
 
 
 ////////////////////////////////////////////////////////////////////
@@ -680,101 +683,101 @@ else{Debug.DBG("No LED was chosen \n");}
 
 
 
-void checkAgeofkeepAlive(){    //checks for the variable's age
-  if (domeControllerStatus== 1){
-    if (millis() - dckeepAliveAge>=keepAliveTimeOut){
-      domeControllerStatus = 0;
-      Debug.STATUS("Dome Controller Offline\n");
-    }
-  }
-  if (domePlateControllerStatus== 1){
-    if (millis()-dpkeepAliveAge>=keepAliveTimeOut){
-      domePlateControllerStatus= 0;
-      Debug.STATUS("Dome Plate Controller Offline\n");
-    }
-  }
-  if (bodyServoControllerStatus == 1){
-    if (millis()-bskeepAliveAge>=keepAliveTimeOut){
-      bodyServoControllerStatus = 0;
-      Debug.STATUS("Body Servo Controller Offline\n");
-    }
-  }
-  if (bodyControllerStatus == 1){
-    if (millis()-bckeepAliveAge>=keepAliveTimeOut){
-      bodyControllerStatus = 0;
-      Debug.STATUS("Body Controller Offline\n");
-    }
-  }
-  if (bodyLEDControllerStatus == 1){
-    if (millis()-blkeepAliveAge>=keepAliveTimeOut){
-      bodyLEDControllerStatus=0;
-      BL_LDP_Bright =0;
-      BL_MAINT_Bright = 0;
-      BL_VU_Bright = 0;
-      BL_CS_Bright =0;
-      BL_vuOffsetInt = 0;
-      BL_vuBaselineInt = 0;
-      BL_vuOffsetExt = 0;
-      BL_vuBaselineExt =0;
-      BL_BatteryPercentage = 0;
-      BL_BatteryVoltage = 0.0;
-      Debug.STATUS("Body LED Controller Offline\n");
-    }
-  }
-  if (droidRemoteStatus == 1){
-    if (millis()-drkeepAliveAge>=keepAliveTimeOut){
-      droidRemoteStatus = 0;
-      colorWipeStatus("LS", red, 20);
-      Debug.STATUS("Droid Remote Offline\n");
-    }
-  }
-    if (hpControllerStatus == 1){
-    if (millis()-hpkeepAliveAge>=keepAliveTimeOut){
-      hpControllerStatus = 0;
-      Debug.STATUS("HP Controller Offline\n");
-    }
-  }
-}
+// void checkAgeofkeepAlive(){    //checks for the variable's age
+//   if (domeControllerStatus== 1){
+//     if (millis() - dckeepAliveAge>=keepAliveTimeOut){
+//       domeControllerStatus = 0;
+//       Debug.STATUS("Dome Controller Offline\n");
+//     }
+//   }
+//   if (domePlateControllerStatus== 1){
+//     if (millis()-dpkeepAliveAge>=keepAliveTimeOut){
+//       domePlateControllerStatus= 0;
+//       Debug.STATUS("Dome Plate Controller Offline\n");
+//     }
+//   }
+//   if (bodyServoControllerStatus == 1){
+//     if (millis()-bskeepAliveAge>=keepAliveTimeOut){
+//       bodyServoControllerStatus = 0;
+//       Debug.STATUS("Body Servo Controller Offline\n");
+//     }
+//   }
+//   if (bodyControllerStatus == 1){
+//     if (millis()-bckeepAliveAge>=keepAliveTimeOut){
+//       bodyControllerStatus = 0;
+//       Debug.STATUS("Body Controller Offline\n");
+//     }
+//   }
+//   if (bodyLEDControllerStatus == 1){
+//     if (millis()-blkeepAliveAge>=keepAliveTimeOut){
+//       bodyLEDControllerStatus=0;
+//       BL_LDP_Bright =0;
+//       BL_MAINT_Bright = 0;
+//       BL_VU_Bright = 0;
+//       BL_CS_Bright =0;
+//       BL_vuOffsetInt = 0;
+//       BL_vuBaselineInt = 0;
+//       BL_vuOffsetExt = 0;
+//       BL_vuBaselineExt =0;
+//       BL_BatteryPercentage = 0;
+//       BL_BatteryVoltage = 0.0;
+//       Debug.STATUS("Body LED Controller Offline\n");
+//     }
+//   }
+//   if (droidRemoteStatus == 1){
+//     if (millis()-drkeepAliveAge>=keepAliveTimeOut){
+//       droidRemoteStatus = 0;
+//       colorWipeStatus("LS", red, 20);
+//       Debug.STATUS("Droid Remote Offline\n");
+//     }
+//   }
+//     if (hpControllerStatus == 1){
+//     if (millis()-hpkeepAliveAge>=keepAliveTimeOut){
+//       hpControllerStatus = 0;
+//       Debug.STATUS("HP Controller Offline\n");
+//     }
+//   }
+// }
 
-void printKeepaliveStatus(){
-  if (Debug.debugflag == 0)
-  {
-    Debug.debugflag = 1;
-    Debug.DBG("\n\n------------------------------------\n");
-    Debug.DBG("Board Name \t\t| Status:\n");
-    Debug.DBG("------------------------------------\n");
-    Debug.DBG("Dome Controller: \t| %d\n", domeControllerStatus);
-    Debug.DBG("Dome Plate Controller: \t| %d\n", domePlateControllerStatus);
-    Debug.DBG("Body Servo Controller: \t| %d\n", bodyServoControllerStatus);
-    Debug.DBG("Body  Controller: \t| %d\n", bodyControllerStatus);
-    Debug.DBG("Body LED Controller: \t| %d\n", bodyLEDControllerStatus);
-    Debug.DBG("HP Controller: \t\t| %d\n", hpControllerStatus);
-    Debug.DBG("\n------------------------------------\n");
-    Debug.DBG("Body LED Setting \t| Value:\n");
-    Debug.DBG("------------------------------------\n");
-    Debug.DBG("LDP Bright: \t\t| %i\n", BL_LDP_Bright);
-    Debug.DBG("Maintenence Bright: \t| %i\n", BL_MAINT_Bright);
-    Debug.DBG("VU Bright: \t\t| %i\n", BL_VU_Bright);
-    Debug.DBG("Coin SLots Bright: \t| %i\n", BL_CS_Bright);
-    Debug.DBG("vuOffsetInt: \t\t| %i\n", BL_vuOffsetInt);
-    Debug.DBG("vuBaselineInt: \t\t| %i\n", BL_vuBaselineInt);
-    Debug.DBG("vuOffsetExt: \t\t| %i\n", BL_vuOffsetExt);
-    Debug.DBG("vuBaselineExt: \t\t| %i\n", BL_vuBaselineExt);
-    Debug.DBG("BL_BatteryVoltage: \t| %f\n", BL_BatteryVoltage);
-    Debug.DBG("BL_BatteryPercentage: \t| %i\n", BL_BatteryPercentage);
-    Debug.debugflag = 0;
-    Local_Command[0]   = '\0';
-  } else
-  {  
-    Debug.DBG("Dome Controller Status: %d\n", domeControllerStatus);
-    Debug.DBG("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
-    Debug.DBG("Body Servo Controller Status: %d\n", bodyServoControllerStatus);
-    Debug.DBG("Body  Controller Status: %d\n", bodyControllerStatus);
-    Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
-    Debug.DBG("HP Controller: \t\t| %d\n", hpControllerStatus);
-    Local_Command[0]   = '\0';
-  }
-}
+// void printKeepaliveStatus(){
+//   if (Debug.debugflag == 0)
+//   {
+//     Debug.debugflag = 1;
+//     Debug.DBG("\n\n------------------------------------\n");
+//     Debug.DBG("Board Name \t\t| Status:\n");
+//     Debug.DBG("------------------------------------\n");
+//     Debug.DBG("Dome Controller: \t| %d\n", domeControllerStatus);
+//     Debug.DBG("Dome Plate Controller: \t| %d\n", domePlateControllerStatus);
+//     Debug.DBG("Body Servo Controller: \t| %d\n", bodyServoControllerStatus);
+//     Debug.DBG("Body  Controller: \t| %d\n", bodyControllerStatus);
+//     Debug.DBG("Body LED Controller: \t| %d\n", bodyLEDControllerStatus);
+//     Debug.DBG("HP Controller: \t\t| %d\n", hpControllerStatus);
+//     Debug.DBG("\n------------------------------------\n");
+//     Debug.DBG("Body LED Setting \t| Value:\n");
+//     Debug.DBG("------------------------------------\n");
+//     Debug.DBG("LDP Bright: \t\t| %i\n", BL_LDP_Bright);
+//     Debug.DBG("Maintenence Bright: \t| %i\n", BL_MAINT_Bright);
+//     Debug.DBG("VU Bright: \t\t| %i\n", BL_VU_Bright);
+//     Debug.DBG("Coin SLots Bright: \t| %i\n", BL_CS_Bright);
+//     Debug.DBG("vuOffsetInt: \t\t| %i\n", BL_vuOffsetInt);
+//     Debug.DBG("vuBaselineInt: \t\t| %i\n", BL_vuBaselineInt);
+//     Debug.DBG("vuOffsetExt: \t\t| %i\n", BL_vuOffsetExt);
+//     Debug.DBG("vuBaselineExt: \t\t| %i\n", BL_vuBaselineExt);
+//     Debug.DBG("BL_BatteryVoltage: \t| %f\n", BL_BatteryVoltage);
+//     Debug.DBG("BL_BatteryPercentage: \t| %i\n", BL_BatteryPercentage);
+//     Debug.debugflag = 0;
+//     Local_Command[0]   = '\0';
+//   } else
+//   {  
+//     Debug.DBG("Dome Controller Status: %d\n", domeControllerStatus);
+//     Debug.DBG("Dome Plate Controller Status: %d\n", domePlateControllerStatus);
+//     Debug.DBG("Body Servo Controller Status: %d\n", bodyServoControllerStatus);
+//     Debug.DBG("Body  Controller Status: %d\n", bodyControllerStatus);
+//     Debug.DBG("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
+//     Debug.DBG("HP Controller: \t\t| %d\n", hpControllerStatus);
+//     Local_Command[0]   = '\0';
+//   }
+// }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////                                                                                               /////
@@ -789,36 +792,36 @@ WiFi network to allow the uploading of sktches(.bin files) via the OTA process.
 It does not produce it's own WiFi network.  Once enables, a reboot is
 required to regain ESP-NOW functionality.
 *///////////////////////////////////////////////////////////////////////
-void connectWiFi(){
-  esp_now_deinit();
-  WiFi.disconnect();
-  WiFi.mode(WIFI_OFF);
-  delay(500);
+// void connectWiFi(){
+//   esp_now_deinit();
+//   WiFi.disconnect();
+//   WiFi.mode(WIFI_OFF);
+//   delay(500);
 
-  Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
+//   Serial.println(WiFi.config(local_IP, gateway, subnet) ? "Client IP Configured" : "Failed!");
+//   WiFi.mode(WIFI_STA);
+//   esp_wifi_set_mac(WIFI_IF_STA, &oldLocalMACAddress[0]);
   
-  delay(500);
+//   delay(500);
   
-  WiFi.begin(ssid,password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.print("SSID: \t");Serial.println(WiFi.SSID());
-  Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
-  Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
+//   WiFi.begin(ssid,password);
+//   while (WiFi.status() != WL_CONNECTED) {
+//     delay(1000);
+//     Serial.println("Connecting to WiFi..");
+//   }
+//   Serial.print("SSID: \t");Serial.println(WiFi.SSID());
+//   Serial.print("IP Address: \t");Serial.println(WiFi.localIP());
+//   Serial.print("MAC Address: \t");Serial.println(WiFi.macAddress());
   
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
-  });
+//   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+//     request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
+//   });
   
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
-  server.begin();
+//   AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+//   server.begin();
 
-  Local_Command[0]   = '\0';
-} ;
+//   Local_Command[0]   = '\0';
+// } ;
 
 /////////////////////////////////////////////////////////
 ///*****          Serial Event Function          *****///
@@ -846,11 +849,28 @@ void s1SerialEvent() {
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       // stringComplete = true;            // set a flag so the main loop can do something about it.
+        inputString = ":" + inputString;
+      enqueueCommand(inputString);
+
+    };
+    Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+  };
+};
+
+void s2SerialEvent() {
+  while (s2Serial.available()) {
+    // get the new byte:
+    char inChar = (char)s2Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+        // inputString = ":" + inputString;
       enqueueCommand(inputString);
 
 };
   };
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+  Debug.SERIAL_EVENT("Serial 2 Input: %s \n",inputString);
 };
 
   /////////////////////////////////////////////////////////
@@ -864,7 +884,7 @@ void writeSerialString(String stringData){
   };
 };
 
-void writes1Serial(String stringData){
+void writeS1SerialString(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
       s1Serial.write(completeString[i]);
@@ -872,7 +892,13 @@ void writes1Serial(String stringData){
   Debug.SERIAL_EVENT("Writing to Serial 1\n");
 };
 
-
+void writeS2SerialString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++){
+      s2Serial.write(completeString[i]);
+  };
+  Debug.SERIAL_EVENT("Writing to Serial 2\n");
+};
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
@@ -931,155 +957,155 @@ void sendESPNOWCommand(String starget, String scomm){
     }else {Debug.ESPNOW("Error sending the data\n");}
   }else {Debug.ESPNOW("No valid destination \n");}
 };
-
+// b=4,1,8
 //////////////////////////////////////////////////////////////////////
 ///*****             LoRa Functions                           *****///
 //////////////////////////////////////////////////////////////////////
-void sendStatusToRemote(){
-  if (sendUpdateStatus){
-    if (millis() - sendStatusMillis >= sendStatusFrequency) {
-      sendStatusMillis = millis();
-      sendStatusMessage("Status Update");
-    } 
-  }
-}
-void sendStatusMessage(String outgoing) {
-  int functionSWStateInt;
-  if (FunctionSWState == "DOWN"){
-    functionSWStateInt = 1;
-  } else if (FunctionSWState == "MIDDLE"){
-    functionSWStateInt = 2;
-  } else if (FunctionSWState == "UP"){
-    functionSWStateInt = 3;
-  }
-  bool ACKBool = false;
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(destination);              // add destination address
-  LoRa.write(localAddress);             // add sender address
-  LoRa.write(msgCount);                 // add message ID
-  LoRa.write(outgoing.length());        // add payload length
-  LoRa.write(ACKBool);                    // not a messsage ACK
-  LoRa.write(droidGatewayStatus);
-  LoRa.write(RELAY_STATUS);
-  LoRa.write(bodyControllerStatus);
-  LoRa.write(bodyLEDControllerStatus);
-  LoRa.write(bodyServoControllerStatus);
-  LoRa.write(domePlateControllerStatus);
-  LoRa.write(domeControllerStatus);
-  LoRa.write(hpControllerStatus);
-  LoRa.write(domeLogicsControllerStatus);
-  LoRa.write(BL_LDP_Bright);
-  LoRa.write(BL_MAINT_Bright);
-  LoRa.write(BL_VU_Bright);
-  LoRa.write(BL_CS_Bright);
-  LoRa.write(BL_vuOffsetInt);
-  LoRa.write(BL_vuBaselineInt);
-  LoRa.write(BL_vuOffsetExt);
-  LoRa.write(BL_vuBaselineExt);
-  LoRa.write(BL_BatteryVoltage);
-  LoRa.write(BL_BatteryPercentage);
-  LoRa.write(functionSWStateInt);
-  LoRa.print(outgoing);                 // add payload
-  LoRa.endPacket();                     // finish packet and send it
-  // LoRa.receive();
-  msgCount++;                           // increment message ID
-  Debug.LORA("Status Sent with ID: %d \n", msgCount);
-  Local_Command[0]   = '\0';
-};
+// void sendStatusToRemote(){
+//   if (sendUpdateStatus){
+//     if (millis() - sendStatusMillis >= sendStatusFrequency) {
+//       sendStatusMillis = millis();
+//       sendStatusMessage("Status Update");
+//     } 
+//   }
+// }
+// void sendStatusMessage(String outgoing) {
+//   int functionSWStateInt;
+//   if (FunctionSWState == "DOWN"){
+//     functionSWStateInt = 1;
+//   } else if (FunctionSWState == "MIDDLE"){
+//     functionSWStateInt = 2;
+//   } else if (FunctionSWState == "UP"){
+//     functionSWStateInt = 3;
+//   }
+//   bool ACKBool = false;
+//   LoRa.beginPacket();                   // start packet
+//   LoRa.write(destination);              // add destination address
+//   LoRa.write(localAddress);             // add sender address
+//   LoRa.write(msgCount);                 // add message ID
+//   LoRa.write(outgoing.length());        // add payload length
+//   LoRa.write(ACKBool);                    // not a messsage ACK
+//   LoRa.write(droidGatewayStatus);
+//   LoRa.write(RELAY_STATUS);
+//   LoRa.write(bodyControllerStatus);
+//   LoRa.write(bodyLEDControllerStatus);
+//   LoRa.write(bodyServoControllerStatus);
+//   LoRa.write(domePlateControllerStatus);
+//   LoRa.write(domeControllerStatus);
+//   LoRa.write(hpControllerStatus);
+//   LoRa.write(domeLogicsControllerStatus);
+//   LoRa.write(BL_LDP_Bright);
+//   LoRa.write(BL_MAINT_Bright);
+//   LoRa.write(BL_VU_Bright);
+//   LoRa.write(BL_CS_Bright);
+//   LoRa.write(BL_vuOffsetInt);
+//   LoRa.write(BL_vuBaselineInt);
+//   LoRa.write(BL_vuOffsetExt);
+//   LoRa.write(BL_vuBaselineExt);
+//   LoRa.write(BL_BatteryVoltage);
+//   LoRa.write(BL_BatteryPercentage);
+//   LoRa.write(functionSWStateInt);
+//   LoRa.print(outgoing);                 // add payload
+//   LoRa.endPacket();                     // finish packet and send it
+//   // LoRa.receive();
+//   msgCount++;                           // increment message ID
+//   Debug.LORA("Status Sent with ID: %d \n", msgCount);
+//   Local_Command[0]   = '\0';
+// };
 
-void sendACK(int msgAckID){
-  bool AckBool = true;
-  Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(destination);              // add destination address
-  LoRa.write(localAddress);             // add sender address
-  LoRa.write(msgCount);                 // add message ID
-  LoRa.write(outgoing.length());        // add payload length
-  LoRa.write(AckBool);
-  LoRa.write(msgAckID);
-  LoRa.print("42");
-  LoRa.endPacket();
-}
+// void sendACK(int msgAckID){
+//   bool AckBool = true;
+//   Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
+//   LoRa.beginPacket();                   // start packet
+//   LoRa.write(destination);              // add destination address
+//   LoRa.write(localAddress);             // add sender address
+//   LoRa.write(msgCount);                 // add message ID
+//   LoRa.write(outgoing.length());        // add payload length
+//   LoRa.write(AckBool);
+//   LoRa.write(msgAckID);
+//   LoRa.print("42");
+//   LoRa.endPacket();
+// }
 
 
 
-void onReceive(int packetSize) {
-  if (packetSize == 0) return;          // if there's no packet, return
-  // read packet header bytes:
-  int recipient = LoRa.read();          // recipient address
-  byte sender = LoRa.read();            // sender address
-  byte incomingMsgId = LoRa.read();     // incoming msg ID
-  byte incomingLength = LoRa.read();    // incoming msg length
+// void onReceive(int packetSize) {
+//   if (packetSize == 0) return;          // if there's no packet, return
+//   // read packet header bytes:
+//   int recipient = LoRa.read();          // recipient address
+//   byte sender = LoRa.read();            // sender address
+//   byte incomingMsgId = LoRa.read();     // incoming msg ID
+//   byte incomingLength = LoRa.read();    // incoming msg length
   
-  String incoming = "";
-  droidRemoteStatus = 1;
-  drkeepAliveAge =millis();
-  while (LoRa.available()) {
-    incoming += (char)LoRa.read();
-  }
+//   String incoming = "";
+//   droidRemoteStatus = 1;
+//   drkeepAliveAge =millis();
+//   while (LoRa.available()) {
+//     incoming += (char)LoRa.read();
+//   }
 
-  if (incomingLength != incoming.length()) {   // check length for error
-    if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
-    return;                             // skip rest of function
-  }
+//   if (incomingLength != incoming.length()) {   // check length for error
+//     if (Debug.debugflag_lora == 1){Serial.println("error: message length does not match length");}
+//     return;                             // skip rest of function
+//   }
 
-  // if the recipient isn't this device or broadcast,
-  if (recipient != localAddress && recipient != 0xFF) {
-      if (Debug.debugflag_lora == 1){Serial.println("This message is not for me.");}
-    return;                             // skip rest of function
-  }
+//   // if the recipient isn't this device or broadcast,
+//   if (recipient != localAddress && recipient != 0xFF) {
+//       if (Debug.debugflag_lora == 1){Serial.println("This message is not for me.");}
+//     return;                             // skip rest of function
+//   }
 
-  // if message is for this device, or broadcast, print details:
-  if (Debug.debugflag_lora == 1){
-  Serial.println("Received from: 0x" + String(sender, HEX));
-  Serial.println("Sent to: 0x" + String(recipient, HEX));
-  Serial.println("Message ID: " + String(incomingMsgId));
-  Serial.println("Message length: " + String(incomingLength));
-  Serial.println("Message: " + incoming);
-  Serial.println("RSSI: " + String(LoRa.packetRssi()));
-  Serial.println("Snr: " + String(LoRa.packetSnr()));
-  Serial.println();
-  }
-  parseStrings(incoming);
-  sendACK(incomingMsgId);
-  // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
-  //   colorWipeStatus("LS", green, 10);
-  // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
-  //   colorWipeStatus("LS", yellow, 10);
-  // } else{ colorWipeStatus("LS", red, 10);}
+//   // if message is for this device, or broadcast, print details:
+//   if (Debug.debugflag_lora == 1){
+//   Serial.println("Received from: 0x" + String(sender, HEX));
+//   Serial.println("Sent to: 0x" + String(recipient, HEX));
+//   Serial.println("Message ID: " + String(incomingMsgId));
+//   Serial.println("Message length: " + String(incomingLength));
+//   Serial.println("Message: " + incoming);
+//   Serial.println("RSSI: " + String(LoRa.packetRssi()));
+//   Serial.println("Snr: " + String(LoRa.packetSnr()));
+//   Serial.println();
+//   }
+//   parseStrings(incoming);
+//   sendACK(incomingMsgId);
+//   // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
+//   //   colorWipeStatus("LS", green, 10);
+//   // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
+//   //   colorWipeStatus("LS", yellow, 10);
+//   // } else{ colorWipeStatus("LS", red, 10);}
 
-  // inputString = incoming;
-  // stringComplete = true; 
-      // sendMessage("Message Revieved");
-};
-// String LoRaStringReceived = "";
-String queuecommand ="";
-void parseStrings(String data){
-// Convert from String Object to String.
-    char buf[100];
-    data.toCharArray(buf, sizeof(buf));
-    // char *p = buf;
-    // char *str;
-    // while ((str = strtok(p, ".", &p)) != NULL) // delimiter is the period
-    //   // Serial.println(str);
-    //    queuecommand = String(str);
-    //   Serial.println(queuecommand);
-      // enqueueCommand(queuecommand);
+//   // inputString = incoming;
+//   // stringComplete = true; 
+//       // sendMessage("Message Revieved");
+// };
+// // String LoRaStringReceived = "";
+// String queuecommand ="";
+// void parseStrings(String data){
+// // Convert from String Object to String.
+//     char buf[100];
+//     data.toCharArray(buf, sizeof(buf));
+//     // char *p = buf;
+//     // char *str;
+//     // while ((str = strtok(p, ".", &p)) != NULL) // delimiter is the period
+//     //   // Serial.println(str);
+//     //    queuecommand = String(str);
+//     //   Serial.println(queuecommand);
+//       // enqueueCommand(queuecommand);
 
-      char *token;
-      const char *delimiter =".";
-
-
-   token = strtok(buf, delimiter);
-
-   while (token != NULL) {
-      Serial.println(token);
-      enqueueCommand(token);
-      token=strtok(NULL, delimiter);
-   }
+//       char *token;
+//       const char *delimiter =".";
 
 
-  }
+//    token = strtok(buf, delimiter);
+
+//    while (token != NULL) {
+//       Serial.println(token);
+//       enqueueCommand(token);
+//       token=strtok(NULL, delimiter);
+//    }
+
+
+//   }
 
 
 
@@ -1087,48 +1113,158 @@ void parseStrings(String data){
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////                                                                                               /////
-///////                             Miscellaneous Functions                                           /////
+///////                             Animations Functions                                              /////
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void Case1Function(){
+  Debug.DBG("Case 1 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PH");
+    Animation_Command[0]   = '\0'; 
 
-void MainRelayOn(){
-  RELAY_STATUS = HIGH;
-  digitalWrite(RELAY_CONTROL, RELAY_STATUS);
-          colorWipeStatus("RS", green, 10);
-
-  Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
-  Local_Command[0]   = '\0';
 }
 
-void MainRelayOff(){
-  RELAY_STATUS = LOW;
-  digitalWrite(RELAY_CONTROL, RELAY_STATUS);
-          colorWipeStatus("RS", red, 10);
+void Case2Function(){
+  Debug.DBG("Case 2 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PS1");
+    Animation_Command[0]   = '\0'; 
 
-  Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
-  Local_Command[0]   = '\0';
 }
 
-void checkButton(){
-  newState = digitalRead(RELAY_BUTTON);
+void Case3Function(){
+  Debug.DBG("Case 3 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PS2");
+    Animation_Command[0]   = '\0'; 
 
-  if((newState == LOW) && (oldState == HIGH)) {
-    newState = digitalRead(RELAY_BUTTON);
-    if(newState == LOW) {      // Yes, still low
-      if (RELAY_STATUS == LOW) {
-        colorWipeStatus("RS", red, 10);
-        MainRelayOff();
-      }
-      if (RELAY_STATUS == HIGH){
-        colorWipeStatus("RS", green, 10);
-        MainRelayOn();
-      }
-      RELAY_STATUS = !RELAY_STATUS;
-    }
-  } 
 }
+
+void Case4Function(){
+  Debug.DBG("Case 4 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PS3");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case5Function(){
+  Debug.DBG("Case 5 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PS4");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case6Function(){
+  Debug.DBG("Case 6 Function Triggered");
+  sendESPNOWCommand("DP", ":SUS:PS5");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case7Function(){
+  Debug.DBG("Case 7 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case8Function(){
+  Debug.DBG("Case 8 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case9Function(){
+  Debug.DBG("Case 9 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case10Function(){
+  Debug.DBG("Case 10 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case11Function(){
+  Debug.DBG("Case 11 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case12Function(){
+  Debug.DBG("Case 12 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case13Function(){
+  Debug.DBG("Case 13 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case14Function(){
+  Debug.DBG("Case 14 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case15Function(){
+  Debug.DBG("Case 15 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+
+void Case16Function(){
+  Debug.DBG("Case 16 Function Triggered");
+  sendESPNOWCommand("DP", ":SUSxxxxxxx");
+    Animation_Command[0]   = '\0'; 
+
+}
+// void MainRelayOn(){
+//   RELAY_STATUS = HIGH;
+//   digitalWrite(RELAY_CONTROL, RELAY_STATUS);
+//           colorWipeStatus("RS", green, 10);
+
+//   Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
+//   Local_Command[0]   = '\0';
+// }
+
+// void MainRelayOff(){
+//   RELAY_STATUS = LOW;
+//   digitalWrite(RELAY_CONTROL, RELAY_STATUS);
+//           colorWipeStatus("RS", red, 10);
+
+//   Serial.print("Mode is: ");Serial.println(RELAY_STATUS);
+//   Local_Command[0]   = '\0';
+// }
+
+// void checkButton(){
+//   newState = digitalRead(RELAY_BUTTON);
+
+//   if((newState == LOW) && (oldState == HIGH)) {
+//     newState = digitalRead(RELAY_BUTTON);
+//     if(newState == LOW) {      // Yes, still low
+//       if (RELAY_STATUS == LOW) {
+//         colorWipeStatus("RS", red, 10);
+//         MainRelayOff();
+//       }
+//       if (RELAY_STATUS == HIGH){
+//         colorWipeStatus("RS", green, 10);
+//         MainRelayOn();
+//       }
+//       RELAY_STATUS = !RELAY_STATUS;
+//     }
+//   } 
+// }
 
 // <-- code from Mimir for queueing incoming commands from GET params-->
 ////////////////////////////////////////////////////
@@ -1216,14 +1352,15 @@ void setup() {
   Serial.begin(115200);
   while (!Serial);
   s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
+  s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);
 
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
   
   //Button for relay setup
-  pinMode(RELAY_BUTTON, INPUT);
-  pinMode(RELAY_CONTROL, OUTPUT);
+  // pinMode(RELAY_BUTTON, INPUT);
+  // pinMode(RELAY_CONTROL, OUTPUT);
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
@@ -1297,37 +1434,37 @@ void setup() {
   esp_now_register_recv_cb(OnDataRecv);
 
 
-ESP_LED.begin();
-ESP_LED.show();
-colorWipeStatus("ES", blue, 10);
+// ESP_LED.begin();
+// ESP_LED.show();
+// colorWipeStatus("ES", blue, 10);
 
-RELAY_LED.begin();
-RELAY_LED.show();
-colorWipeStatus("RS", green, 10);
+// RELAY_LED.begin();
+// RELAY_LED.show();
+// colorWipeStatus("RS", green, 10);
 
-LORA_LED.begin();
-LORA_LED.show();
-colorWipeStatus("LS", red, 10); 
+// LORA_LED.begin();
+// LORA_LED.show();
+// colorWipeStatus("LS", red, 10); 
 
   //LoRa Setup
-SPI.begin(SCK_LORA, MISO_LORA, MOSI_LORA, NSS_LORA);
-LoRa.setPins(NSS_LORA, RESET_LORA, DIO_LORA);
+// SPI.begin(SCK_LORA, MISO_LORA, MOSI_LORA, NSS_LORA);
+// LoRa.setPins(NSS_LORA, RESET_LORA, DIO_LORA);
 
-  // if (!LoRa.begin(915E6,true)) {
-  if (!LoRa.begin(915E6)) {
-    Serial.println("Starting LoRa failed!");
-    while (true);
-  }
+// if (!LoRa.begin(915E6,true)) {
+//   if (!LoRa.begin(915E6)) {
+//     Serial.println("Starting LoRa failed!");
+//     while (true);
+//   }
 }
 
 void loop() {
   
-  checkAgeofkeepAlive();
-  sendStatusToRemote();
-  checkButton();
-  onReceive(LoRa.parsePacket());
-  yield();
-  oldState = newState;
+  // checkAgeofkeepAlive();
+  // sendStatusToRemote();
+  // checkButton();
+  // onReceive(LoRa.parsePacket());
+  // yield();
+  // oldState = newState;
 
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
@@ -1337,6 +1474,8 @@ void loop() {
     }
 
   if(Serial.available()){serialEvent();}
+  if(s1Serial.available()){s1SerialEvent();}
+  if(s2Serial.available()){s2SerialEvent();}
 
   // if (stringComplete) {autoComplete=false;}
   // if (stringComplete || autoComplete) {
@@ -1385,12 +1524,12 @@ void loop() {
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
                         Local_Command[0]   = '\0';                                                           break;
-                  case 3: connectWiFi();                                                                          break;
+                  // case 3: connectWiFi();                                                                          break;
                   case 4: break;  //reserved for future use
-                  case 5: MainRelayOn();                                                                    break;  //reserved for future use
-                  case 6: MainRelayOff();                                                                   break;  //reserved for future use
-                  case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
-                  case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
+                  // case 5: MainRelayOn();                                                                    break;  //reserved for future use
+                  // case 6: MainRelayOff();                                                                   break;  //reserved for future use
+                  // case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
+                  // case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
                   case 9:  break;  //reserved for future use
 
                 }
@@ -1400,6 +1539,8 @@ void loop() {
      
           if(   inputBuffer[1]=='E'     ||        // Command for Sending ESP-NOW Messages
                 inputBuffer[1]=='e'     ||        // Command for Sending ESP-NOW Messages
+                inputBuffer[1]=='A'     ||        // Command designator for Animations
+                inputBuffer[1]=='a'     ||        // Command designator  for Animations
                 inputBuffer[1]=='S'     ||        // Command for sending Serial Strings out Serial ports
                 inputBuffer[1]=='s'               // Command for sending Serial Strings out Serial ports
 
@@ -1423,24 +1564,78 @@ void loop() {
                   ESPNOWStringCommand = "";
                   ESPNOWSubStringCommand = "";
                   ESPNOWTarget = "";                 
-                  }  
-                  if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-                    for (int i=2; i<commandLength-1;i++ ){
-                      char inCharRead = inputBuffer[i];
-                      serialStringCommand += inCharRead;  // add it to the inputString:
-                    }
-                    serialPort = serialStringCommand.substring(0,2);
-                    serialSubStringCommand = serialStringCommand.substring(2,commandLength);
-                    Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
-                    if (serialPort == "SH"){
-                      writes1Serial(serialSubStringCommand);
-                    } else{
-                      Debug.LOOP("Wrong Serial Port Identified /n");
-                    } 
-
+                }  
+                if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+                  for (int i=2; i<commandLength-1;i++ ){
+                    char inCharRead = inputBuffer[i];
+                    serialStringCommand += inCharRead;  // add it to the inputString:
+                  }
+                  serialPort = serialStringCommand.substring(0,2);
+                  serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+                  Debug.LOOP("Serial Command: %s to Serial Port: %s \n", serialSubStringCommand.c_str(), serialPort);                
+                  if (serialPort == "S1"){
+                    writeS1SerialString(serialStringCommand);
+                  } else if (serialPort == "S2"){
+                    writeS2SerialString(serialStringCommand);
+                  } else {Debug.LOOP("Wrong Serial Port Identified /n");}
+                  serialStringCommand = "";
+                  serialPort = "";
                   } 
+
+                } 
+                if(inputBuffer[1] == 'A' || inputBuffer[1] == 'a'){
+                    AnimationCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                    Animation_Command[0]   = '\0';                                                            // Flushes Array
+                    Animation_Command[0] = AnimationCommandFunction;
+                }
               }
             }
+           if(Animation_Command[0]){
+            switch (AnimationCommandFunction) {
+              case 1: Case1Function();                                   break;
+              case 2: Case2Function();                                   break;
+              case 3: Case3Function();                                   break;
+              case 4: Case4Function();                                   break;
+              case 5: Case5Function();                                   break;
+              case 6: Case6Function();                                   break;
+              case 7: Case7Function();                                   break;
+              case 8: Case8Function();                                   break;
+              case 9: Case9Function();                                   break;
+              case 10: Case10Function();                                  break;
+              case 11: Case11Function();                                  break;
+              case 12: Case12Function();                                  break;
+              case 13: Case13Function();                                  break;
+              case 14: Case14Function();                                  break;
+              case 15: Case15Function();                                  break;
+              case 16: Case16Function();                                  break;
+              case 17: break;
+              case 18: break;
+              case 19: break;
+              case 20: break;
+              case 21: break;
+              case 22: break;
+              case 23: break;
+              case 24: break;
+              case 25: break;
+              case 26: break;
+              case 27: break;
+              case 28: break;
+              case 29: break;
+              case 30: break;
+              case 31: break;
+              case 32: break;
+              case 33: break;
+              case 34: break;
+              case 35: break;
+              case 36: break;
+              case 37: break;
+              case 38: break;
+              case 39: break;
+              case 40: break;
+
+            
+            }
+          } 
         }
 
      ///***  Clear States and Reset for next command.  ***///
@@ -1454,7 +1649,7 @@ void loop() {
     // reset Local ESP Command Variables
         int localCommandFunction;
 
-        String  ESPNOWStringCommand = "";
+        String ESPNOWStringCommand = "";
         String ESPNOWSubStringCommand = "";
         String ESPNOWTarget = "";
    }
@@ -1465,7 +1660,7 @@ void loop() {
    }
  }
 // LoRa.receive();
-}
+// }
 
 
 

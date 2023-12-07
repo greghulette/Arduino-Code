@@ -19,10 +19,10 @@
 #define A9                  9   // N // Unused Pin
 #define A10                 10 // N // Unused Pin
 #define A11                 11 //  N // Unused Pin
-#define A12				    12 // W // Unused Pin 
+#define A12				          12 // W // Unused Pin 
 #define A13                 13 // Y // Unused Pin
 #define A14                 14 // Y // Unused Pin
-#define A15       		    15 // Y // Unused Pin 
+#define A15       		      15 // Y // Unused Pin 
 #define D1                  1 // Y // Unused Pin
 #define D2                  2 // Y // Unused Pin
 #define DATAIN_PIN	        3 // Y // Unused Pin

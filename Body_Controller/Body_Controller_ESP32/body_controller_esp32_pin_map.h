@@ -19,14 +19,16 @@
 #define RESERVED_FLASH_9    9   // N // connected to SPI flash
 #define RESERVED_FLASH_10   10 // N // connected to SPI flash
 #define RESERVED_FLASH_11   11 //  N // connected to SPI flash
-#define UP_12				12 // W // Unused Pin (must be LOW during boot)
+// #define UP_12				12 // W // Unused Pin (must be LOW during boot)
+#define SERIAL_TX_ST_PIN				12 // W // Unused Pin (must be LOW during boot)
 #define SERIAL2_RX_PIN      13 // Y // AUX 2 Rx Pin
 #define SERIAL2_TX_PIN      14 // Y // AUX 2 Tx Pin
 #define SERIAL_TX_BL_PIN    15 // Y // ATMEGA Serial Tx pin(must be HIGH during boot)
 #define SERIAL_RX_BL_PIN    16 // Y // ATMEGA Serial Tx pin
 #define SERIAL_TX_RD_PIN    17 // Y // Roam a dome home Tx pin
 #define SERIAL_TX_MP_PIN	18 // Y // MP3/HCR Serial Tx pin
-#define SERIAL_TX_ST_PIN    19 // Y // Stealth Controller Serial Tx pin
+#define SERIAL_TX_SB_PIN    19 // Y // Stealth Controller Serial Tx pin
+// #define SERIAL_TX_ST_PIN    19 // Y // Stealth Controller Serial Tx pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA
 #define I2C_SCL             22 // Y // I2C SCL
@@ -42,8 +44,10 @@
 #define SERIAL_RX_MP_PIN	32 // Y // MP3/HCR Serial Rx pin
 #define UP_33	 	 	  	33 // Y // Unused Pin
 #define SERIAL_RX_RD_PIN    34 // Y // Roam a dome home Serial Rx pin- input only (Can be used for Rx) // Use pull-down resistor
-#define SERIAL_RX_ST_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
-#define UP_36               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
+// #define SERIAL_RX_ST_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
+#define SERIAL_RX_SB_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
+#define SERIAL_RX_ST_PIN               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
+// #define UP_36               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
 #define NONEXISTENT_PIN_37  37 // N // There is no GPIO37
 #define NONEXISTENT_PIN_38  38 // N // There is no GPIO38
 #define UP_39               39 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor

@@ -66,7 +66,7 @@
 #include "ArduinoJson.h"
 
 #include <hcr.h>
-
+#include "sbus.h"
 //////////////////////////////////////////////////////////////////////
 ///*****       Preferences/Items to change        *****///
 //////////////////////////////////////////////////////////////////////
@@ -92,8 +92,8 @@
   #define RD_BAUD_RATE 9600 
   #define ST_BAUD_RATE 9600  //Should be lower than 57600
   #define MP_BAUD_RATE 9600  //Should be lower than 57600
-  #define SERIAL1_BAUD_RATE 57600 //Should be lower than 57600
-  #define SERIAL2_BAUD_RATE 57600  //Should be lower than 57600
+  #define SERIAL1_BAUD_RATE 9600 //Should be lower than 57600
+  #define SERIAL2_BAUD_RATE 9600  //Should be lower than 57600
 
 
 
@@ -143,7 +143,7 @@
 
   int mp3Track;
   String mp3Comm;
-  String mp3TriggerResponseString;
+  String HCRTriggerResponseString;
 
   int* getEmotions;
   int getEmotion;
@@ -191,6 +191,8 @@
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
+  String FunctionSwState;
+
 
   bool bodyLEDControllerStatus = 0;
 
@@ -220,13 +222,23 @@
   //////////////////////////////////////////////////////////////////
 
   #define rdSerial Serial1
-  #define blSerial Serial2
+
+  SoftwareSerial blSerial;
   SoftwareSerial stSerial;
   SoftwareSerial mpSerial;
   SoftwareSerial s1Serial;
   SoftwareSerial s2Serial;
  
 HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
+
+
+/* SBUS object, reading SBUS */
+bfs::SbusRx sbus_rx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
+/* SBUS object, writing SBUS */
+bfs::SbusTx sbus_tx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
+/* SBUS data */
+bfs::SbusData data;
+
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -421,6 +433,7 @@ typedef struct bodyControllerStatus_struct_message{
       float structBL_BatteryVoltage;
       int structBL_BatteryPercentage;
       bool structbodyLEDControllerStatus;
+      char structFunctionSWState[10];
       bool structCommandIncluded;
       char structCommand[100];
   } bodyControllerStatus_struct_message;
@@ -828,12 +841,12 @@ void serialStEvent() {
 void serialMpEvent() {
   while (mpSerial.available()) {
     char inChar = (char)mpSerial.read();
-    mp3TriggerResponseString += inChar;
+    HCRTriggerResponseString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
     };
   };
-  Debug.SERIAL_EVENT("MP3 Trigger Response: %s \n",mp3TriggerResponseString);
-  mp3TriggerResponseString = "";
+  Debug.SERIAL_EVENT("HCR Response: %s \n",HCRTriggerResponseString);
+  HCRTriggerResponseString = "";
 };
 
 void serial1Event() {
@@ -900,7 +913,7 @@ void writeMpSerial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     mpSerial.write(completeString[i]);
   };
-  Debug.SERIAL_EVENT("Writing to the Stealth Controller\n");
+  Debug.SERIAL_EVENT("Writing to the HCR Controller\n");
 };
 
 void writeS1Serial(String stringData){
@@ -949,6 +962,7 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structBL_BatteryVoltage = BL_BatteryVoltage;
     msg->structBL_BatteryPercentage = BL_BatteryPercentage;
     msg->structbodyLEDControllerStatus = bodyLEDControllerStatus;
+    snprintf(msg-> structFunctionSWState, sizeof(msg->structFunctionSWState), "%s", FunctionSwState.c_str());
     msg->structCommandIncluded = hascommand;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 };
@@ -1165,7 +1179,7 @@ void HarlemShake(){
   // float currentVolume = HCR.getVolume(1);
   sendESPNOWCommand("BS", ":D313");
   // HCR.SetVolume(1,100);
-  HCR.PlayWAV(1,1800);  //Figure out which is the correct track to play
+  HCR.PlayWAV(1,202);  //Figure out which is the correct track to play
   HCR.update();
   // HCR.SetVolume(1,currentVolume);
  Animation_Command[0]   = '\0'; 
@@ -1309,6 +1323,480 @@ void SmokeSequence(){
   sendESPNOWCommand("DP", ":A54");
     Animation_Command[0]   = '\0'; 
 }
+
+void display(){
+  sendESPNOWCommand("DP", ":SUS:PP100:L0");
+  sendESPNOWCommand("BS", ":D320");
+    Animation_Command[0]   = '\0'; 
+}
+
+void openCloseWave(){
+  sendESPNOWCommand("BS", ":D312");
+    Animation_Command[0]   = '\0'; 
+}
+
+void longDance(){
+  sendESPNOWCommand("BS", ":D315");
+      Animation_Command[0]   = '\0'; 
+}
+
+
+#define CHANNEL_4_ARRAY_INDEX 3
+#define CHANNEL_5_ARRAY_INDEX 4
+#define CHANNEL_6_ARRAY_INDEX 5
+#define CHANNEL_7_ARRAY_INDEX 6
+#define CHANNEL_8_ARRAY_INDEX 7
+#define CHANNEL_9_ARRAY_INDEX 8
+#define CHANNEL_10_ARRAY_INDEX 9
+
+#define CHANNEL_16_ARRAY_INDEX 15
+int newValue = 0;
+int oldValueChannel4 = 100;
+int oldValueChannel5 = 100;
+int oldValueChannel6 = 100;
+int oldValueChannel7 = 100;
+int oldValueChannel8 = 100;
+int oldValueChannel9 = 100;
+int oldValueChannel10 = 100;
+
+
+bool Channel6Bool;
+int Channel6State = 0;
+int lastChannel6State = 0;
+
+bool Channel7Bool;
+int Channel7State = 0;
+int lastChannel7State = 0;
+
+bool Channel8Bool;
+int Channel8State = 0;
+int lastChannel8State = 0;
+
+bool Channel9Bool;
+int Channel9State = 0;
+int lastChannel9State = 0;
+
+bool Channel10Bool;
+int Channel10State = 0;
+int lastChannel10State = 0;
+int sbusValues[] = {};
+void processSbus(){
+    if (sbus_rx.Read()) {
+    /* Grab the received data */
+    data = sbus_rx.data();
+    /* Display the received data */
+    for (int8_t i = 0; i < data.NUM_CH; i++) {
+      if (Debug.debugflag2 == 1){  
+        Serial.print(data.ch[i]);
+      Serial.print("\t");
+      }
+      // newValue = data.ch[i];
+      sbusValues[i] = data.ch[i];
+
+    }
+  if (sbusValues[CHANNEL_16_ARRAY_INDEX] <300){
+    FunctionSwState = "DOWN";
+  } else if (CHANNEL_16_ARRAY_INDEX > 700 && CHANNEL_16_ARRAY_INDEX <= 1200){
+    FunctionSwState = "MIDDLE";
+  } else if (CHANNEL_16_ARRAY_INDEX > 1700){
+    FunctionSwState = "UP";
+  }
+    /* Display lost frames and failsafe data */      
+    if (Debug.debugflag2 == 1){  
+
+    Serial.print(data.lost_frame);
+    Serial.print("\t");
+    Serial.println(data.failsafe);
+}
+    // Serial.println(sbusValues[]);
+              // Serial.println(oldValue);
+          // unsigned long  oldValueCurrentMillisChannel4 = millis();
+
+          if(abs(sbusValues[CHANNEL_4_ARRAY_INDEX] - oldValueChannel4) >=5 ){
+           oldValueChannel4 = sbusValues[CHANNEL_4_ARRAY_INDEX];
+            RCRadio_HCRVolChange(0, CHANNEL_4_ARRAY_INDEX);
+      }
+
+          if(abs(sbusValues[CHANNEL_5_ARRAY_INDEX] - oldValueChannel5) >=5 ){
+           oldValueChannel5 = sbusValues[CHANNEL_5_ARRAY_INDEX];
+            RCRadio_HCRVolChange(1, CHANNEL_5_ARRAY_INDEX);
+      }
+       if(abs(sbusValues[CHANNEL_6_ARRAY_INDEX] - oldValueChannel6) >=5 ){
+           oldValueChannel6 = sbusValues[CHANNEL_6_ARRAY_INDEX];
+          Serial.println("Channel 6 changed");
+          RCRadio_Matrix_Buttons(oldValueChannel6);
+      }       
+      if(abs(sbusValues[CHANNEL_7_ARRAY_INDEX] - oldValueChannel7) >=5 ){
+           oldValueChannel7 = sbusValues[CHANNEL_7_ARRAY_INDEX];
+          Serial.println("Channel 7 changed");
+          RC_RADH_Auto(oldValueChannel7);
+          // RCRadio_ToggleDoors(oldValueChannel7);
+      }
+      if(abs(sbusValues[CHANNEL_8_ARRAY_INDEX] - oldValueChannel8) >=5 ){
+           oldValueChannel8 = sbusValues[CHANNEL_8_ARRAY_INDEX];
+          Serial.println("Channel 8 changed");
+          maintLights(oldValueChannel8);
+          // RC_RADH_Auto(oldValueChannel8);
+          // RCRadio_ToggleDoors(oldValueChannel7);
+      }     
+      if(abs(sbusValues[CHANNEL_9_ARRAY_INDEX] - oldValueChannel9) >=5 ){
+           oldValueChannel9 = sbusValues[CHANNEL_9_ARRAY_INDEX];
+          Serial.println("Channel 9 changed");
+          lightsMode(oldValueChannel9);
+          // RC_RADH_Auto(oldValueChannel8);
+          // RCRadio_ToggleDoors(oldValueChannel7);
+      }
+      if(abs(sbusValues[CHANNEL_10_ARRAY_INDEX] - oldValueChannel10) >=5 ){
+           oldValueChannel10 = sbusValues[CHANNEL_10_ARRAY_INDEX];
+          Serial.println("Channel 10 changed");
+          updateMuse(oldValueChannel10);
+          // RC_RADH_Auto(oldValueChannel8);
+          // RCRadio_ToggleDoors(oldValueChannel7);
+      }
+
+  }
+}
+
+void updateMuse(int PWMvalue){
+  if (PWMvalue >= 100 && PWMvalue <= 799){
+    HCR.SetMuse(1);
+  } else if (PWMvalue >= 800){
+      HCR.SetMuse(0);
+  }
+}
+
+void lightsMode(int PWMvalue){
+if (PWMvalue >= 1500){
+    writeBlSerial("E98");
+} else if (PWMvalue >= 800 && PWMvalue <= 1200){
+  writeBlSerial("E98");
+
+  DelayCall::schedule([]{writeBlSerial("K99");}, 50);
+
+} else if (PWMvalue <= 799){
+    writeBlSerial("E98");
+      DelayCall::schedule([]{writeBlSerial("X99");}, 50);
+
+    // writeBlSerial("X99");
+}
+}
+
+
+
+void maintLights(int PWMvalue){
+if (PWMvalue >= 1500){
+writeBlSerial("M1518");
+} else {
+writeBlSerial("M98");
+  }
+
+}
+void RC_RADH_Auto(int PWMvalue){
+  if(PWMvalue <= 300){
+    Channel7Bool = true;
+    // Serial.println("True, less than 300");
+  } else { Channel7Bool = false;}
+  Channel7State = Channel7Bool;
+  if(Channel7State != lastChannel7State){
+    if(Channel7State == true){
+    Serial.println("RADH DISABLED");
+    writeRdSerial("#DPAUTO0");
+    }
+    if(Channel7State == false){
+    Serial.println("RADH Enabled");
+    writeRdSerial("#DPAUTO1");
+
+  }
+  } 
+
+      lastChannel7State = Channel7State;
+
+
+}
+
+
+void RCRadio_Matrix_Buttons(int PWMvalue){
+  if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 200){
+    if (PWMvalue >= 100){
+      Channel6Bool = true;
+    } else {Channel6Bool = false;}
+    if (PWMvalue >= 1800){
+    Channel6State = Channel6Bool;
+    if (Channel6State != lastChannel6State){
+      if (Channel6State = true){
+          Serial.println("Matrix Sw1: Mute Sounds");
+          HCR.StopWAV(1);
+          HCR.StopEmote();  
+        }
+      }
+      }
+    lastChannel6State = Channel6State;
+    // if (PWMvalue <= 1900 && PWMvalue >= 1800){
+    //   Serial.println("Matrix Sw2: Happy Sound");
+    //   HCR.StopWAV(1);
+    //   HCR.StopEmote();
+    // }
+    if (PWMvalue <= 1799 && PWMvalue >= 1750){
+      Serial.println("Matrix Sw2: Happy Sound");
+      HCR.Stimulate(0,1);    
+    }
+    if (PWMvalue <= 1749 && PWMvalue >= 1700){
+      Serial.println("Matrix Sw3: Sad Sound");
+      HCR.Stimulate(1,1);    
+    }
+  if (PWMvalue <= 1699 && PWMvalue >= 1650){
+      Serial.println("Matrix Sw4: Mad Sound");
+      HCR.Stimulate(2,1);
+    }
+    if (PWMvalue <= 1649 && PWMvalue >= 1600){
+      Serial.println("Matrix Sw5: Scared Sound");
+    HCR.Stimulate(3, 1);    
+    }
+    if (PWMvalue <= 1599 && PWMvalue >= 1550){
+    Serial.println("Matrix Sw6: Fart Sound");
+    HCR.PlayWAV(1, 4);    
+    }
+    if (PWMvalue <= 1549 && PWMvalue >= 1500){
+      Serial.println("T4 Left: All Open");
+      allOpen();  
+    }
+    if (PWMvalue <= 1499 && PWMvalue >= 1450){
+      Serial.println("T5 Left: Wave Utility Arm");
+      WaveUtilityArm();
+
+    }
+    if (PWMvalue <= 1449 && PWMvalue >= 1400){
+      Serial.println("T5 Right: Drawer Wave");
+      drawerWave();
+    }    
+    if (PWMvalue <= 1399 && PWMvalue >= 1350){
+      Serial.println("T3 Up: Function 10:  Harlem Shake");
+      HarlemShake();
+    }
+    if (PWMvalue <= 1349 && PWMvalue >= 1300){
+      Serial.println("T4 Right: Function 11:  Close all Doors(stop animation)");
+      allClose();
+      sendESPNOWCommand("DP", ":SUS:PH");
+    }
+    if (PWMvalue <= 1299 && PWMvalue >= 1250){
+      Serial.println("T3 Down: Function 12:  Panel Wave ");
+      panelWave();
+    }
+    if (PWMvalue <= 1249 && PWMvalue >= 1200){
+      Serial.println("T2 Up: Function 13:  Periscope Seq 4  ");
+      sendESPNOWCommand("DP", ":SUS:PS4");
+    }
+    if (PWMvalue <= 1199 && PWMvalue >= 1150){
+      Serial.println("T2 Down: Function 14: Short Circuit ");
+      CompleteshortCircuit();
+    }
+    if (PWMvalue <= 1149 && PWMvalue >= 1100){
+      Serial.println("T6 Left: Function 15: Door open with easing ");
+      OpenClosewithEasing();
+    }
+    if (PWMvalue <= 1099 && PWMvalue >= 1050){
+      Serial.println("T6 Right: Function 16: Fast Wave ");
+      panelWaveFast();
+    }
+    if (PWMvalue <= 1049 && PWMvalue >= 1000){
+      Serial.println("T1 Left: Function 17:  Display Mode ");
+      display();
+    }
+    if (PWMvalue <= 899 && PWMvalue >= 850){
+      Serial.println("T1 Right: Function 18: Open Close Wave ");
+      openCloseWave();
+    }
+    if (PWMvalue <= 849 && PWMvalue >= 800){
+      Serial.println("Function 19:  ");
+    }
+   } else if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 999 && sbusValues[CHANNEL_16_ARRAY_INDEX] >=201){ // switch in middle
+    if (PWMvalue >= 100){
+      Channel6Bool = true;
+    } else {Channel6Bool = false;}
+        
+    Channel6State = Channel6Bool;
+    if (Channel6State != lastChannel6State){
+      if (Channel6State = true){
+        if (PWMvalue >= 1800){
+          Serial.println("Matrix SW 1: Function 1: Stop Sounds ");
+          HCR.StopWAV(1);
+          HCR.StopEmote();  
+        }
+      if (PWMvalue <= 1799 && PWMvalue >= 1750){
+      Serial.println("Matrix SW 2: Function 2: Dance Star Wars Song");
+           HCR.PlayWAV(1, 204);
+
+    }
+    if (PWMvalue <= 1749 && PWMvalue >= 1700){
+      Serial.println("Matrix SW 3: Function 3: Leia Long");
+        HCR.PlayWAV(1, 3);
+
+    }
+  if (PWMvalue <= 1699 && PWMvalue >= 1650){
+      Serial.println("Matrix SW 4: Function 4: Star Wars Theme ");
+      HCR.PlayWAV(1, 1);
+    }
+    if (PWMvalue <= 1649 && PWMvalue >= 1600){
+      Serial.println("Matrix SW 5: Function 5:  Vader Theme");
+      HCR.PlayWAV(1, 2);
+    }
+    if (PWMvalue <= 1599 && PWMvalue >= 1550){
+      Serial.println("Matrix SW 6: Function 6: Cantina Song ");
+      HCR.PlayWAV(1, 203);
+    }
+    if (PWMvalue <= 1549 && PWMvalue >= 1500){
+      Serial.println("T4 Left: Flutter");
+      allFlutter();
+      }
+    if (PWMvalue <= 1499 && PWMvalue >= 1450){
+      Serial.println("T5 Left: ");
+    }
+    if (PWMvalue <= 1449 && PWMvalue >= 1400){
+      Serial.println("T5 Right: ");
+      }    
+    if (PWMvalue <= 1399 && PWMvalue >= 1350){
+      Serial.println("T3 Up: Function 10:  Periscope Up and Lights On");
+      sendESPNOWCommand("DP", ":SUS:PP100:L0");
+    }
+    if (PWMvalue <= 1349 && PWMvalue >= 1300){
+      Serial.println("T4 Right: Function 11:  smoke sequence");
+      SmokeSequence();
+    }
+    if (PWMvalue <= 1299 && PWMvalue >= 1250){
+      Serial.println("T3 Down: Function 12:  Periscope Home");
+      sendESPNOWCommand("DP", ":SUS:PH");
+    }
+    if (PWMvalue <= 1249 && PWMvalue >= 1200){
+      Serial.println("T2 Up: Function 13: Rotate Random Periscope ");
+      sendESPNOWCommand("DP", ":SUS:PAR,50");
+    }
+    if (PWMvalue <= 1199 && PWMvalue >= 1150){
+      Serial.println("T2 Down: Function 14: Periscope Sequence 10 ");
+      sendESPNOWCommand("DP", ":SUS:PS10");
+    }
+    if (PWMvalue <= 1149 && PWMvalue >= 1100){
+      Serial.println("T6 Left: Function 15:  Long Dance ");
+      longDance();
+    }
+    if (PWMvalue <= 1099 && PWMvalue >= 1050){
+      Serial.println("T6 Right: Function 16: ");
+    }
+    if (PWMvalue <= 1049 && PWMvalue >= 1000){
+      Serial.println("T1 Left: Function 17: ");
+      ArmSaber();
+    }
+    if (PWMvalue <= 899 && PWMvalue >= 850){
+      Serial.println("T1 Right: Function 18: Launch Saber ");
+      LaunchSaber();
+
+    }
+      
+        Serial.println("Switch selection in the middle");
+
+      
+      
+      }
+          lastChannel6State = Channel6State;
+
+      }
+
+    
+  }
+  else if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 1900 && sbusValues[CHANNEL_16_ARRAY_INDEX] >=1000){
+    Serial.println("Switch selection in the top");
+ if (PWMvalue >= 1800){
+      Channel6Bool = true;
+    } else {Channel6Bool = false;}
+        if (PWMvalue >= 1800){
+    Channel6State = Channel6Bool;
+    if (Channel6State != lastChannel6State){
+      if (Channel6State = true){
+          Serial.println("Matrix SW 1: Function 1: Stop Sounds ");
+          HCR.StopWAV(1);
+          HCR.StopEmote();  
+        }
+        }
+      }
+      
+    lastChannel6State = Channel6State;
+
+    if (PWMvalue <= 1799 && PWMvalue >= 1750){
+      Serial.println("Matrix SW 2: Whistle ");
+      HCR.PlayWAV(1, 8);    
+      }
+    if (PWMvalue <= 1749 && PWMvalue >= 1700){
+      Serial.println("Matrix SW 3: Staying Alive Song ");
+      HCR.PlayWAV(1, 201);    
+    }
+  if (PWMvalue <= 1699 && PWMvalue >= 1650){
+      Serial.println("Matrix SW 4: Function 4:  ");
+      HCR.PlayWAV(1, 100);    
+
+    }
+    if (PWMvalue <= 1649 && PWMvalue >= 1600){
+      Serial.println("Matrix SW 5: Function 5:  ");
+      HCR.PlayWAV(1, 101);    
+
+    }
+    if (PWMvalue <= 1599 && PWMvalue >= 1550){
+      Serial.println("Matrix SW 6: Function 6:  ");
+      HCR.PlayWAV(1, 202);    
+
+
+      int trackCount = HCR.GetWAVCount();
+      Serial.println(trackCount);
+      Serial.println(HCR.GetMuse());
+    }
+    if (PWMvalue <= 1549 && PWMvalue >= 1500){
+      Serial.println("T4 Left: ");
+    }
+    if (PWMvalue <= 1499 && PWMvalue >= 1450){
+      Serial.println("T5 Left: ");
+    }
+    if (PWMvalue <= 1449 && PWMvalue >= 1400){
+      Serial.println("T5 Right: ");
+    }    
+    if (PWMvalue <= 1399 && PWMvalue >= 1350){
+      Serial.println("T3 Up: Function 10:  ");
+    }
+    if (PWMvalue <= 1349 && PWMvalue >= 1300){
+      Serial.println("T4 Right: Function 11:  ");
+    }
+    if (PWMvalue <= 1299 && PWMvalue >= 1250){
+      Serial.println("T3 Down: Function 12:  ");
+    }
+    if (PWMvalue <= 1249 && PWMvalue >= 1200){
+      Serial.println("T2 Up: Function 13:  ");
+    }
+    if (PWMvalue <= 1199 && PWMvalue >= 1150){
+      Serial.println("T2 Down: Function 14:  ");
+    }
+    if (PWMvalue <= 1149 && PWMvalue >= 1100){
+      Serial.println("T6 Left: Function 15:  ");
+    }
+    if (PWMvalue <= 1099 && PWMvalue >= 1050){
+      Serial.println("T6 Right: Function 16: ");
+    }
+    if (PWMvalue <= 1049 && PWMvalue >= 1000){
+      Serial.println("T1 Left: Function 17: ");
+      display();
+    }
+    if (PWMvalue <= 899 && PWMvalue >= 850){
+      Serial.println("T1 Right: Function 18: ");
+    }
+  Serial.println("Switch selection in the middle");
+  }
+
+  }
+
+
+
+void RCRadio_HCRVolChange(int chan, int sbusPos){
+  int RCVocalizerVolume = map( sbusValues[sbusPos], 170, 1820, 0, 100);
+  Serial.print("HVR Vocalizer Volume Mapped to : "); 
+  Serial.println(RCVocalizerVolume);
+  HCR.SetVolume(chan, RCVocalizerVolume);
+}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1323,12 +1811,13 @@ void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
   rdSerial.begin(RD_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RD_PIN,SERIAL_TX_RD_PIN);
-  blSerial.begin(BL_BAUD_RATE,SERIAL_8N1,SERIAL_RX_BL_PIN,SERIAL_TX_BL_PIN);
+  blSerial.begin(BL_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_BL_PIN,SERIAL_TX_BL_PIN,false,95);
   stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_ST_PIN,SERIAL_TX_ST_PIN,false,95);
   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_MP_PIN,SERIAL_TX_MP_PIN,false,95);
   s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);
   s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);
-  
+  sbus_rx.Begin();
+  sbus_tx.Begin();
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body ESP Controller");
   
@@ -1434,7 +1923,7 @@ void loop(){
   keepAlive();
   checkAgeofkeepAlive();
 
-
+processSbus();
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();
@@ -1568,8 +2057,8 @@ void loop(){
                     serialCommandString += inCharRead;  // add it to the inputString:
                   }
                   Debug.DBG("Full Serial Command Captured: %s\n", serialCommandString.c_str());
-                  serialPort = serialCommandString.substring(0,2);
-                  serialCommandSubString = serialCommandString.substring(2,commandLength);
+                  serialPort = serialCommandString.substring(1,3);
+                  serialCommandSubString = serialCommandString.substring(3,commandLength);
                   Debug.DBG("Serial Command: %s to Serial Port: %s\n", serialCommandSubString.c_str(), serialPort);
                   if (serialPort == "S1"){
                     writeS1Serial(serialCommandSubString);
@@ -1577,6 +2066,9 @@ void loop(){
                   } else if (serialPort == "S2"){
                     writeS2Serial(serialCommandSubString);
                     Debug.DBG("Sending out Aux 2 Serial\n");
+                  } else if (serialPort == "MP"){
+                    writeMpSerial(serialCommandSubString);
+                    Debug.DBG("Sending out HCR\n");
                   } else { Debug.DBG("No valid Serial port identified\n");}
                   serialCommandString = "";
                   serialPort = "";

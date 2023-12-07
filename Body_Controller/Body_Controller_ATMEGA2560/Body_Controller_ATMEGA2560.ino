@@ -677,10 +677,10 @@ void setup()
    stripMAINT.begin();
    stripMAINT.setBrightness(MAINT_bright);
    stripMAINT.show();
-   showLDP();
+   showMAINT();
 
 
-   //***     COIN SLOT SET UP    ***///
+   //***     COIN  SLOT SET UP    ***///
    stripCS1.begin();
    stripCS1.setBrightness(CS_bright);
    stripCS1.show();

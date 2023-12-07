@@ -595,8 +595,8 @@ void processESPNOWIncomingMessage(){
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  2370, 675, TOP_UTILITY_ARM },       /* 0: Top Utility Arm 2350,675*/
-    { 2,  1530, 860, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
+    { 1,  2110, 1100, TOP_UTILITY_ARM },       /* 0: Top Utility Arm 2350,675*/
+    { 2,  1950, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
     { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
     { 4,  1400, 1900, LARGE_RIGHT_DOOR },      /* 3: Left Right door as viewing from looking at R2 1200,1900*/
     { 5,  1590 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1900,758*/
@@ -1062,7 +1062,7 @@ void allOpenClose(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
             turnOnCBIandDataPanel();
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpenClose, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
-    DelayCall::schedule([]{turnOffCBIandDataPanel();}, 3250);
+    DelayCall::schedule([]{turnOffCBIandDataPanel();}, 11250);
   D_command[0]   = '\0';                                           
 };
 
@@ -1317,6 +1317,30 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   D_command[0]   = '\0';                                             
 };                                                      
 
+void display(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx15
+  Debug.SERVO("Display \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D203E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDisplay, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDisplay, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelDance, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1537,7 +1561,7 @@ void setup(){
 }   // end of setup
 
 void loop(){
-      AnimatedEvent::process();
+  AnimatedEvent::process();
 
   if (millis() - MLMillis >= mainLoopDelayVar){
       MLMillis = millis();
@@ -1547,7 +1571,7 @@ void loop(){
       closeAllDoors(1,0,0,0,0);
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
-  colorWipeStatus("ES",blue,10);
+      colorWipeStatus("ES",blue,10);
 
     }  
     keepAlive();
@@ -1828,6 +1852,7 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);       break;
           case 18: drawerWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);            break;
           case 19: WaveUtilityArm(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
+          case 20: display(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);               break;
           case 98: closeAllDoors(2,0,0,0,0);                                                                break;
           case 99: closeAllDoors(2,0,0,0,0);                                                                break;
           default: break;

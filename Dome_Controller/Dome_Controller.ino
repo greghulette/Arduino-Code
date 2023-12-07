@@ -1267,6 +1267,28 @@ void longHarlemShake(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin
   D_command[0]  = '\0';                                             
 };    
 
+void display(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  // Command: Dx03
+  // Debug.SERVO("Open all Doors\n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D120E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); 
+            Debug.SERVO("Open all Doors in Body\n"); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
+            Debug.SERVO("Open all Doors in Dome\n"); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);     
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); 
+            Debug.SERVO("Open all Doors Starting in Body\n");break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); 
+            Debug.SERVO("Open all Doors Starting in the Dome\n");break;
+  }
+  D_command[0] = '\0';
+}
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1567,10 +1589,11 @@ void setup(){
 
 
 void loop() {
+    AnimatedEvent::process();
+
 if (millis() - MLMillis >= mainLoopDelayVar){
   MLMillis = millis();
   RE_loopTime = millis();
-  AnimatedEvent::process();
   if(startUp) {
       closeAllDoors(2,0,0,0,0);
       startUp = false;
@@ -1857,6 +1880,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 15: panelDance(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                     break;
           case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 20: display(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 98: closeAllDoors(2,0,0,0,0);                                                              break;
           case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;
