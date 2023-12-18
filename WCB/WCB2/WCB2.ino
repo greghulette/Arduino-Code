@@ -10,8 +10,7 @@
 ///*****                                                                                                        *****////
 ///*****                                                                                                        *****//// 
 ///*****                       Wireless Command Syntax:                                                         *****////                        
-///*****                       (:E)(xx)(yy)(zzz...)                                                   x         *****////
-///*****                       :E : SPecifies that you are sending the command to another board                 *****////
+///*****                       :(xx)(yy)(zzz...)                                                                *****////
 ///*****                       xx: 2 Digit Identifier for the destination  (i.e. W1 - W9, BR)                   *****////
 ///*****                          xx: W1 = WCB1                                                                 *****//// 
 ///*****                          xx: W2 = WCB2                                                                 *****//// 
@@ -23,7 +22,7 @@
 ///*****                          xx: W8 = WCB8                                                                 *****//// 
 ///*****                          xx: W9 = WCB9                                                                 *****//// 
 ///*****                          xx: BR = Broadcast                                                            *****//// 
-///*****                       yy :Target Serial Port (i.e. S1-S5)                                              *****////
+///*****                       yy :Target's Serial Port (i.e. S1-S5)                                            *****////
 ///*****                          yy: S1 = Serial 1 Port                                                        *****//// 
 ///*****                          yy: S2 = Serial 2 Port                                                        *****//// 
 ///*****                          yy: S3 = Serial 3 Port                                                        *****//// 
@@ -32,13 +31,13 @@
 ///*****                       zzz...: String to send out the destination serial port                           *****////
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
-///*****          Example1: :EW2S2:PP100  (Sends to WCB2's Serial 2 port and sends string ":PP100" + "\r")      *****////
-///*****          Example2: :EW3S3:R01    (Sends to WCB3's Serial 3 port and sends string ":R01" + "\r")        *****////
-///*****          Example3: :EW5S4MD904   (Sends to WCB5's Serial 4 port and sends string "MD904" + "\r")       *****////
+///*****          Example1: :W2S2:PP100  (Sends to WCB2's Serial 2 port and sends string ":PP100" + "\r")       *****////
+///*****          Example2: :W3S3:R01    (Sends to WCB3's Serial 3 port and sends string ":R01" + "\r")         *****////
+///*****          Example3: :W5S4MD904   (Sends to WCB5's Serial 4 port and sends string "MD904" + "\r")        *****////
 ///*****                                                                                                        *****////
 ///*****                                                                                                        *****////
 ///*****                       Local Serial Command Syntax:                                                     *****////                        
-///*****                       (:S)(yy)(zzz...)                                                                 *****////
+///*****                       :(yy)(zzz...)                                                                    *****////
 ///*****                       yy :Target Serial Port (i.e. S1-S5)                                              *****////
 ///*****                          yy: S1 = Serial 1 Port                                                        *****//// 
 ///*****                          yy: S2 = Serial 2 Port                                                        *****//// 
@@ -48,9 +47,9 @@
 ///*****                       zzz...: String to send out the destination serial port                           *****////
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
-///*****          Example1: :SS2:PP100  (Sends to local Serial 2 port and sends string ":PP100" + "\r")         *****////
-///*****          Example2: :SS3:R01    (Sends to local Serial 3 port and sends string ":R01" + "\r")           *****////
-///*****          Example3: :SS4MD904   (Sends to local Serial 4 port and sends string "MD904" + "\r")          *****////
+///*****          Example1: :S2:PP100  (Sends to local Serial 2 port and sends string ":PP100" + "\r")          *****////
+///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":R01" + "\r")            *****////
+///*****          Example3: :S4MD904   (Sends to local Serial 4 port and sends string "MD904" + "\r")           *****////
 ///*****                                                                                                        *****////                      
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,19 +69,19 @@
 //pin definitions
 #include "wcb_pin_map.h"
 
-// Debug Functions  - Using my own library for this
+// Debug Functions  - Using my own library for this.  This should be in the same folder as this sketch.
 #include "DebugR2.h" 
 
-// Used for Software Serial to allow more useful naming
+// Used for Software Serial to allow more serial port capacity
 #include <SoftwareSerial.h>
 
 
 //////////////////////////////////////////////////////////////////////
 ///*****          Preferences/Items to change                 *****///
 //////////////////////////////////////////////////////////////////////
- int WCB_Quantity = 3;          // Change to match the amount of WCB's that you are using.  This alleviates initialing ESP-NOW peers if they are not available.
+ int WCB_Quantity = 2;          // Change to match the amount of WCB's that you are using.  This alleviates initialing ESP-NOW peers if they are not used.
 
-  // Uncomment the board that you are loading this sketch onto.
+  // Uncomment only the board that you are loading this sketch onto. 
   // #define WCB1 
   #define WCB2 
   // #define WCB3 
@@ -445,7 +444,6 @@ void processESPNOWIncomingMessage(){
     inputString = incomingCommand;
     stringComplete = true; 
     Debug.ESPNOW("Recieved command from %s \n", incomingSenderID);
-
   }
 }
 
@@ -460,14 +458,12 @@ void processESPNOWIncomingMessage(){
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////                                                                                               /////
-/////                              Communication Functions                                    /////
-/////                                                                                               /////
+/////                              Communication Functions                                          /////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////
-///*****          Serial Event Function          *****///
+///*****          Serial Write Function          *****///
 /////////////////////////////////////////////////////////
 
 void writeSerialString(String stringData){
@@ -591,47 +587,47 @@ void sendESPNOWCommand(String starget, String scomm){
     setupSendStruct(&commandsToSendtoWCB1, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB1MacAddress, (uint8_t *) &commandsToSendtoWCB1, sizeof(commandsToSendtoWCB1));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB1 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB1 Neighbor \n");}
   }  else if (starget == "W2"){
     setupSendStruct(&commandsToSendtoWCB2, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB2MacAddress, (uint8_t *) &commandsToSendtoWCB2, sizeof(commandsToSendtoWCB2));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB2 Neighbor\n");}
   } else if (starget == "W3"){
     setupSendStruct(&commandsToSendtoWCB3, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB3MacAddress, (uint8_t *) &commandsToSendtoWCB3, sizeof(commandsToSendtoWCB3));
     if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB3 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB3 Neighbor\n");}
   } else if (starget == "W4"){
     setupSendStruct(&commandsToSendtoWCB4, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB4MacAddress, (uint8_t *) &commandsToSendtoWCB4, sizeof(commandsToSendtoWCB4));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB4 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB4 Neighbor\n");}
   } else if (starget == "W5"){
     setupSendStruct(&commandsToSendtoWCB5, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB5MacAddress, (uint8_t *) &commandsToSendtoWCB5, sizeof(commandsToSendtoWCB5));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB5 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB5 Neighbor\n");}
   } else if (starget == "W6"){
     setupSendStruct(&commandsToSendtoWCB6, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB6MacAddress, (uint8_t *) &commandsToSendtoWCB6, sizeof(commandsToSendtoWCB6));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB6 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB6 Neighbor\n");}
   } else if (starget == "W7"){
     setupSendStruct(&commandsToSendtoWCB7, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB7MacAddress, (uint8_t *) &commandsToSendtoWCB7, sizeof(commandsToSendtoWCB7));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB7 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the datato ESP-NOW WCB7 Neighbor\n");}
   } else if (starget == "W8"){
     setupSendStruct(&commandsToSendtoWCB8, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB8MacAddress, (uint8_t *) &commandsToSendtoWCB8, sizeof(commandsToSendtoWCB8));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB8 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB8 Neighbor\n");}
   } else if (starget == "W9"){
     setupSendStruct(&commandsToSendtoWCB9, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
     esp_err_t result = esp_now_send(WCB9MacAddress, (uint8_t *) &commandsToSendtoWCB9, sizeof(commandsToSendtoWCB9));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB2 Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
+    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW WCB9 Neighbor\n", scomm.c_str());
+    }else {Debug.ESPNOW("Error sending the data to ESP-NOW WCB9 Neighbor\n");}
   } else if (starget == "BR"){
     setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, ESPNOW_SenderID, starget, hasCommand, scomm);
        esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
@@ -653,24 +649,26 @@ void sendESPNOWCommand(String starget, String scomm){
 
 
 void setup(){
-
+  // initializes the 5 serial ports
   Serial.begin(SERIAL1_BAUD_RATE);
   s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);
   s3Serial.begin(SERIAL3_BAUD_RATE,SERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN);  
   s4Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
   s5Serial.begin(SERIAL5_BAUD_RATE,SWSERIAL_8N1,SERIAL5_RX_PIN,SERIAL5_TX_PIN,false,95);  
 
+  // prints out a bootup message of the local hostname
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
 
-  //Reserve the inputStrings
+  //Reserve the memory for inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
 
+  // Sets the local Mac Address for ESP-NOW 
   #ifdef WCB1
     esp_wifi_set_mac(WIFI_IF_STA, &WCB1MacAddress[0]);
   #elif defined (WCB2)
@@ -691,7 +689,7 @@ void setup(){
     esp_wifi_set_mac(WIFI_IF_STA, &WCB9MacAddress[0]);
   #endif
 
-  // esp_wifi_set_mac(WIFI_IF_STA, &WCB1MacAddress[0]);
+  //Prints out local Mac on bootup
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
@@ -817,9 +815,8 @@ if (WCB_Quantity >= 9 ){
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
   
-
-
 }   // end of setup
+
 
 void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
@@ -888,15 +885,15 @@ void loop(){
               }
 
       }else if (inputBuffer[0] == ':'){
-        if( inputBuffer[1]=='E' ||        // Command for Sending ESP-NOW Messages
-            inputBuffer[1]=='e' ||        // Command for Sending ESP-NOW Messages
+        if( inputBuffer[1]=='W' ||        // Command for Sending ESP-NOW Messages
+            inputBuffer[1]=='w' ||        // Command for Sending ESP-NOW Messages
             inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
             inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
           Debug.DBG("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
-            if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-              for (int i=2; i<=commandLength; i++){
+            if(inputBuffer[1]=='W' || inputBuffer[1]=='w') {
+              for (int i=1; i<=commandLength; i++){
                 char inCharRead = inputBuffer[i];
                 ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
               }
@@ -912,7 +909,7 @@ void loop(){
               ESPNOWTarget = "";  
               }  
             if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-              for (int i=2; i<commandLength;i++ ){
+              for (int i=1; i<commandLength;i++ ){
                 char inCharRead = inputBuffer[i];
                 serialStringCommand += inCharRead;  // add it to the inputString:
               }

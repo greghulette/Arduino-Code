@@ -10,7 +10,7 @@
 ///*****                                                                                                        *****////
 ///*****                                                                                                        *****//// 
 ///*****                       Wireless Command Syntax:                                                         *****////                        
-///*****                       :(xx)(yy)(zzz...)                                                                *****////
+///*****                       :(xx):(yy)(zzz...)                                                                *****////
 ///*****                       xx: 2 Digit Identifier for the destination  (i.e. W1 - W9, BR)                   *****////
 ///*****                          xx: W1 = WCB1                                                                 *****//// 
 ///*****                          xx: W2 = WCB2                                                                 *****//// 
@@ -48,7 +48,7 @@
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
 ///*****          Example1: :S2:PP100  (Sends to local Serial 2 port and sends string ":PP100" + "\r")          *****////
-///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":R01" + "\r")            *****////
+///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":SE05" + "\r")           *****////
 ///*****          Example3: :S4MD904   (Sends to local Serial 4 port and sends string "MD904" + "\r")           *****////
 ///*****                                                                                                        *****////                      
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
