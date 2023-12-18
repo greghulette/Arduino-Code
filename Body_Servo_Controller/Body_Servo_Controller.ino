@@ -570,23 +570,27 @@ void processESPNOWIncomingMessage(){
 ///*****              ReelTwo Servo Set Up                       *****///
 /////////////////////////////////////////////////////////////////////////
 
-#define TOP_UTILITY_ARM       0x0001 //b000000000001
-#define BOTTOM_UTILITY_ARM    0x0002 //b000000000010
-#define LARGE_LEFT_DOOR       0x0004 //b000000000100
-#define LARGE_RIGHT_DOOR      0x0008 //b000000001000
-#define CHARGE_BAY_DOOR       0x0010 //b000000010000
-#define DATA_PANEL_DOOR       0x0020 //b000000100000
-#define DRAWER_S1             0X0040 //b000001000000
-#define DRAWER_S2             0x0080 //b000010000000
-#define DRAWER_S3             0x0100 //b000100000000
-#define DRAWER_S4             0x0200 //b001000000000
-#define REAR_LEFT_DOOR        0x0400 //b010000000000
-#define REAR_RIGHT_DOOR       0x0800 //b100000000000
+#define TOP_UTILITY_ARM       0x0001 //b0000000000000001
+#define BOTTOM_UTILITY_ARM    0x0002 //b0000000000000010
+#define LARGE_LEFT_DOOR       0x0004 //b0000000000000100
+#define LARGE_RIGHT_DOOR      0x0008 //b0000000000001000
+#define CHARGE_BAY_DOOR       0x0010 //b0000000000010000
+#define DATA_PANEL_DOOR       0x0020 //b0000000000100000
+#define DRAWER_S1             0X0040 //b0000000001000000
+#define DRAWER_S2             0x0080 //b0000000010000000
+#define DRAWER_S3             0x0100 //b0000000100000000
+#define DRAWER_S4             0x0200 //b0000001000000000
+#define REAR_LEFT_DOOR        0x0400 //b0000010000000000
+#define REAR_RIGHT_DOOR       0x0800 //b0000100000000000
+#define CPU_ARM_RAISE         0x1000 //b0001000000000000
+#define CPU_ARM_ROTATE        0x2000 //b0010000000000000
+#define CPU_ARM_EXTEND        0x4000 //b0100000000000000
 
 #define UTILITY_ARMS_MASK     (TOP_UTILITY_ARM|BOTTOM_UTILITY_ARM)
 #define LARGE_DOORS_MASK      (LARGE_LEFT_DOOR|LARGE_RIGHT_DOOR)
 #define SMALL_DOORS_MASK      (CHARGE_BAY_DOOR|DATA_PANEL_DOOR)
 #define DRAWERS_MASK          (DRAWER_S1|DRAWER_S2|DRAWER_S3|DRAWER_S4)
+#define CPU_SERVOS_MASK       (CPU_ARM_RAISE|CPU_ARM_ROTATE|CPU_ARM_EXTEND)
 #define ALL_DOORS_MASK        (LARGE_DOORS_MASK|SMALL_DOORS_MASK|DRAWERS_MASK)
 #define ALL_SERVOS_MASK       (ALL_DOORS_MASK|UTILITY_ARMS_MASK)
 
@@ -606,7 +610,10 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 9,  650, 2300, DRAWER_S3 },             /* 5: Data Panel Door 550,2300*/
     { 10,  1300, 2500, DRAWER_S4 },            /* 5: Data Panel Door 1200,2500*/
     { 11,  1500, 1549, REAR_LEFT_DOOR },      /* 5: Data Panel Door */
-    { 12,  1500, 1549, REAR_RIGHT_DOOR }      /* 5: Data Panel Door */
+    { 12,  1500, 1549, REAR_RIGHT_DOOR },      /* 5: Data Panel Door */
+    { 13,  800, 2200, CPU_ARM_RAISE },      /* 5: Data Panel Door */
+    { 14,  800, 2300, CPU_ARM_ROTATE },      /* 5: Data Panel Door */
+    { 15,  800, 2300, CPU_ARM_EXTEND }      /* 5: Data Panel Door */
   };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -1341,6 +1348,166 @@ void display(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32
 };
 
 
+void CpuArmRaise(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaise, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaise, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+void CpuArmLower(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPULower, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+
+
+void CpuArmExtend(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaise, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaise, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+void CpuArmRetract(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+
+
+void CpuArmRotate(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURotate, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+
+void CpuArmSequence(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+ // Command: Dx21
+  Debug.SERVO("CPU ARM TEST \n");
+  fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}               //sets default delayCall to allow time for ESP-NOW message to get to reciever ESP.
+  snprintf(stringToSend, sizeof(stringToSend),":D221E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+    // servoDispatch.setServosEasingMethod(CPU_SERVOS_MASK, Easing::Continuous);
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_RAISE, 1000, 1.0);},12);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_EXTEND, 4500, 1.0);},50);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 0.5);},5000);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 1.0);},5500);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 0.5);},6000);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 1.0);},6500);
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 0.5);},7000);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 1500, 1.0);},8500);
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 0.5);},9000);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_ROTATE, 500, 1.0);},10500);  
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_EXTEND, 6000, 0.0);},12000); 
+            // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_RAISE, 1000, 0.0);},16000);  break;
+            // servoDispatch.moveServosTo(CPU_ARM_EXTEND, 4500, 1.0); break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURotate, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},5000);  
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},13000);  break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: turnOnCBIandDataPanel();
+            sendESPNOWCommand("DC", stringToSend); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
+  }
+  // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
+  D_command[0]   = '\0';                                             
+};
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1853,6 +2020,12 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
           case 18: drawerWave(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);            break;
           case 19: WaveUtilityArm(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);        break;
           case 20: display(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);               break;
+          case 21: CpuArmRaise(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 22: CpuArmLower(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 23: CpuArmExtend(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 24: CpuArmRetract(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 25: CpuArmRotate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 26: CpuArmSequence(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
           case 98: closeAllDoors(2,0,0,0,0);                                                                break;
           case 99: closeAllDoors(2,0,0,0,0);                                                                break;
           default: break;

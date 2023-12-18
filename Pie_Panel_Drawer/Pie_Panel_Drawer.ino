@@ -2,9 +2,6 @@
 
 #include "pie_panel_drawer_pin_map.h"
 
-// Debug Functions  - Using my own library for this
-#include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
-
 //ReelTwo libaries - Using my forked version of this libarary
 #include <ReelTwo.h>
 #include "core/DelayCall.h"
@@ -16,7 +13,6 @@
 #include <SoftwareSerial.h>
 
 
-//  String HOSTNAME = "Pie Drawer Controller";
   
   char inputBuffer[10];
   String inputString;         // a string to hold incoming data
@@ -27,16 +23,12 @@
   
   int commandLength;
   
-  // String serialStringCommand;
-  // String serialPort;
-  // String serialSubStringCommand;
 
   uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction = 0;
 
 
 
-  debugClass Debug;
   String debugInputIdentifier ="";
 
   //////////////////////////////////////////////////////////////////////
@@ -66,23 +58,10 @@
   ///*****   Door Values, Containers, Flags & Timers   *****///
   //////////////////////////////////////////////////////////////////////
 
-  // int door = -1;
   // Door Command Container
   uint32_t D_command[7]  = {0,0,0,0,0,0,0};
   int doorFunction = 0;
-  // int doorBoard = 0; 
-  // int doorEasingMethod;
-  // uint32_t cVarSpeedMin;
-  // uint32_t cVarSpeedMax;
-  // uint32_t doorEasingDuration;
-  // uint32_t delayCallTime;
 
-  // variables for individual functions
-  // uint32_t varSpeedMin;
-  // uint32_t varSpeedMax;
-  // char stringToSend[25];
-  // uint32_t fVarSpeedMin;
-  // uint32_t fVarSpeedMax;
 
   /////////////////////////////////////////////////////////////////////////
 ///*****              ReelTwo Servo Set Up                       *****///
@@ -98,9 +77,8 @@
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 10,  1400, 1600, RAISE_LOWER },       /* 0: Top Utility Arm 2350,675*/
-    { 11,  1100, 2000, RETRACT }    /* 1: Bottom Utility Arm 1950,960*/
-
+        { 10,  1425, 1820, RETRACT },    //Slide the drawer
+        { 11,  1000, 2000, RAISE_LOWER },       // Raise and Lower
   };
 
 ServoDispatchDirect<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -119,7 +97,6 @@ void serialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
 void s1SerialEvent() {
@@ -130,7 +107,6 @@ void s1SerialEvent() {
         stringComplete = true;            // set a flag so the main loop can do something about it.
       }
   }
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
 
 
@@ -148,7 +124,6 @@ void writes1Serial(String stringData){
   {
     s1Serial.write(completeString[i]);
   }
-    Debug.SERIAL_EVENT("Writing to Serial 1\n");
 
 };
 
@@ -159,118 +134,64 @@ void writes1Serial(String stringData){
 ///////                                                                                               /////
 ///////                                       Door Functions                                          /////
 ///////                                                                                               /////
-///////              Door Command Stucture: Dxyyzzabbccccddddeeeee                                    /////
-///////                 D = Door Command                                                              /////
-///////                 x = Servo Board                                                               /////
-///////                   1 = Body Only                                                               /////
-///////                   2 = Dome Only                                                               /////
-///////                   3 = Both, starting with the body                                            /////
-///////                   4 = Both, starting with the dome                                            /////
-///////                 yy = Door Function                                                            /////
-///////                 zz = Door Specified (Only used for Dx01 & Dx02)                               /////
-///////                 a = Specify easing/delayCall options (B,E,D)                                  /////
-///////                   B = Use Easing and Delay Call                                               /////
-///////                   E = Easing Only (if VarSpeed is not needed, don't input dddd)               /////
-///////                   D = Delay Call Only (don't input bbccccdddd)                                /////
-///////                 bb = Easing Method (only needed if B or E was selected)
-///////                 cccc = Easing Method Duration (only needed if B or E was selected)
-///////                 dddd = Easing Method VarSpeedMax(only needed if B or E was selected and VARSPEED wanted)
-///////                 eeeee = Delay Call Duration (only needed if B or D was selected)
 ///////                                                                                               /////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void openSlider() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
+  // Command: :D01
   Serial.println("Open");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RAISE_LOWER); 
-  // D_command[0] = '\0';
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
 };
 
-void openSliderSingle() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
-  Serial.println("Open");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RAISE_LOWER); 
-  // D_command[0] = '\0';
-};
 
 void closeSlider() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
+  // Command: :D02
   Serial.println("Close");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RAISE_LOWER); 
-  D_command[0] = '\0';
-};
-
-void closeSliderSingle() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
-  Serial.println("Close");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RAISE_LOWER); 
-  // D_command[0] = '\0';
-};
-unsigned long timeoutMillis;
-
-void lowerPiePanelTimeout(int duration) {
-
-  // inputString = ":D03";
-  // stringComplete = true;
-
-    Debug.SERVO("Open all Doors\n");
-  Serial.println("Lower");
-  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpenHold, RETRACT); 
-  // Command: Dx03
-// timeoutMillis = millis();
-// if (millis() - timeoutMillis <= duration){
-// timeoutMillis = millis();
-// // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
-//               D_command[0] = 1;
-
-
-// }
-  Serial.println("Lower");
-// SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
-  // D_command[0] = '\0';
-};
-
-void lowerPiePanel() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
-  Serial.println("Lower");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
-  // D_command[0] = '\0';
-};
-
-void raisePiePanel() {
-  // Command: Dx03
-  Debug.SERVO("Open all Doors\n");
-  Serial.println("Raise");
   SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RETRACT); 
   D_command[0] = '\0';
 };
 
+void lowerPiePanel() {
+  // Command: :D03
+  Serial.println("Lower");
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RAISE_LOWER); 
+  // D_command[0] = '\0';
+};
+
+void raisePiePanel() {
+  // Command: :D04
+  Serial.println("Raise");
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RAISE_LOWER); 
+  D_command[0] = '\0';
+};
+
 void completeSequence8sec(){
+  // Command: :D05
    SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer8sec, ALL_SERVOS_MASK); 
   D_command[0] = '\0';
 }
+
 void completeSequence5sec(){
-   SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer5sec, ALL_SERVOS_MASK); 
+  // Command: :D06
+     SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer5sec, ALL_SERVOS_MASK); 
   D_command[0] = '\0';
 }
 
 void completeSequence3sec(){
-   SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer3sec, ALL_SERVOS_MASK); 
+  // Command: :D07
+  SEQUENCE_PLAY_ONCE_SPEED(servoSequencer, PieDrawer3sec, ALL_SERVOS_MASK, 100); 
   D_command[0] = '\0';
 }
 
 void completeSequence11sec(){
-   SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer11sec, ALL_SERVOS_MASK); 
+  // Command: :D05
+  SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawer11sec, ALL_SERVOS_MASK); 
   D_command[0] = '\0';
 }
 
  void PieDrawerBounceSequence(){
+  // Command: :D09
   SEQUENCE_PLAY_ONCE(servoSequencer, PieDrawerBounce, ALL_SERVOS_MASK); 
   D_command[0] = '\0';
 
@@ -279,12 +200,10 @@ void completeSequence11sec(){
 
 void setup() {
   // put your setup code here, to run once:
-  // openSlider(); 
   Serial.begin(9600);
   Serial.println("\n\n----------------------------------------");
   Serial.println("Booting up the Pie Drawer ");
   Serial.println("----------------------------------------");
-    // s1Serial.begin(9600, SERIAL_8N1, TRIGGER_RX, TRIGGER_TX);
   s1Serial.begin(9600);  
 
     
@@ -299,8 +218,6 @@ void setup() {
 
   //Initialize the ReelTwo Library
   SetupEvent::ready();
-  pinMode(PIE_LOWERED_LS, INPUT_PULLUP);
-// digitalWrite(PIE_LOWERED_LS, HIGH);
 
 }
 int pls = 1;
@@ -314,10 +231,7 @@ void loop() {
   if (millis() - MLMillis >= mainLoopDelayVar){
       MLMillis = millis();
         int ls = digitalRead(PIE_LOWERED_LS);
-if (ls != pls){
-    pls = ls;
-      Serial.println(ls);
-}
+
     if(startUp) {
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
@@ -335,10 +249,8 @@ if (ls != pls){
             inputBuffer[1]=='d'         // Door Designator
 
          ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-            Debug.LOOP("Command: %s with a length of %d \n", inputBuffer, commandLength);
             if(commandLength >= 3) {
               if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {                                                            // specifies the overall door command
-              // doorBoard = inputBuffer[2]-'0';                                                                           // Sets the board to call the command on.
               doorFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');                                              // Sets the door command to a specific function
             }   
  
@@ -349,7 +261,6 @@ if (ls != pls){
             if(inputBuffer[1]=='D' || inputBuffer[1]=='d') {
               D_command[0]   = '\0';                                                            // Flushes Array
               D_command[0] = doorFunction;
-              // D_command[1] = doorBoard;
             }
 
 
@@ -361,20 +272,13 @@ if (ls != pls){
         autoComplete = false;
         inputBuffer[0] = '\0';
         
-        // reset Local ESP Command Variables
+        // reset Local  Command Variables
         int localCommandFunction;
 
 
       // reset Door Variables
-        int door = -1;
         int doorFunction;
-        int doorBoard;
-        // int doorEasingMethod;
-        // uint32_t cVarSpeedMin;
-        // uint32_t cVarSpeedMax;
-        // uint32_t delayCallTime; 
 
-      Debug.LOOP("command Proccessed\n");
 
     }
 
@@ -384,11 +288,6 @@ if (ls != pls){
     
 
     if(D_command[0]) {
-      // if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
-      //   Debug.LOOP("Incorrect Door Value Specified, Command Aborted!");
-      //   D_command[0] = '\0';
-      // }
-      // else {
         switch (D_command[0]) {
         case 1: openSlider();                         break;
         case 2: closeSlider();                         break;
