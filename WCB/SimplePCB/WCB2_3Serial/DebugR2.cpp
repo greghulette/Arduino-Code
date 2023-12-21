@@ -246,7 +246,7 @@ if (debugType == "DBG"){
   toggle_ESPNOW();
 } else if (debugType == "SERVO"){
   toggle_Servo();
-} else if (debugType == "SERIAL_EVENT"){
+} else if (debugType == "SERIAL"){
   toggle_SerialEvent();
 } else if (debugType == "LOOP"){
   toggle_Loop();
