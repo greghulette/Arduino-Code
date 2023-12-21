@@ -79,7 +79,7 @@
   int defaultESPNOWSendDuration = 50;  
 
   // Serial Baud Rates
-  #define SERIAL1_BAUD_RATE 115200
+  #define SERIAL1_BAUD_RATE 9600
 
 
 
@@ -599,21 +599,21 @@ void processESPNOWIncomingMessage(){
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,  2110, 1100, TOP_UTILITY_ARM },       /* 0: Top Utility Arm 2350,675*/
+    { 1,  2110, 1100, TOP_UTILITY_ARM },      /* 0: Top Utility Arm 2350,675*/
     { 2,  1950, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
     { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
-    { 4,  1400, 1900, LARGE_RIGHT_DOOR },      /* 3: Left Right door as viewing from looking at R2 1200,1900*/
-    { 5,  1590 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1900,758*/
-    { 6,  760, 1400, DATA_PANEL_DOOR },      /* 5: Data Panel Door 700,1400*/
-    { 7,  1950, 700, DRAWER_S1 },             /* 5: Data Panel Door 2050,700*/
-    { 8,  2245, 700, DRAWER_S2 },             /* 5: Data Panel Door 2345, 700*/
-    { 9,  650, 2300, DRAWER_S3 },             /* 5: Data Panel Door 550,2300*/
-    { 10,  1300, 2500, DRAWER_S4 },            /* 5: Data Panel Door 1200,2500*/
-    { 11,  1500, 1549, REAR_LEFT_DOOR },      /* 5: Data Panel Door */
-    { 12,  1500, 1549, REAR_RIGHT_DOOR },      /* 5: Data Panel Door */
-    { 13,  800, 2200, CPU_ARM_RAISE },      /* 5: Data Panel Door */
-    { 14,  800, 2300, CPU_ARM_ROTATE },      /* 5: Data Panel Door */
-    { 15,  800, 2300, CPU_ARM_EXTEND }      /* 5: Data Panel Door */
+    { 4,  1400, 1900, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
+    { 5,  1590 , 758, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
+    { 6,  760, 1400, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
+    { 7,  1950, 700, DRAWER_S1 },             /* 6: Drawer S1*/
+    { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */
+    { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/
+    { 10,  1300, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
+    { 11,  800, 2200, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
+    { 12,  800, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
+    { 13,  800, 2300, CPU_ARM_EXTEND },       /* 12: CPU Arm Extend */
+    { 14,  1500, 1549, REAR_LEFT_DOOR },      /* 13: Data Panel Door */
+    { 15,  1500, 1549, REAR_RIGHT_DOOR }      /* 14: Data Panel Door */
   };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -706,22 +706,22 @@ void serialEvent() {
   while (Serial.available()) {
     char inChar = (char)Serial.read();
     inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+      Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString.c_str());
+    }
   }
-  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
 };
 
 void s1SerialEvent() {
   while (s1Serial.available()) {
     char inChar = (char)s1Serial.read();
     inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      stringComplete = true;            // set a flag so the main loop can do something about it.
+      Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
+    }
   }
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 };
 
 
@@ -1886,7 +1886,7 @@ void loop(){
               }
             }   
 
-                if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+               else if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
@@ -1902,8 +1902,8 @@ void loop(){
                   ESPNOWSubStringCommand = "";
                   ESPNOWTarget = "";                  
                   } 
-              if(inputBuffer[0]=='S' || inputBuffer[0]=='s') {
-                for (int i=1; i<commandLength-1;i++ ){
+               else if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+                for (int i=2; i<commandLength-1;i++ ){
                   char inCharRead = inputBuffer[i];
                   serialStringCommand += inCharRead;  // add it to the inputString:
                 }
@@ -1913,6 +1913,7 @@ void loop(){
                 if (serialPort == "BC"){
                   // writeBcSerial(serialSubStringCommand);
                 } else if (serialPort == "FU"){
+                  Debug.LOOP("FU Port Chosen \n");
                   writes1Serial(serialSubStringCommand);
                 } 
                 

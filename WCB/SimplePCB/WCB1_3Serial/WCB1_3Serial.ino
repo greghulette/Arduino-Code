@@ -10,7 +10,7 @@
 ///*****                                                                                                        *****////
 ///*****                                                                                                        *****//// 
 ///*****                       Wireless Command Syntax:                                                         *****////                        
-///*****                       :(xx):(yy)(zzz...)                                                                *****////
+///*****                       :(xx)(yy)(zzz...)                                                                *****////
 ///*****                       xx: 2 Digit Identifier for the destination  (i.e. W1 - W9, BR)                   *****////
 ///*****                          xx: W1 = WCB1                                                                 *****//// 
 ///*****                          xx: W2 = WCB2                                                                 *****//// 
@@ -48,7 +48,7 @@
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
 ///*****          Example1: :S2:PP100  (Sends to local Serial 2 port and sends string ":PP100" + "\r")          *****////
-///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":SE05" + "\r")           *****////
+///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":R01" + "\r")            *****////
 ///*****          Example3: :S4MD904   (Sends to local Serial 4 port and sends string "MD904" + "\r")           *****////
 ///*****                                                                                                        *****////                      
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,13 +75,13 @@
 // Used for Software Serial to allow more serial port capacity
 #include <SoftwareSerial.h>
 
+#include <Preferences.h>
 
 //////////////////////////////////////////////////////////////////////
 ///*****          Preferences/Items to change                 *****///
 //////////////////////////////////////////////////////////////////////
- int WCB_Quantity = 2;          // Change to match the amount of WCB's that you are using.  This alleviates initialing ESP-NOW peers if they are not used.
 
-  // Uncomment the board that you are loading this sketch onto.  Uncomment in order starting from 1.
+  // Uncomment only the board that you are loading this sketch onto. 
   #define WCB1 
   // #define WCB2 
   // #define WCB3 
@@ -92,15 +92,19 @@
   // #define WCB8 
   // #define WCB9
 
+  // Change to match the amount of WCB's that you are using.  This alleviates initialing ESP-NOW peers if they are not used.
+ int WCB_Quantity = 2;          
+
   // ESPNOW Password - This must be the same across all devices and unique to your droid/setup. (PLEASE CHANGE THIS)
   String ESPNOWPASSWORD = "WCB_Astromech_xxxxx";
 
-  // Serial Baud Rates
-  #define SERIAL1_BAUD_RATE 115200
-  #define SERIAL2_BAUD_RATE 9600 
-  #define SERIAL3_BAUD_RATE 9600  
-  #define SERIAL4_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
-  #define SERIAL5_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
+  // Default Serial Baud Rates   ******THESE ARE ONLY CORRECT UNTIL YOU CHANGE THEM VIA THE COMMAND LINE.  ONCE CHANGED, THEY MAY NOT MATCH THIS NUMBER.
+  // The correct baud rates will be shown on the serial console on bootup.
+  #define SERIAL1_DEFAULT_BAUD_RATE 9600
+  #define SERIAL2_DEFAULT_BAUD_RATE 9600 
+  #define SERIAL3_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
+  #define SERIAL4_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
+  #define SERIAL5_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
 
 
   // Mac Address Customization: MUST BE THE SAME ON ALL BOARDS - Allows you to easily change 2nd and 3rd octects of the mac addresses so that there are more unique addresses out there.  
@@ -169,6 +173,7 @@
     String HOSTNAME = "Wireless Control Board 9 (W9)";
   #endif
 
+  Preferences preferences;
 
 //////////////////////////////////////////////////////////////////////
 ///*****       Startup and Loop Variables                     *****///
@@ -188,10 +193,11 @@
 //////////////////////////////////////////////////////////////////
 
 
-  #define s2Serial Serial1
-  #define s3Serial Serial2
-  SoftwareSerial s4Serial;
-  SoftwareSerial s5Serial;
+  #define s1Serial Serial1
+  #define s2Serial Serial2
+  // SoftwareSerial s3Serial;
+  // SoftwareSerial s4Serial;
+  // SoftwareSerial s5Serial;
   
   
 /////////////////////////////////////////////////////////////////////////
@@ -293,7 +299,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  // colorWipeStatus("ES", orange ,255);
+  turnOnLED();
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -433,6 +439,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   } 
   else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
   IncomingMacAddress ="";  
+  turnOffLED();
 } 
 
 void processESPNOWIncomingMessage(){
@@ -474,6 +481,14 @@ void writeSerialString(String stringData){
   }
 }
 
+void writes1SerialString(String stringData){
+  String completeString = stringData + '\r';
+  for (int i=0; i<completeString.length(); i++)
+  {
+    s1Serial.write(completeString[i]);
+  }
+}
+
 void writes2SerialString(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++)
@@ -482,29 +497,29 @@ void writes2SerialString(String stringData){
   }
 }
 
-void writes3SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s3Serial.write(completeString[i]);
-  }
-}
+// void writes3SerialString(String stringData){
+//   String completeString = stringData + '\r';
+//   for (int i=0; i<completeString.length(); i++)
+//   {
+//     s3Serial.write(completeString[i]);
+//   }
+// }
 
-void writes4SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s4Serial.write(completeString[i]);
-  }
-}
+// void writes4SerialString(String stringData){
+//   String completeString = stringData + '\r';
+//   for (int i=0; i<completeString.length(); i++)
+//   {
+//     s4Serial.write(completeString[i]);
+//   }
+// }
 
-void writes5SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s5Serial.write(completeString[i]);
-  }
-}
+// void writes5SerialString(String stringData){
+//   String completeString = stringData + '\r';
+//   for (int i=0; i<completeString.length(); i++)
+//   {
+//     s5Serial.write(completeString[i]);
+//   }
+// }
 
 /////////////////////////////////////////////////////////
 ///*****          Serial Event Function          *****///
@@ -515,52 +530,70 @@ void serialEvent() {
     char inChar = (char)Serial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+      enqueueCommand(inputString);
+      Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString.c_str());
+    }
   }
-  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
+}
+
+void s1SerialEvent() {
+  while (s1Serial.available()) {
+    char inChar = (char)s1Serial.read();
+    inputString += inChar;
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+      enqueueCommand(inputString);
+      Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString.c_str());
+    }
+  }
 }
 
 void s2SerialEvent() {
   while (s2Serial.available()) {
     char inChar = (char)s2Serial.read();
     inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
+    if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+      // stringComplete = true;            // set a flag so the main loop can do something about it.
+      enqueueCommand(inputString);
+      Debug.SERIAL_EVENT("Serial 2 Input: %s \n", inputString.c_str());
+    }
   }
-  Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 }
-void s3SerialEvent() {
-  while (s3Serial.available()) {
-    char inChar = (char)s3Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 2 Input: %s \n",inputString);
-}
-void s4SerialEvent() {
-  while (s4Serial.available()) {
-    char inChar = (char)s4Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString);
-}
-void s5SerialEvent() {
-  while (s5Serial.available()) {
-    char inChar = (char)s5Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString);
-}
+
+// void s3SerialEvent() {
+//   while (s3Serial.available()) {
+//     char inChar = (char)s3Serial.read();
+//     inputString += inChar;
+//     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+//       // stringComplete = true;            // set a flag so the main loop can do something about it.
+//       enqueueCommand(inputString);
+//       Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString.c_str());
+//     }
+//   }
+// }
+// void s4SerialEvent() {
+//   while (s4Serial.available()) {
+//     char inChar = (char)s4Serial.read();
+//     inputString += inChar;
+//     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+//       // stringComplete = true;            // set a flag so the main loop can do something about it.
+//       enqueueCommand(inputString);
+//       Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString.c_str());
+//     }
+//   }
+// }
+// void s5SerialEvent() {
+//   while (s5Serial.available()) {
+//     char inChar = (char)s5Serial.read();
+//     inputString += inChar;
+//     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
+//       // stringComplete = true;            // set a flag so the main loop can do something about it.
+//       enqueueCommand(inputString);
+//       Debug.SERIAL_EVENT("Serial 5 Input: %s \n",inputString.c_str());
+//     }
+//   }
+// }
 
 
 //////////////////////////////////////////////////////////////////////
@@ -636,6 +669,105 @@ void sendESPNOWCommand(String starget, String scomm){
   } else {Debug.ESPNOW("No valid destination \n");}
 };
 
+ void turnOnLED(){
+  // digitalWrite(ONBOARD_LED, HIGH);
+ }
+
+ void turnOffLED(){
+  // digitalWrite(ONBOARD_LED, LOW);
+ }
+
+ void saveBaud(const char* Port, int32_t Baud){
+  if (Baud == 110     ||     // checks to make sure a valid baudrate is used
+      Baud == 300     ||
+      Baud == 600     ||
+      Baud == 1200    ||
+      Baud == 2400    ||
+      Baud == 9600    ||
+      Baud == 14400   ||
+      Baud == 19200   ||
+      Baud == 38400   ||
+      Baud == 57600   ||
+      Baud == 115200  ||
+      Baud == 128000  ||
+      Baud == 256000
+      ){
+        preferences.begin("serial-baud", false);
+        preferences.putInt(Port, Baud);
+        preferences.end();
+        Serial.printf("\n\nThe Serial Port Baud Rate has changed and the system will reboot in 3 seconds\n\n");
+        delay(3000);
+        ESP.restart();
+      } else {Serial.printf("Wrong Baudrate given");}
+ }
+
+
+////////////////////////////////////////////////////
+
+#define MAX_QUEUE_DEPTH 5
+
+////////////////////////////////////////////////////
+
+template<class T, int maxitems>
+class Queue {
+  private:
+    int _front = 0, _back = 0, _count = 0;
+    T _data[maxitems + 1];
+    int _maxitems = maxitems;
+  public:
+    inline int count() { return _count; }
+    inline int front() { return _front; }
+    inline int back()  { return _back;  }
+
+    void push(const T &item) {
+      if(_count < _maxitems) { // Drops out when full
+        _data[_back++]=item;
+        ++_count;
+        // Check wrap around
+        if (_back > _maxitems)
+          _back -= (_maxitems + 1);
+      }
+    }
+
+    T peek() {
+      return (_count <= 0) ? T() : _data[_front];
+    }
+
+    T pop() {
+      if (_count <= 0)
+        return T(); // Returns empty
+
+      T result = _data[_front];
+      _front++;
+      --_count;
+      // Check wrap around
+      if (_front > _maxitems) 
+        _front -= (_maxitems + 1);
+      return result; 
+    }
+
+    void clear() {
+      _front = _back;
+      _count = 0;
+    }
+};
+
+template <int maxitems = MAX_QUEUE_DEPTH>
+using CommandQueue = Queue<String, maxitems>;
+
+////////////////////////////////////////////////////
+
+
+CommandQueue<> commandQueue;
+
+bool havePendingCommands(){return (commandQueue.count() > 0);}
+
+String getNextCommand(){return commandQueue.pop();}
+
+void enqueueCommand(String command){commandQueue.push(command);}
+
+
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -650,20 +782,35 @@ void sendESPNOWCommand(String starget, String scomm){
 
 void setup(){
   // initializes the 5 serial ports
-  Serial.begin(SERIAL1_BAUD_RATE);
-  s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);
-  s3Serial.begin(SERIAL3_BAUD_RATE,SERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN);  
-  s4Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
-  s5Serial.begin(SERIAL5_BAUD_RATE,SWSERIAL_8N1,SERIAL5_RX_PIN,SERIAL5_TX_PIN,false,95);  
+  Serial.begin(115200);
 
+  preferences.begin("serial-baud", false);
+ unsigned long SERIAL1_BAUD_RATE = preferences.getInt("S1BAUD", SERIAL1_DEFAULT_BAUD_RATE);
+ unsigned long SERIAL2_BAUD_RATE = preferences.getInt("S2BAUD", SERIAL2_DEFAULT_BAUD_RATE);
+//  unsigned long SERIAL3_BAUD_RATE = preferences.getInt("S3BAUD", SERIAL3_DEFAULT_BAUD_RATE);
+//  unsigned long SERIAL4_BAUD_RATE = preferences.getInt("S4BAUD", SERIAL4_DEFAULT_BAUD_RATE);
+//  unsigned long SERIAL5_BAUD_RATE = preferences.getInt("S5BAUD", SERIAL5_DEFAULT_BAUD_RATE);
+  preferences.end();
+
+  s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
+  s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);  
+  // s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
+  // s4Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
+  // s5Serial.begin(SERIAL5_BAUD_RATE,SWSERIAL_8N1,SERIAL5_RX_PIN,SERIAL5_TX_PIN,false,95);  
+
+  Serial.printf("S1: %i \n S2: %i\n S3: %i \n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE);
   // prints out a bootup message of the local hostname
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
+  Serial.printf("Serial 1 Baudrate: %i \nSerial 2 Baudrate: %i\n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE );
 
   //Reserve the memory for inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
+
+  // Onboard LED setup
+  // pinMode(ONBOARD_LED, OUTPUT);
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
@@ -828,15 +975,19 @@ void loop(){
 
     // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
     if(Serial.available()){serialEvent();}
+    if(s1Serial.available()){s1SerialEvent();}
     if(s2Serial.available()){s2SerialEvent();}
-    if(s3Serial.available()){s3SerialEvent();}
-    if(s4Serial.available()){s4SerialEvent();}
-    if(s5Serial.available()){s5SerialEvent();}
+    // if(s3Serial.available()){s3SerialEvent();}
+    // if(s4Serial.available()){s4SerialEvent();}
+    // if(s5Serial.available()){s5SerialEvent();}
 
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+    // if (stringComplete) {autoComplete=false;}
+    // if (stringComplete || autoComplete) {
+    //    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+    if (havePendingCommands()) {autoComplete=false;}
+    if (havePendingCommands() || autoComplete) {
+    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
+    else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
       if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
@@ -844,7 +995,9 @@ void loop(){
             inputBuffer[1]=='L' ||          // Command designator for internal functions
             inputBuffer[1]=='l' ||          // Command designator for internal functions
             inputBuffer[1]=='E' ||          // Command designator for storing EEPROM data
-            inputBuffer[1]=='e'           // Command designator for storing EEPROM data
+            inputBuffer[1]=='e' ||          // Command designator for storing EEPROM data
+            inputBuffer[1]=='S' ||
+            inputBuffer[1]=='s'
           ){commandLength = strlen(inputBuffer); 
             if (inputBuffer[1]=='D' || inputBuffer[1]=='d'){
               debugInputIdentifier = "";                            // flush the string
@@ -863,7 +1016,31 @@ void loop(){
               } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
                 Debug.LOOP("EEPROM configuration selected /n");
                 // need to actually add the code to implement this.
-              } else {Debug.LOOP("No valid command entered /n");}
+              } else if (inputBuffer[1]=='S' || inputBuffer[1]=='s'){
+                for (int i=1; i<commandLength;i++ ){
+                char inCharRead = inputBuffer[i];
+                serialStringCommand += inCharRead;  // add it to the inputString:
+              }
+              serialPort = serialStringCommand.substring(0,2);
+              serialSubStringCommand = serialStringCommand.substring(2,commandLength);
+              Debug.LOOP("Serial Baudrate: %s on Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort); 
+              int tempBaud = serialSubStringCommand.toInt();
+              if (serialPort == "S1"|| serialPort == "s1"){
+                  saveBaud("S1BAUD", tempBaud);
+              } else if (serialPort == "S2" || serialPort == "s2"){
+                  saveBaud("S2BAUD", tempBaud);
+              } else if (serialPort == "S3" || serialPort == "s3"){
+                  saveBaud("S3BAUD", tempBaud);
+              }else if (serialPort == "S4" || serialPort == "s4"){
+                  saveBaud("S4BAUD", tempBaud);
+              } else if (serialPort == "S5" || serialPort == "s15"){
+                  saveBaud("S5BAUD", tempBaud);
+              }else {Debug.LOOP("No valid serial port given \n");}
+              
+              serialStringCommand = "";
+              serialPort = "";
+              } 
+              else {Debug.LOOP("No valid command entered /n");}
           }
               if(Local_Command[0]){
                 switch (Local_Command[0]){
@@ -916,16 +1093,16 @@ void loop(){
               serialPort = serialStringCommand.substring(0,2);
               serialSubStringCommand = serialStringCommand.substring(2,commandLength);
               Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);  
-              if (serialPort == "S1"){
-                writeSerialString(serialStringCommand);
-              } else if (serialPort == "S2"){
-                writes2SerialString(serialStringCommand);
-              } else if (serialPort == "S3"){
-                writes3SerialString(serialStringCommand);
-              }else if (serialPort == "S4"){
-                writes4SerialString(serialStringCommand);
-              } else if (serialPort == "S5"){
-                writes5SerialString(serialStringCommand);
+              if (serialPort == "S1" || serialPort == "s1"){
+                writes1SerialString(serialSubStringCommand);
+              } else if (serialPort == "S2" || serialPort == "s2"){
+                writes2SerialString(serialSubStringCommand);
+              } else if (serialPort == "S3" || serialPort == "s3"){
+                // writes3SerialString(serialSubStringCommand);
+              }else if (serialPort == "S4" || serialPort == "s4"){
+                // writes4SerialString(serialSubStringCommand);
+              } else if (serialPort == "S5" || serialPort == "s5"){
+                // writes5SerialString(serialSubStringCommand);
               }else {Debug.LOOP("No valid serial port given \n");}
               serialStringCommand = "";
               serialPort = "";
