@@ -70,10 +70,10 @@
 #include "wcb_pin_map.h"
 
 // Debug Functions  - Using my own library for this.  This should be in the same folder as this sketch.
-#include "DebugR2.h" 
+#include "DebugWCB.h" 
 
 // Used for Software Serial to allow more serial port capacity
-#include <SoftwareSerial.h>
+#include <SoftwareSerial.h>       //EspSoftwareSerial by Dirk Kaar
 
 #include <Preferences.h>
 
@@ -448,8 +448,9 @@ void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
   if (incomingTargetID == ESPNOW_SenderID || incomingTargetID == "BR"){
-    inputString = incomingCommand;
-    stringComplete = true; 
+    // inputString = ;
+    enqueueCommand(incomingCommand);
+    // stringComplete = true; 
     Debug.ESPNOW("Recieved command from %s \n", incomingSenderID);
   }
 }
