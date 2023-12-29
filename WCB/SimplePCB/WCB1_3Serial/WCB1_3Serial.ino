@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                        *****////
-///*****                                          Created by Greg Hulette.                                      *****////                                                                                 
+///*****                                          Created by Greg Hulette.                                      *****////
 ///*****                                                                                                        *****////
 ///*****                                 So exactly what does this all do.....?                                 *****////
 ///*****                       - Receives commands via Serial or ESP-NOW                                        *****////
@@ -8,49 +8,49 @@
 ///*****                       - Sends Serial commands to other remotely connected devices                      *****////
 ///*****                       - Serial Commands sent ends with a Carriage Return "\r"                          *****//// 
 ///*****                                                                                                        *****////
-///*****                                                                                                        *****//// 
-///*****                       Wireless Command Syntax:                                                         *****////                        
-///*****                       :(xx)(yy)(zzz...)                                                                *****////
-///*****                       xx: 2 Digit Identifier for the destination  (i.e. W1 - W9, BR)                   *****////
-///*****                          xx: W1 = WCB1                                                                 *****//// 
-///*****                          xx: W2 = WCB2                                                                 *****//// 
-///*****                          xx: W3 = WCB3                                                                 *****//// 
-///*****                          xx: W4 = WCB4                                                                 *****//// 
-///*****                          xx: W5 = WCB5                                                                 *****//// 
-///*****                          xx: W6 = WCB6                                                                 *****//// 
-///*****                          xx: W7 = WCB7                                                                 *****//// 
-///*****                          xx: W8 = WCB8                                                                 *****//// 
-///*****                          xx: W9 = WCB9                                                                 *****//// 
-///*****                          xx: BR = Broadcast                                                            *****//// 
-///*****                       yy :Target's Serial Port (i.e. S1-S5)                                            *****////
-///*****                          yy: S1 = Serial 1 Port                                                        *****//// 
-///*****                          yy: S2 = Serial 2 Port                                                        *****//// 
-///*****                          yy: S3 = Serial 3 Port                                                        *****//// 
-///*****                          yy: S4 = Serial 4 Port                                                        *****//// 
-///*****                          yy: S5 = Serial 5 Port                                                        *****//// 
+///*****                                                                                                        *****////
+///*****                       Wireless Command Syntax:                                                         *****////
+///*****                       :W(x):S(y)(zzz...)                                                               *****////
+///*****                       x: 1 Digit Identifier for the destination  (i.e. W1 - W9, BR)                    *****////
+///*****                          x: 1 = WCB1                                                                   *****//// 
+///*****                          x: 2 = WCB2                                                                   *****//// 
+///*****                          x: 3 = WCB3                                                                   *****//// 
+///*****                          x: 4 = WCB4                                                                   *****//// 
+///*****                          x: 5 = WCB5                                                                   *****//// 
+///*****                          x: 6 = WCB6                                                                   *****//// 
+///*****                          x: 7 = WCB7                                                                   *****//// 
+///*****                          x: 8 = WCB8                                                                   *****//// 
+///*****                          x: 9 = WCB9                                                                   *****//// 
+///*****                          x: B = Broadcast                                                              *****//// 
+///*****                       y :Target's Serial Port (i.e. S1-S5)                                             *****////
+///*****                          y: 1 = Serial 1 Port                                                          *****//// 
+///*****                          y: 2 = Serial 2 Port                                                          *****//// 
+///*****                          y: 3 = Serial 3 Port                                                          *****//// 
+///*****                          y: 4 = Serial 4 Port                                                          *****//// 
+///*****                          y: 5 = Serial 5 Port                                                          *****//// 
 ///*****                       zzz...: String to send out the destination serial port                           *****////
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
-///*****          Example1: :W2S2:PP100  (Sends to WCB2's Serial 2 port and sends string ":PP100" + "\r")       *****////
-///*****          Example2: :W3S3:R01    (Sends to WCB3's Serial 3 port and sends string ":R01" + "\r")         *****////
-///*****          Example3: :W5S4MD904   (Sends to WCB5's Serial 4 port and sends string "MD904" + "\r")        *****////
+///*****          Example1: :W2:S2:PP100  (Sends to WCB2's Serial 2 port and sends string ":PP100" + "\r")      *****////
+///*****          Example2: :W3:S3:R01    (Sends to WCB3's Serial 3 port and sends string ":R01" + "\r")        *****////
+///*****          Example3: :W5:S4MD904   (Sends to WCB5's Serial 4 port and sends string "MD904" + "\r")       *****////
 ///*****                                                                                                        *****////
 ///*****                                                                                                        *****////
-///*****                       Local Serial Command Syntax:                                                     *****////                        
-///*****                       :(yy)(zzz...)                                                                    *****////
-///*****                       yy :Target Serial Port (i.e. S1-S5)                                              *****////
-///*****                          yy: S1 = Serial 1 Port                                                        *****//// 
-///*****                          yy: S2 = Serial 2 Port                                                        *****//// 
-///*****                          yy: S3 = Serial 3 Port                                                        *****//// 
-///*****                          yy: S4 = Serial 4 Port                                                        *****//// 
-///*****                          yy: S5 = Serial 5 Port                                                        *****//// 
+///*****                       Local Serial Command Syntax:                                                     *****////
+///*****                       :S(y)(zzz...)                                                                    *****////
+///*****                       y :Target Serial Port (i.e. S1-S5)                                               *****////
+///*****                          y: 1 = Serial 1 Port                                                          *****//// 
+///*****                          y: 2 = Serial 2 Port                                                          *****//// 
+///*****                          y: 3 = Serial 3 Port                                                          *****//// 
+///*****                          y: 4 = Serial 4 Port                                                          *****//// 
+///*****                          y: 5 = Serial 5 Port                                                          *****//// 
 ///*****                       zzz...: String to send out the destination serial port                           *****////
 ///*****                          zzz...: any string of characters up to 90 characters long                     *****//// 
 ///*****                                                                                                        *****////
 ///*****          Example1: :S2:PP100  (Sends to local Serial 2 port and sends string ":PP100" + "\r")          *****////
 ///*****          Example2: :S3:R01    (Sends to local Serial 3 port and sends string ":R01" + "\r")            *****////
 ///*****          Example3: :S4MD904   (Sends to local Serial 4 port and sends string "MD904" + "\r")           *****////
-///*****                                                                                                        *****////                      
+///*****                                                                                                        *****////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
