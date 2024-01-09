@@ -208,7 +208,7 @@ void setup() {
 
     
 
-
+ pinMode(SLIDE_CLOSE_LS, INPUT);
 
 
   //Reserve the inputStrings
@@ -223,7 +223,10 @@ void setup() {
 int pls = 1;
 void loop() {
 //   // put your main code here, to run repeatedly:
-
+bool SLIDE_CLOSE_LS_STATUS = digitalRead(SLIDE_CLOSE_LS);
+if (SLIDE_CLOSE_LS_STATUS == true){
+  servoDispatch.disable(SLIDER_SERVO);
+}
 
 
     AnimatedEvent::process();
@@ -298,8 +301,7 @@ void loop() {
         case 7: completeSequence3sec();                         break;
         case 8: completeSequence11sec();                         break;
         case 9: PieDrawerBounceSequence();                         break;
-
-          default: break;
+        default: break;
         }
       }
     // }

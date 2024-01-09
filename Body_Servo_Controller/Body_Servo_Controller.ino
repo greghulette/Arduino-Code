@@ -585,6 +585,7 @@ void processESPNOWIncomingMessage(){
 #define CPU_ARM_RAISE         0x1000 //b0001000000000000
 #define CPU_ARM_ROTATE        0x2000 //b0010000000000000
 #define CPU_ARM_EXTEND        0x4000 //b0100000000000000
+#define FUTURE                0x8000 //b0100000000000000
 
 #define UTILITY_ARMS_MASK     (TOP_UTILITY_ARM|BOTTOM_UTILITY_ARM)
 #define LARGE_DOORS_MASK      (LARGE_LEFT_DOOR|LARGE_RIGHT_DOOR)
@@ -609,11 +610,12 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */
     { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/
     { 10,  1300, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
-    { 11,  800, 2200, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
+    { 11,  1900, 600, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
     { 12,  800, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
-    { 13,  800, 2300, CPU_ARM_EXTEND },       /* 12: CPU Arm Extend */
+    { 13,  1050, 2450, CPU_ARM_EXTEND },      /* 12: CPU Arm Extend */
     { 14,  1500, 1549, REAR_LEFT_DOOR },      /* 13: Data Panel Door */
-    { 15,  1500, 1549, REAR_RIGHT_DOOR }      /* 14: Data Panel Door */
+    { 15,  1500, 1549, REAR_RIGHT_DOOR },     /* 14: Data Panel Door */
+    { 16,  1500, 1549, FUTURE }               /* 15: FUTURE */
   };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -1492,9 +1494,10 @@ void CpuArmSequence(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
             // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_EXTEND, 6000, 0.0);},12000); 
             // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_RAISE, 1000, 0.0);},16000);  break;
             // servoDispatch.moveServosTo(CPU_ARM_EXTEND, 4500, 1.0); break;
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURotate, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},5000);  
-            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},13000);  break;
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUSequence, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            // DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURotate, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},5000);  
+            // DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},13000);  break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: turnOnCBIandDataPanel();
             SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
@@ -1995,7 +1998,7 @@ void loop(){
     
 
     if(D_command[0]) {
-      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 11) {
+      if((D_command[0] == 1 || D_command[0] == 2) && D_command[1] >= 16) {
         Debug.LOOP("Incorrect Door Value Specified, Command Aborted!");
         D_command[0] = '\0';
       }
