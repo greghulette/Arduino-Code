@@ -9,7 +9,7 @@
 #define D1    1 // Y // Unused Pin
 #define D2    2 // Y // Unused Pin
 #define PIE_LOWERED_LS	  3 // Y // Unused Pin
-#define SLIDE_CLOSE_LS    4 // Y // Unused Pin
+#define SLIDE_CLOSE_LS    19 // Y // Unused Pin
 #define SPARE_3 // N // TUnused Pin
 #define SPARE_2    6 // Y // Unused Pin
 #define SPARE_1    7 // Y // Unused Pin

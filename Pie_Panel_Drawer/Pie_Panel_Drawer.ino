@@ -7,6 +7,7 @@
 #include "core/DelayCall.h"
 #include "ServoDispatchDirect.h"
 #include "ServoSequencer.h"
+#include "ServoDispatchPCA9685.h"
 
 
 // Used for Software Serial to allow more useful naming
@@ -77,8 +78,8 @@
 
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-        { 10,  1425, 1820, RETRACT },    //Slide the drawer
-        { 11,  1000, 2000, RAISE_LOWER },       // Raise and Lower
+        { 25,  500, 2500, RETRACT },    //Slide the drawer
+        { 2,  1000, 2000, RAISE_LOWER },       // Raise and Lower
   };
 
 ServoDispatchDirect<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -141,14 +142,18 @@ void writes1Serial(String stringData){
 void openSlider() {
   // Command: :D01
   Serial.println("Open");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
+    servoDispatch.moveServosTo(RETRACT, 3000, 1.0);
+  D_command[0] = '\0';
+
+  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
 };
 
 
 void closeSlider() {
   // Command: :D02
   Serial.println("Close");
-  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RETRACT); 
+  servoDispatch.moveServosTo(RETRACT, 3000, 0.0);
+  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RETRACT); 
   D_command[0] = '\0';
 };
 
@@ -198,6 +203,12 @@ void completeSequence11sec(){
 
  }
 
+ void stopSlider(){
+    servoDispatch.disable(25);
+    D_command[0] = '\0';
+ }
+
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
@@ -225,7 +236,9 @@ void loop() {
 //   // put your main code here, to run repeatedly:
 bool SLIDE_CLOSE_LS_STATUS = digitalRead(SLIDE_CLOSE_LS);
 if (SLIDE_CLOSE_LS_STATUS == true){
-  servoDispatch.disable(SLIDER_SERVO);
+  stopSlider();
+
+  Serial.println("Switch Activated");
 }
 
 
