@@ -1,0 +1,166 @@
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 27, free memory: 1395
+Count added: 4, count deleted: 1, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func(): string2
+delayed_func2(): leave
+delayed_func(): string1
+Tick: 77, free memory: 1395
+Count added: 5, count deleted: 2, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func(): string2
+delayed_func2(): leave
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 149, free memory: 1395
+Count added: 7, count deleted: 4, count: 3
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 199, free memory: 1395
+Count added: 8, count deleted: 5, count: 3
+delayed_func(): string2
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 270, free memory: 1395
+Count added: 10, count deleted: 7, count: 3
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 320, free memory: 1395
+Count added: 11, count deleted: 8, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 392, free memory: 1395
+Count added: 13, count deleted: 10, count: 3
+delayed_func(): string2
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string1
+Tick: 442, free memory: 1395
+Count added: 14, count deleted: 11, count: 3
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 513, free memory: 1395
+Count added: 16, count deleted: 13, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string2
+delayed_func(): string1
+Tick: 563, free memory: 1395
+Count added: 17, count deleted: 14, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string2
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 635, free memory: 1395
+Count added: 19, count deleted: 16, count: 3
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 685, free memory: 1395
+Count added: 20, count deleted: 17, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func(): string2
+delayed_func2(): leave
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 757, free memory: 1395
+Count added: 22, count deleted: 19, count: 3
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 807, free memory: 1395
+Count added: 23, count deleted: 20, count: 3
+delayed_func(): string2
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 878, free memory: 1395
+Count added: 25, count deleted: 22, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func(): string2
+delayed_func2(): leave
+delayed_func(): string1
+Tick: 928, free memory: 1395
+Count added: 26, count deleted: 23, count: 3
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+Tick: 1000, free memory: 1395
+Count added: 28, count deleted: 25, count: 3
+delayed_func(): string2
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string1
+Tick: 1050, free memory: 1395
+Count added: 29, count deleted: 26, count: 3
+delayed_func2(): enter
+delayed_func(): string2
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func(): string2
+delayed_func2(): leave
+Tick: 1121, free memory: 1395
+Count added: 31, count deleted: 28, count: 3
+delayed_func(): string1
+delayed_func2(): enter
+delayed_func(): string1
+delayed_func2(): leave
+delayed_func(): string2
+Tick: 1171, free memory: 1395
+Count added: 32, count deleted: 29, count: 3

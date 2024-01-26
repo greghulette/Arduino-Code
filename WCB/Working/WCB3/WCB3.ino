@@ -1,6 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                        *****////
 ///*****                                          Created by Greg Hulette.                                      *****////
+///*****                                                Version 2.1                                             *****////
 ///*****                                                                                                        *****////
 ///*****                                 So exactly what does this all do.....?                                 *****////
 ///*****                       - Receives commands via Serial or ESP-NOW                                        *****////
@@ -60,6 +61,7 @@
 
 // Standard Arduino library
 #include <Arduino.h>
+#include <string.h>
 
 //Used for ESP-NOW
 #include <WiFi.h>
@@ -75,59 +77,29 @@
 // Used for Software Serial to allow more serial port capacity
 #include <SoftwareSerial.h>
 
+// Used to store parameters after reboot/power loss
 #include <Preferences.h>
 
-//////////////////////////////////////////////////////////////////////
-///*****          Preferences/Items to change                 *****///
-//////////////////////////////////////////////////////////////////////
-
-    // Uncomment only the board that you are loading this sketch onto. 
-    // #define WCB1 
-    // #define WCB2 
-    #define WCB3 
-    // #define WCB4 
-    // #define WCB5 
-    // #define WCB6 
-    // #define WCB7 
-    // #define WCB8 
-    // #define WCB9
-
-  // Change to match the amount of WCB's that you are using.  This alleviates initialing ESP-NOW peers if they are not used.
- int Default_WCB_Quantity = 4;          
-
-  // ESPNOW Password - This must be the same across all devices and unique to your droid/setup. (PLEASE CHANGE THIS)
-  String DEFAULT_ESPNOWPASSWORD = "ESPNOW_RoloJard";
-
-  // Default Serial Baud Rates   ******THESE ARE ONLY CORRECT UNTIL YOU CHANGE THEM VIA THE COMMAND LINE.  ONCE CHANGED, THEY MAY NOT MATCH THIS NUMBER.
-  // The correct baud rates will be shown on the serial console on bootup.
-  #define SERIAL1_DEFAULT_BAUD_RATE 9600
-  #define SERIAL2_DEFAULT_BAUD_RATE 9600 
-  #define SERIAL3_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
-  #define SERIAL4_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
-  #define SERIAL5_DEFAULT_BAUD_RATE 9600  //Should be lower than 57600, I'd recommend 9600 or lower for best reliability
-
-
-  // Mac Address Customization: MUST BE THE SAME ON ALL BOARDS - Allows you to easily change 2nd and 3rd octects of the mac addresses so that there are more unique addresses out there.  
-  // Can be any 2-digit hexidecimal number.  Just match the hex number with the string.  Each digit can be 0-9 or A-F.  Example is "0x1A", or "0x56" or "0xB2"
-
-  const uint8_t umac_oct2 = 0x0A;     
-  String umac_oct2_String = "0A:";      // Must match the unique Mac Address "umac_oct2" variable withouth the "0x"
-
-  const uint8_t umac_oct3 = 0x00;
-  String umac_oct3_String = "00:";      // Must match the unique Mac Address "umac_oct3" variable withouth the "0x"
+//Used for the Status LED on Board version 2.1
+#include <Adafruit_NeoPixel.h>
 
 
 //////////////////////////////////////////////////////////////////////
 ///*****        Command Varaiables, Containers & Flags        *****///
 //////////////////////////////////////////////////////////////////////
   
-  char inputBuffer[100];
+  char inputBuffer[300];
   String inputString;         // a string to hold incoming data
   
   volatile boolean stringComplete  = false;      // whether the serial string is complete
   String autoInputString;         // a string to hold incoming data
   volatile boolean autoComplete    = false;    // whether an Auto command is setA
   
+  String umac_oct2_String ;      // Must match the unique Mac Address "umac_oct2" variable withouth the "0x"
+  char umac_oct2_CharArray[2];      // Must match the unique Mac Address "umac_oct2" variable withouth the "0x"
+
+  String umac_oct3_String ;      // Must match the unique Mac Address "umac_oct2" variable withouth the "0x"
+  char umac_oct3_CharArray[2];      // Must match the unique Mac Address "umac_oct2" variable withouth the "0x"
   int commandLength;
 
   String serialStringCommand;
@@ -141,37 +113,40 @@
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
   String ESPNOWPASSWORD;
+  uint32_t SuccessCounter = 0;
+  uint32_t FailureCounter = 0;
+
 
   debugClass Debug;
   String debugInputIdentifier ="";
 
   #ifdef WCB1
     String ESPNOW_SenderID = "W1";
-    String HOSTNAME = "Wireless Control Board 1 (W1)";
+    String HOSTNAME = "Wireless Communication Board 1 (W1)";
   #elif defined (WCB2)
     String ESPNOW_SenderID = "W2";
-    String HOSTNAME = "Wireless Control Board 2 (W2)";
+    String HOSTNAME = "Wireless Communication Board 2 (W2)";
   #elif defined (WCB3)
     String ESPNOW_SenderID = "W3";
-    String HOSTNAME = "Wireless Control Board 3 (W3)";
+    String HOSTNAME = "Wireless Communication Board 3 (W3)";
   #elif defined (WCB4)
     String ESPNOW_SenderID = "W4";
-    String HOSTNAME = "Wireless Control Board 4 (W4)";
+    String HOSTNAME = "Wireless Communication Board 4 (W4)";
   #elif defined (WCB5)
     String ESPNOW_SenderID = "W5";
-    String HOSTNAME = "Wireless Control Board 5 (W5)";
+    String HOSTNAME = "Wireless Communication Board 5 (W5)";
   #elif defined (WCB6)
     String ESPNOW_SenderID = "W6";
-    String HOSTNAME = "Wireless Control Board 6 (W6)";
+    String HOSTNAME = "Wireless Communication Board 6 (W6)";
   #elif defined (WCB7)
     String ESPNOW_SenderID = "W7";
-    String HOSTNAME = "Wireless Control Board 7 (W7)";
+    String HOSTNAME = "Wireless Communication Board 7 (W7)";
   #elif defined (WCB8)
     String ESPNOW_SenderID = "W8";
-    String HOSTNAME = "Wireless Control Board 8 (W8)";
+    String HOSTNAME = "Wireless Communication Board 8 (W8)";
   #elif defined (WCB9)
     String ESPNOW_SenderID = "W9";
-    String HOSTNAME = "Wireless Control Board 9 (W9)";
+    String HOSTNAME = "Wireless Communication Board 9 (W9)";
   #endif
 
   Preferences preferences;
@@ -187,7 +162,16 @@
   unsigned long mainLoopTime; 
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
+  String version = "V2.1";
 
+
+#ifdef HWVERSION_1
+bool BoardVer1 = true;
+bool BoardVer2 = false;
+#elif defined HWVERSION_2
+bool BoardVer1 = false;
+bool BoardVer2 = true;
+#endif
  
 //////////////////////////////////////////////////////////////////
 ///******       Serial Ports Definitions                  *****///
@@ -200,7 +184,32 @@
   SoftwareSerial s4Serial;
   SoftwareSerial s5Serial;
   
+
+//////////////////////////////////////////////////////////////////////
+///*****            Status LED Variables and settings       *****///
+//////////////////////////////////////////////////////////////////////
   
+// -------------------------------------------------
+// Define some constants to help reference objects,
+// pins, leds, colors etc by name instead of numbers
+// -------------------------------------------------
+//    CAMERA LENS LED VARIABLES
+  const uint32_t red     = 0xFF0000;
+  const uint32_t orange  = 0xFF8000;
+  const uint32_t yellow  = 0xFFFF00;
+  const uint32_t green   = 0x00FF00;
+  const uint32_t cyan    = 0x00FFFF;
+  const uint32_t blue    = 0x0000FF;
+  const uint32_t magenta = 0xFF00FF;
+  const uint32_t white   = 0xFFFFFF;
+  const uint32_t off     = 0x000000;
+
+  const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
+
+  #define STATUS_LED_COUNT 1
+
+  Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+
 /////////////////////////////////////////////////////////////////////////
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
@@ -218,15 +227,15 @@
   const uint8_t broadcastMACAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
   // Uses these Strings for comparators
-  String WCB1MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:01";
-  String WCB2MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:02";
-  String WCB3MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:03";
-  String WCB4MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:04";
-  String WCB5MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:05";
-  String WCB6MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:06";
-  String WCB7MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:07";
-  String WCB8MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:08";
-  String WCB9MacAddressString = "02:" + umac_oct2_String + umac_oct3_String + "00:00:09";
+  String WCB1MacAddressString;
+  String WCB2MacAddressString; 
+  String WCB3MacAddressString; 
+  String WCB4MacAddressString; 
+  String WCB5MacAddressString; 
+  String WCB6MacAddressString;
+  String WCB7MacAddressString;
+  String WCB8MacAddressString;
+  String WCB9MacAddressString;
   String broadcastMACAddressString =  "FF:FF:FF:FF:FF:FF";
 
   // Define variables to store commands to be sent
@@ -248,11 +257,11 @@
   //Structure example to send data
   //Must match the receiver structure
   typedef struct espnow_struct_message {
-        char structPassword[20];
+        char structPassword[40];
         char structSenderID[4];
         char structTargetID[4];
         bool structCommandIncluded;
-        char structCommand[100];
+        char structCommand[200];
     } espnow_struct_message;
 
 
@@ -286,6 +295,7 @@
 
   // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -294,13 +304,14 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     }
     else{
       success = "Delivery Fail :(";
+ 
     }
   }
 }
 
 // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  turnOnLED();
+  turnOnLEDESPNOW();
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -451,8 +462,9 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   } 
   else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
   IncomingMacAddress ="";  
-  turnOffLED();
-} 
+
+    
+    } 
 
 void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
@@ -460,9 +472,10 @@ void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
   if (incomingTargetID == ESPNOW_SenderID || incomingTargetID == "BR"){
-      enqueueCommand(incomingCommand);
+    enqueueCommand(incomingCommand);
     Debug.ESPNOW("Recieved command from %s \n", incomingSenderID);
   }
+  turnOffLED();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -537,75 +550,87 @@ void writes5SerialString(String stringData){
 /////////////////////////////////////////////////////////
 
 void serialEvent() {
-  while (Serial.available()) {
+  while (Serial.available() > 0) {
     char inChar = (char)Serial.read();
     inputString += inChar;
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
+      processSerial(inputString);
       Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString.c_str());
     }
   }
 }
 
 void s1SerialEvent() {
-  while (s1Serial.available()) {
+  while (s1Serial.available() > 0) {
     char inChar = (char)s1Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
       Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString.c_str());
+      processSerial(inputString);
     }
   }
 }
 
 void s2SerialEvent() {
-  while (s2Serial.available()) {
+  while (s2Serial.available() > 0) {
     char inChar = (char)s2Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
       Debug.SERIAL_EVENT("Serial 2 Input: %s \n", inputString.c_str());
+      processSerial(inputString);
     }
   }
 }
 
 void s3SerialEvent() {
-  while (s3Serial.available()) {
+  while (s3Serial.available() > 0) {
     char inChar = (char)s3Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
-      Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString.c_str());
+      Debug.SERIAL_EVENT("Serial 3 Input: %s \n", inputString.c_str());
+      processSerial(inputString);
     }
   }
 }
 void s4SerialEvent() {
-  while (s4Serial.available()) {
+  while (s4Serial.available() > 0) {
     char inChar = (char)s4Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
-      Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString.c_str());
+      Debug.SERIAL_EVENT("Serial 4 Input: %s \n", inputString.c_str());
+      processSerial(inputString);
     }
   }
 }
 void s5SerialEvent() {
-  while (s5Serial.available()) {
+  while (s5Serial.available() > 0) {
     char inChar = (char)s5Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      // stringComplete = true;            // set a flag so the main loop can do something about it.
-      enqueueCommand(inputString);
-      Debug.SERIAL_EVENT("Serial 5 Input: %s \n",inputString.c_str());
+      Debug.SERIAL_EVENT("Serial 5 Input: %s \n", inputString.c_str());
+      processSerial(inputString);
     }
   }
 }
 
+void processSerial(String incomingSerialCommand){
+  turnOnLEDSerial();
+  incomingSerialCommand += DELIMITER;               // add the deliimiter to the end so that next part knows when to end the splicing of commands
+  int saArrayLength = MAX_QUEUE_DEPTH + 1;
+  String sa[saArrayLength];  int r = 0;
+  int  t =0;
+
+  for (int i=0; i < incomingSerialCommand.length(); i++){ 
+    if(incomingSerialCommand.charAt(i) == DELIMITER){ 
+      sa[t] = incomingSerialCommand.substring(r, i);
+      enqueueCommand(sa[t]);
+      Debug.SERIAL_EVENT("Serial Chain Command %i: %s \n", t+1 , sa[t].c_str());
+      r=(i+1); 
+      t++; 
+    }
+  }
+  turnOffLED();
+}
 
 //////////////////////////////////////////////////////////////////////
 ///*****             ESP-NOW Functions                        *****///
@@ -686,15 +711,51 @@ void sendESPNOWCommand(String starget, String scomm){
 /////                              Miscellaneous Functions                                          /////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+// const char *str = '"ES",blue,20';
 /////////////////////////////////////////////////////////
 ///*****          On-Board LED Function          *****///
 /////////////////////////////////////////////////////////
 
- void turnOnLED(){digitalWrite(ONBOARD_LED, HIGH); }  // Turns om the onboard Green LED
+void turnOnLEDESPNOW(){
+if (BoardVer1){
+  digitalWrite(ONBOARD_LED, HIGH); 
+  } else if (BoardVer2){
+    colorWipeStatus("ES", green, 255);
+  }
+}  // Turns om the onboard Green LED
 
- void turnOffLED(){digitalWrite(ONBOARD_LED, LOW); }  // Turns off the onboard Green LED
+void turnOnLEDSerial(){
+  if (BoardVer2){
+    colorWipeStatus("ES", red, 255);
+  }
+}  
 
+void turnOnLEDSerialOut(){
+  if (BoardVer2){
+    colorWipeStatus("ES", orange, 255);
+  }
+}  
+
+void turnOffLED(){
+  if (BoardVer1){
+    digitalWrite(ONBOARD_LED, LOW);   // Turns off the onboard Green LED
+  } else if (BoardVer2){
+    colorWipeStatus("ES", blue, 10);
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////
+///*****   ColorWipe Function for Status LED                  *****///
+//////////////////////////////////////////////////////////////////////
+void colorWipeStatus(String statusled, uint32_t c, int brightness) {
+  if(statusled == "ES"){
+    ESP_LED.setBrightness(brightness);
+    ESP_LED.setPixelColor(0, c);
+    ESP_LED.show();
+  } 
+  else{Debug.DBG("No LED was chosen \n");}
+};
 
 /////////////////////////////////////////////////////////
 ///*****          Baud Rate Functions.           *****///
@@ -780,7 +841,6 @@ void clearPassword(){
 ///*****                                                      *****///
 //////////////////////////////////////////////////////////////////////
 
-#define MAX_QUEUE_DEPTH 5
 
 template<class T, int maxitems>
 class Queue {
@@ -852,8 +912,6 @@ void enqueueCommand(String command){commandQueue.push(command);}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
 void setup(){
   // initializes the 5 serial ports
   Serial.begin(115200);
@@ -876,25 +934,60 @@ void setup(){
 
   s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
   s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);  
+  // s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);  
   s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
   s4Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
   s5Serial.begin(SERIAL5_BAUD_RATE,SWSERIAL_8N1,SERIAL5_RX_PIN,SERIAL5_TX_PIN,false,95);  
 
-  Serial.printf("S1: %i \n S2: %i\n S3: %i \n S4: %i \n S5: %i \n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE, SERIAL3_BAUD_RATE, SERIAL4_BAUD_RATE, SERIAL5_BAUD_RATE );
+  // Serial.printf("S1: %i \n S2: %i\n S3: %i \n S4: %i \n S5: %i \n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE, SERIAL3_BAUD_RATE, SERIAL4_BAUD_RATE, SERIAL5_BAUD_RATE );
   // prints out a bootup message of the local hostname
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
+  Serial.print("FW Version: "); Serial.println(version);
+  #ifdef HWVERSION_1
+  Serial.println("HW Version 1.0");
+  #elif defined HWVERSION_2
+  Serial.println("HW Version 2.1");
+  #endif
   Serial.println("----------------------------------------");
   Serial.printf("Serial 1 Baudrate: %i \nSerial 2 Baudrate: %i\nSerial 3 Baudrate: %i \nSerial 4 Baudrate: %i \nSerial 5 Baudrate: %i \n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE, SERIAL3_BAUD_RATE, SERIAL4_BAUD_RATE, SERIAL5_BAUD_RATE );
+  
+  // Takes the variables in the WCB_Preference.h file and converts them to strings, then assigns them to larger strings which the callback for ESP-NOW uses.  
+  sprintf(umac_oct2_CharArray, "%02x", umac_oct2);
+  umac_oct2_String = umac_oct2_CharArray;
+  umac_oct2_String.toUpperCase();
+  sprintf(umac_oct3_CharArray, "%02x", umac_oct3);
+  umac_oct3_String = umac_oct3_CharArray;
+  umac_oct3_String.toUpperCase();
+  WCB1MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:01";
+  WCB2MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:02";
+  WCB3MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:03";
+  WCB4MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:04";
+  WCB5MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:05";
+  WCB6MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:06";
+  WCB7MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:07";
+  WCB8MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:08";
+  WCB9MacAddressString = "02:" + umac_oct2_String + ":" + umac_oct3_String + ":00:00:09";  
 
   Serial.printf("ESPNOW Password: %s \nQuantity of WCB's in system: %i \n2nd Octet: 0x%s \n3rd Octet: 0x%s\n", ESPNOWPASSWORD.c_str(), WCB_Quantity, umac_oct2_String, umac_oct3_String);
+  
 
   //Reserve the memory for inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
+  inputString.reserve(300);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(300);
 
   // Onboard LED setup
   pinMode(ONBOARD_LED, OUTPUT);
+
+  // NeoPixel Setup
+  ESP_LED.begin();
+  ESP_LED.show();
+  colorWipeStatus("ES",red,10);
+
+    // Tasks_Init();
+
+
+  // Tasks_Start();
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
@@ -1046,6 +1139,8 @@ if (WCB_Quantity >= 9 ){
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
   
+
+
 }   // end of setup
 
 
@@ -1053,6 +1148,7 @@ void loop(){
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     if(startUp) {
+        colorWipeStatus("ES",blue,10);
       startUp = false;
       Serial.print("Startup complete\nStarting main loop\n\n\n");
     }
@@ -1067,8 +1163,8 @@ void loop(){
 
     if (havePendingCommands()) {autoComplete=false;}
     if (havePendingCommands() || autoComplete) {
-    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString);inputString.toCharArray(inputBuffer, 100);inputString="";}
-    else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString);inputString.toCharArray(inputBuffer, 300);inputString="";}
+    else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 300);autoInputString="";}
       if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
@@ -1147,7 +1243,9 @@ void loop(){
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
                         Local_Command[0]   = '\0';                                                           break;
-                  case 3: ; break;  //reserved for future use
+                  case 3:printf("ESP-NOW Success Count: %i \nESP-NOW Failure Count %i \n", SuccessCounter, FailureCounter);
+                        Local_Command[0]   = '\0'; 
+                        break;  //prints out failure rate of ESPNOW
                   case 4: ; break;  //reserved for future use
                   case 5: ; break;  //reserved for future use
                   case 6: ; break;  //reserved for future use

@@ -142,18 +142,18 @@ void writes1Serial(String stringData){
 void openSlider() {
   // Command: :D01
   Serial.println("Open");
-    servoDispatch.moveServosTo(RETRACT, 3000, 1.0);
-  D_command[0] = '\0';
+    // servoDispatch.moveServosTo(RETRACT, 3000, 1.0);
+  // D_command[0] = '\0';
 
-  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, RETRACT); 
 };
 
 
 void closeSlider() {
   // Command: :D02
   Serial.println("Close");
-  servoDispatch.moveServosTo(RETRACT, 3000, 0.0);
-  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RETRACT); 
+  // servoDispatch.moveServosTo(RETRACT, 3000, 0.0);
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, RETRACT); 
   D_command[0] = '\0';
 };
 
@@ -204,7 +204,8 @@ void completeSequence11sec(){
  }
 
  void stopSlider(){
-    servoDispatch.disable(25);
+    // servoDispatch.disable(25);
+    servoSequencer.stop();
     D_command[0] = '\0';
  }
 

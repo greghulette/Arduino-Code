@@ -92,7 +92,7 @@
 //////////////////////////////////////////////////////////////////////
   String HOSTNAME = "Body Servo Controller";
   
-  char inputBuffer[100];
+  char inputBuffer[300];
   String inputString;         // a string to hold incoming data
 
   volatile boolean stringComplete  = false;      // whether the serial string is complete
@@ -111,6 +111,8 @@
   String ESPNOWStringCommand;
   String ESPNOWTarget;
   String ESPNOWSubStringCommand;
+
+
 
   debugClass Debug;
   String debugInputIdentifier ="";
@@ -336,6 +338,8 @@
   String  targetID;
   bool    commandIncluded;
   String  command;
+  uint32_t SuccessCounter = 0;
+  uint32_t FailureCounter = 0;
 
 // Define variables to store incoming commands
   String  incomingPassword;
@@ -366,6 +370,8 @@ typedef struct espnow_struct_message {
       char structSenderID[4];
       char structTargetID[4];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } espnow_struct_message;
 
@@ -410,6 +416,7 @@ typedef struct espnow_struct_message {
 
 //  // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -602,7 +609,7 @@ void processESPNOWIncomingMessage(){
 const ServoSettings servoSettings[] PROGMEM = {
     { 1,  2110, 1100, TOP_UTILITY_ARM },      /* 0: Top Utility Arm 2350,675*/
     { 2,  1950, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
-    { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
+    { 3,  1920, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
     { 4,  1400, 1900, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
     { 5,  1590 , 758, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
     { 6,  760, 1400, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
@@ -611,7 +618,7 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/
     { 10,  1300, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
     { 11,  1900, 600, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
-    { 12,  800, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
+    { 12,  700, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
     { 13,  1050, 2450, CPU_ARM_EXTEND },      /* 12: CPU Arm Extend */
     { 14,  1500, 1549, REAR_LEFT_DOOR },      /* 13: Data Panel Door */
     { 15,  1500, 1549, REAR_RIGHT_DOOR },     /* 14: Data Panel Door */
@@ -746,7 +753,6 @@ void writes1Serial(String stringData){
     s1Serial.write(completeString[i]);
   }
     Debug.SERIAL_EVENT("Writing to Serial 1\n");
-
 };
 
 
@@ -760,6 +766,8 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
+    msg->structSuccess = SuccessCounter;
+    msg->structFailure = FailureCounter;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 };
 
@@ -1494,9 +1502,11 @@ void CpuArmSequence(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
             // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_EXTEND, 6000, 0.0);},12000); 
             // DelayCall::schedule([] {servoDispatch.moveServosTo(CPU_ARM_RAISE, 1000, 0.0);},16000);  break;
             // servoDispatch.moveServosTo(CPU_ARM_EXTEND, 4500, 1.0); break;
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUSequence, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
-            // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
-            // DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURotate, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},5000);  
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, LARGE_LEFT_DOOR, varSpeedMin, varSpeedMax);
+            // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUSequence, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUSequence, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},250);  
+ // SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPUExtend, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); 
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, LARGE_LEFT_DOOR);},16750);  
             // DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},13000);  break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: turnOnCBIandDataPanel();
@@ -1655,8 +1665,8 @@ void setup(){
   SetupEvent::ready();
   
   //Reserve the inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
+  inputString.reserve(300);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(300);
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
@@ -1751,8 +1761,8 @@ void loop(){
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-        else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 300);inputString="";}
+        else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 300);autoInputString="";}
               if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
@@ -1913,10 +1923,8 @@ void loop(){
                 serialPort = serialStringCommand.substring(0,2);
                 serialSubStringCommand = serialStringCommand.substring(2,commandLength);
                 Debug.LOOP("Serial Command: %s to Serial Port: %s\n", serialSubStringCommand.c_str(), serialPort);                
-                if (serialPort == "BC"){
-                  // writeBcSerial(serialSubStringCommand);
-                } else if (serialPort == "FU"){
-                  Debug.LOOP("FU Port Chosen \n");
+                if (serialPort == "S1"){
+                  Debug.LOOP("Serial 1 Port Chosen \n");
                   writes1Serial(serialSubStringCommand);
                 } 
                 
@@ -1979,7 +1987,9 @@ void loop(){
                 Local_Command[0]   = '\0';                                                                break;
         case 3: connectWiFi();                                                                          break;
         case 4: ESP.restart();                                                                          break;
-        case 5: break;
+        case 5: printf("ESP-NOW Success Count: %i \nESP-NOW Failure Count %i \n", SuccessCounter, FailureCounter);
+                        Local_Command[0]   = '\0'; 
+                        break;  //prints out failure rate of ESPNOW
         case 6: break;
         case 7: break;
         case 8: break;

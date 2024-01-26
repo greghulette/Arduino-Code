@@ -336,7 +336,9 @@
   String  targetID;
   bool    commandIncluded;
   String  command;
-
+  uint32_t SuccessCounter = 0;
+  uint32_t FailureCounter = 0;
+  
 // Define variables to store incoming commands
   String  incomingTargetID;  
   String  incomingSenderID;
@@ -366,6 +368,8 @@ typedef struct espnow_struct_message {
       char structSenderID[4];
       char structTargetID[4];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } espnow_struct_message;
 
@@ -410,6 +414,7 @@ typedef struct espnow_struct_message {
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -801,6 +806,8 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
+    msg->structSuccess = SuccessCounter;
+    msg->structFailure = FailureCounter;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 };
 

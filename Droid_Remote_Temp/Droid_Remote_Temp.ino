@@ -118,6 +118,19 @@ String debugInputIdentifier ="";
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
   int FunctionSWState;
+  uint32_t DGSuccessCounter;
+  uint32_t DGFailureCounter;
+  uint32_t BSSuccessCounter;
+  uint32_t BSFailureCounter;
+  uint32_t BCSuccessCounter;
+  uint32_t BCFailureCounter;
+  uint32_t DPSuccessCounter;
+  uint32_t DPFailureCounter;
+  uint32_t DCSuccessCounter;
+  uint32_t DCFailureCounter;
+  uint32_t HPSuccessCounter;
+  uint32_t HPFailureCounter;
+
   
   String outgoing;
   String LoRaOutgoing;
@@ -536,6 +549,18 @@ void onReceive(int packetSize) {
   BL_BatteryVoltage = LoRa.read();
   BL_BatteryPercentage = LoRa.read();
   FunctionSWState = LoRa.read();
+  DGSuccessCounter = LoRa.read();
+  DGFailureCounter = LoRa.read();
+  BCSuccessCounter = LoRa.read();
+  BCFailureCounter = LoRa.read();
+  BSSuccessCounter = LoRa.read();
+  BSFailureCounter = LoRa.read();
+  DPSuccessCounter = LoRa.read();
+  DPFailureCounter = LoRa.read();
+  DCSuccessCounter = LoRa.read();
+  DCFailureCounter = LoRa.read();
+  HPSuccessCounter = LoRa.read();
+  HPFailureCounter = LoRa.read();
  }
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
@@ -687,6 +712,18 @@ void sendUpdates(){
   doc["BatteryVoltage"] = BL_BatteryVoltage;
   doc["BatteryPercent"] = BL_BatteryPercentage;
   doc["FunctionSwState"] = FunctionSWState;
+  doc["DGSuccessCounter"] = DGSuccessCounter;
+  doc["DGFailureCounter"] = DGFailureCounter;
+  doc["BCSuccessCounter"] = BCSuccessCounter;
+  doc["BCFailureCounter"] = BCFailureCounter;
+  doc["BSSuccessCounter"] = BSSuccessCounter;
+  doc["BSFailureCounter"] = BSFailureCounter;
+  doc["D{PSuccessCounter"] = DPSuccessCounter;
+  doc["DPFailureCounter"] = DPFailureCounter;
+  doc["DCSuccessCounter"] = DCSuccessCounter;
+  doc["DCFailureCounter"] = DCFailureCounter;
+  doc["HPSuccessCounter"] = HPSuccessCounter;
+  doc["HPFailureCounter"] = HPFailureCounter;
   doc["JSONDone"] = true;
   
   serializeJson(doc, Serial1);
@@ -993,6 +1030,18 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BL_BatteryVoltage"] = BL_BatteryVoltage;
       json["BL_BatteryPercentage"] = BL_BatteryPercentage;
       json["FunctionSWState"] = FunctionSWState;
+      json["DGSuccessCounter"] = DGSuccessCounter;
+      json["DGFailureCounter"] = DGFailureCounter;
+      json["BCSuccessCounter"] = BCSuccessCounter;
+      json["BCFailureCounter"] = BCFailureCounter;
+      json["BSSuccessCounter"] = BSSuccessCounter;
+      json["BSFailureCounter"] = BSFailureCounter;
+      json["DPSuccessCounter"] = DPSuccessCounter;
+      json["DPFailureCounter"] = DPFailureCounter;
+      json["DCSuccessCounter"] = DCSuccessCounter;
+      json["DCFailureCounter"] = DCFailureCounter;
+      json["HPSuccessCounter"] = HPSuccessCounter;
+      json["HPFailureCounter"] = HPFailureCounter;
 
       serializeJson(json, *response);
       request->send(response);

@@ -361,6 +361,18 @@ String debugInputIdentifier ="";
   int incomingstructBL_BatteryPercentage;
   String incomingstructFunctionSWState;
   bool incomingstructbodyLEDControllerStatus;
+  uint32_t DGSuccessCounter = 0;
+  uint32_t DGFailureCounter = 0;
+  uint32_t BSSuccessCounter;
+  uint32_t BSFailureCounter;
+  uint32_t BCSuccessCounter;
+  uint32_t BCFailureCounter;
+  uint32_t DPSuccessCounter;
+  uint32_t DPFailureCounter;
+  uint32_t DCSuccessCounter;
+  uint32_t DCFailureCounter;
+  uint32_t HPSuccessCounter;
+  uint32_t HPFailureCounter;
   
 // Variable to store if sending data was successful
   String success;
@@ -372,6 +384,8 @@ typedef struct espnow_struct_message {
       char structSenderID[4];
       char structTargetID[4];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } espnow_struct_message;
 
@@ -392,6 +406,9 @@ typedef struct bodyControllerStatus_struct_message{
       bool structbodyLEDControllerStatus;
       char structFunctionSWState[10];
       bool structCommandIncluded;
+      uint32_t structBL_Success;
+      uint32_t structBL_Failure;
+      
       char structCommand[100];
   } bodyControllerStatus_struct_message;
 
@@ -417,6 +434,7 @@ typedef struct bodyControllerStatus_struct_message{
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){DGSuccessCounter ++;} else {DGFailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -471,6 +489,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         bodyLEDControllerStatus = commandsToReceiveFromBodyController.structbodyLEDControllerStatus;
         FunctionSWState = commandsToReceiveFromBodyController.structFunctionSWState;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
+        BCSuccessCounter = commandsToReceiveFromBodyController.structBL_Success;
+        BCFailureCounter = commandsToReceiveFromBodyController.structBL_Failure;
         incomingCommand = commandsToReceiveFromBodyController.structCommand;
         processESPNOWIncomingMessage();
         }
@@ -483,8 +503,11 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
         incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
+        BSSuccessCounter = commandsToReceiveFromBodyServoController.structSuccess;
+        BSFailureCounter = commandsToReceiveFromBodyServoController.structFailure;
         incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
         processESPNOWIncomingMessage();
+        
         }
     } else if (IncomingMacAddress == domeControllerMACAddressString) {
       memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
@@ -496,6 +519,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromDomeController.structCommand;
+        DCSuccessCounter = commandsToReceiveFromDomeController.structSuccess;
+        DCFailureCounter = commandsToReceiveFromDomeController.structFailure;
         processESPNOWIncomingMessage();
         }
     } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
@@ -508,6 +533,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
+        DPSuccessCounter = commandsToReceiveFromDomePlateController.structSuccess;
+        DPFailureCounter = commandsToReceiveFromDomePlateController.structFailure;
         processESPNOWIncomingMessage();
         }
     } else if (IncomingMacAddress == broadcastMACAddressString) {
@@ -532,6 +559,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         incomingTargetID = commandsToReceiveFromHPController.structTargetID;
         incomingCommandIncluded = commandsToReceiveFromHPController.structCommandIncluded;
         incomingCommand = commandsToReceiveFromHPController.structCommand;
+        HPSuccessCounter = commandsToReceiveFromHPController.structSuccess;
+        HPFailureCounter = commandsToReceiveFromHPController.structFailure;
         processESPNOWIncomingMessage();
         }
     }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
@@ -541,7 +570,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 }
 
 void processESPNOWIncomingMessage(){
-    Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
+  Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
   Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
@@ -571,6 +600,8 @@ void processESPNOWIncomingMessage(){
         Debug.STATUS("Function Sw State %s \n", FunctionSWState);
         Debug.STATUS("Body LED Controller Status: %d \n", bodyLEDControllerStatus);
         Debug.ESPNOW("ESP NOW Message Received from Body Controller \n");
+        Debug.STATUS("Body Controller Statisics:  Success: %i  Failuure: %i\n", BCSuccessCounter, BCFailureCounter);
+
 
       }else if (incomingSenderID == "BS"){
         bodyServoControllerStatus = 1;
@@ -583,6 +614,8 @@ void processESPNOWIncomingMessage(){
 
         Debug.STATUS("Body Servo Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from Body Servo Controller \n");
+        Debug.STATUS("Body Servo Statisics:  Success: %i  Failuure: %i\n", BSSuccessCounter, BSFailureCounter);
+
       }
       else if (incomingSenderID == "DC"){
         domeControllerStatus = 1;
@@ -594,6 +627,8 @@ void processESPNOWIncomingMessage(){
 
         Debug.STATUS("Dome Controller Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from Dome Controller \n");
+        Debug.STATUS("Dome Controller Statisics:  Success: %i  Failuure: %i\n", DCSuccessCounter, DCFailureCounter);
+
       } else if (incomingSenderID == "DP"){
         domePlateControllerStatus = 1;
         dpkeepAliveAge =millis();
@@ -603,6 +638,8 @@ void processESPNOWIncomingMessage(){
         }
         Debug.STATUS("Dome Plate Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from Dome Plate Controller \n");
+        Debug.STATUS("Dome Plate Statisics:  Success: %i  Failuure: %i\n", DPSuccessCounter, DPFailureCounter);
+
       } else if (incomingSenderID == "HP"){
         hpControllerStatus = 1;
         hpkeepAliveAge =millis();
@@ -612,6 +649,8 @@ void processESPNOWIncomingMessage(){
         }
         Debug.STATUS("HP Controller Status Update \n");
         Debug.ESPNOW("ESP NOW Message Received from HP Controller \n");
+        Debug.STATUS("HP Controller Statisics:  Success: %i  Failuure: %i\n", HPSuccessCounter, HPFailureCounter);
+
       } else {Debug.ESPNOW("No Valid source identified \n");}
 
     } else {Debug.ESPNOW("No matching target ID \n");}
@@ -979,6 +1018,18 @@ void sendStatusMessage(String outgoing) {
   LoRa.write(BL_BatteryVoltage);
   LoRa.write(BL_BatteryPercentage);
   LoRa.write(functionSWStateInt);
+  LoRa.write(DGSuccessCounter);
+  LoRa.write(DGFailureCounter);
+  LoRa.write(BCSuccessCounter);
+  LoRa.write(BCFailureCounter);
+  LoRa.write(BSSuccessCounter);
+  LoRa.write(BSFailureCounter);
+  LoRa.write(DPSuccessCounter);
+  LoRa.write(DPFailureCounter);
+  LoRa.write(DCSuccessCounter);
+  LoRa.write(DCFailureCounter);
+  LoRa.write(HPSuccessCounter);
+  LoRa.write(HPFailureCounter);
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   // LoRa.receive();

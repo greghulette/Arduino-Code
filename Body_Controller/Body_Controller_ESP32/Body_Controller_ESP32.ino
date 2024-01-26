@@ -103,7 +103,7 @@
 //////////////////////////////////////////////////////////////////////
   String HOSTNAME = "Body Controller"; 
   
-  char inputBuffer[100];
+  char inputBuffer[200];
   String inputString;    
        // a string to hold incoming data
   volatile boolean stringComplete  = false;      // whether the serial string is complete
@@ -385,6 +385,8 @@ AsyncWebServer server(80);
   String  targetID;
   bool    commandIncluded;
   String  command;
+  uint32_t SuccessCounter = 0;
+  uint32_t FailureCounter = 0;
 
 // Define variables to store incoming commands
   String  incomingTargetID;  
@@ -415,6 +417,8 @@ typedef struct espnow_struct_message {
       char structSenderID[4];
       char structTargetID[4];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } espnow_struct_message;
 
@@ -435,6 +439,8 @@ typedef struct bodyControllerStatus_struct_message{
       bool structbodyLEDControllerStatus;
       char structFunctionSWState[10];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } bodyControllerStatus_struct_message;
 
@@ -460,6 +466,7 @@ typedef struct bodyControllerStatus_struct_message{
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -744,7 +751,7 @@ void connectWiFi(){
 /////////////////////////////////////////////////////////
 
 void serialEvent() {
-  while (Serial.available()) {
+  while (Serial.available()>0) {
     // get the new byte:
     char inChar = (char)Serial.read();
     // add it to the inputString:
@@ -753,7 +760,7 @@ void serialEvent() {
       stringComplete = true;            // set a flag so the main loop can do something about it.
     };
   };
-  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString);
+  Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString.c_str());
 };
 
 void serialRdEvent() {
@@ -921,7 +928,7 @@ void writeS1Serial(String stringData){
   for (int i=0; i<completeString.length(); i++){
     s1Serial.write(completeString[i]);
   };
-  Debug.SERIAL_EVENT("Writing to Serial 1\n");
+  Debug.SERIAL_EVENT("Writing to Serial 2\n");
 };
 
 void writeS2Serial(String stringData){
@@ -964,6 +971,8 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structbodyLEDControllerStatus = bodyLEDControllerStatus;
     snprintf(msg-> structFunctionSWState, sizeof(msg->structFunctionSWState), "%s", FunctionSwState.c_str());
     msg->structCommandIncluded = hascommand;
+    msg->structSuccess = SuccessCounter;
+    msg->structFailure = FailureCounter;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 };
 
@@ -1838,8 +1847,8 @@ void setup(){
 
 
   //Reserve the inputStrings
-  inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(100);
+  inputString.reserve(200);                                                              // Reserve 100 bytes for the inputString:
+  autoInputString.reserve(200);
 
   //Initialize the Soft Access Point
   WiFi.mode(WIFI_STA);
@@ -1949,8 +1958,8 @@ processSbus();
     
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
+      if(stringComplete) {inputString.toCharArray(inputBuffer, 200);inputString="";}
+      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 200);autoInputString="";}
       if (inputBuffer[0] == '#'){
         if (
             inputBuffer[1]=='D' ||          // Command for debugging
@@ -2054,7 +2063,7 @@ processSbus();
                 if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                   for (int i=1; i<commandLength;i++ ){
                     char inCharRead = inputBuffer[i];
-                    serialCommandString += inCharRead;  // add it to the inputString:
+                    serialCommandString += inCharRead;  // writeS1Serialadd it to the inputString:
                   }
                   Debug.DBG("Full Serial Command Captured: %s\n", serialCommandString.c_str());
                   serialPort = serialCommandString.substring(1,3);
@@ -2077,7 +2086,8 @@ processSbus();
                 if(inputBuffer[1]=='L' || inputBuffer[1]=='l') {
                   for (int i=2; i<commandLength;i++ ){
                     char inCharRead = inputBuffer[i];
-                    ledCommandString += inCharRead;  // add it to the inputString:
+                    ledCommandString += inCharRead;
+                      // add it to the inputString:
                   }              
                   writeBlSerial(ledCommandString);
                   Debug.LOOP("Sent ATMEGA2560 command of %s \n", ledCommandString);

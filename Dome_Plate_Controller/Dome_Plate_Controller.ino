@@ -1,3 +1,5 @@
+#include <sbus.h>
+
 //////////////////////////////////////\\///////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                        *****///
 ///*****                                          Created by Greg Hulette.                                      *****///
@@ -43,9 +45,10 @@
 
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_DotStar.h>                  // Source: https://github.com/adafruit/Adafruit_DotStar
 
 //pin definitions
-#include "dome_plate_controller_pin_map.h"
+#include "dome_plate_controller_test_pin_map.h"
 
 // Debug Functions  - Using my own library for this
 #include <DebugR2.h>  //  https://github.com/greghulette/Arduino-Code/tree/main/libraries/DebugR2  Put these files in a folder called "DebugR2" in your libraries folder and restart the IDE
@@ -53,7 +56,8 @@
 //ReelTwo libaries - Using my forked version of this libarary
 #include "ReelTwo.h"
 #include "core/DelayCall.h"
-
+#include "ServoDispatchDirect.h"
+#include "ServoSequencer.h"
 // Used for Software Serial to allow more useful naming
 #include <SoftwareSerial.h>
 
@@ -87,8 +91,6 @@
   #define US_BAUD_RATE 9600
   #define SERIAL1_BAUD_RATE 115200 
   #define SERIAL2_BAUD_RATE 9600  //Should be lower than 57600
-  #define SERIAL3_BAUD_RATE 9600  //Should be lower than 57600
-  #define SERIAL4_BAUD_RATE 57600 //Should be lower than 57600
 
 
 
@@ -119,8 +121,10 @@
 
   debugClass Debug;
   String debugInputIdentifier ="";
-
-
+  int accessoryFunction;
+  int colorState1;
+  int colorState2;
+  int typeState;
 
 
 
@@ -191,8 +195,6 @@
   #define usSerial Serial1
   #define s1Serial Serial2
   SoftwareSerial s2Serial;
-  SoftwareSerial s3Serial;
-  SoftwareSerial s4Serial;
   
 
 
@@ -243,10 +245,30 @@
   const uint32_t basicColors[9] = {off, red, yellow, green, cyan, blue, magenta, orange, white};
 
   #define STATUS_LED_COUNT 1
+  
+  #define STROBE_LED_COUNT 24
+  byte strobe_bright = 255;
 
   Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+  Adafruit_DotStar strobe_LED = Adafruit_DotStar(STROBE_LED_COUNT, STROBE_DATA, STROBE_CLOCK, DOTSTAR_RBG);
 
 
+
+byte Strobe_command[4]  = {0,0,0,0};
+
+
+
+    byte defaultPrimaryColorInt     = 5;          //1 Integer color value from list above
+    byte defaultSecondaryColorInt   = 1;          //5 Integer color value from list above
+
+
+  unsigned long StrobeMillis;
+   unsigned long SCruntimeStrobe;
+
+
+byte StrobeFrame;
+
+long int StrobeCount =0;
 
 
 
@@ -341,6 +363,8 @@
   String  targetID;
   bool    commandIncluded;
   String  command;
+  uint32_t SuccessCounter = 0;
+  uint32_t FailureCounter = 0;
 
 // Define variables to store incoming commands
   String  incomingPassword;
@@ -371,8 +395,11 @@ typedef struct espnow_struct_message {
       char structSenderID[4];
       char structTargetID[4];
       bool structCommandIncluded;
+      uint32_t structSuccess;
+      uint32_t structFailure;
       char structCommand[100];
   } espnow_struct_message;
+
 
 
 
@@ -415,6 +442,7 @@ typedef struct espnow_struct_message {
 
 //  // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -550,6 +578,60 @@ void processESPNOWIncomingMessage(){
   }
 }
 
+
+//////////////////////////////////////////////////////////////////////
+  ///*****   Door Values, Containers, Flags & Timers   *****///
+  //////////////////////////////////////////////////////////////////////
+
+  int door = -1;
+  // Door Command Container
+  uint32_t Accessory_Command[7]  = {0,0,0,0,0,0,0};
+  int doorFunction = 0;
+  int doorBoard = 0; 
+  int doorEasingMethod;
+  uint32_t cVarSpeedMin;
+  uint32_t cVarSpeedMax;
+  uint32_t doorEasingDuration;
+  uint32_t delayCallTime;
+
+  // variables for individual functions
+  uint32_t varSpeedMin;
+  uint32_t varSpeedMax;
+  char stringToSend[25];
+  uint32_t fVarSpeedMin;
+  uint32_t fVarSpeedMax;
+
+  /////////////////////////////////////////////////////////////////////////
+///*****              ReelTwo Servo Set Up                       *****///
+/////////////////////////////////////////////////////////////////////////
+
+#define SABER_LAUNCHER        0x0001 //b000000000001
+#define ALL_SERVOS_MASK       (SABER_LAUNCHER)
+
+// Group ID is used by the ServoSequencer and some ServoDispatch functions to
+// identify a group of servos.
+
+//     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
+const ServoSettings servoSettings[] PROGMEM = {
+    { 27,  2250, 1550, SABER_LAUNCHER },       /* 0: Top Utility Arm 2350,675*/
+    // { 2,  1630, 860, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
+    // { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
+    // { 4,  1400, 1900, LARGE_RIGHT_DOOR },      /* 3: Left Right door as viewing from looking at R2 1200,1900*/
+    // { 5,  1590 , 758, CHARGE_BAY_DOOR },       /* 4: Charge Bay Inidicator Door 1900,758*/
+    // { 6,  780, 1400, DATA_PANEL_DOOR },      /* 5: Data Panel Door 700,1400*/
+    // { 7,  1950, 700, DRAWER_S1 },             /* 5: Data Panel Door 2050,700*/
+    // { 8,  2245, 700, DRAWER_S2 },             /* 5: Data Panel Door 2345, 700*/
+    // { 9,  650, 2300, DRAWER_S3 },             /* 5: Data Panel Door 550,2300*/
+    // { 10,  1300, 2500, DRAWER_S4 },            /* 5: Data Panel Door 1200,2500*/
+    // { 11,  1500, 1549, REAR_LEFT_DOOR },      /* 5: Data Panel Door */
+    // { 12,  1500, 1549, REAR_RIGHT_DOOR }      /* 5: Data Panel Door */
+  };
+
+ServoDispatchDirect<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
+ServoSequencer servoSequencer(servoDispatch);
+
+
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -557,6 +639,208 @@ void processESPNOWIncomingMessage(){
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+void launchSaber(){
+  Debug.SERVO("Launched Light Saber\n");   
+    fVarSpeedMin = varSpeedMin;                                                               // sets Global Variable from the local variable to allow the lambda function to utilize it
+  fVarSpeedMax = varSpeedMax;    
+  sendESPNOWCommand("DC", ":D20109");    
+  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R:DPA5");}, 50);
+  
+  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 2000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 3000);
+  
+  // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER);
+  	  //  servoDispatch.moveServosTo(SABER_LAUNCHER, 150, 1000, 1.0);
+
+
+    Accessory_Command[0]   = '\0';
+
+}
+void armSaber(){
+  Debug.SERVO("Armed Light Saber\n");  
+  sendESPNOWCommand("BC", ":R#DPAUTO0");
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 50);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 100);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 150);
+  // sendESPNOWCommand("DC", ":D20109");      
+
+  // sendESPNOWCommand("DC", ":D20110");      
+
+  SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER);
+  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 7000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 20000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 20050);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 20100);
+  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R#DPAUTO1");}, 20150);
+
+    // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER);
+
+    Accessory_Command[0]   = '\0';
+
+}
+
+void fansOn(){
+  digitalWrite(FANS, HIGH);
+      Accessory_Command[0]   = '\0';
+};
+
+void fansOff(){
+  digitalWrite(FANS, LOW);
+      Accessory_Command[0]   = '\0';
+};
+
+void smokeOn(){
+  digitalWrite(SMOKE, HIGH);
+  Accessory_Command[0]   = '\0';
+};
+
+void smokeOff(){
+  digitalWrite(SMOKE, LOW);
+  Accessory_Command[0]   = '\0';
+};
+
+void smokeSequece(){
+  Debug.DBG("Smoke Sequence Initialized\n");
+  // fansOn();
+   smokeOn();
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20107");}, 50);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 200);
+  inputString = ":A14115 "; stringComplete = true;
+  DelayCall::schedule([]{fansOn();}, 8000);
+  DelayCall::schedule([]{smokeOff();}, 8010);
+
+  DelayCall::schedule([]{fansOff();}, 14000);
+  DelayCall::schedule([]{inputString = ":A98"; stringComplete = true;}, 14000);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D204");}, 15050);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 15100);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 15200);
+  //   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 15300);
+  // Debug.DBG("Ended Sequence");
+    // Accessory_Command[0]   = '\0';
+
+}
+
+void shortCircuitSequece(){
+  Debug.DBG("Smoke Sequence Initialized\n");
+  // fansOn();
+   smokeOn();
+
+  inputString = ":A14115 "; stringComplete = true;
+  DelayCall::schedule([]{fansOn();}, 8000);
+  DelayCall::schedule([]{smokeOff();}, 9010);
+
+  DelayCall::schedule([]{fansOff();}, 14000);
+  DelayCall::schedule([]{inputString = ":A98"; stringComplete = true;}, 14000);
+  Debug.DBG("Ended Sequence");
+    // Accessory_Command[0]   = '\0';
+
+}
+void evacuateDomeSmoke(){
+  fansOn();
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20107");}, 50);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 200);
+
+    DelayCall::schedule([]{fansOff();}, 6000);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20207");}, 6050);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 6100);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 6150);
+    DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 6200);
+  Accessory_Command[0]   = '\0';
+
+}
+
+
+
+void showStrobe() {
+        strobe_LED.show();
+}
+ 
+void solidStrobe(uint32_t c) {
+    for(int i=0;i<STROBE_LED_COUNT;i++) { strobe_LED.setPixelColor(i,c); }
+    strobe_LED.show();
+};
+
+void altColorsStrobe(int type, uint32_t color1,uint32_t color2) {
+  uint32_t c;
+  int interval;
+  if(type<1) {interval = 100;}
+  else {interval = 100*type;}
+  if(StrobeFrame>1) {StrobeFrame=0;}
+  if((millis() - StrobeMillis) > interval) {
+      if(StrobeFrame==1) {c=color2;}
+      else {c=color1;}
+      StrobeFrame++;
+      StrobeMillis=millis();
+      for(int i=0;i<STROBE_LED_COUNT;i++) {
+      strobe_LED.setPixelColor(i,c);
+      }
+      showStrobe();
+  }
+}
+
+  void ShortCircuitStrobe(byte type, uint32_t color1, uint32_t color2) {
+    if(StrobeCount==0) {SCruntimeStrobe = millis();}
+    long runelapsed = millis() - SCruntimeStrobe;
+      uint32_t type2Colors[2] = {color1, color2};
+      int pixels[STROBE_LED_COUNT];
+      for (int i=0;i < STROBE_LED_COUNT; i++) {pixels[i] = i;}
+      randomize(pixels,STROBE_LED_COUNT);
+      int interval = 10000/STROBE_LED_COUNT;
+      long elapsed = millis() - StrobeMillis;
+      if(StrobeFrame<STROBE_LED_COUNT) {
+        if(elapsed>=interval) {StrobeFrame++;StrobeMillis=millis();}
+        for (int i=0;i < STROBE_LED_COUNT; i++) {strobe_LED.setPixelColor(i,off);}
+        for (int i=0;i < STROBE_LED_COUNT-StrobeFrame; i++) {
+          if(type == 2) {strobe_LED.setPixelColor(pixels[i],random(255),random(255),random(255));}
+          else {strobe_LED.setPixelColor(pixels[i],type2Colors[random(2)]);}
+        }
+      StrobeCount++;
+      if(runelapsed>=1+StrobeCount) {showStrobe();SCruntimeStrobe = millis();}
+   
+      }
+  }
+
+      void clearStrobe() {
+        if(StrobeFrame>0) {StrobeFrame=1;}
+        if(StrobeFrame==0) {
+          for(int i=0;i<STROBE_LED_COUNT;i++) {
+            strobe_LED.setPixelColor(i,off);
+          }
+          StrobeFrame++;
+          showStrobe();
+        }
+      }
+
+
+  void swap (int *a, int *b)
+  {
+      int temp = *a;
+      *a = *b;
+      *b = temp;
+  }
+
+  void randomize ( int arr[], int n )
+    {
+        // Use a different seed value so that we don't get same
+        // result each time we run this program
+        srand(millis());
+
+        // Start from the last element and swap one by one. We don't
+        // need to run for the first element that's why i > 0
+        for (int i = n-1; i > 0; i--)
+        {
+            // Pick a random index from 0 to i
+            int j = rand() % (i+1);
+
+            // Swap arr[i] with the element at random index
+          swap(&arr[i], &arr[j]);
+        }
+    };
+
 
 //////////////////////////////////////////////////////////////////////
 ///*****   ColorWipe Function for Status LED                  *****///
@@ -655,29 +939,9 @@ void writeS1SerialString(String stringData){
   }
 }
 
-void writeS2SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s2Serial.write(completeString[i]);
-  }
-}
 
-void writeS3SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s3Serial.write(completeString[i]);
-  }
-}
 
-void writeS4SerialString(String stringData){
-  String completeString = stringData + '\r';
-  for (int i=0; i<completeString.length(); i++)
-  {
-    s4Serial.write(completeString[i]);
-  }
-}
+
 //
 //
 //      /////////////////////////////////////////////////////////
@@ -715,36 +979,8 @@ void s1SerialEvent() {
   }
   Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString);
 }
-void s2SerialEvent() {
-  while (s2Serial.available()) {
-    char inChar = (char)s2Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 2 Input: %s \n",inputString);
-}
-void s3SerialEvent() {
-  while (s3Serial.available()) {
-    char inChar = (char)s3Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 3 Input: %s \n",inputString);
-}
-void s4SerialEvent() {
-  while (s4Serial.available()) {
-    char inChar = (char)s4Serial.read();
-    inputString += inChar;
-      if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-        stringComplete = true;            // set a flag so the main loop can do something about it.
-      }
-  }
-  Debug.SERIAL_EVENT("Serial 4 Input: %s \n",inputString);
-}
+
+
 
 
 //////////////////////////////////////////////////////////////////////
@@ -757,6 +993,8 @@ void setupSendStruct(espnow_struct_message* msg, String pass, String sender, Str
     snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
     snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
     msg->structCommandIncluded = hascommand;
+    msg->structSuccess = SuccessCounter;
+    msg->structFailure = FailureCounter;
     snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
 };
 
@@ -824,9 +1062,7 @@ void setup(){
   Serial.begin(115200);
   usSerial.begin(US_BAUD_RATE,SERIAL_8N1,SERIAL_RX_US,SERIAL_TX_US);
   s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
-  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);  
-  s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
-  s3Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
+
 
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
@@ -835,6 +1071,13 @@ void setup(){
   //Reserve the inputStrings
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
+  
+  
+  SetupEvent::ready();
+
+  pinMode(FANS, OUTPUT);
+  pinMode(SMOKE, OUTPUT);
+
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
@@ -910,10 +1153,16 @@ void setup(){
   ESP_LED.show();
   colorWipeStatus("ES",red,10);
 
+    strobe_LED.begin();
+  strobe_LED.show();
+
 }   // end of setup
 
 void loop(){
+          AnimatedEvent::process();
+
   if (millis() - MLMillis >= mainLoopDelayVar){
+
     MLMillis = millis();
     if(startUp) {
       startUp = false;
@@ -926,13 +1175,11 @@ void loop(){
     if(Serial.available()){serialEvent();}
     if(usSerial.available()){usSerialEvent();}
     if(s1Serial.available()){s1SerialEvent();}
-    if(s2Serial.available()){s2SerialEvent();}
-    if(s3Serial.available()){s3SerialEvent();}
-    if(s4Serial.available()){s4SerialEvent();}
+
 
     if (stringComplete) {autoComplete=false;}
     if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 100);inputString="";}
+    if(stringComplete) {inputString.toCharArray(inputBuffer, 100);Debug.LOOP("inputString: %s \n", inputString.c_str());inputString="";}
       else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 100);autoInputString="";}
         if (inputBuffer[0] == '#'){
         if (
@@ -986,12 +1233,32 @@ void loop(){
         }else if (inputBuffer[0] == ':'){
       if( inputBuffer[1]=='E' ||        // Command for Sending ESP-NOW Messages
           inputBuffer[1]=='e' ||        // Command for Sending ESP-NOW Messages
+          inputBuffer[1]=='A' ||        // Command for processing Accessory commands
+          inputBuffer[1]=='a' ||        // Command for processing Accessory commands
           inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
           inputBuffer[1]=='s'           // Command for sending Serial Strings out Serial ports
         ){commandLength = strlen(inputBuffer);                     //  Determines length of command character array.
-          Debug.DBG("Command Length is: %i\n" , commandLength);
+          Debug.LOOP("Command Length is: %i\n" , commandLength);
           if(commandLength >= 3) {
-                if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
+            if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {                                                            // specifies the overall accessory commanD  
+            Debug.LOOP("Accessory Function Called: %s \n", inputBuffer);    
+              accessoryFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+              if (commandLength >=5){
+                typeState = inputBuffer[4]-'0';
+              }
+              if (commandLength >= 6){colorState1 = inputBuffer[5]-'0'; }
+              if (commandLength >=7){colorState2 = inputBuffer[6]-'0';}
+
+
+                  if(colorState1 < 0 || colorState1 > 9) {
+                    colorState1 = defaultPrimaryColorInt;
+                }
+              Debug.LOOP("Function: %i\n", accessoryFunction);
+              Debug.LOOP("Type State: %i\n", typeState);
+              Debug.LOOP("Color 1: %i\n", basicColors[colorState1]);
+              Debug.LOOP("Color 2: %i\n", basicColors[colorState2]);
+            }  
+               else if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
                   for (int i=2; i<=commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
@@ -1007,7 +1274,7 @@ void loop(){
                   ESPNOWSubStringCommand = "";
                   ESPNOWTarget = "";  
                   }  
-            if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
+          else  if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength;i++ ){
                       char inCharRead = inputBuffer[i];
                       serialStringCommand += inCharRead;  // add it to the inputString:
@@ -1020,20 +1287,35 @@ void loop(){
               } else if (serialPort == "S1"){
                 writeS1SerialString(serialStringCommand);
               } else if (serialPort == "S2"){
-                writeS2SerialString(serialStringCommand);
               }else if (serialPort == "S3"){
-                writeS3SerialString(serialStringCommand);
               } else if (serialPort == "S4"){
-                writeS4SerialString(serialStringCommand);
-              }
+              }else {Debug.LOOP("No valid serial port given \n");}
               serialStringCommand = "";
               serialPort = "";
-            } else {Debug.LOOP("No valid serial port given \n");}
+            } 
 
           }
+              if(inputBuffer[1]=='A' || inputBuffer[1]=='a') {
+              Accessory_Command[0]   = '\0';                                                            // Flushes Array
+              Accessory_Command[0] = accessoryFunction;
+              Accessory_Command[1] = typeState;
+              Accessory_Command[2] = colorState1;
+              Accessory_Command[3] = colorState2;
+              StrobeMillis = millis();
+              StrobeFrame = 0;
+              StrobeCount = 0;
+
+            }
         }
-        }
-      ///***  Clear States and Reset for next command.  ***///
+      }
+
+
+    
+      Debug.LOOP("command Proccessed\n");
+
+
+    }  
+          ///***  Clear States and Reset for next command.  ***///
         stringComplete =false;
         autoComplete = false;
         inputBuffer[0] = '\0';
@@ -1041,13 +1323,35 @@ void loop(){
       
         // reset Local ESP Command Variables
         int espCommandFunction;
-
+       int typeState;
+       int accessoryFunction;
+       int colorState1;
+       int colorState2;
                 
 
-      Debug.LOOP("command Proccessed\n");
 
-    }  
+if(Accessory_Command[0]) {
 
+        switch (Accessory_Command[0]) {
+          case 6: altColorsStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 14: ShortCircuitStrobe(Accessory_Command[1], basicColors[Accessory_Command[2]], basicColors[Accessory_Command[3]]); break;
+          case 15: solidStrobe(basicColors[Accessory_Command[2]]); break;
+          
+          case 50: smokeOn(); break;
+          case 51: smokeOff(); break;
+          case 52: fansOn(); break;
+          case 53: fansOff(); break;
+          case 54: smokeSequece(); break;
+          case 55: evacuateDomeSmoke(); break;
+          case 56: shortCircuitSequece(); break;
+          
+          case 60: launchSaber(); break;
+          case 61: armSaber(); break;
+
+          case 98: clearStrobe();break;
+          default: Accessory_Command[0] = '\0'; clearStrobe(); break;
+        }
+      }
   if(isStartUp) {
       isStartUp = false;
       delay(500);
