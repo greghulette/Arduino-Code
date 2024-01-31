@@ -143,14 +143,14 @@ String debugInputIdentifier ="";
   unsigned long statusDelayInterval = 5000;
 
   bool droidGatewayStatus = 1;
-  bool bodyControllerStatus = 0;
-  bool bodyLEDControllerStatus = 0;  
-  bool bodyServoControllerStatus = 0;
-  bool domePlateControllerStatus = 0;
-  bool domeControllerStatus = 0;
-  bool droidRemoteStatus = 0;
-  bool hpControllerStatus = 0;
-  bool domeLogicsControllerStatus = 0;
+  bool bodyControllerStatus ;
+  bool bodyLEDControllerStatus;  
+  bool bodyServoControllerStatus;
+  bool domePlateControllerStatus;
+  bool domeControllerStatus;
+  bool droidRemoteStatus;
+  bool hpControllerStatus;
+  bool domeLogicsControllerStatus;
 
 
   int keepAliveTimeOut = 15000;
@@ -183,7 +183,9 @@ String debugInputIdentifier ="";
   int BL_BatteryPercentage;
   String FunctionSWState;
 
-
+  bool ACKBool = false;
+  byte incomingMsgId;
+  uint32_t msgAckID;
   //////////////////////////////////////////////////////////////////
   ///******       Serial Ports Definitions                  *****///
   //////////////////////////////////////////////////////////////////
@@ -978,78 +980,102 @@ void sendStatusToRemote(){
   if (sendUpdateStatus){
     if (millis() - sendStatusMillis >= sendStatusFrequency) {
       sendStatusMillis = millis();
-      sendStatusMessage("Status Update");
+      // sendStatusMessage("Status Update");
+      sendStatusMessage();
     } 
   }
 }
-void sendStatusMessage(String outgoing) {
-  int functionSWStateInt;
-  if (FunctionSWState == "DOWN"){
-    functionSWStateInt = 1;
-  } else if (FunctionSWState == "MIDDLE"){
-    functionSWStateInt = 2;
-  } else if (FunctionSWState == "UP"){
-    functionSWStateInt = 3;
-  }
-  bool ACKBool = false;
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(destination);              // add destination address
-  LoRa.write(localAddress);             // add sender address
-  LoRa.write(msgCount);                 // add message ID
-  LoRa.write(outgoing.length());        // add payload length
-  LoRa.write(ACKBool);                    // not a messsage ACK
-  LoRa.write(droidGatewayStatus);
-  LoRa.write(RELAY_STATUS);
-  LoRa.write(bodyControllerStatus);
-  LoRa.write(bodyLEDControllerStatus);
-  LoRa.write(bodyServoControllerStatus);
-  LoRa.write(domePlateControllerStatus);
-  LoRa.write(domeControllerStatus);
-  LoRa.write(hpControllerStatus);
-  LoRa.write(domeLogicsControllerStatus);
-  LoRa.write(BL_LDP_Bright);
-  LoRa.write(BL_MAINT_Bright);
-  LoRa.write(BL_VU_Bright);
-  LoRa.write(BL_CS_Bright);
-  LoRa.write(BL_vuOffsetInt);
-  LoRa.write(BL_vuBaselineInt);
-  LoRa.write(BL_vuOffsetExt);
-  LoRa.write(BL_vuBaselineExt);
-  LoRa.write(BL_BatteryVoltage);
-  LoRa.write(BL_BatteryPercentage);
-  LoRa.write(functionSWStateInt);
-  LoRa.write(DGSuccessCounter);
-  LoRa.write(DGFailureCounter);
-  LoRa.write(BCSuccessCounter);
-  LoRa.write(BCFailureCounter);
-  LoRa.write(BSSuccessCounter);
-  LoRa.write(BSFailureCounter);
-  LoRa.write(DPSuccessCounter);
-  LoRa.write(DPFailureCounter);
-  LoRa.write(DCSuccessCounter);
-  LoRa.write(DCFailureCounter);
-  LoRa.write(HPSuccessCounter);
-  LoRa.write(HPFailureCounter);
-  LoRa.print(outgoing);                 // add payload
-  LoRa.endPacket();                     // finish packet and send it
-  // LoRa.receive();
-  msgCount++;                           // increment message ID
-  Debug.LORA("Status Sent with ID: %d \n", msgCount);
-  Local_Command[0]   = '\0';
+
+
+
+typedef struct LoRa_Struct{
+  bool struct_incomingMsgAck;
+  uint32_t struct_msgAckID;
+  bool struct_droidGatewayStatus;
+  bool struct_bodyControllerStatus ;
+  bool struct_bodyLEDControllerStatus;  
+  bool struct_bodyServoControllerStatus;
+  bool struct_domePlateControllerStatus;
+  bool struct_domeControllerStatus ;
+  bool struct_droidRemoteStatus;
+  bool struct_hpControllerStatus;
+  bool struct_domeLogicsControllerStatus;
+  int struct_BL_LDP_Bright;
+  int struct_BL_MAINT_Bright;
+  int struct_BL_VU_Bright;
+  int struct_BL_CS_Bright;
+  int struct_BL_vuOffsetInt;
+  int struct_BL_vuBaselineInt;
+  int struct_BL_vuOffsetExt;
+  int struct_BL_vuBaselineExt;
+  float struct_BL_BatteryVoltage;
+  int struct_BL_BatteryPercentage;
+  uint32_t struct_DGSuccessCounter;
+  uint32_t struct_DGFailureCounter;
+  uint32_t struct_BSSuccessCounter;
+  uint32_t struct_BSFailureCounter;
+  uint32_t struct_BCSuccessCounter;
+  uint32_t struct_BCFailureCounter;
+  uint32_t struct_DPSuccessCounter;
+  uint32_t struct_DPFailureCounter;
+  uint32_t struct_DCSuccessCounter;
+  uint32_t struct_DCFailureCounter;
+  uint32_t struct_HPSuccessCounter;
+  uint32_t struct_HPFailureCounter;
+  } LoRa_Struct;
+
+LoRa_Struct commandstoSendtoRemote;
+
+void setupLoRaSendStruct(){
+    commandstoSendtoRemote.struct_incomingMsgAck = ACKBool;
+    commandstoSendtoRemote.struct_msgAckID = incomingMsgId;
+    commandstoSendtoRemote.struct_droidGatewayStatus = droidGatewayStatus;
+    commandstoSendtoRemote.struct_bodyControllerStatus = bodyControllerStatus;
+    commandstoSendtoRemote.struct_bodyLEDControllerStatus = bodyLEDControllerStatus;
+    commandstoSendtoRemote.struct_bodyServoControllerStatus = bodyServoControllerStatus;
+    commandstoSendtoRemote.struct_domePlateControllerStatus = domePlateControllerStatus;
+    commandstoSendtoRemote.struct_domeControllerStatus = domeControllerStatus;
+    commandstoSendtoRemote.struct_hpControllerStatus = hpControllerStatus;
+    commandstoSendtoRemote.struct_domeLogicsControllerStatus = domeLogicsControllerStatus;
+    commandstoSendtoRemote.struct_BL_LDP_Bright = BL_LDP_Bright;
+    commandstoSendtoRemote.struct_BL_MAINT_Bright = BL_MAINT_Bright;
+    commandstoSendtoRemote.struct_BL_VU_Bright = BL_VU_Bright;
+    commandstoSendtoRemote.struct_BL_CS_Bright = BL_CS_Bright;
+    commandstoSendtoRemote.struct_BL_vuOffsetInt = BL_vuOffsetInt;
+    commandstoSendtoRemote.struct_BL_vuBaselineInt = BL_vuOffsetInt;
+    commandstoSendtoRemote.struct_BL_vuOffsetExt = BL_vuOffsetExt;
+    commandstoSendtoRemote.struct_BL_vuBaselineExt = BL_vuBaselineExt;
+    commandstoSendtoRemote.struct_BL_BatteryVoltage = BL_BatteryVoltage;
+    commandstoSendtoRemote.struct_BL_BatteryPercentage = BL_BatteryPercentage;
+    commandstoSendtoRemote.struct_DGSuccessCounter = DGSuccessCounter;
+    commandstoSendtoRemote.struct_DGFailureCounter = DGFailureCounter;
+    commandstoSendtoRemote.struct_BCSuccessCounter = BCSuccessCounter;
+    commandstoSendtoRemote.struct_BCFailureCounter = BCFailureCounter;
+    commandstoSendtoRemote.struct_BSSuccessCounter = BSSuccessCounter;
+    commandstoSendtoRemote.struct_BSFailureCounter = BSFailureCounter;
+    commandstoSendtoRemote.struct_DPSuccessCounter = DPSuccessCounter;
+    commandstoSendtoRemote.struct_DPFailureCounter = DPFailureCounter;
+    commandstoSendtoRemote.struct_DCSuccessCounter = DCSuccessCounter;
+    commandstoSendtoRemote.struct_DCFailureCounter = DPFailureCounter;
+    commandstoSendtoRemote.struct_HPSuccessCounter = HPSuccessCounter;
+    commandstoSendtoRemote.struct_HPFailureCounter = HPFailureCounter;
 };
 
-void sendACK(int msgAckID){
-  bool AckBool = true;
-  Serial.print("Sending ACK with Message ID of: "); Serial.println(msgAckID);
-  LoRa.beginPacket();                   // start packet
-  LoRa.write(destination);              // add destination address
-  LoRa.write(localAddress);             // add sender address
-  LoRa.write(msgCount);                 // add message ID
-  LoRa.write(outgoing.length());        // add payload length
-  LoRa.write(AckBool);
-  LoRa.write(msgAckID);
-  LoRa.print("42");
+
+
+void sendStatusMessage(){
+  setupLoRaSendStruct();
+  LoRa.beginPacket();
+  for (unsigned int i = 0; i < sizeof(commandstoSendtoRemote);i++) {
+    LoRa.write(((byte *) &commandstoSendtoRemote)[i]);
+  }
   LoRa.endPacket();
+}
+
+
+void sendACK(int msgAckID){
+  ACKBool = true;
+ sendStatusMessage();
 }
 
 
@@ -1059,7 +1085,7 @@ void onReceive(int packetSize) {
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address
-  byte incomingMsgId = LoRa.read();     // incoming msg ID
+  incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
   
   String incoming = "";
@@ -1093,11 +1119,11 @@ void onReceive(int packetSize) {
   }
   parseStrings(incoming);
   sendACK(incomingMsgId);
-  // if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
-  //   colorWipeStatus("LS", green, 10);
-  // }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
-  //   colorWipeStatus("LS", yellow, 10);
-  // } else{ colorWipeStatus("LS", red, 10);}
+  if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
+    colorWipeStatus("LS", green, 10);
+  }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
+    colorWipeStatus("LS", yellow, 10);
+  } else{ colorWipeStatus("LS", red, 10);}
 
   // inputString = incoming;
   // stringComplete = true; 
@@ -1431,16 +1457,16 @@ void loop() {
               if(Local_Command[0]){
                 switch (Local_Command[0]){
                   case 1: Serial.println(HOSTNAME);
-                        Local_Command[0]   = '\0';                                                           break;
+                      Local_Command[0]   = '\0';                                                            break;
                   case 2: Serial.println("Resetting the ESP in 3 Seconds");
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
-                        Local_Command[0]   = '\0';                                                           break;
-                  case 3: connectWiFi();                                                                          break;
+                        Local_Command[0]   = '\0';                                                          break;
+                  case 3: connectWiFi();                                                                    break;
                   case 4: break;  //reserved for future use
                   case 5: MainRelayOn();                                                                    break;  //reserved for future use
                   case 6: MainRelayOff();                                                                   break;  //reserved for future use
-                  case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
+                  case 7: sendStatusMessage();                                                              break;  //reserved for future use
                   case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
                   case 9:  break;  //reserved for future use
 

@@ -509,92 +509,119 @@ unsigned long AckKeepAliveAge;
 int AckDuration = 750;
 String lastCommand;
 bool incomingMsgAck;
+uint32_t msgAckID;
+  
+typedef struct LoRa_Struct{
+  bool struct_incomingMsgAck;
+  uint32_t struct_msgAckID;
+  bool struct_droidGatewayStatus;
+  bool struct_bodyControllerStatus;
+  bool struct_bodyLEDControllerStatus;  
+  bool struct_bodyServoControllerStatus;
+  bool struct_domePlateControllerStatus;
+  bool struct_domeControllerStatus;
+  bool struct_droidRemoteStatus;
+  bool struct_hpControllerStatus;
+  bool struct_domeLogicsControllerStatus ;
+  int struct_BL_LDP_Bright;
+  int struct_BL_MAINT_Bright;
+  int struct_BL_VU_Bright;
+  int struct_BL_CS_Bright;
+  int struct_BL_vuOffsetInt;
+  int struct_BL_vuBaselineInt;
+  int struct_BL_vuOffsetExt;
+  int struct_BL_vuBaselineExt;
+  float struct_BL_BatteryVoltage;
+  int struct_BL_BatteryPercentage;
+  // String struct_FunctionSWState;
+  uint32_t struct_DGSuccessCounter;
+  uint32_t struct_DGFailureCounter;
+  uint32_t struct_BSSuccessCounter;
+  uint32_t struct_BSFailureCounter;
+  uint32_t struct_BCSuccessCounter;
+  uint32_t struct_BCFailureCounter;
+  uint32_t struct_DPSuccessCounter;
+  uint32_t struct_DPFailureCounter;
+  uint32_t struct_DCSuccessCounter;
+  uint32_t struct_DCFailureCounter;
+  uint32_t struct_HPSuccessCounter;
+  uint32_t struct_HPFailureCounter;
+  } LoRa_Struct;
 
 
-void onReceive(int packetSize) {
-  if (packetSize == 0) return;          // if there's no packet, return
+LoRa_Struct commandstoReceiveFromRemote;
 
-  String incoming = "";
-  int msgAckID = 0;
-  // read packet header bytes:
-  int recipient = LoRa.read();          // recipient address
-  byte sender = LoRa.read();            // sender address
-  byte incomingMsgId = LoRa.read();     // incoming msg ID
-  byte incomingLength = LoRa.read();    // incoming msg length
-  incomingMsgAck = LoRa.read();
+void onReceive(int packetSize){
 
- if (incomingMsgAck == true){
-   msgAckID = LoRa.read();
+  if (packetSize) {
+    // received a packet
+    Serial.print("\nReceived packet size ");
+    Serial.print(packetSize);
+    Serial.print(" data ");
+    // read packet
+    while (LoRa.available())
+      for (int i = 0; i < packetSize; i++) {
+        ((byte *) &commandstoReceiveFromRemote)[i] = LoRa.read();
+        // Serial.print(' ');
+        // Serial.print(((byte *) &commandstoReceiveFromRemote)[i]);
+      }
+    // print RSSI of packet
+    Serial.print("' with RSSI ");
+    Serial.println(LoRa.packetRssi());
+if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
+   msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
   Serial.print("Received ACK with ID of: ");
   Serial.println(msgAckID);
   commandSent = false;
- } else {
-  droidGatewayStatus = LoRa.read();
-  relayStatus = LoRa.read();
-  bodyControllerStatus = LoRa.read();
-  bodyLEDControllerStatus = LoRa.read();
-  bodyServoControllerStatus = LoRa.read();
-  domePlateControllerStatus = LoRa.read();
-  domeControllerStatus = LoRa.read();
-  hpControllerStatus = LoRa.read();
-  domeLogicsControllerStatus = LoRa.read();
-  BL_LDP_Bright = LoRa.read();
-  BL_MAINT_Bright = LoRa.read();
-  BL_VU_Bright = LoRa.read();
-  BL_CS_Bright = LoRa.read();
-  BL_vuOffsetInt = LoRa.read();
-  BL_vuBaselineInt = LoRa.read();
-  BL_vuOffsetExt = LoRa.read();
-  BL_vuBaselineExt = LoRa.read();
-  BL_BatteryVoltage = LoRa.read();
-  BL_BatteryPercentage = LoRa.read();
-  FunctionSWState = LoRa.read();
-  DGSuccessCounter = LoRa.read();
-  DGFailureCounter = LoRa.read();
-  BCSuccessCounter = LoRa.read();
-  BCFailureCounter = LoRa.read();
-  BSSuccessCounter = LoRa.read();
-  BSFailureCounter = LoRa.read();
-  DPSuccessCounter = LoRa.read();
-  DPFailureCounter = LoRa.read();
-  DCSuccessCounter = LoRa.read();
-  DCFailureCounter = LoRa.read();
-  HPSuccessCounter = LoRa.read();
-  HPFailureCounter = LoRa.read();
- }
-  while (LoRa.available()) {
-    incoming += (char)LoRa.read();
-  }
+ } 
+    droidGatewayStatus = commandstoReceiveFromRemote.struct_droidGatewayStatus;
+    bodyControllerStatus = commandstoReceiveFromRemote.struct_bodyControllerStatus ;
+    bodyLEDControllerStatus = commandstoReceiveFromRemote.struct_bodyLEDControllerStatus ;
+    bodyServoControllerStatus = commandstoReceiveFromRemote.struct_bodyServoControllerStatus  ;
+    domePlateControllerStatus =commandstoReceiveFromRemote.struct_domePlateControllerStatus  ;
+    domeControllerStatus= commandstoReceiveFromRemote.struct_domeControllerStatus ;
+    hpControllerStatus= commandstoReceiveFromRemote.struct_hpControllerStatus  ;
+    domeLogicsControllerStatus =commandstoReceiveFromRemote.struct_domeLogicsControllerStatus ;
+    BL_LDP_Bright = commandstoReceiveFromRemote.struct_BL_LDP_Bright;
+    BL_MAINT_Bright =commandstoReceiveFromRemote.struct_BL_MAINT_Bright;
+    BL_VU_Bright =commandstoReceiveFromRemote.struct_BL_VU_Bright;
+    BL_CS_Bright =commandstoReceiveFromRemote.struct_BL_CS_Bright;
+    BL_vuOffsetInt = commandstoReceiveFromRemote.struct_BL_vuOffsetInt;
+    BL_vuOffsetInt = commandstoReceiveFromRemote.struct_BL_vuBaselineInt;
+    BL_vuOffsetExt = commandstoReceiveFromRemote.struct_BL_vuOffsetExt;
+    BL_vuBaselineExt = commandstoReceiveFromRemote.struct_BL_vuBaselineExt;
+    BL_BatteryVoltage = commandstoReceiveFromRemote.struct_BL_BatteryVoltage;
+    BL_BatteryPercentage = commandstoReceiveFromRemote.struct_BL_BatteryPercentage;
+    DGSuccessCounter = commandstoReceiveFromRemote.struct_DGSuccessCounter;
+    DGFailureCounter = commandstoReceiveFromRemote.struct_DGFailureCounter;
+    BCSuccessCounter = commandstoReceiveFromRemote.struct_BCSuccessCounter;
+    BCFailureCounter = commandstoReceiveFromRemote.struct_BCFailureCounter;
+    BSSuccessCounter = commandstoReceiveFromRemote.struct_BSSuccessCounter;
+    BSFailureCounter = commandstoReceiveFromRemote.struct_BSFailureCounter;
+    DPSuccessCounter = commandstoReceiveFromRemote.struct_DPSuccessCounter;
+    DPFailureCounter = commandstoReceiveFromRemote.struct_DPFailureCounter;
+    DCSuccessCounter = commandstoReceiveFromRemote.struct_DCSuccessCounter;
+    DPFailureCounter = commandstoReceiveFromRemote.struct_DCFailureCounter;
+    HPSuccessCounter = commandstoReceiveFromRemote.struct_HPSuccessCounter;
+    HPFailureCounter = commandstoReceiveFromRemote.struct_HPFailureCounter;
 
-  // if (incomingLength != incoming.length()) {   // check length for error
-  //   Serial.println("error: message length does not match length");
-  //   return;                             // skip rest of function
-  // }
+    
+  if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
+  if (bodyControllerStatus == true) {bckeepAliveAge = millis();};
+  if (bodyServoControllerStatus == true){bskeepAliveAge = millis();};
+  if (domePlateControllerStatus == true) {dpkeepAliveAge = millis();};
+  if (domeControllerStatus == true){dckeepAliveAge = millis();};
+  if (hpControllerStatus == true){hpkeepAliveAge = millis();};
 
-  // if the recipient isn't this device or broadcast,
-  if (recipient != localAddress && recipient != 0xFF) {
-    Serial.println("This message is not for me.");
-    return;                             // skip rest of function
-  }
-String senderString = String(sender, HEX);
-String recipientString = String(recipient, HEX);
-  // if message is for this device, or broadcast, print details:
-  if (Debug.debugflag_lora == 1){
-    Serial.println("Received from: 0x" + senderString);
-    Serial.println("Sent to: 0x" + recipientString);
-    Serial.println("Message ID: " + String(incomingMsgId));
-    Serial.println("Message length: " + String(incomingLength));
-    Serial.println("Message: " + incoming);
-    Serial.println("RSSI: " + String(LoRa.packetRssi()));
-    Serial.println("Snr: " + String(LoRa.packetSnr()));
-  }
+   
+
   Debug.STATUS("Droid Gateway Status: %d\n", droidGatewayStatus);
-  Debug.STATUS("Main Relay Status: %d\n", relayStatus);
   Debug.STATUS("Body Controller Status: %d\n", bodyControllerStatus);
   Debug.STATUS("Body LED Controller Status: %d\n", bodyLEDControllerStatus);
   Debug.STATUS("Body Servo Status: %d\n", bodyServoControllerStatus);
   Debug.STATUS("Dome Plate Controller Status: %d\n", domePlateControllerStatus);  
   Debug.STATUS("Dome Controller Status: %d\n", domeControllerStatus);
+  Debug.STATUS("HP Controller: \t\t| %d\n", hpControllerStatus);
   Debug.STATUS("LDP Brightness: %d\n", BL_LDP_Bright);
   Debug.STATUS("Maintenence Brightness: %d\n", BL_MAINT_Bright);
   Debug.STATUS("VU Brightness: %d\n", BL_VU_Bright);
@@ -605,25 +632,17 @@ String recipientString = String(recipient, HEX);
   Debug.STATUS("vu Baseline External: %d\n", BL_vuBaselineExt);
   Debug.STATUS("Droid Battery Voltage: %d\n", BL_BatteryVoltage);
   Debug.STATUS("Droid Battery Percentage: %d\n", BL_BatteryPercentage);
-  Debug.STATUS("Function Switch State %i\n", FunctionSWState);
+  Debug.STATUS("DG ESP-NOW Stats: %i / %i \n", DGSuccessCounter, DGFailureCounter);
+  Debug.STATUS("BC ESP-NOW Stats: %i / %i \n", BCSuccessCounter, BCFailureCounter);
+  Debug.STATUS("BS ESP-NOW Stats: %i / %i \n", BSSuccessCounter, BSFailureCounter);
+  Debug.STATUS("DP ESP-NOW Stats: %i / %i \n", DPSuccessCounter, DPFailureCounter);
+  Debug.STATUS("DC ESP-NOW Stats: %i / %i \n", DCSuccessCounter, DCFailureCounter);
+  Debug.STATUS("HP ESP-NOW Stats: %i / %i \n", HPSuccessCounter, HPFailureCounter);
 
-  LoRaRSSI = String(LoRa.packetRssi());
-
-  // Serial.println();
-  receiveMsgCount++;
-  // displayOLEDString(" ");
-  // LoRaRSSI = "";
-  if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
-  if (bodyControllerStatus == true) {bckeepAliveAge = millis();};
-  if (bodyServoControllerStatus == true){bskeepAliveAge = millis();};
-  if (domePlateControllerStatus == true) {dpkeepAliveAge = millis();};
-  if (domeControllerStatus == true){dckeepAliveAge = millis();};
-  if (hpControllerStatus == true){hpkeepAliveAge = millis();};
-
+  } 
   
-
-
 }
+
 
 void MonitorAck( int msgAckIDtoMonitor=0){
   if (commandSent == true){
@@ -647,11 +666,8 @@ void sendLoRaMessage(String outgoing) {
   Debug.DBG_1("\n\n Sent Message of: %s ", outgoing.c_str());
   Debug.DBG_1("Sent ID of: %i\n\n", msgCount);
   commandSent = true;
-  // MonitorAck(msgCount);
   AckKeepAliveAge = millis();
   msgCount++;                           // increment message ID
-    // LoRa.receive();
-
 }
 
 int updateStatusDuration = 5000;
@@ -711,14 +727,13 @@ void sendUpdates(){
   doc["VUExtOffset"] = BL_vuOffsetExt;
   doc["BatteryVoltage"] = BL_BatteryVoltage;
   doc["BatteryPercent"] = BL_BatteryPercentage;
-  doc["FunctionSwState"] = FunctionSWState;
   doc["DGSuccessCounter"] = DGSuccessCounter;
   doc["DGFailureCounter"] = DGFailureCounter;
   doc["BCSuccessCounter"] = BCSuccessCounter;
   doc["BCFailureCounter"] = BCFailureCounter;
   doc["BSSuccessCounter"] = BSSuccessCounter;
   doc["BSFailureCounter"] = BSFailureCounter;
-  doc["D{PSuccessCounter"] = DPSuccessCounter;
+  doc["DPSuccessCounter"] = DPSuccessCounter;
   doc["DPFailureCounter"] = DPFailureCounter;
   doc["DCSuccessCounter"] = DCSuccessCounter;
   doc["DCFailureCounter"] = DCFailureCounter;
@@ -726,8 +741,8 @@ void sendUpdates(){
   doc["HPFailureCounter"] = HPFailureCounter;
   doc["JSONDone"] = true;
   
-  serializeJson(doc, Serial1);
-  Serial1.println("");
+  serializeJson(doc, Serial);
+  Serial.println("");
 
 }
 
@@ -1029,7 +1044,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BL_vuBaselineExt"] = BL_vuBaselineExt;
       json["BL_BatteryVoltage"] = BL_BatteryVoltage;
       json["BL_BatteryPercentage"] = BL_BatteryPercentage;
-      json["FunctionSWState"] = FunctionSWState;
+      // json["FunctionSWState"] = FunctionSWState;
       json["DGSuccessCounter"] = DGSuccessCounter;
       json["DGFailureCounter"] = DGFailureCounter;
       json["BCSuccessCounter"] = BCSuccessCounter;
