@@ -84,7 +84,7 @@ float voltValue;
   String loRaCommandString;
   String loRaCommandSubString;
 
-
+bool serial1Toggle = true;
 
     uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
@@ -741,8 +741,13 @@ void sendUpdates(){
   doc["HPFailureCounter"] = HPFailureCounter;
   doc["JSONDone"] = true;
   
+  if(serial1Toggle == true){
+  serializeJson(doc, Serial1);
+  Serial.println("");
+  } else {
   serializeJson(doc, Serial);
   Serial.println("");
+  }
 
 }
 
@@ -1165,7 +1170,7 @@ if (button.onPress()) {
                   // case 3: connectWiFi();                                                                          break;
                   case 4: break;  //reserved for future use
                   // case 5: MainRelayOn();                                                                    break;  //reserved for future use
-                  // case 6: MainRelayOff();                                                                   break;  //reserved for future use
+                  case 6: serial1Toggle = !serial1Toggle;    Local_Command[0]   = '\0';                                                                 break;  //reserved for future use
                   // case 7: sendStatusMessage("Status Update");                  break;  //reserved for future use
                   case 8: printKeepaliveStatus();                                                           break;  //reserved for future use
                   case 9:  break;  //reserved for future use
