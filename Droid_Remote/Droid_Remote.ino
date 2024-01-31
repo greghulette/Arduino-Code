@@ -743,7 +743,7 @@ void sendUpdates(){
   
   if(serial1Toggle == true){                  // I use Serial 1 in the remote, but use Serial in testing.  This allows me to swap them in runtime to test with.
   serializeJson(doc, Serial1);
-  Serial.println("");
+  Serial1.println("");
   } else {
   serializeJson(doc, Serial);
   Serial.println("");
