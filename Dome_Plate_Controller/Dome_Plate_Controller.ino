@@ -1223,7 +1223,8 @@ void loop(){
                   case 4: ; break;  //reserved for future use
                   case 5: printf("ESP-NOW Success Count: %i \nESP-NOW Failure Count %i \n", SuccessCounter, FailureCounter);
                         Local_Command[0]   = '\0';
-                         break;  //prints out failure rate of ESPNOW                  case 6: ; break;  //reserved for future use
+                         break;  //prints out failure rate of ESPNOW                  
+                  case 6: ; break;  //reserved for future use
                   case 7: ; break;  //reserved for future use
                   case 8: ; break;  //reserved for future use                                                         break;  //reserved for future use
                   case 9: ;break;  //reserved for future use
