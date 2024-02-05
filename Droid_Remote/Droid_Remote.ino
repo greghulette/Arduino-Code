@@ -118,6 +118,7 @@ String debugInputIdentifier ="";
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
   int FunctionSWState;
+  bool remoteConnected;
   uint32_t DGSuccessCounter;
   uint32_t DGFailureCounter;
   uint32_t BSSuccessCounter;
@@ -533,7 +534,8 @@ typedef struct LoRa_Struct{
   int struct_BL_vuBaselineExt;
   float struct_BL_BatteryVoltage;
   int struct_BL_BatteryPercentage;
-  // String struct_FunctionSWState;
+  int struct_FunctionSWState;
+  bool struct_remoteConnected;
   uint32_t struct_DGSuccessCounter;
   uint32_t struct_DGFailureCounter;
   uint32_t struct_BSSuccessCounter;
@@ -592,6 +594,8 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
     BL_vuBaselineExt = commandstoReceiveFromRemote.struct_BL_vuBaselineExt;
     BL_BatteryVoltage = commandstoReceiveFromRemote.struct_BL_BatteryVoltage;
     BL_BatteryPercentage = commandstoReceiveFromRemote.struct_BL_BatteryPercentage;
+    FunctionSWState = commandstoReceiveFromRemote.struct_FunctionSWState;
+    remoteConnected = commandstoReceiveFromRemote.struct_remoteConnected;
     DGSuccessCounter = commandstoReceiveFromRemote.struct_DGSuccessCounter;
     DGFailureCounter = commandstoReceiveFromRemote.struct_DGFailureCounter;
     BCSuccessCounter = commandstoReceiveFromRemote.struct_BCSuccessCounter;
@@ -612,7 +616,8 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
   if (domePlateControllerStatus == true) {dpkeepAliveAge = millis();};
   if (domeControllerStatus == true){dckeepAliveAge = millis();};
   if (hpControllerStatus == true){hpkeepAliveAge = millis();};
-
+  
+  sendUpdates();
    
 
   Debug.STATUS("Droid Gateway Status: %d\n", droidGatewayStatus);
@@ -632,6 +637,8 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
   Debug.STATUS("vu Baseline External: %d\n", BL_vuBaselineExt);
   Debug.STATUS("Droid Battery Voltage: %d\n", BL_BatteryVoltage);
   Debug.STATUS("Droid Battery Percentage: %d\n", BL_BatteryPercentage);
+  Debug.STATUS("Function SW State: %s\n", FunctionSWState);
+  Debug.STATUS("Remote Connected Status: %i\n", remoteConnected);
   Debug.STATUS("DG ESP-NOW Stats: %i / %i \n", DGSuccessCounter, DGFailureCounter);
   Debug.STATUS("BC ESP-NOW Stats: %i / %i \n", BCSuccessCounter, BCFailureCounter);
   Debug.STATUS("BS ESP-NOW Stats: %i / %i \n", BSSuccessCounter, BSFailureCounter);
@@ -727,6 +734,8 @@ void sendUpdates(){
   doc["VUExtOffset"] = BL_vuOffsetExt;
   doc["BatteryVoltage"] = BL_BatteryVoltage;
   doc["BatteryPercent"] = BL_BatteryPercentage;
+  doc["FunctionSWState"] = FunctionSWState;
+  doc["remoteConnected"] = remoteConnected;
   doc["DGSuccessCounter"] = DGSuccessCounter;
   doc["DGFailureCounter"] = DGFailureCounter;
   doc["BCSuccessCounter"] = BCSuccessCounter;
@@ -1052,7 +1061,8 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["BL_vuBaselineExt"] = BL_vuBaselineExt;
       json["BL_BatteryVoltage"] = BL_BatteryVoltage;
       json["BL_BatteryPercentage"] = BL_BatteryPercentage;
-      // json["FunctionSWState"] = FunctionSWState;
+      json["FunctionSWState"] = FunctionSWState;
+      json["remoteConnected"] = remoteConnected;
       json["DGSuccessCounter"] = DGSuccessCounter;
       json["DGFailureCounter"] = DGFailureCounter;
       json["BCSuccessCounter"] = BCSuccessCounter;

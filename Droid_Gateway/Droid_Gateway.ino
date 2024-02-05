@@ -181,7 +181,7 @@ String debugInputIdentifier ="";
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
-  String FunctionSWState;
+  int FunctionSWState;
 
   bool ACKBool = false;
   byte incomingMsgId;
@@ -361,7 +361,8 @@ String debugInputIdentifier ="";
   int incomingstructBL_vuBaselineExt;
   float incomingstructBL_BatteryVoltage;
   int incomingstructBL_BatteryPercentage;
-  String incomingstructFunctionSWState;
+  int incomingstructFunctionSWState;
+  bool remoteConnected;
   bool incomingstructbodyLEDControllerStatus;
   uint32_t DGSuccessCounter = 0;
   uint32_t DGFailureCounter = 0;
@@ -406,7 +407,8 @@ typedef struct bodyControllerStatus_struct_message{
       float structBL_BatteryVoltage;
       int structBL_BatteryPercentage;
       bool structbodyLEDControllerStatus;
-      char structFunctionSWState[10];
+      int structFunctionSWState;
+      bool struct_remoteConnected;
       bool structCommandIncluded;
       uint32_t structBL_Success;
       uint32_t structBL_Failure;
@@ -490,6 +492,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         BL_BatteryPercentage = commandsToReceiveFromBodyController.structBL_BatteryPercentage;
         bodyLEDControllerStatus = commandsToReceiveFromBodyController.structbodyLEDControllerStatus;
         FunctionSWState = commandsToReceiveFromBodyController.structFunctionSWState;
+        remoteConnected = commandsToReceiveFromBodyController.struct_remoteConnected;
         incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
         BCSuccessCounter = commandsToReceiveFromBodyController.structBL_Success;
         BCFailureCounter = commandsToReceiveFromBodyController.structBL_Failure;
@@ -580,6 +583,7 @@ void processESPNOWIncomingMessage(){
       if (incomingSenderID == "BC"){
         bodyControllerStatus = 1;
         bckeepAliveAge =millis();
+        // sendStatusMessageNow();
         if (bodyLEDControllerStatus == 1){
           blkeepAliveAge = millis();
         }
@@ -599,12 +603,13 @@ void processESPNOWIncomingMessage(){
         Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
         Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
         Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
-        Debug.STATUS("Function Sw State %s \n", FunctionSWState);
+        Debug.STATUS("Function Sw State %i \n", FunctionSWState);
+        Debug.STATUS("Remote Connected Status: %i\n", remoteConnected);
         Debug.STATUS("Body LED Controller Status: %d \n", bodyLEDControllerStatus);
         Debug.ESPNOW("ESP NOW Message Received from Body Controller \n");
         Debug.STATUS("Body Controller Statisics:  Success: %i  Failuure: %i\n", BCSuccessCounter, BCFailureCounter);
 
-
+        
       }else if (incomingSenderID == "BS"){
         bodyServoControllerStatus = 1;
         bskeepAliveAge =millis();
@@ -656,6 +661,7 @@ void processESPNOWIncomingMessage(){
       } else {Debug.ESPNOW("No Valid source identified \n");}
 
     } else {Debug.ESPNOW("No matching target ID \n");}
+    // sendStatusMessage();
 }
 
 //////////////////////////////////////////////////////////////
@@ -978,7 +984,7 @@ void sendESPNOWCommand(String starget, String scomm){
 //////////////////////////////////////////////////////////////////////
 void sendStatusToRemote(){
   if (sendUpdateStatus){
-    if (millis() - sendStatusMillis >= sendStatusFrequency) {
+    if (millis() - sendStatusMillis >= 1000) {
       sendStatusMillis = millis();
       // sendStatusMessage("Status Update");
       sendStatusMessage();
@@ -1010,6 +1016,8 @@ typedef struct LoRa_Struct{
   int struct_BL_vuBaselineExt;
   float struct_BL_BatteryVoltage;
   int struct_BL_BatteryPercentage;
+  int struct_FunctionSWState;
+  bool struct_remoteConnected;
   uint32_t struct_DGSuccessCounter;
   uint32_t struct_DGFailureCounter;
   uint32_t struct_BSSuccessCounter;
@@ -1047,6 +1055,46 @@ void setupLoRaSendStruct(){
     commandstoSendtoRemote.struct_BL_vuBaselineExt = BL_vuBaselineExt;
     commandstoSendtoRemote.struct_BL_BatteryVoltage = BL_BatteryVoltage;
     commandstoSendtoRemote.struct_BL_BatteryPercentage = BL_BatteryPercentage;
+    commandstoSendtoRemote.struct_FunctionSWState = FunctionSWState;
+    commandstoSendtoRemote.struct_remoteConnected = remoteConnected;
+    commandstoSendtoRemote.struct_DGSuccessCounter = DGSuccessCounter;
+    commandstoSendtoRemote.struct_DGFailureCounter = DGFailureCounter;
+    commandstoSendtoRemote.struct_BCSuccessCounter = BCSuccessCounter;
+    commandstoSendtoRemote.struct_BCFailureCounter = BCFailureCounter;
+    commandstoSendtoRemote.struct_BSSuccessCounter = BSSuccessCounter;
+    commandstoSendtoRemote.struct_BSFailureCounter = BSFailureCounter;
+    commandstoSendtoRemote.struct_DPSuccessCounter = DPSuccessCounter;
+    commandstoSendtoRemote.struct_DPFailureCounter = DPFailureCounter;
+    commandstoSendtoRemote.struct_DCSuccessCounter = DCSuccessCounter;
+    commandstoSendtoRemote.struct_DCFailureCounter = DPFailureCounter;
+    commandstoSendtoRemote.struct_HPSuccessCounter = HPSuccessCounter;
+    commandstoSendtoRemote.struct_HPFailureCounter = HPFailureCounter;
+};
+
+void setupLoRaSendStructNow(){
+  ACKBool = false;
+  // incomingMsgId = 0;
+    commandstoSendtoRemote.struct_incomingMsgAck = ACKBool;
+    commandstoSendtoRemote.struct_msgAckID = incomingMsgId;
+    commandstoSendtoRemote.struct_droidGatewayStatus = droidGatewayStatus;
+    commandstoSendtoRemote.struct_bodyControllerStatus = bodyControllerStatus;
+    commandstoSendtoRemote.struct_bodyLEDControllerStatus = bodyLEDControllerStatus;
+    commandstoSendtoRemote.struct_bodyServoControllerStatus = bodyServoControllerStatus;
+    commandstoSendtoRemote.struct_domePlateControllerStatus = domePlateControllerStatus;
+    commandstoSendtoRemote.struct_domeControllerStatus = domeControllerStatus;
+    commandstoSendtoRemote.struct_hpControllerStatus = hpControllerStatus;
+    commandstoSendtoRemote.struct_domeLogicsControllerStatus = domeLogicsControllerStatus;
+    commandstoSendtoRemote.struct_BL_LDP_Bright = BL_LDP_Bright;
+    commandstoSendtoRemote.struct_BL_MAINT_Bright = BL_MAINT_Bright;
+    commandstoSendtoRemote.struct_BL_VU_Bright = BL_VU_Bright;
+    commandstoSendtoRemote.struct_BL_CS_Bright = BL_CS_Bright;
+    commandstoSendtoRemote.struct_BL_vuOffsetInt = BL_vuOffsetInt;
+    commandstoSendtoRemote.struct_BL_vuBaselineInt = BL_vuOffsetInt;
+    commandstoSendtoRemote.struct_BL_vuOffsetExt = BL_vuOffsetExt;
+    commandstoSendtoRemote.struct_BL_vuBaselineExt = BL_vuBaselineExt;
+    commandstoSendtoRemote.struct_BL_BatteryVoltage = BL_BatteryVoltage;
+    commandstoSendtoRemote.struct_BL_BatteryPercentage = BL_BatteryPercentage;
+    commandstoSendtoRemote.struct_FunctionSWState = FunctionSWState;
     commandstoSendtoRemote.struct_DGSuccessCounter = DGSuccessCounter;
     commandstoSendtoRemote.struct_DGFailureCounter = DGFailureCounter;
     commandstoSendtoRemote.struct_BCSuccessCounter = BCSuccessCounter;
@@ -1062,6 +1110,14 @@ void setupLoRaSendStruct(){
 };
 
 
+void sendStatusMessageNow(){
+  setupLoRaSendStructNow();
+  LoRa.beginPacket();
+  for (unsigned int i = 0; i < sizeof(commandstoSendtoRemote);i++) {
+    LoRa.write(((byte *) &commandstoSendtoRemote)[i]);
+  }
+  LoRa.endPacket();
+}
 
 void sendStatusMessage(){
   setupLoRaSendStruct();

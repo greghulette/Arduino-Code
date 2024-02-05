@@ -191,12 +191,13 @@
   int BL_vuBaselineExt;
   float BL_BatteryVoltage;
   int BL_BatteryPercentage;
-  String FunctionSwState;
+  int FunctionSwState;
 
 
   bool bodyLEDControllerStatus = 0;
 
 
+bool remoteConnected = false;
 
 
 
@@ -437,7 +438,8 @@ typedef struct bodyControllerStatus_struct_message{
       float structBL_BatteryVoltage;
       int structBL_BatteryPercentage;
       bool structbodyLEDControllerStatus;
-      char structFunctionSWState[10];
+      int structFunctionSWState;
+      bool struct_remoteConnected;
       bool structCommandIncluded;
       uint32_t structSuccess;
       uint32_t structFailure;
@@ -683,6 +685,10 @@ void printKeepaliveStatus(){
     Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
     Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
     Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+    Debug.STATUS(("Fucntion Sw State: %i\n"), FunctionSwState);
+    Debug.STATUS("Remote Connected Status: %i\n", remoteConnected);
+
+
     Debug.debugflag_status = 0;
   } else
   {  
@@ -697,6 +703,8 @@ void printKeepaliveStatus(){
     Debug.STATUS("vuBaselineExt: %i\n", BL_vuBaselineExt);
     Debug.STATUS("BL_BatteryVoltage: %f\n", BL_BatteryVoltage);
     Debug.STATUS("BL_BatteryPercentage: %i\n", BL_BatteryPercentage);
+    Debug.STATUS(("Fucntion Sw State: %i\n"), FunctionSwState);
+    Debug.STATUS("Remote Connected Status: %i\n", remoteConnected);
   }
   Internal_Command[0]   = '\0';
 }
@@ -969,7 +977,8 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
     msg->structBL_BatteryVoltage = BL_BatteryVoltage;
     msg->structBL_BatteryPercentage = BL_BatteryPercentage;
     msg->structbodyLEDControllerStatus = bodyLEDControllerStatus;
-    snprintf(msg-> structFunctionSWState, sizeof(msg->structFunctionSWState), "%s", FunctionSwState.c_str());
+    msg-> structFunctionSWState = FunctionSwState;
+    msg->struct_remoteConnected = remoteConnected;
     msg->structCommandIncluded = hascommand;
     msg->structSuccess = SuccessCounter;
     msg->structFailure = FailureCounter;
@@ -1359,6 +1368,9 @@ void longDance(){
 #define CHANNEL_10_ARRAY_INDEX 9
 
 #define CHANNEL_16_ARRAY_INDEX 15
+#define CHANNEL_18_ARRAY_INDEX 16
+
+
 int newValue = 0;
 int oldValueChannel4 = 100;
 int oldValueChannel5 = 100;
@@ -1367,7 +1379,8 @@ int oldValueChannel7 = 100;
 int oldValueChannel8 = 100;
 int oldValueChannel9 = 100;
 int oldValueChannel10 = 100;
-
+int oldValueChannel16 = 100;
+int oldvalueChannel18;
 
 bool Channel6Bool;
 int Channel6State = 0;
@@ -1380,11 +1393,12 @@ int lastChannel7State = 0;
 bool Channel8Bool;
 int Channel8State = 0;
 int lastChannel8State = 0;
-
+bool lostFrameOld = false;
 bool Channel9Bool;
 int Channel9State = 0;
 int lastChannel9State = 0;
 
+bool Channel18bool;
 bool Channel10Bool;
 int Channel10State = 0;
 int lastChannel10State = 0;
@@ -1403,13 +1417,7 @@ void processSbus(){
       sbusValues[i] = data.ch[i];
 
     }
-  if (sbusValues[CHANNEL_16_ARRAY_INDEX] <300){
-    FunctionSwState = "DOWN";
-  } else if (CHANNEL_16_ARRAY_INDEX > 700 && CHANNEL_16_ARRAY_INDEX <= 1200){
-    FunctionSwState = "MIDDLE";
-  } else if (CHANNEL_16_ARRAY_INDEX > 1700){
-    FunctionSwState = "UP";
-  }
+  
     /* Display lost frames and failsafe data */      
     if (Debug.debugflag2 == 1){  
 
@@ -1420,6 +1428,35 @@ void processSbus(){
     // Serial.println(sbusValues[]);
               // Serial.println(oldValue);
           // unsigned long  oldValueCurrentMillisChannel4 = millis();
+if (lostFrameOld != data.lost_frame){
+  if (data.lost_frame == true ){
+      lostFrameOld = data.lost_frame;
+
+    // Debug.STATUS("Remote Disconnected \n");
+      remoteConnected = false;
+    } else if (data.lost_frame == false){
+        lostFrameOld = data.lost_frame;
+
+      // Debug.STATUS("Remote Connected \n");
+
+      remoteConnected = true;
+    }
+
+}
+
+    
+  
+  if (abs(sbusValues[CHANNEL_16_ARRAY_INDEX] - oldValueChannel16) >5){
+    oldValueChannel16 = sbusValues[CHANNEL_16_ARRAY_INDEX];
+    if (oldValueChannel16 < 200){
+    FunctionSwState = 1;
+  } else if (oldValueChannel16 > 700 && oldValueChannel16 <= 1200){
+    FunctionSwState = 2;
+  } else if (oldValueChannel16 > 1700){
+    FunctionSwState = 3;
+  }
+  sendESPNOWCommand("DG","");
+  }
 
           if(abs(sbusValues[CHANNEL_4_ARRAY_INDEX] - oldValueChannel4) >=5 ){
            oldValueChannel4 = sbusValues[CHANNEL_4_ARRAY_INDEX];
