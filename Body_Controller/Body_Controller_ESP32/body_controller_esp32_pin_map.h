@@ -7,6 +7,18 @@
 // This pinout is for a WROOM32
 ////////////////////////////////
 
+// #define SBUSPINS
+
+#ifdef SBUSPINS
+#define SERIAL_TX_SB_PIN    19 // Y // Stealth Controller Serial Tx pin
+#define SERIAL_RX_SB_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
+#define SERIAL_TX_ST_PIN    33
+#define SERIAL_RX_ST_PIN    36 // Y // Stealth Controller Serial Tx pin
+#else 
+#define SERIAL_TX_ST_PIN    19
+#define SERIAL_RX_ST_PIN    35 // Y // Stealth Controller Serial Tx pin
+#endif
+
 #define UP_0  				0   // W // Unused Pin (Must be LOW to boot)
 #define SERIAL_TX_PIN       1   // N // debug output
 #define UP_2				2   // Y // Unused Pin(must be left floating or LOW to enter flashing mode)
@@ -27,7 +39,7 @@
 #define SERIAL_RX_BL_PIN    16 // Y // ATMEGA Serial Tx pin
 #define SERIAL_TX_RD_PIN    17 // Y // Roam a dome home Tx pin
 #define SERIAL_TX_MP_PIN	18 // Y // MP3/HCR Serial Tx pin
-#define SERIAL_TX_SB_PIN    19 // Y // Stealth Controller Serial Tx pin
+// #define SERIAL_TX_SB_PIN    19 // Y // Stealth Controller Serial Tx pin
 // #define SERIAL_TX_ST_PIN    19 // Y // Stealth Controller Serial Tx pin
 #define NONEXISTENT_PIN_20  20 // N // There is no GPIO20
 #define I2C_SDA             21 // Y // I2C SDA
@@ -42,11 +54,10 @@
 #define NONEXISTENT_PIN_30  30 // N // There is no GPIO30
 #define NONEXISTENT_PIN_31 	31 // N // There is no GPIO31
 #define SERIAL_RX_MP_PIN	32 // Y // MP3/HCR Serial Rx pin
-#define UP_33	 	 	  	33 // Y // Unused Pin
+// #define SERIAL_TX_ST_PIN	 	 	  	33 // Y // Unused Pin
 #define SERIAL_RX_RD_PIN    34 // Y // Roam a dome home Serial Rx pin- input only (Can be used for Rx) // Use pull-down resistor
 // #define SERIAL_RX_ST_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
-#define SERIAL_RX_SB_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
-#define SERIAL_RX_ST_PIN               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
+// #define SERIAL_RX_SB_PIN    35 // Y // Stealth Controller Serial Rx pin - input only (Can be used for Rx) // Use pull-down resistor
 // #define UP_36               36 // Y // Unused Pin - input only (Can be used for Rx) // Use pull-down resistor
 #define NONEXISTENT_PIN_37  37 // N // There is no GPIO37
 #define NONEXISTENT_PIN_38  38 // N // There is no GPIO38

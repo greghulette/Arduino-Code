@@ -232,7 +232,8 @@ bool remoteConnected = false;
  
 HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
 
-
+// #define SBUS 
+#ifdef SBUS
 /* SBUS object, reading SBUS */
 bfs::SbusRx sbus_rx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
 /* SBUS object, writing SBUS */
@@ -240,6 +241,7 @@ bfs::SbusTx sbus_tx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
 /* SBUS data */
 bfs::SbusData data;
 
+#endif
 
   //////////////////////////////////////////////////////////////////////
   ///******             WiFi Specific Setup                     *****///
@@ -1358,6 +1360,8 @@ void longDance(){
       Animation_Command[0]   = '\0'; 
 }
 
+#ifdef SBUS
+
 
 #define CHANNEL_4_ARRAY_INDEX 3
 #define CHANNEL_5_ARRAY_INDEX 4
@@ -1843,6 +1847,8 @@ void RCRadio_HCRVolChange(int chan, int sbusPos){
   Serial.println(RCVocalizerVolume);
   HCR.SetVolume(chan, RCVocalizerVolume);
 }
+
+#endif
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////                                                                                       /////////     
@@ -1862,8 +1868,11 @@ void setup(){
   mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_MP_PIN,SERIAL_TX_MP_PIN,false,95);
   s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);
   s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);
+  
+  #ifdef SBUS
   sbus_rx.Begin();
   sbus_tx.Begin();
+  #endif
   Serial.println("\n\n\n----------------------------------------");
   Serial.println("Booting up the Body ESP Controller");
   
@@ -1968,8 +1977,9 @@ void setup(){
 void loop(){
   keepAlive();
   checkAgeofkeepAlive();
-
-processSbus();
+#ifdef SBUS
+ processSbus();
+#endif
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     AnimatedEvent::process();
