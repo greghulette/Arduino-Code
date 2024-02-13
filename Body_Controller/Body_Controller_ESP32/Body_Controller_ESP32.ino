@@ -1243,13 +1243,15 @@ void CompleteshortCircuit(){
   HCR.Overload();
   DelayCall::schedule([]{HCR.Stimulate(3, 1);},1500);
   sendESPNOWCommand("HP", ":HA014");
-  sendESPNOWCommand("DC", ":SDL@APLE20530");
+  // sendESPNOWCommand("DC", ":SDL@APLE20530");
   writeRdSerial(":DPS14");  // #DPS14:H:D90,100:D-90,100:D65,70:D-180,90:D-420,80:A0:D100,50:H,30
-  sendESPNOWCommand("DP", ":SUS:PS14");
+  
 
   DelayCall::schedule([]{sendESPNOWCommand("DC", ":SPS0T4");}, 50);
   DelayCall::schedule([]{sendESPNOWCommand("BS", ":D305");}, 100);
-    DelayCall::schedule([]{sendESPNOWCommand("DP", ":A54");}, 150);
+  DelayCall::schedule([]{sendESPNOWCommand("DP", ":A54");}, 150);
+  DelayCall::schedule([]{sendESPNOWCommand("DC", ":SDL@APLE20530");}, 200);
+  DelayCall::schedule([]{sendESPNOWCommand("DP", ":SUS:PS14");}, 250);
 
   DelayCall::schedule([]{resetLightsafterShortCircuit();}, 18000);
   Animation_Command[0]   = '\0'; 
