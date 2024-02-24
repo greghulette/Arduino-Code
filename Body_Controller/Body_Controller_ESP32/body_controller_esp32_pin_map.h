@@ -7,7 +7,7 @@
 // This pinout is for a WROOM32
 ////////////////////////////////
 
-// #define SBUSPINS
+#define SBUSPINS
 
 #ifdef SBUSPINS
 #define SERIAL_TX_SB_PIN    19 // Y // Stealth Controller Serial Tx pin

@@ -617,7 +617,7 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */
     { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/
     { 10,  1300, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
-    { 11,  1900, 600, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
+    { 11,  1870, 500, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
     { 12,  700, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
     { 13,  1050, 2450, CPU_ARM_EXTEND },      /* 12: CPU Arm Extend */
     { 14,  1500, 1549, REAR_LEFT_DOOR },      /* 13: Data Panel Door */

@@ -232,7 +232,7 @@ bool remoteConnected = false;
  
 HCRVocalizer HCR(&mpSerial,MP_BAUD_RATE); // Serial (Stream Port, baud rate)
 
-// #define SBUS 
+#define SBUS 
 #ifdef SBUS
 /* SBUS object, reading SBUS */
 bfs::SbusRx sbus_rx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
@@ -937,14 +937,18 @@ void writeS1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s1Serial.write(completeString[i]);
+    // Debug.SERIAL_EVENT("Writing: %s", completeString[i] );
+    Serial.print(completeString[i]);
+
   };
-  Debug.SERIAL_EVENT("Writing to Serial 2\n");
+  Debug.SERIAL_EVENT("Writing to Serial 1\n");
 };
 
 void writeS2Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s2Serial.write(completeString[i]);
+    Debug.SERIAL_EVENT("Writing: %c", completeString[i] );
   };
   Debug.SERIAL_EVENT("Writing to Serial 2\n");
 };
@@ -1362,6 +1366,39 @@ void longDance(){
       Animation_Command[0]   = '\0'; 
 }
 
+void cpuSequence(){
+  sendESPNOWCommand("BS", ":D126");
+      Animation_Command[0]   = '\0'; 
+}
+
+void cpuRaise(){
+  sendESPNOWCommand("BS", ":D10103");
+  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D121");}, 500);
+      Animation_Command[0]   = '\0'; 
+}
+
+void cpuLower(){
+  sendESPNOWCommand("BS", ":D122");
+  DelayCall::schedule([]{sendESPNOWCommand("BS", ":D10203");}, 1000);
+
+      Animation_Command[0]   = '\0'; 
+}
+
+void cpuExtend(){
+  sendESPNOWCommand("BS", ":D123");
+      Animation_Command[0]   = '\0'; 
+}
+
+void cpuRetract(){
+  sendESPNOWCommand("BS", ":D124");
+      Animation_Command[0]   = '\0'; 
+}
+
+void cpuRotate(){
+  sendESPNOWCommand("BS", ":D125");
+      Animation_Command[0]   = '\0'; 
+}
+
 #ifdef SBUS
 
 
@@ -1702,6 +1739,7 @@ void RCRadio_Matrix_Buttons(int PWMvalue){
       }
     if (PWMvalue <= 1499 && PWMvalue >= 1450){
       Serial.println("T5 Left: ");
+      cpuSequence();
     }
     if (PWMvalue <= 1449 && PWMvalue >= 1400){
       Serial.println("T5 Right: ");
@@ -1801,21 +1839,27 @@ void RCRadio_Matrix_Buttons(int PWMvalue){
     }
     if (PWMvalue <= 1549 && PWMvalue >= 1500){
       Serial.println("T4 Left: ");
+      cpuRaise();
     }
     if (PWMvalue <= 1499 && PWMvalue >= 1450){
       Serial.println("T5 Left: ");
+      cpuExtend();
     }
     if (PWMvalue <= 1449 && PWMvalue >= 1400){
       Serial.println("T5 Right: ");
+      cpuRetract();
     }    
     if (PWMvalue <= 1399 && PWMvalue >= 1350){
       Serial.println("T3 Up: Function 10:  ");
+      cpuSequence();
     }
     if (PWMvalue <= 1349 && PWMvalue >= 1300){
       Serial.println("T4 Right: Function 11:  ");
+      cpuLower();
     }
     if (PWMvalue <= 1299 && PWMvalue >= 1250){
       Serial.println("T3 Down: Function 12:  ");
+      cpuRotate();
     }
     if (PWMvalue <= 1249 && PWMvalue >= 1200){
       Serial.println("T2 Up: Function 13:  ");
@@ -2110,13 +2154,13 @@ void loop(){
                   ESPNOWTarget = "";  
                 } 
                 if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
-                  for (int i=1; i<commandLength;i++ ){
+                  for (int i=2; i<commandLength-1;i++ ){
                     char inCharRead = inputBuffer[i];
                     serialCommandString += inCharRead;  // writeS1Serialadd it to the inputString:
                   }
                   Debug.DBG("Full Serial Command Captured: %s\n", serialCommandString.c_str());
-                  serialPort = serialCommandString.substring(1,3);
-                  serialCommandSubString = serialCommandString.substring(3,commandLength);
+                  serialPort = serialCommandString.substring(0,2);
+                  serialCommandSubString = serialCommandString.substring(2,commandLength);
                   Debug.DBG("Serial Command: %s to Serial Port: %s\n", serialCommandSubString.c_str(), serialPort);
                   if (serialPort == "S1"){
                     writeS1Serial(serialCommandSubString);
