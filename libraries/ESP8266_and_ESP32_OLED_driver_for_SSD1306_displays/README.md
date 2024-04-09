@@ -1,6 +1,7 @@
-[![Build Status](https://github.com/ThingPulse/esp8266-oled-ssd1306/actions/workflows/main.yml/badge.svg)](https://github.com/ThingPulse/esp8266-oled-ssd1306/actions)
-
 # ThingPulse OLED SSD1306 (ESP8266/ESP32/Mbed-OS)
+
+[![PlatformIO Registry](https://badges.registry.platformio.org/packages/thingpulse/library/ESP8266%20and%20ESP32%20OLED%20driver%20for%20SSD1306%20displays.svg)](https://registry.platformio.org/libraries/thingpulse/ESP8266%20and%20ESP32%20OLED%20driver%20for%20SSD1306%20displays)
+[![Build Status](https://github.com/ThingPulse/esp8266-oled-ssd1306/actions/workflows/main.yml/badge.svg)](https://github.com/ThingPulse/esp8266-oled-ssd1306/actions)
 
 This is a driver for SSD1306 128x64, 128x32, 64x48 and 64x32 OLED displays running on the Arduino/ESP8266 & ESP32 and mbed-os platforms.
 Can be used with either the I2C or SPI version of the display.
@@ -399,6 +400,33 @@ OLEDDisplayUiState* getUiState();
 // the returned value is the remaining time (in ms)
 // you have to draw after drawing to keep the frame budget.
 int8_t update();
+```
+
+## Creating and using XBM bitmaps
+
+If you want to display your own images with this library, the best way to do this is using a bitmap.
+
+There are two options to convert an image to a compatible bitmap:
+1. **Using Gimp.**
+   In this case exporting the bitmap in an 1-bit XBM format is sufficient.
+2. **Using a converter website.**
+   You could also use online converter services like e.g. [https://javl.github.io/image2cpp/](https://javl.github.io/image2cpp/). The uploaded image should have the same dimension as the screen (e.g. 128x64). The following output settings should be set:
+    - Draw Mode: Horizontal - 1 bit per pixel
+    - Swap bits in byte: swap checkbox should be checked.
+
+The resulting bitmap can be put into a header file:
+```C++
+const unsigned char epd_example [] PROGMEM = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ... 
+    ...
+};
+```
+
+Subsequently, it can be used like this:
+```C++
+display.clear();
+display.drawXbm(0, 0, 128, 64, epd_example); // assuming your bitmap is 128x64
+display.display();
 ```
 
 ## Example: SSD1306Demo

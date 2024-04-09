@@ -557,9 +557,9 @@ void onReceive(int packetSize){
 
   if (packetSize) {
     // received a packet
-    Serial.print("\nReceived packet size ");
-    Serial.print(packetSize);
-    Serial.print(" data ");
+    // Serial.print("\nReceived packet size ");
+    // Serial.print(packetSize);
+    // Serial.print(" data ");
     // read packet
     while (LoRa.available())
       for (int i = 0; i < packetSize; i++) {
@@ -568,12 +568,12 @@ void onReceive(int packetSize){
         // Serial.print(((byte *) &commandstoReceiveFromRemote)[i]);
       }
     // print RSSI of packet
-    Serial.print("' with RSSI ");
-    Serial.println(LoRa.packetRssi());
+    // Serial.print("' with RSSI ");
+    // Serial.println(LoRa.packetRssi());
 if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
    msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
-  Serial.print("Received ACK with ID of: ");
-  Serial.println(msgAckID);
+  // Serial.print("Received ACK with ID of: ");
+  // Serial.println(msgAckID);
   commandSent = false;
  } 
     droidGatewayStatus = commandstoReceiveFromRemote.struct_droidGatewayStatus;
@@ -637,8 +637,8 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
   Debug.STATUS("vu Baseline External: %d\n", BL_vuBaselineExt);
   Debug.STATUS("Droid Battery Voltage: %d\n", BL_BatteryVoltage);
   Debug.STATUS("Droid Battery Percentage: %d\n", BL_BatteryPercentage);
-  Debug.STATUS("Function SW State: %s\n", FunctionSWState);
-  Debug.STATUS("Remote Connected Status: %i\n", remoteConnected);
+  Debug.STATUS("Function SW State: %i\n", FunctionSWState);
+  Debug.STATUS("Remote Connected Status: %d\n", remoteConnected);
   Debug.STATUS("DG ESP-NOW Stats: %i / %i \n", DGSuccessCounter, DGFailureCounter);
   Debug.STATUS("BC ESP-NOW Stats: %i / %i \n", BCSuccessCounter, BCFailureCounter);
   Debug.STATUS("BS ESP-NOW Stats: %i / %i \n", BSSuccessCounter, BSFailureCounter);

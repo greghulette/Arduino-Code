@@ -575,12 +575,12 @@ void processESPNOWIncomingMessage(){
 
 //     Pin  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
-    { 1,   800, 1600, HOLO_HSERVO },  /* 0: horizontal front holo */
-    { 2,   800, 1800, HOLO_VSERVO },  /* 1: vertical front holo */
-    { 3,   800, 1600, HOLO_HSERVO },  /* 2: horizontal top holo */
-    { 4,   800, 1325, HOLO_VSERVO },  /* 3: vertical top holo */
-    { 5,   900, 1000, HOLO_VSERVO },  /* 4: vertical rear holo */
-    { 6, 1300, 1600, HOLO_HSERVO },  /* 5: horizontal rear holo */
+    { 1,   1100, 1800, HOLO_HSERVO },  /* 0: Vertical front holo */
+    { 2,   1000, 1700, HOLO_VSERVO },  /* 1: Horizontal front holo */
+    { 3,   1500, 2100, HOLO_HSERVO },  /* 2: horizontal top holo */
+    { 4,   1200, 1900, HOLO_VSERVO },  /* 3: vertical top holo */
+    { 5,   1850, 1200, HOLO_VSERVO },  /* 4: vertical rear holo */
+    { 6,   1300, 2100, HOLO_HSERVO },  /* 5: horizontal rear holo */
   };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);

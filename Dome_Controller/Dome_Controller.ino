@@ -600,13 +600,13 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 1,   2363, 1592, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
     { 2,   1975, 1200, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
     { 3,   2000, 1200, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
-    { 4,   2000, 1200, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
+    { 4,   985, 1830, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
     { 5,   2050, 1100, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-    { 6,   1950, 1100, BIG_PANEL },             /* 5: door 6 Big Lower door */
-    { 7,   2050, 1156, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
-    { 8,   2050, 1175, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
+    { 6,   1300, 2100, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 7,   852, 1616, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
+    { 8,   1050, 1850, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
     { 9,   2050, 1168, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
-    { 10,  2050, 1257, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
+    { 10,  1350, 2050, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
 };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);

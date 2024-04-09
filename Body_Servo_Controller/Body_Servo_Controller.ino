@@ -93,6 +93,7 @@
   String HOSTNAME = "Body Servo Controller";
   
   char inputBuffer[300];
+
   String inputString;         // a string to hold incoming data
 
   volatile boolean stringComplete  = false;      // whether the serial string is complete
@@ -609,10 +610,10 @@ void processESPNOWIncomingMessage(){
 const ServoSettings servoSettings[] PROGMEM = {
     { 1,  2110, 1100, TOP_UTILITY_ARM },      /* 0: Top Utility Arm 2350,675*/
     { 2,  1950, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
-    { 3,  1920, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
+    { 3,  1000, 1750, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
     { 4,  1400, 1900, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
     { 5,  1590 , 758, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
-    { 6,  760, 1400, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
+    { 6,  1750, 850, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
     { 7,  1950, 700, DRAWER_S1 },             /* 6: Drawer S1*/
     { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */
     { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/

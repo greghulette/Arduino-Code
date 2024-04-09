@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///*****                                                                                                        *****////
 ///*****                                          Created by Greg Hulette.                                      *****////
-///*****                                                Version 2.1                                             *****////
+///*****                                                Version 2.2                                             *****////
 ///*****                                                                                                        *****////
 ///*****                                 So exactly what does this all do.....?                                 *****////
 ///*****                       - Receives commands via Serial or ESP-NOW                                        *****////
@@ -61,7 +61,6 @@
 
 // Standard Arduino library
 #include <Arduino.h>
-#include <string.h>
 
 //Used for ESP-NOW
 #include <WiFi.h>
@@ -75,13 +74,13 @@
 #include "DebugWCB.h" 
 
 // Used for Software Serial to allow more serial port capacity
-#include <SoftwareSerial.h>
+#include <SoftwareSerial.h>                 //EspSoftwareSerial by Dirk Kaar, Peter Lerup Library
 
 // Used to store parameters after reboot/power loss
 #include <Preferences.h>
 
 //Used for the Status LED on Board version 2.1
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoPixel.h>                 // Adafruit NeoPixel by Adafruit Library
 
 
 //////////////////////////////////////////////////////////////////////
@@ -105,6 +104,7 @@
   String serialStringCommand;
   String serialPort;
   String serialSubStringCommand;
+  int incomingSerialPort;
 
   uint32_t Local_Command[6]  = {0,0,0,0,0,0};
   int localCommandFunction     = 0;
@@ -162,7 +162,7 @@
   unsigned long mainLoopTime; 
   unsigned long MLMillis;
   byte mainLoopDelayVar = 5;
-  String version = "V2.1";
+  String version = "V2.2";
 
 
 #ifdef HWVERSION_1
@@ -556,6 +556,8 @@ void serialEvent() {
       if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       processSerial(inputString);
       Debug.SERIAL_EVENT("USB Serial Input: %s \n",inputString.c_str());
+            incomingSerialPort = 0;
+
     }
   }
 }
@@ -565,8 +567,9 @@ void s1SerialEvent() {
     char inChar = (char)s1Serial.read();
     inputString += inChar;
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
-      Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString.c_str());
       processSerial(inputString);
+      Debug.SERIAL_EVENT("Serial 1 Input: %s \n",inputString.c_str());
+      incomingSerialPort = 1;
     }
   }
 }
@@ -578,6 +581,7 @@ void s2SerialEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       Debug.SERIAL_EVENT("Serial 2 Input: %s \n", inputString.c_str());
       processSerial(inputString);
+      incomingSerialPort = 2;
     }
   }
 }
@@ -589,6 +593,8 @@ void s3SerialEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       Debug.SERIAL_EVENT("Serial 3 Input: %s \n", inputString.c_str());
       processSerial(inputString);
+      incomingSerialPort = 3;
+
     }
   }
 }
@@ -599,6 +605,8 @@ void s4SerialEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       Debug.SERIAL_EVENT("Serial 4 Input: %s \n", inputString.c_str());
       processSerial(inputString);
+      incomingSerialPort = 4;
+
     }
   }
 }
@@ -609,6 +617,8 @@ void s5SerialEvent() {
     if (inChar == '\r') {               // if the incoming character is a carriage return (\r)
       Debug.SERIAL_EVENT("Serial 5 Input: %s \n", inputString.c_str());
       processSerial(inputString);
+      incomingSerialPort = 5;
+
     }
   }
 }
@@ -616,7 +626,7 @@ void s5SerialEvent() {
 void processSerial(String incomingSerialCommand){
   turnOnLEDSerial();
   incomingSerialCommand += DELIMITER;               // add the deliimiter to the end so that next part knows when to end the splicing of commands
-  int saArrayLength = MAX_QUEUE_DEPTH + 1;
+  int saArrayLength = MAX_QUEUE_DEPTH;
   String sa[saArrayLength];  int r = 0;
   int  t =0;
 
@@ -934,12 +944,10 @@ void setup(){
 
   s1Serial.begin(SERIAL1_BAUD_RATE,SERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN);
   s2Serial.begin(SERIAL2_BAUD_RATE,SERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN);  
-  // s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);  
   s3Serial.begin(SERIAL3_BAUD_RATE,SWSERIAL_8N1,SERIAL3_RX_PIN,SERIAL3_TX_PIN,false,95);  
   s4Serial.begin(SERIAL4_BAUD_RATE,SWSERIAL_8N1,SERIAL4_RX_PIN,SERIAL4_TX_PIN,false,95);  
   s5Serial.begin(SERIAL5_BAUD_RATE,SWSERIAL_8N1,SERIAL5_RX_PIN,SERIAL5_TX_PIN,false,95);  
 
-  // Serial.printf("S1: %i \n S2: %i\n S3: %i \n S4: %i \n S5: %i \n", SERIAL1_BAUD_RATE, SERIAL2_BAUD_RATE, SERIAL3_BAUD_RATE, SERIAL4_BAUD_RATE, SERIAL5_BAUD_RATE );
   // prints out a bootup message of the local hostname
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
@@ -1145,6 +1153,13 @@ if (WCB_Quantity >= 9 ){
 
 
 void loop(){
+    if(Serial.available()){serialEvent();}
+    if(s1Serial.available()){s1SerialEvent();}
+    if(s2Serial.available()){s2SerialEvent();}
+    if(s3Serial.available()){s3SerialEvent();}
+    if(s4Serial.available()){s4SerialEvent();}
+    if(s5Serial.available()){s5SerialEvent();}
+
   if (millis() - MLMillis >= mainLoopDelayVar){
     MLMillis = millis();
     if(startUp) {
@@ -1154,16 +1169,11 @@ void loop(){
     }
 
     // looks for new serial commands (Needed because ESP's do not have an onSerialEvent function)
-    if(Serial.available()){serialEvent();}
-    if(s1Serial.available()){s1SerialEvent();}
-    if(s2Serial.available()){s2SerialEvent();}
-    if(s3Serial.available()){s3SerialEvent();}
-    if(s4Serial.available()){s4SerialEvent();}
-    if(s5Serial.available()){s5SerialEvent();}
+   
 
     if (havePendingCommands()) {autoComplete=false;}
     if (havePendingCommands() || autoComplete) {
-    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString);inputString.toCharArray(inputBuffer, 300);inputString="";}
+    if(havePendingCommands()) {inputString = getNextCommand(); Debug.LOOP("Comamand Accepted into Loop: %s \n", inputString.c_str());inputString.toCharArray(inputBuffer, 300);inputString="";}
     else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 300);autoInputString="";}
       if (inputBuffer[0] == '#'){
         if (
@@ -1243,11 +1253,11 @@ void loop(){
                         //  DelayCall::schedule([] {ESP.restart();}, 3000);
                         ESP.restart();
                         Local_Command[0]   = '\0';                                                           break;
-                  case 3:printf("ESP-NOW Success Count: %i \nESP-NOW Failure Count %i \n", SuccessCounter, FailureCounter);
-                        Local_Command[0]   = '\0'; 
-                        break;  //prints out failure rate of ESPNOW
+                  case 3: break;  //reserved for future use
                   case 4: ; break;  //reserved for future use
-                  case 5: ; break;  //reserved for future use
+                  case 5: printf("ESP-NOW Success Count: %i \nESP-NOW Failure Count %i \n", SuccessCounter, FailureCounter);
+                        Local_Command[0]   = '\0';
+                         break;  //prints out failure rate of ESPNOW
                   case 6: ; break;  //reserved for future use
                   case 7: ; break;  //reserved for future use
                   case 8: ; break;  //reserved for future use                                                         break;  //reserved for future use
@@ -1256,7 +1266,7 @@ void loop(){
                 }
               }
 
-      }else if (inputBuffer[0] == ':'){
+      }else if (inputBuffer[0] == CommandCharacter){
         if( inputBuffer[1]=='W' ||        // Command for Sending ESP-NOW Messages
             inputBuffer[1]=='w' ||        // Command for Sending ESP-NOW Messages
             inputBuffer[1]=='S' ||        // Command for sending Serial Strings out Serial ports
