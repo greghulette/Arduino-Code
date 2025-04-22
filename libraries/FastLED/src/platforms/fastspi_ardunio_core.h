@@ -1,10 +1,16 @@
-#ifndef __INC_FASTSPI_ARDUNIO_CORE_H
-#define __INC_FASTSPI_ARDUNIO_CORE_H
+#pragma once
 
-FASTLED_NAMESPACE_BEGIN
+#include <stdint.h>
+#pragma once
+
+#include "fl/namespace.h"
+#include <stdint.h>
 
 #if defined(ARDUNIO_CORE_SPI)
-#include <SPI.h>
+#endif
+
+#if defined(ARDUNIO_CORE_SPI)
+FASTLED_NAMESPACE_BEGIN
 
 template <uint8_t _DATA_PIN, uint8_t _CLOCK_PIN, uint32_t _SPI_CLOCK_RATE, SPIClass & _SPIObject>
 class ArdunioCoreSPIOutput {
@@ -75,7 +81,7 @@ public:
 
 	// write a block of uint8_ts out in groups of three.  len is the total number of uint8_ts to write out.  The template
 	// parameters indicate how many uint8_ts to skip at the beginning and/or end of each grouping
-	template <uint8_t FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels) {
+	template <uint8_t FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels, void* context = NULL) {
 		select();
     int len = pixels.mLen;
 
@@ -96,8 +102,9 @@ public:
 
 };
 
-
-#endif
-
 FASTLED_NAMESPACE_END
+
+
 #endif
+
+

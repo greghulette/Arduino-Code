@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -26,34 +26,18 @@
  * \file
  * \brief Classes for SDIO cards.
  */
-#ifndef SdioCard_h
-#define SdioCard_h
+#pragma once
 #include "../common/SysCall.h"
 #include "SdCardInterface.h"
-/** Use programmed I/O with FIFO. */
-#define FIFO_SDIO 0
-/** Use programmed I/O with DMA. */
-#define DMA_SDIO 1
+#ifdef SDIO_CONFIG_INCLUDE
+#include SDIO_CONFIG_INCLUDE
+#else   // SDIO_CONFIG_INCLUDE
 /**
  * \class SdioConfig
- * \brief SDIO card configuration.
+ * \brief Empty SDIO card configuration.
  */
-class SdioConfig {
- public:
-  SdioConfig() {}
-  /**
-   * SdioConfig constructor.
-   * \param[in] opt SDIO options.
-   */
-  explicit SdioConfig(uint8_t opt) : m_options(opt) {}
-  /** \return SDIO card options. */
-  uint8_t options() { return m_options; }
-  /** \return true if DMA_SDIO. */
-  bool useDma() { return m_options & DMA_SDIO; }
-
- private:
-  uint8_t m_options = FIFO_SDIO;
-};
+class SdioConfig {};
+#endif  // SDIO_CONFIG_INCLUDE
 //------------------------------------------------------------------------------
 /**
  * \class SdioCard
@@ -62,10 +46,10 @@ class SdioConfig {
 class SdioCard : public SdCardInterface {
  public:
   /** Initialize the SD card.
-   * \param[in] sdioConfig SDIO card configuration.
+   * \param[in] config SDIO card configuration.
    * \return true for success or false for failure.
    */
-  bool begin(SdioConfig sdioConfig);
+  bool begin(SdioConfig config);
   /** CMD6 Switch mode: Check Function Set Function.
    * \param[in] arg CMD6 argument.
    * \param[out] status return status data.
@@ -76,7 +60,7 @@ class SdioCard : public SdCardInterface {
   /** Disable an SDIO card.
    * not implemented.
    */
-  void end() {}
+  void end();
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
   uint32_t __attribute__((error("use sectorCount()"))) cardSize();
@@ -176,21 +160,11 @@ class SdioCard : public SdCardInterface {
    * \param[in] sector Address of first sector in sequence.
    *
    * \note This function is used with readData() and readStop() for optimized
-   * multiple sector reads.  SPI chipSelect must be low for the entire sequence.
+   * multiple sector reads.
    *
    * \return true for success or false for failure.
    */
   bool readStart(uint32_t sector);
-  /** Start a read multiple sectors sequence.
-   *
-   * \param[in] sector Address of first sector in sequence.
-   * \param[in] count Maximum sector count.
-   * \note This function is used with readData() and readStop() for optimized
-   * multiple sector reads.  SPI chipSelect must be low for the entire sequence.
-   *
-   * \return true for success or false for failure.
-   */
-  bool readStart(uint32_t sector, uint32_t count);
   /** End a read multiple sectors sequence.
    *
    * \return true for success or false for failure.
@@ -251,16 +225,6 @@ class SdioCard : public SdCardInterface {
    * \return true for success or false for failure.
    */
   bool writeStart(uint32_t sector);
-  /** Start a write multiple sectors sequence.
-   *
-   * \param[in] sector Address of first sector in sequence.
-   * \param[in] count Maximum sector count.
-   * \note This function is used with writeData() and writeStop()
-   * for optimized multiple sector writes.
-   *
-   * \return true for success or false for failure.
-   */
-  bool writeStart(uint32_t sector, uint32_t count);
 
   /** End a write multiple sectors sequence.
    *
@@ -273,7 +237,5 @@ class SdioCard : public SdCardInterface {
   static const uint8_t READ_STATE = 1;
   static const uint8_t WRITE_STATE = 2;
   uint32_t m_curSector;
-  SdioConfig m_sdioConfig;
   uint8_t m_curState = IDLE_STATE;
 };
-#endif  // SdioCard_h

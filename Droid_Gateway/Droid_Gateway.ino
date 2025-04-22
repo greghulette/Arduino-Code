@@ -674,8 +674,8 @@ void processESPNOWIncomingMessage(){
   boolean newState ;
 
   int msgCount = 0;            // count of outgoing messages
-  byte localAddress = 0xBC;     // address of this device
-  byte destination = 0xFF;      // destination to send to
+  byte localAddress = 0x05;     // address of this device
+  byte destination = 0x06;      // destination to send to
   long lastSendTime = 0;        // last send time
   int interval = 2000;          // interval between sends
 
@@ -993,8 +993,10 @@ void sendStatusToRemote(){
 }
 
 
+uint32_t LoraPasscode = 12345678;
 
 typedef struct LoRa_Struct{
+  uint32_t struct_LoraPasscode;
   bool struct_incomingMsgAck;
   uint32_t struct_msgAckID;
   bool struct_droidGatewayStatus;
@@ -1035,6 +1037,7 @@ typedef struct LoRa_Struct{
 LoRa_Struct commandstoSendtoRemote;
 
 void setupLoRaSendStruct(){
+    commandstoSendtoRemote.struct_LoraPasscode = LoraPasscode;
     commandstoSendtoRemote.struct_incomingMsgAck = ACKBool;
     commandstoSendtoRemote.struct_msgAckID = incomingMsgId;
     commandstoSendtoRemote.struct_droidGatewayStatus = droidGatewayStatus;
@@ -1074,6 +1077,7 @@ void setupLoRaSendStruct(){
 void setupLoRaSendStructNow(){
   ACKBool = false;
   // incomingMsgId = 0;
+    commandstoSendtoRemote.struct_LoraPasscode = LoraPasscode;
     commandstoSendtoRemote.struct_incomingMsgAck = ACKBool;
     commandstoSendtoRemote.struct_msgAckID = incomingMsgId;
     commandstoSendtoRemote.struct_droidGatewayStatus = droidGatewayStatus;

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -22,8 +22,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#ifndef SdFat_h
-#define SdFat_h
+#pragma once
 /**
  * \file
  * \brief main SdFs include file.
@@ -38,9 +37,9 @@
 #endif  // INCLUDE_SDIOS
 //------------------------------------------------------------------------------
 /** SdFat version for cpp use. */
-#define SD_FAT_VERSION 20202
+#define SD_FAT_VERSION 20300
 /** SdFat version as string. */
-#define SD_FAT_VERSION_STR "2.2.2"
+#define SD_FAT_VERSION_STR "2.3.0"
 //==============================================================================
 /**
  * \class SdBase
@@ -80,7 +79,7 @@ class SdBase : public Vol {
    * \return true for success or false for failure.
    */
   bool begin(SdSpiConfig spiConfig) {
-    return cardBegin(spiConfig) && Vol::begin(m_card);
+    return cardBegin(spiConfig) && volumeBegin();
   }
   //---------------------------------------------------------------------------
   /** Initialize SD card and file system for SDIO mode.
@@ -89,7 +88,7 @@ class SdBase : public Vol {
    * \return true for success or false for failure.
    */
   bool begin(SdioConfig sdioConfig) {
-    return cardBegin(sdioConfig) && Vol::begin(m_card);
+    return cardBegin(sdioConfig) && volumeBegin();
   }
   //----------------------------------------------------------------------------
   /** \return Pointer to SD card object. */
@@ -347,7 +346,9 @@ class SdBase : public Vol {
    *
    * \return true for success or false for failure.
    */
-  bool volumeBegin() { return Vol::begin(m_card); }
+  bool volumeBegin() {
+    return Vol::begin(m_card) || Vol::begin(m_card, true, 0);
+  }
 #if ENABLE_ARDUINO_SERIAL
   /** Print error details after begin() fails. */
   void initErrorPrint() { initErrorPrint(&Serial); }
@@ -445,7 +446,6 @@ typedef FsBaseFile SdBaseFile;
 #if defined __has_include
 #if __has_include(<FS.h>)
 #define HAS_INCLUDE_FS_H
-#warning File not defined because __has_include(FS.h)
 #endif  // __has_include(<FS.h>)
 #endif  // defined __has_include
 #ifndef HAS_INCLUDE_FS_H
@@ -457,10 +457,12 @@ typedef ExFile File;
 #elif SDFAT_FILE_TYPE == 3
 typedef FsFile File;
 #endif  // SDFAT_FILE_TYPE
+#elif !defined(DISABLE_FS_H_WARNING)
+#warning File not defined because __has_include(FS.h)
 #endif  // HAS_INCLUDE_FS_H
 /**
  * \class SdFile
- * \brief FAT16/FAT32 file with Print.
+ * \brief File with Print.
  */
 class SdFile : public PrintFile<SdBaseFile> {
  public:
@@ -503,4 +505,3 @@ class SdFile : public PrintFile<SdBaseFile> {
   /**  Cancel the date/time callback function. */
   static void dateTimeCallbackCancel() { FsDateTime::clearCallback(); }
 };
-#endif  // SdFat_h

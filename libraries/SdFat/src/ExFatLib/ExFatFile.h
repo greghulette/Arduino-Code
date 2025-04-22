@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -22,8 +22,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#ifndef ExFatFile_h
-#define ExFatFile_h
+#pragma once
 /**
  * \file
  * \brief ExFatFile class
@@ -71,12 +70,78 @@ class ExFatFile {
    */
   ExFatFile(const char* path, oflag_t oflag) { open(path, oflag); }
 
+  /** Copy from to this.
+   * \param[in] from Source file.
+   */
+  void copy(const ExFatFile* from) {
+    if (from != this) {
+#if FILE_COPY_CONSTRUCTOR_SELECT
+      *this = *from;
+#else   // FILE_COPY_CONSTRUCTOR_SELECT
+      memcpy(this, from, sizeof(ExFatFile));
+#endif  // FILE_COPY_CONSTRUCTOR_SELECT
+    }
+  }
+  /** move from to this.
+   * \param[in] from Source file.
+   */
+  void move(ExFatFile* from) {
+    if (from != this) {
+      copy(from);
+      from->m_attributes = FILE_ATTR_CLOSED;
+    }
+  }
+
+#if FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PUBLIC
+  /** Copy constructor.
+   * \param[in] from Move from file.
+   *
+   */
+  ExFatFile(const ExFatFile& from) = default;
+  /** Copy assignment operator.
+   * \param[in] from Move from file.
+   * \return Copied file.
+   */
+  ExFatFile& operator=(const ExFatFile& from) = default;
+#elif FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PRIVATE
+
+ private:
+  ExFatFile(const ExFatFile& from) = default;
+  ExFatFile& operator=(const ExFatFile& from) = default;
+
+ public:
+#else   // FILE_COPY_CONSTRUCTOR_SELECT
+  ExFatFile(const ExFatFile& from) = delete;
+  ExFatFile& operator=(const ExFatFile& from) = delete;
+#endif  // FILE_COPY_CONSTRUCTOR_SELECT
+
+#if FILE_MOVE_CONSTRUCTOR_SELECT
+  /** Move constructor.
+   * \param[in] from Move from file.
+   */
+  ExFatFile(ExFatFile&& from) { move(&from); }
+  /** Move assignment operator.
+   * \param[in] from Move from file.
+   * \return Moved file.
+   */
+  ExFatFile& operator=(ExFatFile&& from) {
+    move(&from);
+    return *this;
+  }
+#else  // FILE_MOVE_CONSTRUCTOR_SELECT
+  ExFatFile(ExFatFile&& from) = delete;
+  ExFatFile& operator=(ExFatFile&& from) = delete;
+#endif
+
+  /** Destructor */
 #if DESTRUCTOR_CLOSES_FILE
   ~ExFatFile() {
     if (isOpen()) {
       close();
     }
   }
+#else   // DESTRUCTOR_CLOSES_FILE
+  ~ExFatFile() = default;
 #endif  // DESTRUCTOR_CLOSES_FILE
 
   /** The parenthesis operator.
@@ -181,7 +246,7 @@ class ExFatFile {
    * If no data is read, fgets() returns zero for EOF or -1 if an error
    * occurred.
    */
-  int fgets(char* str, int num, char* delim = nullptr);
+  int fgets(char* str, int num, const char* delim = nullptr);
   /** \return The total number of bytes in a file. */
   uint64_t fileSize() const { return m_validLength; }
   /** \return Address of first sector or zero for empty file. */
@@ -223,7 +288,7 @@ class ExFatFile {
    *
    * \param[out] name An array of characters for the file's name.
    * \param[in] size The size of the array in characters.
-   * \return the name length.
+   * \return length for success or zero for failure.
    */
   size_t getName(char* name, size_t size) {
 #if USE_UTF8_LONG_NAMES
@@ -832,4 +897,3 @@ class ExFile : public StreamFile<ExFatFile, uint64_t> {
     return tmpFile;
   }
 };
-#endif  // ExFatFile_h

@@ -595,18 +595,18 @@ void processESPNOWIncomingMessage(){
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
 // identify a group of servos.
 
-//     Pin  Min, ,Max,  Group ID  (Change the Min and Max to your Droids actual limits)
+//     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
     { 1,   2363, 1592, SMALL_PANEL_ONE },       /* 0: door 1 small left door by radar eye */
-    { 2,   1975, 1200, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
-    { 3,   2000, 1200, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
-    { 4,   985, 1830, MEDIUM_PANEL_PAINTED },  /* 3: door 4 medium painted door */
-    { 5,   2050, 1100, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
-    { 6,   1300, 2100, BIG_PANEL },             /* 5: door 6 Big Lower door */
-    { 7,   852, 1616, PIE_PANEL_ONE },         /* 6: door 7 Pie Panel near Periscope */
-    { 8,   1050, 1850, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope*/
-    { 9,   2050, 1168, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope */
-    { 10,  1350, 2050, PIE_PANEL_FOUR }        /* 9: door 10 Pie Panel clockwise-3 from Periscope */
+    { 2,   1915, 1220, SMALL_PANEL_TWO },       /* 1: door 2 small middle door by radar eye */
+    { 3,   1155, 1850, SMALL_PANEL_THREE },     /* 2: door 3 small right door by radar eye */
+    { 4,   985, 1800, MEDIUM_PANEL_PAINTED },   /* 3: door 4 medium painted door */
+    { 5,   1100, 1800, MEDIUM_PANEL_SILVER },   /* 4: door 5 Medium Unpainted door*/
+    { 6,   1410, 2100, BIG_PANEL },             /* 5: door 6 Big Lower door */
+    { 7,   1500, 2200, PIE_PANEL_ONE },          /* 6: door 7 Pie Panel near Periscope (Smoker Cell) */
+    { 8,   1075, 1850, PIE_PANEL_TWO },         /* 7: door 8 Pie Panel clockwise from Periscope (Plunger) */
+    { 9,   1230, 1950, PIE_PANEL_THREE },       /* 8: door 9 Pie Panel clockwise-2 from Periscope (Saber Launcher) */
+    { 10,  1400, 2000, PIE_PANEL_FOUR }         /* 9: door 10 Pie Panel clockwise-3 from Periscope (Rubber Saber) */
 };
 
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
@@ -1606,6 +1606,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
       startUp = false;
       Serial.println("Startup completed, now running loop");
       colorWipeStatus("ES",blue,10);
+      delay(100);
+      sendESPNOWCommand("HP", ":HA199");
+      // (writeHpSerial(:H:A199))
       // RadarEye_LED(basicColors[5], 5);
       
 

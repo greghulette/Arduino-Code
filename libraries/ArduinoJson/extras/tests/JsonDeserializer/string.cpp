@@ -1,5 +1,5 @@
 // ArduinoJson - https://arduinojson.org
-// Copyright © 2014-2024, Benoit BLANCHON
+// Copyright © 2014-2025, Benoit BLANCHON
 // MIT License
 
 #define ARDUINOJSON_DECODE_UNICODE 1
@@ -81,6 +81,22 @@ TEST_CASE("Truncated JSON string") {
     REQUIRE(deserializeJson(doc, input) ==
             DeserializationError::IncompleteInput);
   }
+}
+
+TEST_CASE("Escape single quote in single quoted string") {
+  JsonDocument doc;
+
+  DeserializationError err = deserializeJson(doc, "'ab\\\'cd'");
+  REQUIRE(err == DeserializationError::Ok);
+  CHECK(doc.as<std::string>() == "ab\'cd");
+}
+
+TEST_CASE("Escape double quote in double quoted string") {
+  JsonDocument doc;
+
+  DeserializationError err = deserializeJson(doc, "'ab\\\"cd'");
+  REQUIRE(err == DeserializationError::Ok);
+  CHECK(doc.as<std::string>() == "ab\"cd");
 }
 
 TEST_CASE("Invalid JSON string") {

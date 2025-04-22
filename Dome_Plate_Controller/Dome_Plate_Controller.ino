@@ -17,9 +17,11 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///*****                            Roam A Dome Home Stored Sequences                                                           *****///
-///*****      [4] H:A170,55:W1:D500,40:W1:D-360:W1:A90:A45:A135:W2:H                                                            *****///
-///*****      [14] :H:L0:P100:A80,60:W1:D-270,90:D90,40:D90,70:D-170,60:W1:D100:D179:D179:D-179:A90:W9:H    Short Circuit       *****///
+///*****                            Roam A Dome Home Stored Sequences                                           *****///
+///*****      [1] #PS1:H                                                          Go Home                       *****///
+///*****      [4] #PS4:H:P100:L0:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:DR:WR:H                                                       *****///
+///*****      [10] #PS10:P100:L0:DR:WR:DR:WR:R40:WR:DR:WR:R-40:W7:DR:WR:DR:WR:DR:WR:R40:WR:DR:WR:R-40:W7:DR:WR:DR:WR:DR:WR:R40:WR:DR:WR:R-40:W7:DR:WR:DR:WR:DR:WR:R40:WR:DR:WR:R-40:W7:DR:WR:DR:WR:DR:WR:R40:WR:DR:WR:R-40:W7:DR:WR  
+///*****      [14] #PS14:H:L0:P100:A80,60:W1:D-270,90:D90,40:D90,70:D-170,60:W1:D100:D179:D179:D-179:A90:W9:H    Short Circuit       *****///
 ///*****                                                                                                                        *****///
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -606,6 +608,7 @@ void processESPNOWIncomingMessage(){
 /////////////////////////////////////////////////////////////////////////
 
 #define SABER_LAUNCHER        0x0001 //b000000000001
+#define EXTINGUISHER          0x0010 
 #define ALL_SERVOS_MASK       (SABER_LAUNCHER)
 
 // Group ID is used by the ServoSequencer and some ServoDispatch functions to
@@ -614,6 +617,7 @@ void processESPNOWIncomingMessage(){
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
     { 27,  2250, 1550, SABER_LAUNCHER },       /* 0: Top Utility Arm 2350,675*/
+    { 26,  1500, 1300, EXTINGUISHER},          // Exinginsher
     // { 2,  1630, 860, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
     // { 3,  1820, 1000, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
     // { 4,  1400, 1900, LARGE_RIGHT_DOOR },      /* 3: Left Right door as viewing from looking at R2 1200,1900*/
@@ -661,21 +665,31 @@ void armSaber(){
   sendESPNOWCommand("BC", ":R#DPAUTO0");
   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20108");}, 50);
   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20109");}, 100);
-  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20110");}, 150);
-  // sendESPNOWCommand("DC", ":D20109");      
-
-  // sendESPNOWCommand("DC", ":D20110");      
 
   SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllOpen, SABER_LAUNCHER);
   DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER, varSpeedMin, varSpeedMax);}, 7000);
+  DelayCall::schedule([]{ sendESPNOWCommand("BS", ":D10104");}, 7050);
+  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R#DPAUTO1");}, 18150);
+
   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20208");}, 20000);
   DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20209");}, 20050);
-  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 20100);
-  DelayCall::schedule([]{ sendESPNOWCommand("BC", ":R#DPAUTO1");}, 20150);
+  DelayCall::schedule([]{ sendESPNOWCommand("BS", ":D10204");}, 20000);
+
+  // DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20210");}, 20100);
 
     // SEQUENCE_PLAY_ONCE(servoSequencer, SeqPanelAllClose, SABER_LAUNCHER);
 
     Accessory_Command[0]   = '\0';
+
+}
+
+void fireExtinguisher(){
+  Debug.SERVO("Fire off the EXTINGUISHER\n");  
+  sendESPNOWCommand("DC", ":D20104");
+  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllOpen, EXTINGUISHER, varSpeedMin, varSpeedMax);}, 100);
+  DelayCall::schedule([]{SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, EXTINGUISHER, varSpeedMin, varSpeedMax);}, 1000);
+  DelayCall::schedule([]{ sendESPNOWCommand("DC", ":D20204");}, 1100);
+  Accessory_Command[0]   = '\0';
 
 }
 
@@ -1349,6 +1363,8 @@ if(Accessory_Command[0]) {
           
           case 60: launchSaber(); break;
           case 61: armSaber(); break;
+
+          case 70: fireExtinguisher(); break;
 
           case 98: clearStrobe();break;
           default: Accessory_Command[0] = '\0'; clearStrobe(); break;

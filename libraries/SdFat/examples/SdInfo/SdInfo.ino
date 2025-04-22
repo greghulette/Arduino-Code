@@ -1,6 +1,12 @@
 /*
  * This program attempts to initialize an SD card and analyze its structure.
+ * The CID and CSD registers are also printed in HEX for use in online
+ * decoders like these.
+ *
+ * https://gurumeditation.org/1342/sd-memory-card-register-decoder/
+ * https://archive.goughlui.com/static/multicid.htm
  */
+#define DISABLE_FS_H_WARNING  // Disable warning for type File not defined.
 #include "SdFat.h"
 #include "sdios.h"
 /*
@@ -25,13 +31,16 @@ const uint8_t SD_CS_PIN = SDCARD_SS_PIN;
 #endif  // SDCARD_SS_PIN
 
 // Try to select the best SD card configuration.
-#if HAS_SDIO_CLASS
+#if defined(HAS_TEENSY_SDIO)
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
+#elif defined(RP_CLK_GPIO) && defined(RP_CMD_GPIO) && defined(RP_DAT0_GPIO)
+// See the Rp2040SdioSetup example for RP2040/RP2350 boards.
+#define SD_CONFIG SdioConfig(RP_CLK_GPIO, RP_CMD_GPIO, RP_DAT0_GPIO)
 #elif ENABLE_DEDICATED_SPI
 #define SD_CONFIG SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(16))
-#else  // HAS_SDIO_CLASS
+#else  // HAS_TEENSY_SDIO
 #define SD_CONFIG SdSpiConfig(SD_CS_PIN, SHARED_SPI, SD_SCK_MHZ(16))
-#endif  // HAS_SDIO_CLASS
+#endif  // HAS_TEENSY_SDIO
 
 //------------------------------------------------------------------------------
 SdFs sd;
@@ -55,7 +64,8 @@ void cidDmp() {
   cout << F("Serial number: ") << hex << cid.psn() << dec << endl;
   cout << F("Manufacturing date: ");
   cout << cid.mdtMonth() << '/' << cid.mdtYear() << endl;
-  cout << endl;
+  cout << F("CID HEX: ");
+  hexDmp(&cid, sizeof(cid));
 }
 //------------------------------------------------------------------------------
 void clearSerialInput() {
@@ -69,7 +79,7 @@ void clearSerialInput() {
 //------------------------------------------------------------------------------
 void csdDmp() {
   eraseSize = csd.eraseSize();
-  cout << F("cardSize: ") << 0.000512 * csd.capacity();
+  cout << F("\ncardSize: ") << 0.000512 * csd.capacity();
   cout << F(" MB (MB = 1,000,000 bytes)\n");
 
   cout << F("flashEraseSize: ") << int(eraseSize) << F(" blocks\n");
@@ -85,6 +95,8 @@ void csdDmp() {
   } else {
     cout << F("zeros\n");
   }
+  cout << F("CSD HEX: ");
+  hexDmp(&csd, sizeof(csd));
 }
 //------------------------------------------------------------------------------
 void errorPrint() {
@@ -96,10 +108,19 @@ void errorPrint() {
   }
 }
 //------------------------------------------------------------------------------
+void hexDmp(void* reg, uint8_t size) {
+  uint8_t* u8 = reinterpret_cast<uint8_t*>(reg);
+  cout << hex << noshowbase;
+  for (size_t i = 0; i < size; i++) {
+    cout << setw(2) << setfill('0') << int(u8[i]);
+  }
+  cout << dec << endl;
+}
+//------------------------------------------------------------------------------
 bool mbrDmp() {
   MbrSector_t mbr;
   bool valid = true;
-  if (!sd.card()->readSector(0, (uint8_t *)&mbr)) {
+  if (!sd.card()->readSector(0, (uint8_t*)&mbr)) {
     cout << F("\nread MBR failed.\n");
     errorPrint();
     return false;
@@ -107,7 +128,7 @@ bool mbrDmp() {
   cout << F("\nSD Partition Table\n");
   cout << F("part,boot,bgnCHS[3],type,endCHS[3],start,length\n");
   for (uint8_t ip = 1; ip < 5; ip++) {
-    MbrPart_t *pt = &mbr.part[ip - 1];
+    MbrPart_t* pt = &mbr.part[ip - 1];
     if ((pt->boot != 0 && pt->boot != 0X80) ||
         getLe32(pt->relativeSectors) > csd.capacity()) {
       valid = false;
@@ -242,7 +263,7 @@ void loop() {
   printCardType();
   cout << F("sdSpecVer: ") << 0.01 * scr.sdSpecVer() << endl;
   cout << F("HighSpeedMode: ");
-  if (scr.sdSpecVer() && sd.card()->cardCMD6(0X00FFFFFF, cmd6Data) &&
+  if (scr.sdSpecVer() > 101 && sd.card()->cardCMD6(0X00FFFFFF, cmd6Data) &&
       (2 & cmd6Data[13])) {
     cout << F("true\n");
   } else {

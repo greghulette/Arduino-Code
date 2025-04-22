@@ -16,3 +16,5 @@ getScriptStatus	KEYWORD2
 getErrors	KEYWORD2
 setPWM	KEYWORD2
 setMultiTarget	KEYWORD2
+readDeviceNumber	KEYWORD2
+readSequenceNumber   KEYWORD2

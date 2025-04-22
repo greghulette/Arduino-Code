@@ -35,7 +35,7 @@
 #define D10                 10 // Y // Unused Pin
 #define D11                 11 // Y // Unused Pin
 #define VU_STROBE           12 // Y // Unused Pin
-#define VU_RESET	        13 // Y // Unused Pin
+#define VU_RESET	          13 // Y // Unused Pin
 #define D14                 14 // Y // Unused Pin
 #define D15                 15 // N // TUnused Pin
 #define D16                 16 // Y // Unused Pin

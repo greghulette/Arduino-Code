@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -26,8 +26,7 @@
  * \file
  * \brief Top level include for SPI and SDIO cards.
  */
-#ifndef SdCard_h
-#define SdCard_h
+#pragma once
 #include "SdSpiCard.h"
 #include "SdioCard.h"
 #if HAS_SDIO_CLASS
@@ -64,7 +63,7 @@ class SdCardFactory {
   /** Initialize SPI card.
    *
    * \param[in] config SPI configuration.
-   * \return generic card pointer.
+   * \return generic card pointer or nullptr if failure.
    */
   SdCard* newCard(SdSpiConfig config) {
     m_spiCard.begin(config);
@@ -91,4 +90,3 @@ class SdCardFactory {
 #endif  // HAS_SDIO_CLASS
   SdSpiCard m_spiCard;
 };
-#endif  // SdCard_h

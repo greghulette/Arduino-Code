@@ -138,8 +138,8 @@ String debugInputIdentifier ="";
 
   byte msgCount = 0;            // count of outgoing messages
   byte receiveMsgCount =0;      // count of incoming messages
-  byte localAddress = 0xFF;     // address of this device
-  byte destination = 0xBC;      // destination to send to
+  byte localAddress = 0x06;     // address of this device
+  byte destination = 0x05;      // destination to send to
   long lastSendTime = 0;        // last send time
   int interval = 500;          // interval between sends
   const int csPin = 18;          // LoRa radio chip select
@@ -511,8 +511,10 @@ int AckDuration = 750;
 String lastCommand;
 bool incomingMsgAck;
 uint32_t msgAckID;
+uint32_t  LoraPasscode = 12345678;
   
 typedef struct LoRa_Struct{
+  uint32_t struct_LoraPasscode;
   bool struct_incomingMsgAck;
   uint32_t struct_msgAckID;
   bool struct_droidGatewayStatus;
@@ -567,15 +569,15 @@ void onReceive(int packetSize){
         // Serial.print(' ');
         // Serial.print(((byte *) &commandstoReceiveFromRemote)[i]);
       }
-    // print RSSI of packet
-    // Serial.print("' with RSSI ");
-    // Serial.println(LoRa.packetRssi());
+      LoraPasscode = commandstoReceiveFromRemote.struct_LoraPasscode;
+      if (LoraPasscode == 12345678){
 if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
    msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
   // Serial.print("Received ACK with ID of: ");
   // Serial.println(msgAckID);
   commandSent = false;
  } 
+
     droidGatewayStatus = commandstoReceiveFromRemote.struct_droidGatewayStatus;
     bodyControllerStatus = commandstoReceiveFromRemote.struct_bodyControllerStatus ;
     bodyLEDControllerStatus = commandstoReceiveFromRemote.struct_bodyLEDControllerStatus ;
@@ -645,6 +647,12 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
   Debug.STATUS("DP ESP-NOW Stats: %i / %i \n", DPSuccessCounter, DPFailureCounter);
   Debug.STATUS("DC ESP-NOW Stats: %i / %i \n", DCSuccessCounter, DCFailureCounter);
   Debug.STATUS("HP ESP-NOW Stats: %i / %i \n", HPSuccessCounter, HPFailureCounter);
+
+
+      } else {Debug.LORA("Wrong LORA Password Sent and packet ignored \n");}
+    // print RSSI of packet
+    // Serial.print("' with RSSI ");
+    // Serial.println(LoRa.packetRssi());
 
   } 
   

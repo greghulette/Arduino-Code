@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -22,8 +22,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#ifndef FsFile_h
-#define FsFile_h
+#pragma once
 /**
  * \file
  * \brief FsBaseFile include file.
@@ -39,7 +38,7 @@
 class FsBaseFile {
  public:
   /** Create an instance. */
-  FsBaseFile() = default;
+  FsBaseFile() = default;  // cppcheck-suppress uninitMemberVar
   /**  Create a file object and open it in the current working directory.
    *
    * \param[in] path A path for a file to be opened.
@@ -47,11 +46,21 @@ class FsBaseFile {
    * \param[in] oflag Values for \a oflag are constructed by a bitwise-inclusive
    * OR of open flags. see FatFile::open(FatFile*, const char*, uint8_t).
    */
+  // cppcheck-suppress uninitMemberVar
   FsBaseFile(const char* path, oflag_t oflag) { open(path, oflag); }
 
-  ~FsBaseFile() { close(); }
+  /** Copy from to this.
+   * \param[in] from Source file.
+   */
+  void copy(const FsBaseFile* from);
+
+  /** move from to this.
+   * \param[in] from Source file.
+   */
+  void move(FsBaseFile* from);
+
+#if FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PUBLIC
   /** Copy constructor.
-   *
    * \param[in] from Object used to initialize this instance.
    */
   FsBaseFile(const FsBaseFile& from);
@@ -60,6 +69,46 @@ class FsBaseFile {
    * \return assigned object.
    */
   FsBaseFile& operator=(const FsBaseFile& from);
+#elif FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PRIVATE
+
+ private:
+  FsBaseFile(const FsBaseFile& from);
+  FsBaseFile& operator=(const FsBaseFile& from);
+
+ public:
+#else   // FILE_COPY_CONSTRUCTOR_SELECT
+  FsBaseFile(const FsBaseFile& from) = delete;
+  FsBaseFile& operator=(const FsBaseFile& from) = delete;
+#endif  // FILE_COPY_CONSTRUCTOR_SELECT
+
+#if FILE_MOVE_CONSTRUCTOR_SELECT
+  /** Move constructor.
+   * \param[in] from File to move.
+   */
+  FsBaseFile(FsBaseFile&& from) { move(&from); }
+  /** Move assignment operator.
+   * \param[in] from File to move.
+   * \return Assigned file.
+   */
+  FsBaseFile& operator=(FsBaseFile&& from) {
+    move(&from);
+    return *this;
+  }
+#else   // FILE_MOVE_CONSTRUCTOR_SELECT
+  FsBaseFile(FsBaseFile&& from) = delete;
+  FsBaseFile& operator=(FsBaseFile&& from) = delete;
+#endif  // FILE_MOVE_CONSTRUCTOR_SELECT
+
+#if DESTRUCTOR_CLOSES_FILE
+  ~FsBaseFile() {
+    if (isOpen()) {
+      close();
+    }
+  }
+#else   // DESTRUCTOR_CLOSES_FILE
+  ~FsBaseFile() = default;
+#endif  // DESTRUCTOR_CLOSES_FILE
+
   /** The parenthesis operator.
    *
    * \return true if a file is open.
@@ -296,10 +345,6 @@ class FsBaseFile {
   bool isDir() const {
     return m_fFile ? m_fFile->isDir() : m_xFile ? m_xFile->isDir() : false;
   }
-  /** This function reports if the current file is a directory or not.
-   * \return true if the file is a directory.
-   */
-  bool isDirectory() const { return isDir(); }
   /** \return True if this is a normal file. */
   bool isFile() const {
     return m_fFile ? m_fFile->isFile() : m_xFile ? m_xFile->isFile() : false;
@@ -334,6 +379,12 @@ class FsBaseFile {
   bool isSubDir() const {
     return m_fFile   ? m_fFile->isSubDir()
            : m_xFile ? m_xFile->isSubDir()
+                     : false;
+  }
+  /** \return True if this is a System file else false. */
+  bool isSystem() const {
+    return m_fFile   ? m_fFile->isSystem()
+           : m_xFile ? m_xFile->isSystem()
                      : false;
   }
   /** \return True file is writable. */
@@ -513,8 +564,6 @@ class FsBaseFile {
    * \return true for success or false for failure.
    */
   bool openRoot(FsVolume* vol);
-  /** \return the current file position. */
-  uint64_t position() const { return curPosition(); }
   /** Return the next available byte without consuming it.
    *
    * \return The byte if no error and not at eof else -1;
@@ -710,10 +759,6 @@ class FsBaseFile {
     if (m_fFile) m_fFile->rewind();
     if (m_xFile) m_xFile->rewind();
   }
-  /** Rewind a file if it is a directory */
-  void rewindDirectory() {
-    if (isDir()) rewind();
-  }
   /** Remove a directory file.
    *
    * The directory file will be removed only if it is empty and is not the
@@ -727,13 +772,6 @@ class FsBaseFile {
    * \return true for success or false for failure.
    */
   bool rmdir();
-  /** Seek to a new position in the file, which must be between
-   * 0 and the size of the file (inclusive).
-   *
-   * \param[in] pos the new file position.
-   * \return true for success or false for failure.
-   */
-  bool seek(uint64_t pos) { return seekSet(pos); }
   /** Set the files position to current position + \a pos. See seekSet().
    * \param[in] offset The new position in bytes from the current position.
    * \return true for success or false for failure.
@@ -752,12 +790,10 @@ class FsBaseFile {
    * \return true for success or false for failure.
    */
   bool seekSet(uint64_t pos) {
-    return m_fFile   ? pos < (1ULL << 32) && m_fFile->seekSet(pos)
+    return m_fFile   ? pos < (1ULL << 32) && m_fFile->seekSet((uint32_t)pos)
            : m_xFile ? m_xFile->seekSet(pos)
                      : false;
   }
-  /** \return the file's size. */
-  uint64_t size() const { return fileSize(); }
   /** The sync() call causes all modified data and directory fields
    * to be written to the storage device.
    *
@@ -879,4 +915,3 @@ class FsFile : public StreamFile<FsBaseFile, uint64_t> {
     return tmpFile;
   }
 };
-#endif  // FsFile_h

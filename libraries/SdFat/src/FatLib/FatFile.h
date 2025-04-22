@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -22,8 +22,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#ifndef FatFile_h
-#define FatFile_h
+#pragma once
 /**
  * \file
  * \brief FatFile class
@@ -117,14 +116,80 @@ class FatFile {
    * OR of open flags. see FatFile::open(FatFile*, const char*, uint8_t).
    */
   FatFile(const char* path, oflag_t oflag) { open(path, oflag); }
-#if DESTRUCTOR_CLOSES_FILE
+
+  /** Copy from to this.
+   * \param[in] from Source file.
+   */
+  void copy(const FatFile* from) {
+    if (from != this) {
+#if FILE_COPY_CONSTRUCTOR_SELECT
+      *this = *from;
+#else   // FILE_COPY_CONSTRUCTOR_SELECT
+      memcpy(this, from, sizeof(FatFile));
+#endif  // FILE_COPY_CONSTRUCTOR_SELECT
+    }
+  }
+  /** move from to this.
+   * \param[in] from Source file.
+   */
+  void move(FatFile* from) {
+    if (from != this) {
+      copy(from);
+      from->m_attributes = FILE_ATTR_CLOSED;
+    }
+  }
+
+#if FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PUBLIC
+  /** Copy constructor.
+   * \param[in] from Move from file.
+   *
+   */
+  FatFile(const FatFile& from) = default;
+  /** Copy assignment operator.
+   * \param[in] from Move from file.
+   * \return Copied file.
+   */
+  FatFile& operator=(const FatFile& from) = default;
+#elif FILE_COPY_CONSTRUCTOR_SELECT == FILE_COPY_CONSTRUCTOR_PRIVATE
+
+ private:
+  FatFile(const FatFile& from) = default;
+  FatFile& operator=(const FatFile& from) = default;
+
+ public:
+#else   // FILE_COPY_CONSTRUCTOR_SELECT
+  FatFile(const FatFile& from) = delete;
+  FatFile& operator=(const FatFile& from) = delete;
+#endif  // FILE_COPY_CONSTRUCTOR_SELECT
+
+#if FILE_MOVE_CONSTRUCTOR_SELECT
+  /** Move constructor.
+   * \param[in] from Move from file.
+   */
+  FatFile(FatFile&& from) { move(&from); }
+  /** Move assignment operator.
+   * \param[in] from Move from file.
+   * \return Moved file.
+   */
+  FatFile& operator=(FatFile&& from) {
+    move(&from);
+    return *this;
+  }
+#else  // FILE_MOVE_CONSTRUCTOR_SELECT
+  FatFile(FatFile&& from) = delete;
+  FatFile& operator=(FatFile&& from) = delete;
+#endif
   /** Destructor */
+#if DESTRUCTOR_CLOSES_FILE
   ~FatFile() {
     if (isOpen()) {
       close();
     }
   }
+#else   // DESTRUCTOR_CLOSES_FILE
+  ~FatFile() = default;
 #endif  // DESTRUCTOR_CLOSES_FILE
+
   /** The parenthesis operator.
    *
    * \return true if a file is open.
@@ -264,7 +329,7 @@ class FatFile {
    * If no data is read, fgets() returns zero for EOF or -1 if an error
    * occurred.
    */
-  int fgets(char* str, int num, char* delim = nullptr);
+  int fgets(char* str, int num, const char* delim = nullptr);
   /** \return The total number of bytes in a file. */
   uint32_t fileSize() const { return m_fileSize; }
   /** \return first sector of file or zero for empty file. */
@@ -323,8 +388,7 @@ class FatFile {
    *
    * \param[out] name An array of characters for the file's name.
    * \param[in] size The size of the array in bytes. The array
-   *             must be at least 13 bytes long.  The file's name will be
-   *             truncated if the file's name is too long.
+   *             must be at least 13 bytes long.
    * \return length for success or zero for failure.
    */
   size_t getName(char* name, size_t size);
@@ -333,7 +397,7 @@ class FatFile {
    *
    * \param[out] name An array of characters for the file's name.
    * \param[in] size The size of the array in characters.
-   * \return the name length.
+   * \return length for success or zero for failure.
    */
   size_t getName7(char* name, size_t size);
   /**
@@ -341,7 +405,7 @@ class FatFile {
    *
    * \param[out] name An array of characters for the file's name.
    * \param[in] size The size of the array in characters.
-   * \return the name length.
+   * \return length for success or zero for failure.
    */
   size_t getName8(char* name, size_t size);
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
@@ -784,7 +848,7 @@ class FatFile {
    */
   bool rename(FatFile* dirFile, const char* newPath);
   /** Set the file's current position to zero. */
-  void rewind() { seekSet(0); }
+  void rewind() { seekSet(0UL); }
   /** Remove a directory file.
    *
    * The directory file will be removed only if it is empty and is not the
@@ -965,7 +1029,7 @@ class FatFile {
   DirFat_t* cacheDirEntry(uint8_t action);
   bool cmpName(uint16_t index, FatLfn_t* fname, uint8_t lfnOrd);
   bool createLFN(uint16_t index, FatLfn_t* fname, uint8_t lfnOrd);
-  uint16_t getLfnChar(DirLfn_t* ldir, uint8_t i);
+  uint16_t getLfnChar(const DirLfn_t* ldir, uint8_t i);
   uint8_t lfnChecksum(const uint8_t* name) {
     uint8_t sum = 0;
     for (uint8_t i = 0; i < 11; i++) {
@@ -980,8 +1044,8 @@ class FatFile {
   bool parsePathName(const char* str, FatSfn_t* fname, const char** ptr);
   bool mkdir(FatFile* parent, FatName_t* fname);
   bool open(FatFile* dirFile, FatLfn_t* fname, oflag_t oflag);
-  bool open(FatFile* dirFile, FatSfn_t* fname, oflag_t oflag);
-  bool openSFN(FatSfn_t* fname);
+  bool open(FatFile* dirFile, const FatSfn_t* fname, oflag_t oflag);
+  bool openSFN(const FatSfn_t* fname);
   bool openCachedEntry(FatFile* dirFile, uint16_t cacheIndex, oflag_t oflag,
                        uint8_t lfnOrd);
   DirFat_t* readDirCache(bool skipReadOk = false);
@@ -1033,4 +1097,3 @@ class File32 : public StreamFile<FatFile, uint32_t> {
     return tmpFile;
   }
 };
-#endif  // FatFile_h

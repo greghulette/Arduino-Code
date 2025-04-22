@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2011-2022 Bill Greiman
+ * Copyright (c) 2011-2024 Bill Greiman
  * This file is part of the SdFat library for SD memory cards.
  *
  * MIT License
@@ -54,8 +54,9 @@ static void putLfnChar(DirLfn_t* ldir, uint8_t i, uint16_t c) {
 }
 //==============================================================================
 bool FatFile::cmpName(uint16_t index, FatLfn_t* fname, uint8_t lfnOrd) {
-  FatFile dir = *this;
-  DirLfn_t* ldir;
+  FatFile dir;
+  dir.copy(this);
+  const DirLfn_t* ldir;
   fname->reset();
   for (uint8_t order = 1; order <= lfnOrd; order++) {
     ldir = reinterpret_cast<DirLfn_t*>(dir.cacheDir(index - order));
@@ -92,7 +93,8 @@ fail:
 }
 //------------------------------------------------------------------------------
 bool FatFile::createLFN(uint16_t index, FatLfn_t* fname, uint8_t lfnOrd) {
-  FatFile dir = *this;
+  FatFile dir;
+  dir.copy(this);
   DirLfn_t* ldir;
   uint8_t checksum = lfnChecksum(fname->sfn);
   uint8_t fc = 0;
@@ -216,7 +218,7 @@ fail:
 bool FatFile::makeUniqueSfn(FatLfn_t* fname) {
   const uint8_t FIRST_HASH_SEQ = 2;  // min value is 2
   uint8_t pos = fname->seqPos;
-  DirFat_t* dir;
+  const DirFat_t* dir;
   uint16_t hex = 0;
 
   DBG_HALT_IF(!(fname->flags & FNAME_FLAG_LOST_CHARS));
@@ -280,7 +282,7 @@ bool FatFile::open(FatFile* dirFile, FatLfn_t* fname, oflag_t oflag) {
   uint16_t freeTotal;
   uint16_t time;
   DirFat_t* dir;
-  DirLfn_t* ldir;
+  const DirLfn_t* ldir;
   auto vol = dirFile->m_vol;
 
   if (!dirFile->isDir() || isOpen()) {
@@ -376,7 +378,6 @@ create:
   if (freeFound == 0) {
     freeIndex = curIndex;
   }
-
   while (freeFound < freeNeed) {
     dir = dirFile->readDirCache();
     if (!dir) {

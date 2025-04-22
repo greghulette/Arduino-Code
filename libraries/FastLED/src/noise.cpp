@@ -1,15 +1,54 @@
 /// @file noise.cpp
 /// Functions to generate and fill arrays with noise.
 
+#include <string.h>
+
+#if defined(__clang__)
+// Clang doesn't have variable length arrays. Therefore we need to emulate them using
+// alloca.
+#define VARIABLE_LENGTH_ARRAY_NEEDS_EMULATION 1
+#else
+// Else, assume the compiler is gcc, which has variable length arrays
+#define VARIABLE_LENGTH_ARRAY_NEEDS_EMULATION 0
+#endif
+
+#if !VARIABLE_LENGTH_ARRAY_NEEDS_EMULATION
+#define VARIABLE_LENGTH_ARRAY(TYPE, NAME, SIZE) TYPE NAME[SIZE]
+#elif __has_include(<alloca.h>)
+#include <alloca.h>
+#define VARIABLE_LENGTH_ARRAY(TYPE, NAME, SIZE) \
+    TYPE* NAME = reinterpret_cast<TYPE*>(alloca(sizeof(TYPE) * (SIZE)))
+#elif __has_include(<cstdlib>)
+#include <cstdlib>
+#define VARIABLE_LENGTH_ARRAY(TYPE, NAME, SIZE) \
+    TYPE* NAME = reinterpret_cast<TYPE*>(alloca(sizeof(TYPE) * (SIZE)))
+#else
+#error "Compiler does not allow variable type arrays."
+#endif
+
+
+
 /// Disables pragma messages and warnings
 #define FASTLED_INTERNAL
 #include "FastLED.h"
-#include <string.h>
 
-FASTLED_NAMESPACE_BEGIN
+
+// Compiler throws a warning about stack usage possibly being unbounded even
+// though bounds are checked, silence that so users don't see it
+#pragma GCC diagnostic push
+#if defined(__GNUC__) && (__GNUC__ >= 6)
+  #pragma GCC diagnostic ignored "-Wstack-usage="
+#else
+  #pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#endif
+
+
 
 /// Reads a single byte from the p array
 #define P(x) FL_PGM_READ_BYTE_NEAR(p + x)
+
+FASTLED_NAMESPACE_BEGIN
+
 
 FL_PROGMEM static uint8_t const p[] = {
     151, 160, 137,  91,  90,  15, 131,  13, 201,  95,  96,  53, 194, 233,   7, 225,
@@ -55,8 +94,8 @@ static int16_t inline __attribute__((always_inline))  avg15_inline_avr_mul( int1
                  /* add j + C to i */
                  "adc %A[i], %A[j]   \n\t"
                  "adc %B[i], %B[j]   \n\t"
-                 : [i] "+a" (i)
-                 : [j] "a"  (j) );
+                 : [i] "+r" (i)
+                 : [j] "r"  (j) );
     return i;
 }
 #else
@@ -618,7 +657,7 @@ void fill_raw_noise16into8(uint8_t *pData, uint8_t num_points, uint8_t octaves, 
 /// @param scaley the scale (distance) between y points when filling in noise
 /// @param time the time position for the noise field
 /// @todo Why isn't this declared in the header (noise.h)?
-void fill_raw_2dnoise8(uint8_t *pData, int width, int height, uint8_t octaves, q44 freq44, fract8 amplitude, int skip, uint16_t x, int scalex, uint16_t y, int scaley, uint16_t time) {
+void fill_raw_2dnoise8(uint8_t *pData, int width, int height, uint8_t octaves, q44 freq44, fract8 amplitude, int skip, uint16_t x, int16_t scalex, uint16_t y, int16_t scaley, uint16_t time) {
   if(octaves > 1) {
     fill_raw_2dnoise8(pData, width, height, octaves-1, freq44, amplitude, skip+1, x*freq44, freq44 * scalex, y*freq44, freq44 * scaley, time);
   } else {
@@ -656,7 +695,7 @@ void fill_raw_2dnoise8(uint8_t *pData, int width, int height, uint8_t octaves, u
   fill_raw_2dnoise8(pData, width, height, octaves, q44(2,0), 128, 1, x, scalex, y, scaley, time);
 }
 
-void fill_raw_2dnoise16(uint16_t *pData, int width, int height, uint8_t octaves, q88 freq88, fract16 amplitude, int skip, uint32_t x, int scalex, uint32_t y, int scaley, uint32_t time) {
+void fill_raw_2dnoise16(uint16_t *pData, int width, int height, uint8_t octaves, q88 freq88, fract16 amplitude, int skip, uint32_t x, int32_t scalex, uint32_t y, int32_t scaley, uint32_t time) {
   if(octaves > 1) {
     fill_raw_2dnoise16(pData, width, height, octaves-1, freq88, amplitude, skip, x *freq88 , scalex *freq88, y * freq88, scaley * freq88, time);
   } else {
@@ -694,7 +733,7 @@ int32_t nmin=11111110;
 /// @todo Remove?
 int32_t nmax=0;
 
-void fill_raw_2dnoise16into8(uint8_t *pData, int width, int height, uint8_t octaves, q44 freq44, fract8 amplitude, int skip, uint32_t x, int scalex, uint32_t y, int scaley, uint32_t time) {
+void fill_raw_2dnoise16into8(uint8_t *pData, int width, int height, uint8_t octaves, q44 freq44, fract8 amplitude, int skip, uint32_t x, int32_t scalex, uint32_t y, int32_t scaley, uint32_t time) {
   if(octaves > 1) {
     fill_raw_2dnoise16into8(pData, width, height, octaves-1, freq44, amplitude, skip+1, x*freq44, scalex *freq44, y*freq44, scaley * freq44, time);
   } else {
@@ -742,8 +781,9 @@ void fill_noise8(CRGB *leds, int num_leds,
         const int LedsRemaining = num_leds - j;
         const int LedsPer = LedsRemaining > 255 ? 255 : LedsRemaining;  // limit to 255 max
 
-        uint8_t V[LedsPer];
-        uint8_t H[LedsPer];
+        if (LedsPer <= 0) continue;
+        VARIABLE_LENGTH_ARRAY(uint8_t, V, LedsPer);
+        VARIABLE_LENGTH_ARRAY(uint8_t, H, LedsPer);
 
         memset(V, 0, LedsPer);
         memset(H, 0, LedsPer);
@@ -767,9 +807,9 @@ void fill_noise16(CRGB *leds, int num_leds,
     for (int j = 0; j < num_leds; j += 255) {
         const int LedsRemaining = num_leds - j;
         const int LedsPer = LedsRemaining > 255 ? 255 : LedsRemaining;  // limit to 255 max
-
-        uint8_t V[LedsPer];
-        uint8_t H[LedsPer];
+        if (LedsPer <= 0) continue;
+        VARIABLE_LENGTH_ARRAY(uint8_t, V, LedsPer);
+        VARIABLE_LENGTH_ARRAY(uint8_t, H, LedsPer);
 
         memset(V, 0, LedsPer);
         memset(H, 0, LedsPer);
@@ -786,8 +826,10 @@ void fill_noise16(CRGB *leds, int num_leds,
 void fill_2dnoise8(CRGB *leds, int width, int height, bool serpentine,
             uint8_t octaves, uint16_t x, int xscale, uint16_t y, int yscale, uint16_t time,
             uint8_t hue_octaves, uint16_t hue_x, int hue_xscale, uint16_t hue_y, uint16_t hue_yscale,uint16_t hue_time,bool blend) {
-  uint8_t V[height][width];
-  uint8_t H[height][width];
+  const size_t array_size = (size_t)height * width;
+  if (array_size <= 0) return;
+  VARIABLE_LENGTH_ARRAY(uint8_t, V, array_size);
+  VARIABLE_LENGTH_ARRAY(uint8_t, H, array_size);
 
   memset(V,0,height*width);
   memset(H,0,height*width);
@@ -800,7 +842,7 @@ void fill_2dnoise8(CRGB *leds, int width, int height, bool serpentine,
   for(int i = 0; i < height; ++i) {
     int wb = i*width;
     for(int j = 0; j < width; ++j) {
-      CRGB led(CHSV(H[h1-i][w1-j],255,V[i][j]));
+      CRGB led(CHSV(H[(h1-i)*width + (w1-j)], 255, V[i*width + j]));
 
       int pos = j;
       if(serpentine && (i & 0x1)) {
@@ -808,7 +850,11 @@ void fill_2dnoise8(CRGB *leds, int width, int height, bool serpentine,
       }
 
       if(blend) {
-        leds[wb+pos] >>= 1; leds[wb+pos] += (led>>=1);
+        // Safer blending to avoid potential undefined behavior
+        CRGB temp = leds[wb+pos];
+        temp.nscale8(128); // Scale by 50%
+        led.nscale8(128);
+        leds[wb+pos] = temp + led;
       } else {
         leds[wb+pos] = led;
       }
@@ -816,12 +862,14 @@ void fill_2dnoise8(CRGB *leds, int width, int height, bool serpentine,
   }
 }
 
+
 void fill_2dnoise16(CRGB *leds, int width, int height, bool serpentine,
             uint8_t octaves, uint32_t x, int xscale, uint32_t y, int yscale, uint32_t time,
             uint8_t hue_octaves, uint16_t hue_x, int hue_xscale, uint16_t hue_y, uint16_t hue_yscale,uint16_t hue_time, bool blend, uint16_t hue_shift) {
-  uint8_t V[height][width];
-  uint8_t H[height][width];
 
+  VARIABLE_LENGTH_ARRAY(uint8_t, V, height*width);
+  VARIABLE_LENGTH_ARRAY(uint8_t, H, height*width);
+  
   memset(V,0,height*width);
   memset(H,0,height*width);
 
@@ -838,7 +886,7 @@ void fill_2dnoise16(CRGB *leds, int width, int height, bool serpentine,
   for(int i = 0; i < height; ++i) {
     int wb = i*width;
     for(int j = 0; j < width; ++j) {
-      CRGB led(CHSV(hue_shift + (H[h1-i][w1-j]),196,V[i][j]));
+      CRGB led(CHSV(hue_shift + (H[(h1-i)*width + (w1-j)]), 196, V[i*width + j]));
 
       int pos = j;
       if(serpentine && (i & 0x1)) {
@@ -855,3 +903,5 @@ void fill_2dnoise16(CRGB *leds, int width, int height, bool serpentine,
 }
 
 FASTLED_NAMESPACE_END
+
+#pragma GCC diagnostic pop

@@ -937,20 +937,16 @@ void writeS1Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s1Serial.write(completeString[i]);
-    // Debug.SERIAL_EVENT("Writing: %s", completeString[i] );
-    Serial.print(completeString[i]);
-
   };
-  Debug.SERIAL_EVENT("Writing to Serial 1\n");
+  Debug.SERIAL_EVENT("Writing to Serial 1: %s\n", stringData.c_str());
 };
 
 void writeS2Serial(String stringData){
   String completeString = stringData + '\r';
   for (int i=0; i<completeString.length(); i++){
     s2Serial.write(completeString[i]);
-    Debug.SERIAL_EVENT("Writing: %c", completeString[i] );
   };
-  Debug.SERIAL_EVENT("Writing to Serial 2\n");
+  Debug.SERIAL_EVENT("Writing to Serial 2: %s\n", stringData.c_str());
 };
 
 
@@ -1345,6 +1341,12 @@ void ArmSaber(){
     Animation_Command[0]   = '\0'; 
 }
 
+void StowSaber(){
+  sendESPNOWCommand("BS", ":D10104");
+  DelayCall::schedule([]{ sendESPNOWCommand("BS", ":D10204");}, 7050);
+  Animation_Command[0]   = '\0'; 
+}
+
 void SmokeSequence(){
   sendESPNOWCommand("DP", ":A54");
     Animation_Command[0]   = '\0'; 
@@ -1396,6 +1398,11 @@ void cpuRetract(){
 
 void cpuRotate(){
   sendESPNOWCommand("BS", ":D125");
+      Animation_Command[0]   = '\0'; 
+}
+
+void fireExinguisher(){
+  sendESPNOWCommand("DP", ":A70");
       Animation_Command[0]   = '\0'; 
 }
 
@@ -1773,11 +1780,11 @@ void RCRadio_Matrix_Buttons(int PWMvalue){
     }
     if (PWMvalue <= 1049 && PWMvalue >= 1000){
       Serial.println("T1 Left: Function 17: ");
-      ArmSaber();
+      fireExinguisher();
     }
     if (PWMvalue <= 899 && PWMvalue >= 850){
       Serial.println("T1 Right: Function 18: Launch Saber ");
-      LaunchSaber();
+      ArmSaber();
 
     }
       
@@ -1875,10 +1882,11 @@ void RCRadio_Matrix_Buttons(int PWMvalue){
     }
     if (PWMvalue <= 1049 && PWMvalue >= 1000){
       Serial.println("T1 Left: Function 17: ");
-      display();
+      StowSaber();
     }
     if (PWMvalue <= 899 && PWMvalue >= 850){
       Serial.println("T1 Right: Function 18: ");
+      LaunchSaber();
     }
   Serial.println("Switch selection in the middle");
   }

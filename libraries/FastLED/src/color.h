@@ -1,7 +1,6 @@
-#ifndef __INC_COLOR_H
-#define __INC_COLOR_H
+#pragma once
 
-#include "FastLED.h"
+#include "fl/namespace.h"
 
 FASTLED_NAMESPACE_BEGIN
 
@@ -95,7 +94,7 @@ typedef enum {
     UncorrectedTemperature=0xFFFFFF /* 255, 255, 255 */
 } ColorTemperature;
 
+/// @} ColorEnums
+
 FASTLED_NAMESPACE_END
 
-///@}
-#endif

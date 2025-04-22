@@ -5,9 +5,15 @@
 
 #include "led_sysdefs.h"
 #include <stddef.h>
+#include "fl/unused.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#ifdef ESP32
+// Get rid of the endless volatile warnings in ESP32
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Wvolatile"
+#endif
 
 /// @file fastpin.h
 /// Class base definitions for defining fast pin access
@@ -27,6 +33,9 @@ FASTLED_NAMESPACE_BEGIN
 /// Abstract class for "selectable" things
 class Selectable {
 public:
+	#ifndef __AVR__
+	virtual ~Selectable() {}
+	#endif
 	virtual void select() = 0;      ///< Select this object
 	virtual void release() = 0;     ///< Release this object
 	virtual bool isSelected() = 0;  ///< Check if this object is currently selected
@@ -53,6 +62,9 @@ public:
 	/// Constructor
 	/// @param pin Arduino digital pin number
 	Pin(int pin) : mPin(pin) { _init(); }
+	#ifndef __AVR__
+	virtual ~Pin() {}  // Shut up the compiler warning, but don't steal bytes from AVR.
+	#endif
 
 	typedef volatile RwReg * port_ptr_t;  ///< type for a pin read/write register, volatile
 	typedef RwReg port_t;  ///< type for a pin read/write register, non-volatile
@@ -100,11 +112,11 @@ public:
 	port_t mask() __attribute__ ((always_inline)) { return mPinMask; }
 
 	/// @copydoc Pin::hi()
-	virtual void select() { hi(); }
+	virtual void select() override { hi(); }
 	/// @copydoc Pin::lo()
-	virtual void release() { lo(); }
+	virtual void release() override { lo(); }
 	/// Checks if the pin is currently `HIGH`
-	virtual bool isSelected() { return (*mPort & mPinMask) == mPinMask; }
+	virtual bool isSelected() override { return (*mPort & mPinMask) == mPinMask; }
 };
 
 /// I/O pin initially set to OUTPUT
@@ -130,6 +142,8 @@ class Pin : public Selectable {
 	RwReg mPinMask;
 	uint8_t mPin;
 
+
+
 	void _init() {
 		// TODO: fill in init on a new platform
 		mPinMask = 0;
@@ -139,6 +153,9 @@ class Pin : public Selectable {
 
 public:
 	Pin(int pin) : mPin(pin) { _init(); }
+	#ifndef __AVR__
+	virtual ~Pin() {}  // Shut up the compiler warning, but don't steal bytes from AVR.
+	#endif
 
 	void setPin(int pin) { mPin = pin; _init(); }
 
@@ -165,9 +182,9 @@ public:
 	port_ptr_t  port() __attribute__ ((always_inline)) { return mPort; }
 	port_t mask() __attribute__ ((always_inline)) { return mPinMask; }
 
-	virtual void select() { hi(); }
-	virtual void release() { lo(); }
-	virtual bool isSelected() { return (*mPort & mPinMask) == mPinMask; }
+	virtual void select() override { hi(); }
+	virtual void release() override { lo(); }
+	virtual bool isSelected() override { return (*mPort & mPinMask) == mPinMask; }
 };
 
 class OutputPin : public Pin {
@@ -256,7 +273,18 @@ template<uint8_t PIN> volatile RoReg *FastPin<PIN>::sInPort;
 #else
 
 template<uint8_t PIN> class FastPin {
+	// This is a default implementation. If you are hitting this then FastPin<> is either:
+	// 1) Not defined -or-
+	// 2) Not part of the set of defined FastPin<> specializations for your platform
+	// You need to define a FastPin<> specialization
+	// or change what get's included for your particular build target.
+	// Keep in mind that these messages are cryptic, so it's best to define an invalid in type.
 	constexpr static bool validpin() { return false; }
+	constexpr static bool LowSpeedOnlyRecommended() {  // Some implementations assume this exists.
+        // Caller must always determine if high speed use if allowed on a given pin,
+        // because it depends on more than just the chip packaging ... it depends on entire board (and even system) design.
+        return false; // choosing default to be FALSE, to allow users to ATTEMPT to use high-speed on pins where support is not known
+    }
 
 	static_assert(validpin(), "Invalid pin specified");
 
@@ -283,14 +311,23 @@ public:
 	inline static void toggle() __attribute__ ((always_inline)) { }
 
 	/// @copydoc Pin::hi(FASTLED_REGISTER port_ptr_t)
-	inline static void hi(FASTLED_REGISTER port_ptr_t port) __attribute__ ((always_inline)) { }
+	inline static void hi(FASTLED_REGISTER port_ptr_t port) __attribute__ ((always_inline)) {
+		FASTLED_UNUSED(port);
+	}
 	/// @copydoc Pin::lo(FASTLED_REGISTER port_ptr_t)
-	inline static void lo(FASTLED_REGISTER port_ptr_t port) __attribute__ ((always_inline)) { }
+	inline static void lo(FASTLED_REGISTER port_ptr_t port) __attribute__ ((always_inline)) {
+		FASTLED_UNUSED(port);
+	}
 	/// @copydoc Pin::set(FASTLED_REGISTER port_t)
-	inline static void set(FASTLED_REGISTER port_t val) __attribute__ ((always_inline)) { }
+	inline static void set(FASTLED_REGISTER port_t val) __attribute__ ((always_inline)) {
+		FASTLED_UNUSED(val);
+	}
 
 	/// @copydoc Pin::fastset()
-	inline static void fastset(FASTLED_REGISTER port_ptr_t port, FASTLED_REGISTER port_t val) __attribute__ ((always_inline)) { }
+	inline static void fastset(FASTLED_REGISTER port_ptr_t port, FASTLED_REGISTER port_t val) __attribute__ ((always_inline)) {
+		FASTLED_UNUSED(port);
+		FASTLED_UNUSED(val);
+	}
 
 	/// @copydoc Pin::hival()
 	static port_t hival() __attribute__ ((always_inline)) { return 0; }

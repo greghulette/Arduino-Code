@@ -144,6 +144,22 @@ void Maestro::writeByte(uint8_t dataByte)
   }
 }
 
+u_int8_t Maestro::readDeviceNumber()
+{
+while (_stream->available() < 3);
+  uint8_t resetPinByte = _stream->read();
+  uint8_t deviceIDByte = _stream->read();
+  uint8_t SequenceNumberByte = _stream->read();
+
+  return (resetPinByte);
+}
+
+u_int8_t Maestro::readSequenceNumber()
+{
+
+}
+
+
 void Maestro::writeCRC()
 {
   if(_CRCEnabled)

@@ -1,0 +1,61 @@
+#######################################
+# Syntax Coloring Map
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+MP3TRIGGER	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+isConnected	KEYWORD2
+isPlaying	KEYWORD2
+setAddress	KEYWORD2
+clearInterrupts	KEYWORD2
+playTrack	KEYWORD2
+playFile	KEYWORD2
+playNext	KEYWORD2
+playPrevious	KEYWORD2
+pause	KEYWORD2
+stop	KEYWORD2
+setEQ	KEYWORD2
+getEQ	KEYWORD2
+setVolume	KEYWORD2
+getVolume	KEYWORD2
+getStatus	KEYWORD2
+hasCard	KEYWORD2
+getSongName	KEYWORD2
+getSongCount	KEYWORD2
+getVersion	KEYWORD2
+sendCommand	KEYWORD2
+sendCommand	KEYWORD2
+getResponse	KEYWORD2
+getID	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+COMMAND_STOP	LITERAL1
+COMMAND_PLAY_TRACK	LITERAL1
+COMMAND_PLAY_FILENUMBER	LITERAL1
+COMMAND_PAUSE	LITERAL1
+COMMAND_PLAY_NEXT	LITERAL1
+COMMAND_PLAY_PREVIOUS	LITERAL1
+COMMAND_SET_EQ	LITERAL1
+COMMAND_SET_VOLUME	LITERAL1
+COMMAND_GET_SONG_COUNT	LITERAL1
+COMMAND_GET_SONG_NAME	LITERAL1
+COMMAND_GET_PLAY_STATUS	LITERAL1
+COMMAND_GET_CARD_STATUS	LITERAL1
+COMMAND_GET_VERSION	LITERAL1
+COMMAND_CLEAR_INTERRUPTS	LITERAL1
+COMMAND_GET_VOLUME	LITERAL1
+COMMAND_GET_EQ	LITERAL1
+COMMAND_GET_ID	LITERAL1
+COMMAND_SET_ADDRESS	LITERAL1

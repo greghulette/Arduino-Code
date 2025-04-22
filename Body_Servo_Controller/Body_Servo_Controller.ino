@@ -609,10 +609,10 @@ void processESPNOWIncomingMessage(){
 //     Pin,  Close Pos, Open Pos,  Group ID  (Change the Close and Open to your Droids actual limits)
 const ServoSettings servoSettings[] PROGMEM = {
     { 1,  2110, 1100, TOP_UTILITY_ARM },      /* 0: Top Utility Arm 2350,675*/
-    { 2,  1950, 950, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
+    { 2,  1800, 900, BOTTOM_UTILITY_ARM },    /* 1: Bottom Utility Arm 1950,960*/
     { 3,  1000, 1750, LARGE_LEFT_DOOR },      /* 2: Right Left Door as viewing from looking at R2 1900,1000*/
-    { 4,  1400, 1900, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
-    { 5,  1590 , 758, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
+    { 4,  1850, 1400, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
+    { 5,  758 , 1590, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
     { 6,  1750, 850, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
     { 7,  1950, 700, DRAWER_S1 },             /* 6: Drawer S1*/
     { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */

@@ -7,6 +7,97 @@
 #include "FastLED.h"
 #include "pixeltypes.h"
 #include "fastled_progmem.h"
+#include "fl/xymap.h"
+#include "fl/deprecated.h"
+
+#if !defined(FASTLED_USE_32_BIT_GRADIENT_FILL)
+  #if defined(__AVR__)
+    #define FASTLED_USE_32_BIT_GRADIENT_FILL 0
+  #else
+    #define FASTLED_USE_32_BIT_GRADIENT_FILL 1
+  #endif
+#endif
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+
+/// Defines a static RGB palette very compactly using a series
+/// of connected color gradients.
+///
+/// For example, if you want the first 3/4ths of the palette to be a slow
+/// gradient ramping from black to red, and then the remaining 1/4 of the
+/// palette to be a quicker ramp to white, you specify just three points: the
+/// starting black point (at index 0), the red midpoint (at index 192),
+/// and the final white point (at index 255).  It looks like this:
+///   @code
+///   index:  0                                    192          255
+///           |----------r-r-r-rrrrrrrrRrRrRrRrRRRR-|-RRWRWWRWWW-|
+///   color: (0,0,0)                           (255,0,0)    (255,255,255)
+///   @endcode
+///
+/// Here's how you'd define that gradient palette using this macro:
+///   @code{.cpp}
+///   DEFINE_GRADIENT_PALETTE( black_to_red_to_white_p ) {
+///        0,    0,   0,   0,  /* at index 0,   black(0,0,0) */
+///       192, 255,   0,   0,  /* at index 192, red(255,0,0) */
+///       255, 255, 255, 255   /* at index 255, white(255,255,255) */
+///   };
+///   @endcode
+///
+/// This format is designed for compact storage.  The example palette here
+/// takes up just 12 bytes of PROGMEM (flash) storage, and zero bytes
+/// of SRAM when not currently in use.
+///
+/// To use one of these gradient palettes, simply assign it into a
+/// CRGBPalette16 or a CRGBPalette256, like this:
+///   @code{.cpp}
+///   CRGBPalette16 pal = black_to_red_to_white_p;
+///   @endcode
+///
+/// When the assignment is made, the gradients are expanded out into
+/// either 16 or 256 palette entries, depending on the kind of palette
+/// object they're assigned to.
+///
+/// @warning The last "index" position **MUST** be 255! Failure to end
+/// with index 255 will result in program hangs or crashes.  
+/// @par
+/// @warning At this point, these gradient palette definitions **MUST**
+/// be stored in PROGMEM on AVR-based Arduinos. If you use the
+/// `DEFINE_GRADIENT_PALETTE` macro, this is taken of automatically.
+///
+/// TProgmemRGBGradientPalette_byte must remain in the global namespace.
+#define DEFINE_GRADIENT_PALETTE(X) \
+  FL_ALIGN_PROGMEM \
+  extern const ::TProgmemRGBGradientPalette_byte X[] FL_PROGMEM =
+
+/// Forward-declaration macro for DEFINE_GRADIENT_PALETTE(X)
+#define DECLARE_GRADIENT_PALETTE(X) \
+  FL_ALIGN_PROGMEM \
+  extern const ::TProgmemRGBGradientPalette_byte X[] FL_PROGMEM
+
+
+typedef uint32_t TProgmemRGBPalette16[16];  ///< CRGBPalette16 entries stored in PROGMEM memory
+typedef uint32_t TProgmemHSVPalette16[16];  ///< CHSVPalette16 entries stored in PROGMEM memory
+/// Alias for TProgmemRGBPalette16
+#define TProgmemPalette16 TProgmemRGBPalette16
+typedef uint32_t TProgmemRGBPalette32[32];  ///< CRGBPalette32 entries stored in PROGMEM memory
+typedef uint32_t TProgmemHSVPalette32[32];  ///< CHSVPalette32 entries stored in PROGMEM memory
+/// Alias for TProgmemRGBPalette32
+#define TProgmemPalette32 TProgmemRGBPalette32
+
+/// Byte of an RGB gradient, stored in PROGMEM memory
+typedef const uint8_t TProgmemRGBGradientPalette_byte;
+/// Pointer to bytes of an RGB gradient, stored in PROGMEM memory
+/// @see DEFINE_GRADIENT_PALETTE
+/// @see DECLARE_GRADIENT_PALETTE
+typedef const TProgmemRGBGradientPalette_byte *TProgmemRGBGradientPalette_bytes;
+/// Alias of ::TProgmemRGBGradientPalette_bytes
+typedef TProgmemRGBGradientPalette_bytes TProgmemRGBGradientPaletteRef;
+
+
+
+
+
 
 FASTLED_NAMESPACE_BEGIN
 
@@ -160,7 +251,27 @@ void fill_gradient( T* targetArray,
 
     uint16_t pixeldistance = endpos - startpos;
     int16_t divisor = pixeldistance ? pixeldistance : 1;
+    
+    #if FASTLED_USE_32_BIT_GRADIENT_FILL
+    // Use higher precision 32 bit math for new micros.
+    int32_t huedelta823 = (huedistance87 * 65536) / divisor;
+    int32_t satdelta823 = (satdistance87 * 65536) / divisor;
+    int32_t valdelta823 = (valdistance87 * 65536) / divisor;
 
+    huedelta823 *= 2;
+    satdelta823 *= 2;
+    valdelta823 *= 2;
+    uint32_t hue824 = static_cast<uint32_t>(startcolor.hue) << 24;
+    uint32_t sat824 = static_cast<uint32_t>(startcolor.sat) << 24;
+    uint32_t val824 = static_cast<uint32_t>(startcolor.val) << 24;
+    for( uint16_t i = startpos; i <= endpos; ++i) {
+        targetArray[i] = CHSV( hue824 >> 24, sat824 >> 24, val824 >> 24);
+        hue824 += huedelta823;
+        sat824 += satdelta823;
+        val824 += valdelta823;
+    }
+    #else
+    // Use 8-bit math for older micros.
     saccum87 huedelta87 = huedistance87 / divisor;
     saccum87 satdelta87 = satdistance87 / divisor;
     saccum87 valdelta87 = valdistance87 / divisor;
@@ -178,6 +289,7 @@ void fill_gradient( T* targetArray,
         sat88 += satdelta87;
         val88 += valdelta87;
     }
+    #endif  // defined(__AVR__)
 }
 
 
@@ -437,7 +549,11 @@ void blur1d( CRGB* leds, uint16_t numLeds, fract8 blur_amount);
 /// @param width the width of the matrix
 /// @param height the height of the matrix
 /// @param blur_amount the amount of blur to apply
-void blur2d( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount);
+void blur2d( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount, const fl::XYMap& xymap);
+
+/// Legacy version of blur2d, which does not require an XYMap but instead implicitly binds to XY() function.
+/// If you are hitting a linker error here, then use blur2d(..., const fl::XYMap& xymap) instead.
+void blur2d( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount) FASTLED_DEPRECATED("Use blur2d(..., const fl::XYMap& xymap) instead");
 
 
 /// Perform a blur1d() on every row of a rectangular matrix
@@ -446,11 +562,11 @@ void blur2d( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount);
 /// @param width the width of the matrix
 /// @param height the height of the matrix
 /// @param blur_amount the amount of blur to apply
-void blurRows( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount);
+void blurRows( CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount, const fl::XYMap& xymap);
 
 /// Perform a blur1d() on every column of a rectangular matrix
 /// @copydetails blurRows()
-void blurColumns(CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount);
+void blurColumns(CRGB* leds, uint8_t width, uint8_t height, fract8 blur_amount, const fl::XYMap& xymap);
 
 /// @} ColorBlurs
 
@@ -552,23 +668,7 @@ class CHSVPalette16;
 class CHSVPalette32;
 class CHSVPalette256;
 
-typedef uint32_t TProgmemRGBPalette16[16];  ///< CRGBPalette16 entries stored in PROGMEM memory
-typedef uint32_t TProgmemHSVPalette16[16];  ///< CHSVPalette16 entries stored in PROGMEM memory
-/// Alias for TProgmemRGBPalette16
-#define TProgmemPalette16 TProgmemRGBPalette16
-typedef uint32_t TProgmemRGBPalette32[32];  ///< CRGBPalette32 entries stored in PROGMEM memory
-typedef uint32_t TProgmemHSVPalette32[32];  ///< CHSVPalette32 entries stored in PROGMEM memory
-/// Alias for TProgmemRGBPalette32
-#define TProgmemPalette32 TProgmemRGBPalette32
 
-/// Byte of an RGB gradient, stored in PROGMEM memory
-typedef const uint8_t TProgmemRGBGradientPalette_byte;
-/// Pointer to bytes of an RGB gradient, stored in PROGMEM memory
-/// @see DEFINE_GRADIENT_PALETTE
-/// @see DECLARE_GRADIENT_PALETTE
-typedef const TProgmemRGBGradientPalette_byte *TProgmemRGBGradientPalette_bytes;
-/// Alias of ::TProgmemRGBGradientPalette_bytes
-typedef TProgmemRGBGradientPalette_bytes TProgmemRGBGradientPalettePtr;
 
 /// Struct for digesting gradient pointer data into its components. 
 /// This is used when loading a gradient stored in PROGMEM or on
@@ -587,7 +687,7 @@ typedef union {
 
 typedef uint8_t TDynamicRGBGradientPalette_byte;  ///< Byte of an RGB gradient entry, stored in dynamic (heap) memory
 typedef const TDynamicRGBGradientPalette_byte *TDynamicRGBGradientPalette_bytes;  ///< Pointer to bytes of an RGB gradient, stored in dynamic (heap) memory
-typedef TDynamicRGBGradientPalette_bytes TDynamicRGBGradientPalettePtr;  ///< Alias of ::TDynamicRGBGradientPalette_bytes
+typedef TDynamicRGBGradientPalette_bytes TDynamicRGBGradientPaletteRef;  ///< Alias of ::TDynamicRGBGradientPalette_bytes
 
 /// @}
 
@@ -599,23 +699,23 @@ typedef TDynamicRGBGradientPalette_bytes TDynamicRGBGradientPalettePtr;  ///< Al
 /// Convert a 16-entry palette to a 256-entry palette
 /// @param srcpal16 the source palette to upscale
 /// @param destpal256 the destination palette for the upscaled data
-void UpscalePalette(const struct CRGBPalette16& srcpal16, struct CRGBPalette256& destpal256);
-/// @copydoc UpscalePalette(const struct CRGBPalette16&, struct CRGBPalette256&)
-void UpscalePalette(const struct CHSVPalette16& srcpal16, struct CHSVPalette256& destpal256);
+void UpscalePalette(const class CRGBPalette16& srcpal16, class CRGBPalette256& destpal256);
+/// @copydoc UpscalePalette(const class CRGBPalette16&, class CRGBPalette256&)
+void UpscalePalette(const class CHSVPalette16& srcpal16, class CHSVPalette256& destpal256);
 
 /// Convert a 16-entry palette to a 32-entry palette
 /// @param srcpal16 the source palette to upscale
 /// @param destpal32 the destination palette for the upscaled data
-void UpscalePalette(const struct CRGBPalette16& srcpal16, struct CRGBPalette32& destpal32);
-/// @copydoc UpscalePalette(const struct CRGBPalette16&, struct CRGBPalette32&)
-void UpscalePalette(const struct CHSVPalette16& srcpal16, struct CHSVPalette32& destpal32);
+void UpscalePalette(const class CRGBPalette16& srcpal16, class CRGBPalette32& destpal32);
+/// @copydoc UpscalePalette(const class CRGBPalette16&, class CRGBPalette32&)
+void UpscalePalette(const class CHSVPalette16& srcpal16, class CHSVPalette32& destpal32);
 
 /// Convert a 32-entry palette to a 256-entry palette
 /// @param srcpal32 the source palette to upscale
 /// @param destpal256 the destination palette for the upscaled data
-void UpscalePalette(const struct CRGBPalette32& srcpal32, struct CRGBPalette256& destpal256);
-/// @copydoc UpscalePalette(const struct CRGBPalette32&, struct CRGBPalette256&)
-void UpscalePalette(const struct CHSVPalette32& srcpal32, struct CHSVPalette256& destpal256);
+void UpscalePalette(const class CRGBPalette32& srcpal32, class CRGBPalette256& destpal256);
+/// @copydoc UpscalePalette(const class CRGBPalette32&, class CRGBPalette256&)
+void UpscalePalette(const class CHSVPalette32& srcpal32, class CHSVPalette256& destpal256);
 
 /// @} PaletteUpscale
 
@@ -660,7 +760,7 @@ public:
     CHSVPalette16( const TProgmemHSVPalette16& rhs)
     {
         for( uint8_t i = 0; i < 16; ++i) {
-            CRGB xyz   =  FL_PGM_READ_DWORD_NEAR( rhs + i);
+            CRGB xyz(FL_PGM_READ_DWORD_NEAR( rhs + i));
             entries[i].hue = xyz.red;
             entries[i].sat = xyz.green;
             entries[i].val = xyz.blue;
@@ -671,7 +771,7 @@ public:
     CHSVPalette16& operator=( const TProgmemHSVPalette16& rhs)
     {
         for( uint8_t i = 0; i < 16; ++i) {
-            CRGB xyz   =  FL_PGM_READ_DWORD_NEAR( rhs + i);
+            CRGB xyz(FL_PGM_READ_DWORD_NEAR( rhs + i));
             entries[i].hue = xyz.red;
             entries[i].sat = xyz.green;
             entries[i].val = xyz.blue;
@@ -1244,7 +1344,7 @@ public:
     CHSVPalette32( const TProgmemHSVPalette32& rhs)
     {
         for( uint8_t i = 0; i < 32; ++i) {
-            CRGB xyz   =  FL_PGM_READ_DWORD_NEAR( rhs + i);
+            CRGB xyz(FL_PGM_READ_DWORD_NEAR( rhs + i));
             entries[i].hue = xyz.red;
             entries[i].sat = xyz.green;
             entries[i].val = xyz.blue;
@@ -1254,7 +1354,7 @@ public:
     CHSVPalette32& operator=( const TProgmemHSVPalette32& rhs)
     {
         for( uint8_t i = 0; i < 32; ++i) {
-            CRGB xyz   =  FL_PGM_READ_DWORD_NEAR( rhs + i);
+            CRGB xyz(FL_PGM_READ_DWORD_NEAR( rhs + i));
             entries[i].hue = xyz.red;
             entries[i].sat = xyz.green;
             entries[i].val = xyz.blue;
@@ -1908,17 +2008,46 @@ CRGB ColorFromPalette( const CRGBPalette16& pal,
                       uint8_t brightness=255,
                       TBlendType blendType=LINEARBLEND);
 
-/// @copydoc ColorFromPalette(const CRGBPalette16&, uint8_t, uint8_t, TBlendType)
-CRGB ColorFromPalette( const TProgmemRGBPalette16& pal,
-                       uint8_t index,
-                       uint8_t brightness=255,
-                       TBlendType blendType=LINEARBLEND);
+
+/// @brief Same as ColorFromPalette, but with uint16_t `index` to give greater precision.
+/// @author https://github.com/generalelectrix
+/// @see https://github.com/FastLED/FastLED/pull/202
+/// @see https://wokwi.com/projects/285170662915441160
+/// @see https://wokwi.com/projects/407831886158110721
+CRGB ColorFromPaletteExtended(
+    const CRGBPalette16& pal,
+    uint16_t index,
+    uint8_t brightness,
+    TBlendType blendType);
+
+/// @brief Same as ColorFromPalette, but higher precision. Will eventually
+///        become the default.
+/// @author https://github.com/generalelectrix
+/// @see https://github.com/FastLED/FastLED/pull/202#issuecomment-631333384
+/// @see https://wokwi.com/projects/285170662915441160
+CRGB ColorFromPaletteExtended(
+    const CRGBPalette32& pal,
+    uint16_t index,
+    uint8_t brightness,
+    TBlendType blendType);
 
 /// @copydoc ColorFromPalette(const CRGBPalette16&, uint8_t, uint8_t, TBlendType)
-CRGB ColorFromPalette( const CRGBPalette256& pal,
-                       uint8_t index,
-                       uint8_t brightness=255,
-                       TBlendType blendType=NOBLEND );
+CRGB ColorFromPalette(const TProgmemRGBPalette16& pal,
+                      uint8_t index,
+                      uint8_t brightness=255,
+                      TBlendType blendType=LINEARBLEND);
+
+/// @copydoc ColorFromPalette(const CRGBPalette16&, uint8_t, uint8_t, TBlendType)
+CRGB ColorFromPalette(const CRGBPalette256& pal,
+                      uint8_t index,
+                      uint8_t brightness=255,
+                      TBlendType blendType=NOBLEND );
+
+// @author https://github.com/generalelectrix
+CRGB ColorFromPaletteExtended(const CRGBPalette256& pal,
+                              uint16_t index,
+                              uint8_t brightness,
+                              TBlendType blendType);
 
 /// @copydoc ColorFromPalette(const CRGBPalette16&, uint8_t, uint8_t, TBlendType)
 CHSV ColorFromPalette( const CHSVPalette16& pal,
@@ -2087,58 +2216,6 @@ void nblendPaletteTowardPalette( CRGBPalette16& currentPalette,
 /// @} PaletteColors
 
 
-/// Defines a static RGB palette very compactly using a series
-/// of connected color gradients.
-///
-/// For example, if you want the first 3/4ths of the palette to be a slow
-/// gradient ramping from black to red, and then the remaining 1/4 of the
-/// palette to be a quicker ramp to white, you specify just three points: the
-/// starting black point (at index 0), the red midpoint (at index 192),
-/// and the final white point (at index 255).  It looks like this:
-///   @code
-///   index:  0                                    192          255
-///           |----------r-r-r-rrrrrrrrRrRrRrRrRRRR-|-RRWRWWRWWW-|
-///   color: (0,0,0)                           (255,0,0)    (255,255,255)
-///   @endcode
-///
-/// Here's how you'd define that gradient palette using this macro:
-///   @code{.cpp}
-///   DEFINE_GRADIENT_PALETTE( black_to_red_to_white_p ) {
-///        0,    0,   0,   0,  /* at index 0,   black(0,0,0) */
-///       192, 255,   0,   0,  /* at index 192, red(255,0,0) */
-///       255, 255, 255, 255   /* at index 255, white(255,255,255) */
-///   };
-///   @endcode
-///
-/// This format is designed for compact storage.  The example palette here
-/// takes up just 12 bytes of PROGMEM (flash) storage, and zero bytes
-/// of SRAM when not currently in use.
-///
-/// To use one of these gradient palettes, simply assign it into a
-/// CRGBPalette16 or a CRGBPalette256, like this:
-///   @code{.cpp}
-///   CRGBPalette16 pal = black_to_red_to_white_p;
-///   @endcode
-///
-/// When the assignment is made, the gradients are expanded out into
-/// either 16 or 256 palette entries, depending on the kind of palette
-/// object they're assigned to.
-///
-/// @warning The last "index" position **MUST** be 255! Failure to end
-/// with index 255 will result in program hangs or crashes.  
-/// @par
-/// @warning At this point, these gradient palette definitions **MUST**
-/// be stored in PROGMEM on AVR-based Arduinos. If you use the
-/// `DEFINE_GRADIENT_PALETTE` macro, this is taken of automatically.
-///
-#define DEFINE_GRADIENT_PALETTE(X) \
-  FL_ALIGN_PROGMEM \
-  extern const TProgmemRGBGradientPalette_byte X[] FL_PROGMEM =
-
-/// Forward-declaration macro for DEFINE_GRADIENT_PALETTE(X)
-#define DECLARE_GRADIENT_PALETTE(X) \
-  FL_ALIGN_PROGMEM \
-  extern const TProgmemRGBGradientPalette_byte X[] FL_PROGMEM
 
 /// @} ColorPalettes
 
@@ -2225,5 +2302,7 @@ void   napplyGamma_video( CRGB* rgbarray, uint16_t count, float gammaR, float ga
 /// @} GammaFuncs
 
 FASTLED_NAMESPACE_END
+
+#pragma GCC diagnostic pop
 
 #endif

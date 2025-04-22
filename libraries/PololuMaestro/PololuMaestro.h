@@ -236,6 +236,11 @@ class Maestro
      */
     uint16_t getErrors();
 
+    u_int8_t readDeviceNumber();
+    u_int8_t readSequenceNumber();
+
+
+
     /** \cond
     *
     * This should be considered a private implementation detail of the library.
@@ -248,12 +253,14 @@ class Maestro
 
     void writeByte(uint8_t dataByte);
     void writeCRC();
+    
     void writeCommand(uint8_t commandByte);
     void write7BitData(uint8_t data);
     void write14BitData(uint16_t data);
   /** \endcond **/
 
   private:
+
     static const uint8_t CRC7Polynomial = 0x91;
     static const uint8_t baudRateIndication = 0xAA;
 
@@ -264,10 +271,10 @@ class Maestro
     static const uint8_t getPositionCommand = 0x90;
     static const uint8_t getMovingStateCommand = 0x93;
     static const uint8_t getErrorsCommand = 0xA1;
-    static const uint8_t goHomeCommand = 0xA2;
-    static const uint8_t stopScriptCommand = 0xA4;
-    static const uint8_t restartScriptAtSubroutineCommand = 0xA7;
-    static const uint8_t restartScriptAtSubroutineWithParameterCommand = 0xA8;
+    static const uint8_t goHomeCommand = 0xA2;     //0x22
+    static const uint8_t stopScriptCommand = 0xA4; //0x24
+    static const uint8_t restartScriptAtSubroutineCommand = 0xA7; //0x27
+    static const uint8_t restartScriptAtSubroutineWithParameterCommand = 0xA8;//0x28
     static const uint8_t getScriptStatusCommand = 0xAE;
 
     uint8_t _deviceNumber;
