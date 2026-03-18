@@ -27,8 +27,8 @@
 
 // Used for OTA
 #include "ESPAsyncWebServer.h"
-#include <AsyncElegantOTA.h>
-#include <elegantWebpage.h>
+#define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
+#include <ElegantOTA.h>
 #include <AsyncTCP.h>
 #include <WiFi.h>
 
@@ -413,7 +413,7 @@ typedef struct espnow_struct_message {
   esp_now_peer_info_t peerInfo;
 
 // Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
@@ -428,11 +428,11 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 //   Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
   colorWipeStatus("ES", orange ,255);
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2], esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
   String IncomingMacAddress(macStr);
   if (IncomingMacAddress == droidLoRaMACAddressString) {
       memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
@@ -684,7 +684,7 @@ void connectWiFi(){
     request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
   });
   
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  ElegantOTA.begin(&server);    // Start ElegantOTA
   server.begin();
 
   Local_Command[0]   = '\0';

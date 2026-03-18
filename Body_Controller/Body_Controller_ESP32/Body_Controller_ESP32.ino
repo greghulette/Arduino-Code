@@ -37,8 +37,8 @@
 
 // Used for OTA
 #include "ESPAsyncWebServer.h"              //https://github.com/me-no-dev/ESPAsyncWebServer
-#include <AsyncElegantOTA.h>
-#include <elegantWebpage.h>
+#define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
+#include <ElegantOTA.h>
 #include <AsyncTCP.h>
 #include <WiFi.h>
 
@@ -168,7 +168,7 @@
     //Main Loop Timers
   unsigned long mainLoopTime; // We keep track of the "Main Loop time" in this variable.
   unsigned long MLMillis;
-  byte mainLoopDelayVar = 5;
+  uint8_t mainLoopDelayVar = 5;
 
 
 ///////////////////////////////////////////////////////////////////////
@@ -239,7 +239,7 @@ bfs::SbusRx sbus_rx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
 /* SBUS object, writing SBUS */
 bfs::SbusTx sbus_tx(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN, true, false);
 /* SBUS data */
-bfs::SbusData data;
+bfs::SbusData sbusData;
 
 #endif
 
@@ -469,7 +469,7 @@ typedef struct bodyControllerStatus_struct_message{
   esp_now_peer_info_t peerInfo;
 
 // Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
   if (Debug.debugflag_espnow == 1){
     Serial.print("\r\nLast Packet Send Status:\t");
@@ -484,8 +484,9 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 //   Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingData, int len) {
   colorWipeStatus("ES", orange ,255);
+  const uint8_t *mac = recv_info->src_addr;
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -750,7 +751,7 @@ void connectWiFi(){
     request->send(200, "text/plain", "Please go to http://192.168.4.112/update to upload file");
   });
   
-  AsyncElegantOTA.begin(&server);    // Start AsyncElegantOTA
+  ElegantOTA.begin(&server);    // Start ElegantOTA
   server.begin();
 
   Internal_Command[0]   = '\0';
@@ -1456,36 +1457,36 @@ int sbusValues[] = {};
 void processSbus(){
     if (sbus_rx.Read()) {
     /* Grab the received data */
-    data = sbus_rx.data();
+    sbusData = sbus_rx.data();
     /* Display the received data */
-    for (int8_t i = 0; i < data.NUM_CH; i++) {
+    for (int8_t i = 0; i < sbusData.NUM_CH; i++) {
       if (Debug.debugflag2 == 1){  
-        Serial.print(data.ch[i]);
+        Serial.print(sbusData.ch[i]);
       Serial.print("\t");
       }
-      // newValue = data.ch[i];
-      sbusValues[i] = data.ch[i];
+      // newValue = sbusData.ch[i];
+      sbusValues[i] = sbusData.ch[i];
 
     }
   
     /* Display lost frames and failsafe data */      
     if (Debug.debugflag2 == 1){  
 
-    Serial.print(data.lost_frame);
+    Serial.print(sbusData.lost_frame);
     Serial.print("\t");
-    Serial.println(data.failsafe);
+    Serial.println(sbusData.failsafe);
 }
     // Serial.println(sbusValues[]);
               // Serial.println(oldValue);
           // unsigned long  oldValueCurrentMillisChannel4 = millis();
-if (lostFrameOld != data.lost_frame){
-  if (data.lost_frame == true ){
-      lostFrameOld = data.lost_frame;
+if (lostFrameOld != sbusData.lost_frame){
+  if (sbusData.lost_frame == true ){
+      lostFrameOld = sbusData.lost_frame;
 
     // Debug.STATUS("Remote Disconnected \n");
       remoteConnected = false;
-    } else if (data.lost_frame == false){
-        lostFrameOld = data.lost_frame;
+    } else if (sbusData.lost_frame == false){
+        lostFrameOld = sbusData.lost_frame;
 
       // Debug.STATUS("Remote Connected \n");
 
