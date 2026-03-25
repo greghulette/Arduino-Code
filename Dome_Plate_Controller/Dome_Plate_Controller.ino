@@ -44,6 +44,8 @@
 //Used for ESP-NOW
 #include "esp_wifi.h"
 #include <esp_now.h>
+#define ETM_MY_BOARD_INDEX ETM_BOARD_DP
+#include <ETM_Droid.h>
 
 //Used for Status LEDs
 #include <Adafruit_NeoPixel.h>
@@ -342,23 +344,7 @@ long int StrobeCount =0;
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-//  ESP-NOW MAC Addresses used in the Droid. 
-  const uint8_t droidLoRaMACAddress[] =             {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-  const uint8_t bodyControllerMACAddress[] =        {0x02, 0x00, 0x00, 0x00, 0x00, 0x02};
-  const uint8_t bodyServosControllerMACAddress[] =  {0x02, 0x00, 0x00, 0x00, 0x00, 0x03};
-  const uint8_t domeControllerMACAddress[]=         {0x02, 0x00, 0x00, 0x00, 0x00, 0x04};
-  const uint8_t domePlateControllerMACAddress[] =   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05};
-  const uint8_t hpControllerMACAddress[] =          {0x02, 0x00, 0x00, 0x00, 0x00, 0x06};
-  const uint8_t broadcastMACAddress[] =             {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-// Uses these Strings for comparators
-  String droidLoRaMACAddressString =            "02:00:00:00:00:01";
-  String bodyControllerMACAddressString =       "02:00:00:00:00:02";
-  String bodyServosControllerMACAddressString = "02:00:00:00:00:03";
-  String domeControllerMACAddressString =       "02:00:00:00:00:04";
-  String domePlateControllerMACAddressString =  "02:00:00:00:00:05";
-  String hpControllerMACAddressString =         "02:00:00:00:00:06";
-  String broadcastMACAddressString =            "FF:FF:FF:FF:FF:FF";
+// MAC addresses and board IDs are defined in ETM_Droid.h
 
 // Define variables to store commands to be sent
   String  senderID;
@@ -390,17 +376,7 @@ long int StrobeCount =0;
 // Variable to store if sending data was successful
   String success;
 
-//Structure example to send data
-//Must match the receiver structure
-typedef struct espnow_struct_message {
-      char structPassword[20];
-      char structSenderID[4];
-      char structTargetID[4];
-      bool structCommandIncluded;
-      uint32_t structSuccess;
-      uint32_t structFailure;
-      char structCommand[100];
-  } espnow_struct_message;
+// espnow_struct_message is defined in ETM_Droid.h
 
 
 
@@ -422,150 +398,54 @@ typedef struct espnow_struct_message {
 
 
 
-// Create a struct_message calledcommandsTosend to hold variables that will be sent
-  espnow_struct_message commandsToSendtoBroadcast;
-  espnow_struct_message commandsToSendtoDroidLoRa;
-  espnow_struct_message commandsToSendtoBodyController;
-  espnow_struct_message commandsToSendtoBodyServoController;
-  espnow_struct_message commandsToSendtoDomeController;
-  espnow_struct_message commandsToSendtoDomePlateController;
-  espnow_struct_message commandsToSendtoHPController;
-
-// Create a espnow_struct_message to hold variables that will be received
-  espnow_struct_message commandsToReceiveFromBroadcast;
-  espnow_struct_message commandsToReceiveFromDroidLoRa;
-  espnow_struct_message commandsToReceiveFromBodyController;
-  espnow_struct_message commandsToReceiveFromBodyServoController;
-  espnow_struct_message commandsToReceiveFromDomeController;
-  espnow_struct_message commandsToReceiveFromDomePlateController;
-  espnow_struct_message commandsToReceiveFromHPController;
+// Single send/receive buffers — ETM handles routing
+  espnow_struct_message outgoingMsg;
+  espnow_struct_message incomingMsg;
 //
   esp_now_peer_info_t peerInfo;
 
-//  // Callback when data is sent
+// Callback when data is sent
 void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
-  if (status ==0){SuccessCounter ++;} else {FailureCounter ++;};
-  if (Debug.debugflag_espnow == 1){
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    if (status ==0){
-      success = "Delivery Success :)";
-    }
-    else{
-      success = "Delivery Fail :(";
-    }
-  }
+  if (status == 0) { SuccessCounter++; } else { FailureCounter++; }
+  Debug.ESPNOW("Last Packet Send Status: %s\n", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
-  // Callback when data is received
+// Callback when data is received
 void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
-  colorWipeStatus("ES", orange ,255);
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-            esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2], esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
-  String IncomingMacAddress(macStr);
-  if (IncomingMacAddress == droidLoRaMACAddressString) {
-      memcpy(&commandsToReceiveFromDroidLoRa, incomingData, sizeof(commandsToReceiveFromDroidLoRa));
-      incomingPassword = commandsToReceiveFromDroidLoRa.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDroidLoRa.structSenderID;
-        incomingTargetID = commandsToReceiveFromDroidLoRa.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDroidLoRa.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDroidLoRa.structCommand;
-        processESPNOWIncomingMessage();
-        }
-     } else if (IncomingMacAddress == bodyControllerMACAddressString){
-    memcpy(&commandsToReceiveFromBodyController, incomingData, sizeof(commandsToReceiveFromBodyController));
-    incomingPassword = commandsToReceiveFromBodyController.structPassword;
-   if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password of %s was sent.  Message Ignored\n", incomingPassword.c_str());  
-      } else {
-        incomingSenderID = commandsToReceiveFromBodyController.structSenderID;
-        incomingTargetID = commandsToReceiveFromBodyController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBodyController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBodyController.structCommand;
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        processESPNOWIncomingMessage();
-        }
-    }else if (IncomingMacAddress == bodyServosControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromBodyServoController, incomingData, sizeof(commandsToReceiveFromBodyServoController));
-      incomingPassword = commandsToReceiveFromBodyServoController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromBodyServoController.structSenderID;
-        incomingTargetID = commandsToReceiveFromBodyServoController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBodyServoController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBodyServoController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == domeControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromDomeController, incomingData, sizeof(commandsToReceiveFromDomeController));
-      incomingPassword = commandsToReceiveFromDomeController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDomeController.structSenderID;
-        incomingTargetID = commandsToReceiveFromDomeController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDomeController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDomeController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == domePlateControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromDomePlateController, incomingData, sizeof(commandsToReceiveFromDomePlateController));
-      incomingPassword = commandsToReceiveFromDomePlateController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromDomePlateController.structSenderID;
-        incomingTargetID = commandsToReceiveFromDomePlateController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromDomePlateController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromDomePlateController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    } else if (IncomingMacAddress == broadcastMACAddressString) {
-      memcpy(&commandsToReceiveFromBroadcast, incomingData, sizeof(commandsToReceiveFromBroadcast));
-      incomingPassword = commandsToReceiveFromBroadcast.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromBroadcast.structSenderID;
-        incomingTargetID = commandsToReceiveFromBroadcast.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromBroadcast.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromBroadcast.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    }  else if (IncomingMacAddress == hpControllerMACAddressString) {
-      memcpy(&commandsToReceiveFromHPController, incomingData, sizeof(commandsToReceiveFromHPController));
-      incomingPassword = commandsToReceiveFromHPController.structPassword;
-      if (incomingPassword != ESPNOWPASSWORD){
-        Debug.ESPNOW("Wrong ESP-NOW Password was sent.  Message Ignored\n");  
-      } else {
-        incomingSenderID = commandsToReceiveFromHPController.structSenderID;
-        incomingTargetID = commandsToReceiveFromHPController.structTargetID;
-        incomingCommandIncluded = commandsToReceiveFromHPController.structCommandIncluded;
-        incomingCommand = commandsToReceiveFromHPController.structCommand;
-        processESPNOWIncomingMessage();
-        }
-    }  else {Debug.ESPNOW("ESP-NOW Mesage ignored \n");}  
-  colorWipeStatus("ES",blue,10);
-  IncomingMacAddress ="";  
-} 
+  colorWipeStatus("ES", orange, 255);
+  if (len < (int)sizeof(espnow_struct_message)) {
+    Debug.ESPNOW("ESP-NOW packet too short (%d bytes), ignored\n", len);
+    colorWipeStatus("ES", blue, 10);
+    return;
+  }
+  memcpy(&incomingMsg, incomingData, sizeof(incomingMsg));
+  if (strncmp(incomingMsg.structPassword, ESPNOWPASSWORD.c_str(), sizeof(incomingMsg.structPassword)) != 0) {
+    Debug.ESPNOW("Wrong ESP-NOW Password was sent. Message Ignored\n");
+    colorWipeStatus("ES", blue, 10);
+    return;
+  }
+  int senderIdx = etmBoardIndexFromMAC(esp_now_info->src_addr);
+  if (senderIdx >= 0) etmHandleHeartbeat(senderIdx);
+  switch (incomingMsg.structPacketType) {
+    case PACKET_TYPE_HEARTBEAT:
+      break;
+    case PACKET_TYPE_ACK:
+      etmProcessAck(senderIdx, incomingMsg.structSequenceNumber);
+      break;
+    case PACKET_TYPE_COMMAND:
+      incomingSenderID = incomingMsg.structSenderID;
+      incomingTargetID = incomingMsg.structTargetID;
+      incomingCommandIncluded = incomingMsg.structCommandIncluded;
+      incomingCommand = incomingMsg.structCommand;
+      processESPNOWIncomingMessage();
+      etmSendAck(senderIdx, incomingMsg.structSequenceNumber);
+      break;
+    default:
+      Debug.ESPNOW("ESP-NOW unknown packet type, ignored\n");
+      break;
+  }
+  colorWipeStatus("ES", blue, 10);
+}
 
 void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
@@ -1001,62 +881,35 @@ void s1SerialEvent() {
 ///*****             ESP-NOW Functions                        *****///
 //////////////////////////////////////////////////////////////////////
 
-void setupSendStruct(espnow_struct_message* msg, String pass, String sender, String targetID, bool hascommand, String cmd)
-{
-    snprintf(msg->structPassword, sizeof(msg->structPassword), "%s", pass.c_str());
-    snprintf(msg->structSenderID, sizeof(msg->structSenderID), "%s", sender.c_str());
-    snprintf(msg->structTargetID, sizeof(msg->structTargetID), "%s", targetID.c_str());
-    msg->structCommandIncluded = hascommand;
-    msg->structSuccess = SuccessCounter;
-    msg->structFailure = FailureCounter;
-    snprintf(msg->structCommand, sizeof(msg->structCommand), "%s", cmd.c_str());
-};
-
-void sendESPNOWCommand(String starget, String scomm){
-  String senderID = "DP";   // change to match location (BC/BS/DC/DP/LD)
-  String scommEval = "";
-  bool hasCommand;
-  if (scommEval == scomm){
-    hasCommand = 0;
-  } else {hasCommand = 1;};
-
-  if (starget == "DG"){
-    setupSendStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(droidLoRaMACAddress, (uint8_t *) &commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW LoRa Droid Neighbor\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BC"){
-    setupSendStruct(&commandsToSendtoBodyController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-    esp_err_t result = esp_now_send(bodyControllerMACAddress, (uint8_t *) &commandsToSendtoBodyController, sizeof(commandsToSendtoBodyController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbor \n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BS"){
-    setupSendStruct(&commandsToSendtoBodyServoController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(bodyServosControllerMACAddress, (uint8_t *) &commandsToSendtoBodyServoController, sizeof(commandsToSendtoBodyServoController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  }  else if (starget == "DC"){
-    setupSendStruct(&commandsToSendtoDomeController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(domeControllerMACAddress, (uint8_t *) &commandsToSendtoDomeController, sizeof(commandsToSendtoDomeController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "DP"){
-    setupSendStruct(&commandsToSendtoDomePlateController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(domePlateControllerMACAddress, (uint8_t *) &commandsToSendtoDomePlateController, sizeof(commandsToSendtoDomePlateController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  } else if (starget == "BR"){
-    setupSendStruct(&commandsToSendtoBroadcast, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(broadcastMACAddress, (uint8_t *) &commandsToSendtoBroadcast, sizeof(commandsToSendtoBroadcast));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  }  else if (starget == "HP"){
-    setupSendStruct(&commandsToSendtoHPController, ESPNOWPASSWORD, senderID, starget, hasCommand, scomm);
-       esp_err_t result = esp_now_send(hpControllerMACAddress, (uint8_t *) &commandsToSendtoHPController, sizeof(commandsToSendtoHPController));
-    if (result == ESP_OK) {Debug.ESPNOW("Sent the command: %s to ESP-NOW Neighbors\n", scomm.c_str());
-    }else {Debug.ESPNOW("Error sending the data\n");}
-  }else {Debug.ESPNOW("No valid destination \n");}
-};
+void sendESPNOWCommand(String starget, String scomm) {
+  bool isBroadcast = (starget == "BR");
+  int targetIdx = etmBoardIndexFromID(starget.c_str());
+  const uint8_t* targetMAC = isBroadcast ? ETM_BROADCAST_MAC
+                           : (targetIdx >= 0) ? ETM_BOARD_MACS[targetIdx]
+                           : nullptr;
+  if (targetMAC == nullptr) {
+    Debug.ESPNOW("No valid destination for target: %s\n", starget.c_str());
+    return;
+  }
+  uint16_t seqNum = etmNextSequence();
+  memset(&outgoingMsg, 0, sizeof(outgoingMsg));
+  snprintf(outgoingMsg.structPassword, sizeof(outgoingMsg.structPassword), "%s", ESPNOWPASSWORD.c_str());
+  snprintf(outgoingMsg.structSenderID, sizeof(outgoingMsg.structSenderID), "DP");
+  snprintf(outgoingMsg.structTargetID, sizeof(outgoingMsg.structTargetID), "%s", starget.c_str());
+  outgoingMsg.structCommandIncluded = (scomm.length() > 0);
+  outgoingMsg.structSuccess = SuccessCounter;
+  outgoingMsg.structFailure = FailureCounter;
+  snprintf(outgoingMsg.structCommand, sizeof(outgoingMsg.structCommand), "%s", scomm.c_str());
+  outgoingMsg.structPacketType = PACKET_TYPE_COMMAND;
+  outgoingMsg.structSequenceNumber = seqNum;
+  esp_err_t result = esp_now_send(targetMAC, (uint8_t*)&outgoingMsg, sizeof(outgoingMsg));
+  if (result == ESP_OK) {
+    Debug.ESPNOW("Sent command: %s to %s\n", scomm.c_str(), starget.c_str());
+    if (!isBroadcast) etmAddToPending(scomm.c_str(), starget.c_str(), targetIdx, seqNum);
+  } else {
+    Debug.ESPNOW("Error sending ESP-NOW data\n");
+  }
+}
 
 
 
@@ -1095,73 +948,42 @@ void setup(){
 
   //initialize WiFi for ESP-NOW
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, &domePlateControllerMACAddress[0]);
+  esp_wifi_set_mac(WIFI_IF_STA, ETM_BOARD_MACS[ETM_MY_BOARD_INDEX]);
   Serial.print("Local STA MAC address = ");
   Serial.println(WiFi.macAddress());
 
-  
 //Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
   return;
   }
-  
+
   // Once ESPNow is successfully Init, we will register for Send CB to
   // get the status of Trasnmitted packet
   esp_now_register_send_cb(OnDataSent);
 
   // Register peer configuration
-  peerInfo.channel = 0;  
+  peerInfo.channel = 0;
   peerInfo.encrypt = false;
 
-  // Add peers  
- // Broadcast
-  memcpy(peerInfo.peer_addr, broadcastMACAddress, 6);
+  // Add all peers from ETM MAC table
+  memcpy(peerInfo.peer_addr, ETM_BROADCAST_MAC, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add Broadcast ESP-NOW peer");
     return;
   }
-    // Droid LoRa Controller
-  memcpy(peerInfo.peer_addr, droidLoRaMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  }  
- // Body Controller
-  memcpy(peerInfo.peer_addr, bodyControllerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  }
-   // Body Servo Controller
-  memcpy(peerInfo.peer_addr, bodyServosControllerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  }
-// Dome Controller
-  memcpy(peerInfo.peer_addr, domeControllerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  } 
-// // Dome Plate Controller
-//   memcpy(peerInfo.peer_addr, domePlateControllerMACAddress, 6);
-//   if (esp_now_add_peer(&peerInfo) != ESP_OK){
-//     Serial.println("Failed to add Broadcast ESP-NOW peer");
-//     return;
-//   } 
-
-// HP Controller
-  memcpy(peerInfo.peer_addr, hpControllerMACAddress, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
+  for (int i = 0; i < ETM_NUM_BOARDS; i++) {
+    if (i == ETM_MY_BOARD_INDEX) continue;
+    memcpy(peerInfo.peer_addr, ETM_BOARD_MACS[i], 6);
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.printf("Failed to add ESP-NOW peer %d\n", i);
+      return;
+    }
   }
 
   // Register for a callback function that will be called when data is received
   esp_now_register_recv_cb(OnDataRecv);
-  
+  etmInit(ESPNOWPASSWORD.c_str(), ETM_MY_BOARD_INDEX);
 
   ESP_LED.begin();
   ESP_LED.show();
@@ -1173,6 +995,7 @@ void setup(){
 }   // end of setup
 
 void loop(){
+  etmProcess();
           AnimatedEvent::process();
 
   if (millis() - MLMillis >= mainLoopDelayVar){

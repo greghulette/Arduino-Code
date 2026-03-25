@@ -10,7 +10,7 @@
 #define BUSIO_HAS_HW_SPI
 #else
 // SW SPI ONLY
-enum { SPI_MODE0, SPI_MODE1, SPI_MODE2, _SPI_MODE4 };
+enum { SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3 };
 typedef uint8_t SPIClass;
 #endif
 
@@ -79,7 +79,8 @@ typedef uint32_t BusIO_PortMask;
 
 #elif (defined(__arm__) || defined(ARDUINO_FEATHER52)) &&                      \
     !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_SILABS) &&               \
-    !defined(ARDUINO_UNOR4_MINIMA) && !defined(ARDUINO_UNOR4_WIFI)
+    !defined(ARDUINO_UNOR4_MINIMA) && !defined(ARDUINO_UNOR4_WIFI) &&          \
+    !defined(PORTDUINO)
 typedef volatile uint32_t BusIO_PortReg;
 typedef uint32_t BusIO_PortMask;
 #if !defined(__ASR6501__) && !defined(__ASR6502__)

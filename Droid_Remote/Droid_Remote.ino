@@ -131,6 +131,12 @@ String debugInputIdentifier ="";
   uint32_t DCFailureCounter;
   uint32_t HPSuccessCounter;
   uint32_t HPFailureCounter;
+  // ETM delivery stats received from DG via LoRa — 6 entries: 0=DG,1=BC,2=BS,3=DC,4=DP,5=HP
+  bool     etmBoardOnline[6]  = {};
+  uint32_t etmBoardSent[6]    = {};
+  uint32_t etmBoardAckd[6]    = {};
+  uint32_t etmBoardRetries[6] = {};
+  uint32_t etmBoardFailed[6]  = {};
 
   
   String outgoing;
@@ -513,19 +519,20 @@ bool incomingMsgAck;
 uint32_t msgAckID;
 uint32_t  LoraPasscode = 12345678;
   
+// NOTE: must match Droid_Gateway.ino exactly — both sides of the LoRa link
 typedef struct LoRa_Struct{
   uint32_t struct_LoraPasscode;
   bool struct_incomingMsgAck;
   uint32_t struct_msgAckID;
   bool struct_droidGatewayStatus;
   bool struct_bodyControllerStatus;
-  bool struct_bodyLEDControllerStatus;  
+  bool struct_bodyLEDControllerStatus;
   bool struct_bodyServoControllerStatus;
   bool struct_domePlateControllerStatus;
   bool struct_domeControllerStatus;
   bool struct_droidRemoteStatus;
   bool struct_hpControllerStatus;
-  bool struct_domeLogicsControllerStatus ;
+  bool struct_domeLogicsControllerStatus;
   int struct_BL_LDP_Bright;
   int struct_BL_MAINT_Bright;
   int struct_BL_VU_Bright;
@@ -550,6 +557,13 @@ typedef struct LoRa_Struct{
   uint32_t struct_DCFailureCounter;
   uint32_t struct_HPSuccessCounter;
   uint32_t struct_HPFailureCounter;
+  // ETM delivery stats from DG's perspective — 6 entries indexed by board order:
+  // 0=DG, 1=BC, 2=BS, 3=DC, 4=DP, 5=HP
+  bool     struct_etmBoardOnline[6];
+  uint32_t struct_etmBoardSent[6];
+  uint32_t struct_etmBoardAckd[6];
+  uint32_t struct_etmBoardRetries[6];
+  uint32_t struct_etmBoardFailed[6];
   } LoRa_Struct;
 
 
@@ -607,9 +621,17 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
     DPSuccessCounter = commandstoReceiveFromRemote.struct_DPSuccessCounter;
     DPFailureCounter = commandstoReceiveFromRemote.struct_DPFailureCounter;
     DCSuccessCounter = commandstoReceiveFromRemote.struct_DCSuccessCounter;
-    DPFailureCounter = commandstoReceiveFromRemote.struct_DCFailureCounter;
+    DCFailureCounter = commandstoReceiveFromRemote.struct_DCFailureCounter;
     HPSuccessCounter = commandstoReceiveFromRemote.struct_HPSuccessCounter;
     HPFailureCounter = commandstoReceiveFromRemote.struct_HPFailureCounter;
+    // ETM delivery stats
+    for (int i = 0; i < 6; i++) {
+      etmBoardOnline[i]  = commandstoReceiveFromRemote.struct_etmBoardOnline[i];
+      etmBoardSent[i]    = commandstoReceiveFromRemote.struct_etmBoardSent[i];
+      etmBoardAckd[i]    = commandstoReceiveFromRemote.struct_etmBoardAckd[i];
+      etmBoardRetries[i] = commandstoReceiveFromRemote.struct_etmBoardRetries[i];
+      etmBoardFailed[i]  = commandstoReceiveFromRemote.struct_etmBoardFailed[i];
+    }
 
     
   if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
@@ -721,7 +743,7 @@ int getBatteryPercentage(){
 
 void sendUpdates(){
 //  Serial.println("Executing JSON");
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(4096);
   doc["droidremoteControllerStatus"] = true;
   doc["droidgatewayControllerStatus"] = droidGatewayStatus;
   doc["relayStatus"] = relayStatus;
@@ -756,6 +778,19 @@ void sendUpdates(){
   doc["DCFailureCounter"] = DCFailureCounter;
   doc["HPSuccessCounter"] = HPSuccessCounter;
   doc["HPFailureCounter"] = HPFailureCounter;
+  // ETM delivery stats — arrays of 6: index 0=DG, 1=BC, 2=BS, 3=DC, 4=DP, 5=HP
+  JsonArray jaOnline  = doc.createNestedArray("etmOnline");
+  JsonArray jaSent    = doc.createNestedArray("etmSent");
+  JsonArray jaAckd    = doc.createNestedArray("etmAckd");
+  JsonArray jaRetries = doc.createNestedArray("etmRetries");
+  JsonArray jaFailed  = doc.createNestedArray("etmFailed");
+  for (int i = 0; i < 6; i++) {
+    jaOnline.add(etmBoardOnline[i]);
+    jaSent.add(etmBoardSent[i]);
+    jaAckd.add(etmBoardAckd[i]);
+    jaRetries.add(etmBoardRetries[i]);
+    jaFailed.add(etmBoardFailed[i]);
+  }
   doc["JSONDone"] = true;
   
   if(serial1Toggle == true){                  // I use Serial 1 in the remote, but use Serial in testing.  This allows me to swap them in runtime to test with.
@@ -995,7 +1030,7 @@ void setup(){
     int paramsNr = request->params();               // Gets the number of parameters sent
 //    Debug.DBG("Parameter %i \n",paramsNr);                       // Variable for selecting which Serial port to send out
     for(int i=0;i<paramsNr;i++){                     //Loops through all the paramaters
-      AsyncWebParameter* p = request->getParam(i);
+      const AsyncWebParameter* p = request->getParam(i);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////                                                                //////////////////////////        
