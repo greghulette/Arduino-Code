@@ -189,6 +189,7 @@ String debugInputIdentifier ="";
 
   bool ACKBool = false;
   byte incomingMsgId;
+  byte lastProcessedMsgId = 0xFF;  // 0xFF = "none yet"; used for deduplication
   uint32_t msgAckID;
   //////////////////////////////////////////////////////////////////
   ///******       Serial Ports Definitions                  *****///
@@ -987,6 +988,7 @@ LoRa_Struct commandstoSendtoRemote;
 void setupLoRaSendStruct(){
     commandstoSendtoRemote.struct_LoraPasscode = LoraPasscode;
     commandstoSendtoRemote.struct_incomingMsgAck = ACKBool;
+    ACKBool = false;  // clear after packing so subsequent status sends don't repeat the ACK
     commandstoSendtoRemote.struct_msgAckID = incomingMsgId;
     commandstoSendtoRemote.struct_droidGatewayStatus = droidGatewayStatus;
     commandstoSendtoRemote.struct_bodyControllerStatus = bodyControllerStatus;
@@ -1141,6 +1143,13 @@ void onReceive(int packetSize) {
   Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
   }
+  // Deduplication — if this is a retry of an already-processed command, ACK it but don't re-run it
+  if (incomingMsgId == lastProcessedMsgId) {
+    Debug.LORA("Duplicate LoRa msg ID %d — ACKing without re-processing\n", incomingMsgId);
+    sendACK(incomingMsgId);
+    return;
+  }
+  lastProcessedMsgId = incomingMsgId;
   parseStrings(incoming);
   sendACK(incomingMsgId);
   if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){

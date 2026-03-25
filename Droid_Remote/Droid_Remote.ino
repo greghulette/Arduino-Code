@@ -515,6 +515,9 @@ unsigned long AckKeepAliveAge;
 // unsigned long AckKeepAliveMillis;
 int AckDuration = 750;
 String lastCommand;
+byte lastSentMsgId = 0;           // msg ID of the most recently sent command (for ACK verification)
+uint8_t retryCount = 0;           // number of retries for current in-flight command
+const uint8_t LORA_MAX_RETRIES = 5; // give up after this many retries
 bool incomingMsgAck;
 uint32_t msgAckID;
 uint32_t  LoraPasscode = 12345678;
@@ -572,25 +575,30 @@ LoRa_Struct commandstoReceiveFromRemote;
 void onReceive(int packetSize){
 
   if (packetSize) {
-    // received a packet
-    // Serial.print("\nReceived packet size ");
-    // Serial.print(packetSize);
-    // Serial.print(" data ");
-    // read packet
-    while (LoRa.available())
-      for (int i = 0; i < packetSize; i++) {
-        ((byte *) &commandstoReceiveFromRemote)[i] = LoRa.read();
-        // Serial.print(' ');
-        // Serial.print(((byte *) &commandstoReceiveFromRemote)[i]);
-      }
+    // Sanity check — ignore oversized packets to prevent buffer overflow
+    if (packetSize > (int)sizeof(commandstoReceiveFromRemote)) {
+      Debug.LORA("LoRa packet too large (%d bytes, max %d) — ignoring\n",
+                 packetSize, (int)sizeof(commandstoReceiveFromRemote));
+      while (LoRa.available()) LoRa.read();  // drain
+      return;
+    }
+    // Read bytes directly into struct
+    for (int i = 0; i < packetSize; i++) {
+      ((byte *) &commandstoReceiveFromRemote)[i] = LoRa.read();
+    }
       LoraPasscode = commandstoReceiveFromRemote.struct_LoraPasscode;
       if (LoraPasscode == 12345678){
-if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
-   msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
-  // Serial.print("Received ACK with ID of: ");
-  // Serial.println(msgAckID);
-  commandSent = false;
- } 
+        if (commandstoReceiveFromRemote.struct_incomingMsgAck == true) {
+          msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
+          // Verify the ACK is for the command we actually sent
+          if (msgAckID == lastSentMsgId) {
+            Debug.LORA("LoRa ACK confirmed for msg ID %d\n", msgAckID);
+            commandSent = false;
+            retryCount  = 0;
+          } else {
+            Debug.LORA("LoRa ACK ID mismatch: got %d, expected %d\n", msgAckID, lastSentMsgId);
+          }
+        } 
 
     droidGatewayStatus = commandstoReceiveFromRemote.struct_droidGatewayStatus;
     bodyControllerStatus = commandstoReceiveFromRemote.struct_bodyControllerStatus ;
@@ -681,18 +689,27 @@ if (commandstoReceiveFromRemote.struct_incomingMsgAck == true){
 }
 
 
-void MonitorAck( int msgAckIDtoMonitor=0){
+void MonitorAck(int msgAckIDtoMonitor=0){
   if (commandSent == true){
     if (millis() - AckKeepAliveAge >= AckDuration){
-      sendLoRaMessage(lastCommand);
+      if (retryCount >= LORA_MAX_RETRIES) {
+        // Give up — DG is unreachable
+        Debug.LORA("LoRa command '%s' failed after %d retries — giving up\n",
+                   lastCommand.c_str(), LORA_MAX_RETRIES);
+        commandSent = false;
+        retryCount  = 0;
+      } else {
+        retryCount++;
+        Debug.LORA("LoRa retry %d/%d for '%s'\n", retryCount, LORA_MAX_RETRIES, lastCommand.c_str());
+        sendLoRaMessage(lastCommand);
+      }
     }
-  } else {
-
   }
 }
 
 void sendLoRaMessage(String outgoing) {
   lastCommand = outgoing;
+  lastSentMsgId = msgCount;             // save before incrementing so ACK can be verified
   LoRa.beginPacket();                   // start packet
   LoRa.write(destination);              // add destination address
   LoRa.write(localAddress);             // add sender address
