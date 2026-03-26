@@ -2291,6 +2291,25 @@ private:
         }
     }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    static void msg_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
+    {
+        SMQRecvMsg msg;
+        if (len < sizeof(msg.fData))
+        {
+            memcpy(msg.fAddr, recv_info->src_addr, sizeof(msg.fAddr));
+            memcpy(msg.fData, data, len);
+            msg.fSize = len;
+            // Dont wait if queue is full. Message will be lost
+            if (xQueueSend(sRecvQueue, &msg, 0) != pdPASS)
+            {
+                SMQ_DEBUG_PRINTLN("[SMQ] xQueueSend FAILED");
+            }
+        }
+    }
+
+    static void msg_send_cb(const wifi_tx_info_t* info, esp_now_send_status_t sendStatus)
+#else
     static void msg_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
     {
         SMQRecvMsg msg;
@@ -2308,6 +2327,7 @@ private:
     }
 
     static void msg_send_cb(const uint8_t* mac, esp_now_send_status_t sendStatus)
+#endif
     {
         switch (sendStatus)
         {
