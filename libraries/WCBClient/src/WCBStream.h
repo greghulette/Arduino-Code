@@ -48,21 +48,19 @@ public:
 
     // ── Construction ──────────────────────────────────────────────────────────
 
-    // Create a WCBStream and register it with the given WCBClient.
-    // After construction, wcb.update() automatically checks this stream for
-    // buffered bytes and forwards them via sendRaw() when the gap elapses.
+    // Create a WCBStream. Automatically registers with the WCBClient singleton
+    // so wcb.update() drives the flush — no reference to wcb needed here.
     //
-    // client     : the WCBClient instance managing the ESP-NOW network
-    // target_wcb : WCB number that will receive and forward the raw bytes
-    //              (must have KYBER,REMOTE configured on its serial port)
-    // gap_ms     : inter-frame gap in milliseconds — time of silence after the
-    //              last written byte before the buffer is sent as one packet
-    // client      : the WCBClient instance managing the ESP-NOW network
-    // target_wcb  : WCB number that will receive and forward the raw bytes
-    // target_port : serial port on that WCB (1–5) connected to the Maestro
-    // gap_ms      : inter-frame gap in ms before the buffer is flushed
-    WCBStream(WCBClient& client, uint8_t target_wcb, uint8_t target_port,
-              uint16_t gap_ms = 2);
+    // target_wcb  : WCB number to unicast to (1–WCB_MAX_BOARDS), OR
+    //               the constant  broadcast  (0) to send to all WCBs at once —
+    //               every WCB with Kyber_Remote will forward bytes to its Maestro.
+    // target_port : serial port on the target WCB (1–5). Ignored for broadcast.
+    // gap_ms      : silence in ms that signals end of a packet (default 2 ms).
+    //
+    // Examples:
+    //   WCBStream maestro(broadcast);     // all WCBs with Kyber_Remote
+    //   WCBStream maestro(2, 1);          // unicast to WCB2 Serial1
+    WCBStream(uint8_t target_wcb, uint8_t target_port = 0, uint16_t gap_ms = 2);
 
     // ── Stream interface ──────────────────────────────────────────────────────
 
@@ -87,7 +85,6 @@ public:
     void tick();
 
 private:
-    WCBClient&    _client;          // Reference to the owning WCBClient
     uint8_t       _target;          // Target WCB number for sendRaw()
     uint8_t       _port;            // Target serial port on the WCB (1–5)
     uint16_t      _gapMs;           // Inter-frame gap threshold in milliseconds

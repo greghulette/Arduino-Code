@@ -1089,26 +1089,27 @@ void HarlemShake(){
 
 void allClose(){
     sendESPNOWCommand("BS", ":D304");
-
- Animation_Command[0]   = '\0'; 
+    writeBlSerial("J98");   // VU + data panel + CBI off (clear + disable auto)
+ Animation_Command[0]   = '\0';
 };
 
 void allOpen(){
     sendESPNOWCommand("BS", ":D303");
-
- Animation_Command[0]   = '\0'; 
+    writeBlSerial("J99");   // VU + data panel + CBI on (auto mode)
+ Animation_Command[0]   = '\0';
 };
 bool doorsOpen = false;
 void toggleDoors(){
   if (doorsOpen){
     sendESPNOWCommand("BS", ":D304");
+    writeBlSerial("J98");   // VU + data panel + CBI off (clear + disable auto)
     doorsOpen = false;
   } else{
     doorsOpen = true;
     sendESPNOWCommand("BS", ":D303");
+    writeBlSerial("J99");   // VU + data panel + CBI on (auto mode)
   }
-   Animation_Command[0]   = '\0'; 
-
+   Animation_Command[0]   = '\0';
 }
 
 void allFlutter(){
@@ -1170,7 +1171,8 @@ void drawerWave(){
 
 void OpenClosewithEasing(){
   sendESPNOWCommand("BS", ":D306B312000400000050");
-  Animation_Command[0]   = '\0'; 
+  writeBlSerial("J99");   // VU + data panel + CBI on (auto mode)
+  Animation_Command[0]   = '\0';
 };
 
 void StarWarsThemeSong(){
@@ -1933,7 +1935,8 @@ void loop(){
                 debugInputIdentifier += inCharRead;                   // add it to the inputString:
               }
               debugInputIdentifier.toUpperCase();
-              Debug.toggle(debugInputIdentifier);
+              if (debugInputIdentifier == "ETM") etmToggleDebug();
+              else Debug.toggle(debugInputIdentifier);
               debugInputIdentifier = "";                             // flush the string
               } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
                 internalCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');

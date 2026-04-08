@@ -55,9 +55,19 @@ class WCBStream;
 // Must stay in sync with WCB firmware.
 // ─────────────────────────────────────────────────────────────────────────────
 #define WCB_TARGET_BROADCAST   0   // Packet is addressed to all WCBs simultaneously
-#define WCB_TARGET_RAW_SERIAL  97  // WCB will forward payload as raw bytes out its
-                                   // serial port (Pololu / Maestro / Kyber). Receiving
-                                   // WCB must have KYBER,REMOTE on the target port.
+
+// Pass as target_wcb in WCBStream / monitorRaw to broadcast via the Kyber path.
+//   WCBStream maestro(broadcast);       // all WCBs with Kyber_Remote
+//   WCBStream maestro(2, 1);            // unicast to WCB2 port 1
+constexpr uint8_t broadcast = 0;
+#define WCB_TARGET_RAW_SERIAL  97  // Unicast: target WCB writes payload as raw bytes
+                                   // to the specified serial port (3-byte header: port,
+                                   // len_lo, len_hi). No KYBER config required on the
+                                   // receiving WCB — the port just needs to be wired.
+#define WCB_TARGET_KYBER       98  // Broadcast: ALL WCBs with Kyber_Remote configured
+                                   // write the payload to their local Maestro ports.
+                                   // Use sendKyber() to build and send this packet type.
+                                   // Firmware header: len_lo, len_hi, then data bytes.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Library limits
@@ -226,6 +236,10 @@ public:
     // serial ports. Use this to deliver Pololu / Maestro binary protocol packets
     // without text encoding.
     //
+    // This is a UNICAST to one specific WCB:port pair. The receiving WCB writes
+    // the bytes directly to the specified serial port — no Kyber configuration
+    // is required on the receiving board.
+    //
     // The WCB firmware expects a 3-byte header inside structCommand:
     //   [0]   target_port  — serial port on the WCB to write to (1–5)
     //   [1–2] data length  — little-endian uint16
@@ -239,6 +253,26 @@ public:
     // Returns true if ESP-NOW accepted the packet for transmission.
     bool sendRaw(uint8_t target_wcb, uint8_t target_port,
                  const uint8_t* data, size_t len);
+
+    // Broadcast raw binary data to ALL WCBs simultaneously via the Kyber path.
+    //
+    // This is a BROADCAST — every WCB on the network receives the packet. Any
+    // WCB that has Kyber_Remote configured will forward the bytes to its local
+    // Maestro serial port(s) automatically. WCBs without Kyber_Remote ignore it.
+    //
+    // Use this instead of sendRaw() when:
+    //   - You have Maestros on multiple WCBs and want to address all of them.
+    //   - You don't know which WCB has the Maestro (broadcast, let each decide).
+    //   - You want to mirror Kyber servo-passthrough traffic across the network.
+    //
+    // The packet uses WCB_TARGET_KYBER (98) with the ETM packet format.
+    // No CRC is added — the data is treated as opaque binary.
+    //
+    // data : pointer to the binary byte array (Maestro/Pololu command bytes)
+    // len  : number of bytes (max 178 — 2-byte firmware header leaves 178 usable
+    //        bytes out of structCommand's 180-byte usable space)
+    // Returns true if ESP-NOW accepted the packet for transmission.
+    bool sendKyber(const uint8_t* data, size_t len);
 
     // ── Status ───────────────────────────────────────────────────────────────
 
@@ -276,7 +310,7 @@ public:
     //
     // target_wcb : WCB number that will forward the bytes to the servo controller
     // gap_ms     : milliseconds of silence that marks the end of a packet
-    void monitorRaw(HardwareSerial& port, uint8_t target_wcb, uint8_t target_port,
+    void monitorRaw(HardwareSerial& port, uint8_t target_wcb, uint8_t target_port = 0,
                     uint16_t gap_ms = 2);
 
     // Monitor a UART for newline-terminated text commands output by an attached
@@ -434,9 +468,16 @@ private:
     // WCBStream needs access to _registerWCBStream() and sendRaw().
     friend class WCBStream;
 
-    // Singleton pointer used to route the static ESP-NOW receive callback back
-    // to the active WCBClient instance. Only one instance is supported at a time.
+    // Singleton pointer — set in the constructor so WCBStream can reach the
+    // client without needing an explicit reference passed in by the user.
+    // Only one WCBClient instance is supported per sketch.
     static WCBClient* _instance;
+
+public:
+    // Returns the single WCBClient instance. Used internally by WCBStream.
+    static WCBClient* instance() { return _instance; }
+
+private:
 
     // Static bridge required because ESP-NOW's receive callback must be a plain
     // C function (no 'this' pointer). Delegates to _instance->_handleReceive().

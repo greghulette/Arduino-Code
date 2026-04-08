@@ -139,6 +139,16 @@ static unsigned long      etmNextHeartbeatMs  = 0;
 static bool               etmBootPhase        = true;
 static char               etmPassword[21]     = "";
 static int                etmMyBoardIdx       = -1;
+static bool               etmDebugEnabled     = false;  // set true to enable Serial ETM logs
+
+// Set or toggle ETM debug output at runtime
+inline void etmSetDebug(bool enable) { etmDebugEnabled = enable; }
+inline void etmToggleDebug() {
+  etmDebugEnabled = !etmDebugEnabled;
+  Serial.printf("[ETM] Debug %s\n", etmDebugEnabled ? "ON" : "OFF");
+}
+
+#define ETM_LOG(...) do { if (etmDebugEnabled) Serial.printf(__VA_ARGS__); } while(0)
 
 // ---------------------------------------------------------------------------
 // Init — call once from setup() after esp_now_init() and peer registration
@@ -151,7 +161,7 @@ inline void etmInit(const char* password, int myBoardIdx) {
   memset(etmPendingTable, 0, sizeof(etmPendingTable));
   etmBootPhase       = true;
   etmNextHeartbeatMs = millis() + 1000;
-  Serial.printf("[ETM] Initialized as board %s (index %d)\n",
+  ETM_LOG("[ETM] Initialized as board %s (index %d)\n",
     (myBoardIdx >= 0 && myBoardIdx < ETM_NUM_BOARDS) ? ETM_BOARD_IDS[myBoardIdx] : "?",
     myBoardIdx);
 }
@@ -171,7 +181,7 @@ inline int etmBoardIndexFromMAC(const uint8_t* mac) {
 // Returns board index for a two-char ID string (e.g. "BS"), or -1 if not found.
 inline int etmBoardIndexFromID(const char* id) {
   for (int i = 0; i < ETM_NUM_BOARDS; i++) {
-    if (strncmp(id, ETM_BOARD_IDS[i], 3) == 0) return i;
+    if (strncasecmp(id, ETM_BOARD_IDS[i], 3) == 0) return i;
   }
   return -1;
 }
@@ -195,7 +205,7 @@ inline uint16_t etmNextSequence() {
 inline void etmHandleHeartbeat(int senderIdx) {
   if (senderIdx < 0 || senderIdx >= ETM_NUM_BOARDS) return;
   if (!etmBoardTable[senderIdx].online) {
-    Serial.printf("[ETM] Board %s came ONLINE\n", ETM_BOARD_IDS[senderIdx]);
+    ETM_LOG("[ETM] Board %s came ONLINE\n", ETM_BOARD_IDS[senderIdx]);
   }
   etmBoardTable[senderIdx].online      = true;
   etmBoardTable[senderIdx].lastSeenMs  = millis();
@@ -272,7 +282,7 @@ inline int etmAddToPending(const char* command, const char* targetID, int target
 
     return slot;
   }
-  Serial.println("[ETM] WARNING: Pending table full — message dropped from ACK tracking");
+  ETM_LOG("[ETM] WARNING: Pending table full — message dropped from ACK tracking\n");
   return -1;
 }
 
@@ -297,7 +307,7 @@ inline void etmProcessAck(int senderIdx, uint16_t seqNum) {
     }
     if (allAckd) {
       etmPendingTable[i].active = false;
-      Serial.printf("[ETM] Seq %u confirmed delivered\n", seqNum);
+      ETM_LOG("[ETM] Seq %u confirmed delivered\n", seqNum);
     }
     return;
   }
@@ -345,7 +355,7 @@ inline void etmProcessPending() {
       // Board went offline — cancel wait for it
       if (!etmBoardTable[j].online) {
         etmPendingTable[i].expectAckFrom[j] = false;
-        Serial.printf("[ETM] Canceling ACK wait for offline board %s\n", ETM_BOARD_IDS[j]);
+        ETM_LOG("[ETM] Canceling ACK wait for offline board %s\n", ETM_BOARD_IDS[j]);
         continue;
       }
 
@@ -353,7 +363,7 @@ inline void etmProcessPending() {
       if (etmPendingTable[i].retryCount[j] >= ETM_RETRY_MAX) {
         etmPendingTable[i].expectAckFrom[j] = false;
         etmBoardTable[j].totalFailed++;
-        Serial.printf("[ETM] Give up on %s seq %u after %d retries\n",
+        ETM_LOG("[ETM] Give up on %s seq %u after %d retries\n",
           ETM_BOARD_IDS[j], etmPendingTable[i].sequenceNumber, ETM_RETRY_MAX);
         continue;
       }
@@ -362,7 +372,7 @@ inline void etmProcessPending() {
       etmPendingTable[i].retryCount[j]++;
       etmBoardTable[j].totalRetries++;
       needsRetry = true;
-      Serial.printf("[ETM] Retry %u/%u for %s seq %u\n",
+      ETM_LOG("[ETM] Retry %u/%u for %s seq %u\n",
         etmPendingTable[i].retryCount[j], ETM_RETRY_MAX,
         ETM_BOARD_IDS[j], etmPendingTable[i].sequenceNumber);
     }
@@ -395,7 +405,7 @@ inline void etmProcessHeartbeats() {
   // Transition out of boot phase after ETM_BOOT_DURATION_MS
   if (etmBootPhase && now > ETM_BOOT_DURATION_MS) {
     etmBootPhase = false;
-    Serial.println("[ETM] Boot phase complete");
+    ETM_LOG("[ETM] Boot phase complete\n");
   }
 
   // Send heartbeat if due
@@ -413,7 +423,7 @@ inline void etmProcessHeartbeats() {
     if (i == etmMyBoardIdx) continue;
     if (etmBoardTable[i].online && (now - etmBoardTable[i].lastSeenMs) > timeout) {
       etmBoardTable[i].online = false;
-      Serial.printf("[ETM] Board %s went OFFLINE\n", ETM_BOARD_IDS[i]);
+      ETM_LOG("[ETM] Board %s went OFFLINE\n", ETM_BOARD_IDS[i]);
     }
   }
 }

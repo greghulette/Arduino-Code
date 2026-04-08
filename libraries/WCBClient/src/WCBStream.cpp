@@ -7,18 +7,18 @@
 // Stores configuration and self-registers with the WCBClient so that
 // wcb.update() will automatically call tick() on every loop iteration.
 // ─────────────────────────────────────────────────────────────────────────────
-WCBStream::WCBStream(WCBClient& client, uint8_t target_wcb, uint8_t target_port,
-                     uint16_t gap_ms)
-    : _client(client),
-      _target(target_wcb),
+WCBStream::WCBStream(uint8_t target_wcb, uint8_t target_port, uint16_t gap_ms)
+    : _target(target_wcb),
       _port(target_port),
       _gapMs(gap_ms),
       _len(0),
       _lastWriteMs(0)
 {
-    // Self-register so WCBClient::update() drives tick() automatically.
-    // The user only needs wcb.update() in loop() — no separate stream update call.
-    client._registerWCBStream(this);
+    // Self-register with the singleton so WCBClient::update() drives tick().
+    // WCBClient must be declared before WCBStream at global scope — its
+    // constructor sets _instance, which is guaranteed to be non-null here.
+    if (WCBClient::instance())
+        WCBClient::instance()->_registerWCBStream(this);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +56,16 @@ size_t WCBStream::write(uint8_t byte) {
 // ─────────────────────────────────────────────────────────────────────────────
 void WCBStream::tick() {
     if (_len > 0 && (millis() - _lastWriteMs) >= _gapMs) {
-        bool ok = _client.sendRaw(_target, _port, _buf, _len);
-        Serial.printf("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
+        WCBClient* wcb = WCBClient::instance();
+        if (!wcb) { _len = 0; return; }
+        bool ok;
+        if (_target == 0) {
+            ok = wcb->sendKyber(_buf, _len);
+            Serial.printf("[WCBStream] Broadcast (Kyber) %d bytes — %s\n", _len, ok ? "OK" : "FAIL");
+        } else {
+            ok = wcb->sendRaw(_target, _port, _buf, _len);
+            Serial.printf("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
+        }
         _len = 0;
     }
 }

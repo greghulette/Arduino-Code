@@ -26,6 +26,9 @@ WCBClient::WCBClient(uint8_t mac_oct2, uint8_t mac_oct3,
     _password[sizeof(_password) - 1] = '\0';
     _commandCallback = commandCb;
     _statusCallback  = statusCb;
+    // Set singleton immediately so WCBStream objects declared at global scope
+    // (after this WCBClient) can self-register without needing a reference passed in.
+    _instance = this;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,25 +173,25 @@ bool WCBClient::broadcast(const char* command) {
 // ─────────────────────────────────────────────────────────────────────────────
 // sendRaw
 //
-// Send raw binary data through a WCB to its serial port.
+// Unicast raw binary data to one specific WCB for forwarding to its serial port.
 //
 // How it works:
 //   The target ID in the packet is set to WCB_TARGET_RAW_SERIAL (97).
-//   When the receiving WCB sees this target ID it bypasses its normal command
-//   parser and writes the raw bytes from structCommand directly to its serial
-//   port. No text parsing, no CRC — just byte-for-byte forwarding.
+//   When the receiving WCB sees this target ID it writes the raw bytes directly
+//   to the specified serial port. No text parsing, no CRC — byte-for-byte.
 //
-// Use case — Pololu / Maestro / Kyber:
-//   These devices speak a binary serial protocol. You build the binary packet
-//   on this ESP32 (e.g. a Pololu Mini SSC command or a Maestro USB packet),
-//   call sendRaw(), and the WCB on the other end forwards it to the servo
-//   controller as if this device were wired directly to it.
+// Use case — Pololu / Maestro (known target):
+//   You know exactly which WCB has the servo controller wired to which port.
+//   Build the binary command (e.g. a Maestro set-target packet) and call
+//   sendRaw() to deliver it wirelessly as if this ESP32 were wired directly.
 //
 // Requirements:
-//   - The receiving WCB must have  KYBER,REMOTE  configured on the serial port
-//     that is connected to the Pololu/Maestro.
-//   - data length is capped at 200 bytes (structCommand size).
+//   - The target WCB just needs the servo controller wired to target_port.
+//   - No KYBER,REMOTE config is required on the receiving WCB.
+//   - data length is capped at 177 bytes (firmware raw-chunk limit).
 //   - No CRC is added — the data is treated as opaque binary.
+//
+// See also: sendKyber() for broadcasting to ALL WCBs with Maestros at once.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCBClient::sendRaw(uint8_t target_wcb, uint8_t target_port,
                         const uint8_t* data, size_t len) {
@@ -227,6 +230,60 @@ bool WCBClient::sendRaw(uint8_t target_wcb, uint8_t target_port,
 
     return esp_now_send(_wcbMACs[target_wcb - 1],
                         (uint8_t*)&pkt, sizeof(pkt)) == ESP_OK;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sendKyber
+//
+// Broadcast raw binary data to ALL WCBs on the network via the Kyber path.
+//
+// How it works:
+//   The packet uses WCB_TARGET_KYBER (98) with the ETM packet struct.
+//   Any WCB that has Kyber_Remote enabled receives the broadcast and writes the
+//   bytes to its locally wired Maestro serial port(s). WCBs without Kyber_Remote
+//   ignore it. This mirrors exactly what the WCB firmware does when a physical
+//   Kyber device is connected — no targeted addressing needed.
+//
+// Header format inside structCommand:
+//   [0]   len low byte   — little-endian uint16 length of the data
+//   [1]   len high byte
+//   [2..] data bytes
+// sendKyber() builds this header automatically.
+//
+// Use case — Maestro broadcast (multiple WCBs with Maestros):
+//   You want the same Maestro command to reach every board with a servo
+//   controller, or you don't know which WCB has the Maestro. One broadcast
+//   packet reaches all of them in one ESP-NOW send.
+//
+// data : pointer to the binary byte array (Maestro/Pololu command bytes)
+// len  : number of bytes (max 178 — 180 structCommand bytes minus 2-byte header)
+// Returns true if ESP-NOW accepted the packet for transmission.
+// ─────────────────────────────────────────────────────────────────────────────
+bool WCBClient::sendKyber(const uint8_t* data, size_t len) {
+    if (len == 0) return false;
+    // Firmware caps Kyber chunks at 178 bytes (structCommand[180] - 2-byte header)
+    if (len > 178) len = 178;
+
+    // Kyber broadcast uses the ETM packet format (252 bytes) with targetID=98.
+    // The structPacketType = 0 (COMMAND) and seqNum = 0 (no ACK for this path).
+    // Receiving WCBs check the targetID first and handle WCB_TARGET_KYBER before
+    // any ETM processing — no ACK is sent back.
+    wcb_packet_etm_t pkt;
+    memset(&pkt, 0, sizeof(pkt));
+
+    strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
+    snprintf(pkt.structSenderID, sizeof(pkt.structSenderID), "%d", _deviceID);
+    snprintf(pkt.structTargetID, sizeof(pkt.structTargetID), "%d", WCB_TARGET_KYBER);
+    pkt.structCommandIncluded = 1;
+    pkt.structPacketType      = WCB_PACKET_COMMAND;
+    pkt.structSequenceNumber  = 0;  // No ACK tracking — fire and forget
+
+    // 2-byte little-endian length header, then data
+    pkt.structCommand[0] = (uint8_t)(len & 0xFF);
+    pkt.structCommand[1] = (uint8_t)((len >> 8) & 0xFF);
+    memcpy(pkt.structCommand + 2, data, len);
+
+    return esp_now_send(_broadcastMAC, (uint8_t*)&pkt, sizeof(pkt)) == ESP_OK;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,9 +356,13 @@ void WCBClient::_processMonitors() {
             _monitorRawBuf[_monitorRawLen++] = (uint8_t)_monitorRawPort->read();
             _monitorRawLastMs = now;
         }
-        // Flush when we have data and the inter-frame gap has elapsed
+        // Flush when we have data and the inter-frame gap has elapsed.
+        // target == 0 means Kyber broadcast to all WCBs; otherwise unicast.
         if (_monitorRawLen > 0 && (now - _monitorRawLastMs) >= _monitorRawGapMs) {
-            sendRaw(_monitorRawTarget, _monitorRawTPort, _monitorRawBuf, _monitorRawLen);
+            if (_monitorRawTarget == 0)
+                sendKyber(_monitorRawBuf, _monitorRawLen);
+            else
+                sendRaw(_monitorRawTarget, _monitorRawTPort, _monitorRawBuf, _monitorRawLen);
             _monitorRawLen = 0;
         }
     }

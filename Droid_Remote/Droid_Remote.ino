@@ -1100,7 +1100,7 @@ void setup(){
 
 server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncResponseStream *response = request->beginResponseStream("application/json");
-      DynamicJsonDocument json(2048);
+      DynamicJsonDocument json(3072);
       json["droidremoteControllerStatus"] = true;
       json["droidgatewayControllerStatus"] = droidGatewayStatus;
       json["relayStatus"] = relayStatus;
@@ -1135,6 +1135,18 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
       json["DCFailureCounter"] = DCFailureCounter;
       json["HPSuccessCounter"] = HPSuccessCounter;
       json["HPFailureCounter"] = HPFailureCounter;
+      JsonArray jaOnline  = json.createNestedArray("etmOnline");
+      JsonArray jaSent    = json.createNestedArray("etmSent");
+      JsonArray jaAckd    = json.createNestedArray("etmAckd");
+      JsonArray jaRetries = json.createNestedArray("etmRetries");
+      JsonArray jaFailed  = json.createNestedArray("etmFailed");
+      for (int i = 0; i < 6; i++) {
+        jaOnline.add(etmBoardOnline[i]);
+        jaSent.add(etmBoardSent[i]);
+        jaAckd.add(etmBoardAckd[i]);
+        jaRetries.add(etmBoardRetries[i]);
+        jaFailed.add(etmBoardFailed[i]);
+      }
 
       serializeJson(json, *response);
       request->send(response);
@@ -1146,7 +1158,7 @@ server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
   AsyncElegantOTA.begin(&server);    // Start ElegantOTA
 
   //Initialize the AsycWebServer
-  server.begin();
+  // server.begin();
 
 // ESP_LED.begin();
 // ESP_LED.show();

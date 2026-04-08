@@ -1022,13 +1022,27 @@ void setupLoRaSendStruct(){
     commandstoSendtoRemote.struct_DCFailureCounter = DCFailureCounter;
     commandstoSendtoRemote.struct_HPSuccessCounter = HPSuccessCounter;
     commandstoSendtoRemote.struct_HPFailureCounter = HPFailureCounter;
-    // ETM delivery stats — DG's own view of each board (indexed by ETM_BOARD_*)
+    // ETM delivery stats — DG's direct view of all boards:
+    //   i=0 (DG): DG never sends to itself; use BC's online flag so the dot reflects
+    //             whether BC has seen DG (meaningful), stats stay 0
+    //   i=1..5  : DG's own etmBoardTable — DG sends commands directly to all boards,
+    //             so this captures DG→board reliability for every target
     for (int i = 0; i < ETM_NUM_BOARDS; i++) {
-      commandstoSendtoRemote.struct_etmBoardOnline[i]  = etmBoardTable[i].online;
-      commandstoSendtoRemote.struct_etmBoardSent[i]    = etmBoardTable[i].messagesSent;
-      commandstoSendtoRemote.struct_etmBoardAckd[i]    = etmBoardTable[i].messagesAckd;
-      commandstoSendtoRemote.struct_etmBoardRetries[i] = etmBoardTable[i].totalRetries;
-      commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
+      if (i == ETM_BOARD_DG) {
+        // Show whether BC has seen DG (online indicator), stats are always 0
+        commandstoSendtoRemote.struct_etmBoardOnline[i]  = BC_etmBoardOnline[ETM_BOARD_DG];
+        commandstoSendtoRemote.struct_etmBoardSent[i]    = 0;
+        commandstoSendtoRemote.struct_etmBoardAckd[i]    = 0;
+        commandstoSendtoRemote.struct_etmBoardRetries[i] = 0;
+        commandstoSendtoRemote.struct_etmBoardFailed[i]  = 0;
+      } else {
+        // DG's own view of this board (sends, acks, retries, failures)
+        commandstoSendtoRemote.struct_etmBoardOnline[i]  = etmBoardTable[i].online;
+        commandstoSendtoRemote.struct_etmBoardSent[i]    = etmBoardTable[i].messagesSent;
+        commandstoSendtoRemote.struct_etmBoardAckd[i]    = etmBoardTable[i].messagesAckd;
+        commandstoSendtoRemote.struct_etmBoardRetries[i] = etmBoardTable[i].totalRetries;
+        commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
+      }
     }
 };
 
@@ -1069,13 +1083,23 @@ void setupLoRaSendStructNow(){
     commandstoSendtoRemote.struct_DCFailureCounter = DCFailureCounter;
     commandstoSendtoRemote.struct_HPSuccessCounter = HPSuccessCounter;
     commandstoSendtoRemote.struct_HPFailureCounter = HPFailureCounter;
-    // ETM delivery stats — DG's own view of each board (indexed by ETM_BOARD_*)
+    // ETM delivery stats — DG's direct view of all boards:
+    //   i=0 (DG): use BC's online flag for the dot, stats = 0 (DG never sends to itself)
+    //   i=1..5  : DG's own etmBoardTable for each target board
     for (int i = 0; i < ETM_NUM_BOARDS; i++) {
-      commandstoSendtoRemote.struct_etmBoardOnline[i]  = etmBoardTable[i].online;
-      commandstoSendtoRemote.struct_etmBoardSent[i]    = etmBoardTable[i].messagesSent;
-      commandstoSendtoRemote.struct_etmBoardAckd[i]    = etmBoardTable[i].messagesAckd;
-      commandstoSendtoRemote.struct_etmBoardRetries[i] = etmBoardTable[i].totalRetries;
-      commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
+      if (i == ETM_BOARD_DG) {
+        commandstoSendtoRemote.struct_etmBoardOnline[i]  = BC_etmBoardOnline[ETM_BOARD_DG];
+        commandstoSendtoRemote.struct_etmBoardSent[i]    = 0;
+        commandstoSendtoRemote.struct_etmBoardAckd[i]    = 0;
+        commandstoSendtoRemote.struct_etmBoardRetries[i] = 0;
+        commandstoSendtoRemote.struct_etmBoardFailed[i]  = 0;
+      } else {
+        commandstoSendtoRemote.struct_etmBoardOnline[i]  = etmBoardTable[i].online;
+        commandstoSendtoRemote.struct_etmBoardSent[i]    = etmBoardTable[i].messagesSent;
+        commandstoSendtoRemote.struct_etmBoardAckd[i]    = etmBoardTable[i].messagesAckd;
+        commandstoSendtoRemote.struct_etmBoardRetries[i] = etmBoardTable[i].totalRetries;
+        commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
+      }
     }
 };
 
@@ -1446,7 +1470,8 @@ void loop() {
                 debugInputIdentifier += inCharRead;                   // add it to the inputString:
               }
               debugInputIdentifier.toUpperCase();
-              Debug.toggle(debugInputIdentifier);
+              if (debugInputIdentifier == "ETM") etmToggleDebug();
+              else Debug.toggle(debugInputIdentifier);
               debugInputIdentifier = "";                             // flush the string
               } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
                 localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');

@@ -40,6 +40,9 @@
 #define ETM_MY_BOARD_INDEX ETM_BOARD_BS
 #include <ETM_Droid.h>
 
+// Used for persistent servo limit storage
+#include <Preferences.h>
+
 //Used for the Status LED
 #include <Adafruit_NeoPixel.h>
 
@@ -1535,9 +1538,108 @@ void scan_i2c()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+// -------------------------------------------------------------------------------
+// Servo Limit NVS Management
+// Commands:
+//   #LOxxyyyy  set open  (end)   limit for servo xx to yyyy μs  e.g. #LO052200
+//   #LCxxyyyy  set close (start) limit for servo xx to yyyy μs  e.g. #LC051100
+//   #LRxx      reset servo xx to compiled-in defaults           e.g. #LR05
+//   #LL        list all current servo limits
+// -------------------------------------------------------------------------------
+static Preferences servoPrefs;
+
+static uint16_t getCompiledStart(uint8_t num) {
+  if (num >= SizeOfArray(servoSettings)) return 0;
+  return pgm_read_word(&servoSettings[num].startPulse);
+}
+static uint16_t getCompiledEnd(uint8_t num) {
+  if (num >= SizeOfArray(servoSettings)) return 0;
+  return pgm_read_word(&servoSettings[num].endPulse);
+}
+
+void loadServoLimits() {
+  servoPrefs.begin("srvlim", true);
+  for (uint8_t i = 0; i < SizeOfArray(servoSettings); i++) {
+    char keyC[6], keyO[6];
+    snprintf(keyC, sizeof(keyC), "c%02d", i);
+    snprintf(keyO, sizeof(keyO), "o%02d", i);
+    uint16_t cv = servoPrefs.getUShort(keyC, 0);
+    uint16_t ov = servoPrefs.getUShort(keyO, 0);
+    if (cv >= 500 && cv <= 2500) { servoDispatch.setStart(i, cv); Serial.printf("[SERVO] NVS close %02d = %u\n", i, cv); }
+    if (ov >= 500 && ov <= 2500) { servoDispatch.setEnd(i, ov);   Serial.printf("[SERVO] NVS open  %02d = %u\n", i, ov); }
+  }
+  servoPrefs.end();
+}
+
+void setServoOpenLimit(uint8_t num, uint16_t pulse) {
+  if (num >= SizeOfArray(servoSettings)) { Serial.printf("[SERVO] Invalid servo %d\n", num); return; }
+  servoDispatch.setEnd(num, pulse);
+  servoPrefs.begin("srvlim", false);
+  char key[6]; snprintf(key, sizeof(key), "o%02d", num);
+  servoPrefs.putUShort(key, pulse);
+  servoPrefs.end();
+  Serial.printf("[SERVO] Servo %02d open  = %u μs (saved)\n", num, pulse);
+}
+
+void setServoCloseLimit(uint8_t num, uint16_t pulse) {
+  if (num >= SizeOfArray(servoSettings)) { Serial.printf("[SERVO] Invalid servo %d\n", num); return; }
+  servoDispatch.setStart(num, pulse);
+  servoPrefs.begin("srvlim", false);
+  char key[6]; snprintf(key, sizeof(key), "c%02d", num);
+  servoPrefs.putUShort(key, pulse);
+  servoPrefs.end();
+  Serial.printf("[SERVO] Servo %02d close = %u μs (saved)\n", num, pulse);
+}
+
+void resetServoLimit(uint8_t num) {
+  if (num >= SizeOfArray(servoSettings)) { Serial.printf("[SERVO] Invalid servo %d\n", num); return; }
+  servoDispatch.setStart(num, getCompiledStart(num));
+  servoDispatch.setEnd(num,   getCompiledEnd(num));
+  servoPrefs.begin("srvlim", false);
+  char keyC[6], keyO[6];
+  snprintf(keyC, sizeof(keyC), "c%02d", num); servoPrefs.remove(keyC);
+  snprintf(keyO, sizeof(keyO), "o%02d", num); servoPrefs.remove(keyO);
+  servoPrefs.end();
+  Serial.printf("[SERVO] Servo %02d reset: close=%u open=%u\n", num, getCompiledStart(num), getCompiledEnd(num));
+}
+
+void listServoLimits() {
+  servoPrefs.begin("srvlim", true);
+  Serial.println("[SERVO] Servo limits (* = NVS override, else compiled default):");
+  for (uint8_t i = 0; i < SizeOfArray(servoSettings); i++) {
+    char keyC[6], keyO[6];
+    snprintf(keyC, sizeof(keyC), "c%02d", i);
+    snprintf(keyO, sizeof(keyO), "o%02d", i);
+    uint16_t cv = servoPrefs.getUShort(keyC, 0);
+    uint16_t ov = servoPrefs.getUShort(keyO, 0);
+    bool cn = (cv >= 500 && cv <= 2500), on = (ov >= 500 && ov <= 2500);
+    Serial.printf("  servo %02d  close=%u%s  open=%u%s\n",
+      i, cn ? cv : getCompiledStart(i), cn ? "*" : "",
+         on ? ov : getCompiledEnd(i),   on ? "*" : "");
+  }
+  servoPrefs.end();
+}
+
+void handleServoLimitCommand(const char* cmd) {
+  char sub = toupper(cmd[2]);
+  if (sub == 'L') { listServoLimits(); return; }
+  int len = strlen(cmd);
+  if (sub == 'R' && len >= 5) {
+    resetServoLimit((cmd[3]-'0')*10 + (cmd[4]-'0'));
+  } else if ((sub == 'O' || sub == 'C') && len >= 9) {
+    uint8_t  num  = (cmd[3]-'0')*10 + (cmd[4]-'0');
+    uint16_t val  = (cmd[5]-'0')*1000 + (cmd[6]-'0')*100 + (cmd[7]-'0')*10 + (cmd[8]-'0');
+    if (val >= 500 && val <= 2500) {
+      if (sub == 'O') setServoOpenLimit(num, val);
+      else            setServoCloseLimit(num, val);
+    } else { Serial.printf("[SERVO] Value %u out of range (500-2500)\n", val); }
+  } else { Serial.println("[SERVO] Usage: #LOxxyyyy / #LCxxyyyy / #LRxx / #LL"); }
+}
+
 void setup(){
   //Initialize the Serial Ports
   Serial.begin(115200);
+  loadServoLimits();   // restore any NVS servo limit overrides
   s1Serial.begin(SERIAL1_BAUD_RATE, SERIAL_8N1, SERIAL1_RX_PIN, SERIAL1_TX_PIN);
   
   delay(500);
@@ -1645,13 +1747,20 @@ void loop(){
                 debugInputIdentifier += inCharRead;                   // add it to the inputString:
               }
               debugInputIdentifier.toUpperCase();
-              Debug.toggle(debugInputIdentifier);
+              if (debugInputIdentifier == "ETM") etmToggleDebug();
+              else Debug.toggle(debugInputIdentifier);
               debugInputIdentifier = "";                             // flush the string
               } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
-                localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
-                Local_Command[0]   = '\0';                                                            // Flushes Array
-                Local_Command[0] = localCommandFunction;
-              Debug.LOOP("Entered the Local Command Structure /n");
+                char lSub = toupper(inputBuffer[2]);
+                if (lSub == 'O' || lSub == 'C' || lSub == 'R' || lSub == 'L') {
+                  // Servo limit command: #LOxx / #LCxx / #LRxx / #LL
+                  handleServoLimitCommand(inputBuffer);
+                } else {
+                  localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
+                  Local_Command[0]   = '\0';
+                  Local_Command[0] = localCommandFunction;
+                  Debug.LOOP("Entered the Local Command Structure /n");
+                }
               } else if (inputBuffer[1] == 'E' || inputBuffer[1] == 'e'){
                 Debug.LOOP("EEPROM configuration selected /n");
                 // need to actually add the code to implement this.
