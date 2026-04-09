@@ -433,6 +433,10 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
       etmProcessAck(senderIdx, incomingMsg.structSequenceNumber);
       break;
     case PACKET_TYPE_COMMAND:
+      if (senderIdx < 0) {
+        Debug.ESPNOW("Command from unknown MAC (sender: %s), ignoring\n", incomingMsg.structSenderID);
+        break;
+      }
       incomingSenderID = incomingMsg.structSenderID;
       incomingTargetID = incomingMsg.structTargetID;
       incomingCommandIncluded = incomingMsg.structCommandIncluded;

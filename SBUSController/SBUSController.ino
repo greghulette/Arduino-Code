@@ -1094,11 +1094,20 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .axis-item select{background:var(--bg);border:1px solid var(--border);border-radius:4px;
     color:var(--text);padding:5px 6px;font-size:.74rem;}
   .save-btn{
-    align-self:flex-end;padding:8px 20px;border-radius:8px;
+    padding:8px 20px;border-radius:8px;
     border:1px solid var(--accent);background:transparent;color:var(--accent);
     font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;
   }
   .save-btn:hover{background:var(--accent);color:#000;}
+  .cfg-io-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
+  .io-btn{
+    padding:8px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;
+  }
+  .io-btn.export{border:1px solid var(--green);background:transparent;color:var(--green);}
+  .io-btn.export:hover{background:var(--green);color:#000;}
+  .io-btn.import{border:1px solid var(--yellow);background:transparent;color:var(--yellow);}
+  .io-btn.import:hover{background:var(--yellow);color:#000;}
+  #importStatus{font-size:.72rem;color:var(--muted);}
 
   /* ── Debug panel ────────────────────────────────────────────────────────── */
   .dbg-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
@@ -1253,7 +1262,16 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
         </table>
       </div>
 
-      <button class="save-btn" onclick="saveConfig()">&#128190; Save Config</button>
+      <div class="cfg-io-row">
+        <span id="importStatus"></span>
+        <button class="io-btn export" onclick="exportConfig()">&#11015; Export JSON</button>
+        <label class="io-btn import" style="display:inline-block;">
+          &#11014; Import JSON
+          <input type="file" id="importFile" accept=".json,application/json"
+                 style="display:none" onchange="importConfig(this)">
+        </label>
+        <button class="save-btn" onclick="saveConfig()">&#128190; Save Config</button>
+      </div>
     </div>
   </details>
 </div>
@@ -1803,6 +1821,61 @@ function renderSettings() {
   });
 }
 
+// ── Export: fetch the saved JSON from the ESP and trigger a browser download ──
+function exportConfig() {
+  fetch('/cfg')
+    .then(r => { if (!r.ok) throw new Error('No config'); return r.blob(); })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a   = document.createElement('a');
+      a.href = url;
+      a.download = 'sbus_config.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    })
+    .catch(e => {
+      const el = document.getElementById('importStatus');
+      el.style.color = 'var(--red)';
+      el.textContent = 'Export failed: ' + e.message;
+    });
+}
+
+// ── Import: read a JSON file and send it as a cfg WS message ─────────────────
+function importConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('importStatus');
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Reading…';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      // Remap LittleFS format to WS cfg message format
+      const payload = { t: 'cfg' };
+      if (data.rx    != null) payload.rx = data.rx;
+      if (data.ry    != null) payload.ry = data.ry;
+      if (data.ly    != null) payload.ly = data.ly;
+      if (data.lx    != null) payload.lx = data.lx;
+      if (data.aMin  != null) payload.aMin = data.aMin;
+      if (data.aMax  != null) payload.aMax = data.aMax;
+      if (data.sw    != null) payload.sw   = data.sw;
+      if (data.sl    != null) payload.sl   = data.sl;
+      if (data.tr    != null) payload.tr   = data.tr;
+      if (data.btn   != null) payload.btn  = data.btn;
+      if (data.lua   != null) payload.lua  = data.lua;
+      send(payload);
+      status.style.color = 'var(--green)';
+      status.textContent = '\u2713 Imported — config applied & saved.';
+    } catch(err) {
+      status.style.color = 'var(--red)';
+      status.textContent = 'Import failed: ' + err.message;
+    }
+    input.value = '';   // reset so the same file can be re-imported if needed
+  };
+  reader.readAsText(file);
+}
+
 function saveConfig() {
   const payload = {t:'cfg'};
   payload.rx = parseInt(document.getElementById('selRX').value);
@@ -2009,10 +2082,16 @@ void setup() {
     Serial.printf("[SBUS] HTTP GET /  from %s\n", req->client()->remoteIP().toString().c_str());
     req->send(200, "text/html", HTML);  // send() preferred over send_P() in ESP32Async v3.x
   });
-  // Lightweight health-check — load this first to verify server is alive before full page
+  // Lightweight health-check
   server.on("/ping", HTTP_GET, [](AsyncWebServerRequest* req){
-    Serial.println("[SBUS] HTTP GET /ping");
     req->send(200, "text/plain", "pong");
+  });
+  // Config export — serve the raw LittleFS JSON so the browser can download it
+  server.on("/cfg", HTTP_GET, [](AsyncWebServerRequest* req){
+    if (LittleFS.exists(CONFIG_FILE))
+      req->send(LittleFS, CONFIG_FILE, "application/json");
+    else
+      req->send(404, "text/plain", "No config saved yet");
   });
   server.onNotFound([](AsyncWebServerRequest* req){
     Serial.printf("[SBUS] 404: %s\n", req->url().c_str());
