@@ -528,10 +528,10 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 4,  1850, 1400, LARGE_RIGHT_DOOR },     /* 3: Left Right door as viewing from looking at R2 1200,1900*/
     { 5,  758 , 1590, CHARGE_BAY_DOOR },      /* 4: Charge Bay Inidicator Door 1900,758*/
     { 6,  1750, 850, DATA_PANEL_DOOR },       /* 5: Data Panel Door 700,1400*/
-    { 7,  1950, 700, DRAWER_S1 },             /* 6: Drawer S1*/
-    { 8,  2245, 700, DRAWER_S2 },             /* 7: Drawer S2 */
+    { 7,  1950, 800, DRAWER_S1 },             /* 6: Drawer S1*/
+    { 8,  1945, 700, DRAWER_S2 },             /* 7: Drawer S2 */
     { 9,  650, 2300, DRAWER_S3 },             /* 8: Drawer S3*/
-    { 10,  1300, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
+    { 10,  1000, 2500, DRAWER_S4 },           /* 9: Drawer S4*/
     { 11,  1870, 500, CPU_ARM_RAISE },        /* 10: CPU Arm Raise/Lower */
     { 12,  700, 2300, CPU_ARM_ROTATE },       /* 11: CPU Arm Rotate */
     { 13,  1050, 2450, CPU_ARM_EXTEND },      /* 12: CPU Arm Extend */

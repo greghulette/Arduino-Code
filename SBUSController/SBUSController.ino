@@ -1,34 +1,36 @@
 // =============================================================================
 //  SBUSController.ino  —  Browser-based Virtual SBUS Controller
-//  Target: ESP32 (original)
-//  Board library: esp32 by Espressif  *** PIN TO 3.3.4 — avoid 3.3.5 ***
+//  Target: ESP32-S3
+//  Board library: esp32 by Espressif (3.x)
+//  AsyncTCP: use mathieucarbou/AsyncTCP (not me-no-dev) for ESP32 core 3.x
 //
-//  Required libraries (install via Library Manager):
-//    • ESPAsyncWebServer  (me-no-dev)
-//    • AsyncTCP           (me-no-dev)
-//    • ArduinoJson        (Benoit Blanchon)  v6.x
+//  Required libraries (Library Manager):
+//    • ESPAsyncWebServer  (mathieucarbou fork or me-no-dev)
+//    • AsyncTCP           (mathieucarbou/AsyncTCP)
+//    • ArduinoJson        (Benoit Blanchon) v6.x
 //
 //  ─── Overview ───────────────────────────────────────────────────────────────
-//   Browser joysticks + buttons → WebSocket → ESP32 → SBUS-24 stream → Kyber
-//   No passthrough, no capture/replay — pure virtual controller output.
-//   SBUS-24: 36-byte frame  (0x0F + 33 data bytes + flags + 0x00)
-//            24 channels × 11 bits = 264 bits packed LSB-first.
+//   Browser controls → WebSocket → ESP32-S3 → SBUS stream → Kyber
+//   Controls modelled on FrSky TANDEM X18:
+//     4 joystick axes  (Mode 2: RX=AIL, RY=ELE, LY=THR, LX=RUD)
+//     8 switches       SA-SH  (3-pos / 2-pos / momentary)
+//     2 sliders        LS, RS
+//     6 trim rockers   T1-T6  (hold-to-repeat)
+//     8 buttons        S1-S6, RB1, RB2
 //
 //  ─── Hardware Wiring ────────────────────────────────────────────────────────
-//   Kyber SBUS input  ←  GPIO 17  (Serial1 TX, inverted 100 kbaud 8E2)
-//   USB               ↔  Serial   (debug @ 115200)
+//   Kyber SBUS input  ←  GPIO 5  (Serial1 TX, inverted 100 kbaud 8E2)
+//   USB               ↔  Serial  (debug @ 115200)
+//
+//  ─── Default Channel Map ────────────────────────────────────────────────────
+//   CH1=RX(AIL)  CH2=RY(ELE)  CH3=LY(THR)  CH4=LX(RUD)
+//   CH5=SA  CH6=SB  CH7=SC  CH8=SD  CH9=SE  CH10=SF  CH11=SG  CH12=SH
+//   CH13=LS  CH14=RS
+//   CH15=T1  CH16=T2  CH17=T3  CH18=T4  CH19=T5  CH20=T6
+//   CH21=S1  CH22=S2  CH23=S3  CH24=S4   S5/S6/RB1/RB2=unassigned
 //
 //  ─── WiFi ───────────────────────────────────────────────────────────────────
 //   Cascading: tries RHN-COMM → HelloEverybody → AP fallback (SBUSCtrl)
-//   5-second timeout per network attempt.
-//   In AP mode browse to  http://192.168.4.1
-//   In STA mode the assigned IP is printed to Serial on boot.
-//
-//  ─── Config (/config.json in LittleFS) ──────────────────────────────────────
-//   {"lx":1,"ly":2,"rx":3,"ry":4,"b":[{"l":"Button 1","c":5,"v":1811},...]}
-//   lx/ly/rx/ry : 1-based SBUS channel index for each joystick axis  (1–24)
-//   b           : array of 15 buttons; l=label, c=channel (0=unassigned, 1–24), v=pressed value
-//
 // =============================================================================
 
 #include <Arduino.h>
@@ -39,25 +41,18 @@
 #include <ArduinoJson.h>
 
 // ─── WiFi ─────────────────────────────────────────────────────────────────────
-// Cascading connection order:
-//   1. RHN-COMM  (primary home/shop network)
-//   2. HelloEverybody  (fallback network)
-//   3. AP mode  (last resort — always works)
-
 #define WIFI_PRIMARY_SSID   "RHN-COMM"
 #define WIFI_PRIMARY_PASS   "0o9i8u7y)O(I*U&Y"
 #define WIFI_FALLBACK_SSID  "HelloEverybody"
 #define WIFI_FALLBACK_PASS  "thedeskisbrown"
 #define WIFI_AP_SSID        "SBUSCtrl"
 #define WIFI_AP_PASS        "sbus1234"
-#define WIFI_STA_TIMEOUT_MS 5000   // ms to wait per network attempt
+#define WIFI_STA_TIMEOUT_MS 5000
 
 // ─── Pins ─────────────────────────────────────────────────────────────────────
-
 #define SBUS_TX_PIN     5    // Serial1 TX → Kyber SBUS input (inverted)
 
 // ─── SBUS Protocol ────────────────────────────────────────────────────────────
-
 #define SBUS_BAUD           100000
 #define SBUS_HEADER         0x0F
 #define SBUS_FOOTER         0x00
@@ -65,86 +60,185 @@
 #define SBUS_MIN            172
 #define SBUS_MAX            1811
 #define SBUS_CENTER         992
-#define SBUS_FRAME_MS       9     // transmit a frame every 9 ms (~111 Hz, FrSky standard)
+#define SBUS_FRAME_MS       9     // 9 ms = ~111 Hz (FrSky standard)
 
-// SBUS-16  —  standard, well-documented, 25-byte frame
 #define SBUS_CH_COUNT_16    16
 #define SBUS_FRAME_LEN_16   25    // 0x0F + 22 data + flags + 0x00
-
-// SBUS-24  —  FrSky ACCESS extended, 36-byte frame
 #define SBUS_CH_COUNT_24    24
-#define SBUS_FRAME_LEN_24   36    // 0x0F + 33 data (264 bits) + flags + 0x00
+#define SBUS_FRAME_LEN_24   36    // 0x0F + 33 data + flags + 0x00
 
-// ── Runtime mode selection ────────────────────────────────────────────────────
-// Changed via web UI toggle; persisted in config.json.
-// false = SBUS-16 (25 bytes, 16 channels)
-// true  = SBUS-24 (36 bytes, 24 channels)
 bool g_sbus24 = true;
-
 inline int sbusChCount()  { return g_sbus24 ? SBUS_CH_COUNT_24 : SBUS_CH_COUNT_16; }
 inline int sbusFrameLen() { return g_sbus24 ? SBUS_FRAME_LEN_24 : SBUS_FRAME_LEN_16; }
 
 // ─── SBUS Debug ───────────────────────────────────────────────────────────────
-// Uncomment SBUS_DEBUG to compile in the debug capability.
-// Once compiled in, toggle at runtime via:
-//   • Web UI  — Debug button in the header (green = on, muted = off)
-//   • Serial  — type  'd'  in Serial Monitor and press Enter
-//
-// SBUS_DEBUG_INTERVAL_MS : how often to print (ms).  0 = every frame (spammy).
-//
 #define SBUS_DEBUG
 #define SBUS_DEBUG_INTERVAL_MS  50    // serial dump rate (ms) — 50ms = 20 Hz
 
 #ifdef SBUS_DEBUG
-bool g_sbusDebug = false;  // runtime on/off; toggled via web or serial
+bool g_sbusDebug = false;
 #endif
 
 // ─── Config ───────────────────────────────────────────────────────────────────
+#define CONFIG_FILE   "/config.json"
+#define CFG_VER       2
+#define MAX_SWITCHES  8    // SA SB SC SD SE SF SG SH
+#define MAX_SLIDERS   4    // LS RS S1 S2  (S1/S2 are the centre pots)
+#define MAX_TRIMS     6    // T1-T6
+#define MAX_BUTTONS   8    // S1-S6 + RB1 RB2  (physical momentary switches)
+#define MAX_LUA_BTNS  15   // configurable Lua / virtual buttons
 
-#define CONFIG_FILE     "/config.json"
-#define MAX_BUTTONS     15
+enum SwType : uint8_t { SW_3POS=0, SW_2POS=1, SW_MOMENT=2 };
+
+struct SwCfg {
+  char     label[4];    // "SA".."SH"
+  uint8_t  ch;          // 1-based SBUS channel; 0=unassigned
+  SwType   type;
+  uint16_t val[3];      // SBUS values for positions 0,1,2
+};
+
+struct SliderCfg {
+  char    label[4];     // "LS" or "RS"
+  uint8_t ch;
+};
+
+struct TrimCfg {
+  char    label[4];     // "T1".."T6"
+  uint8_t ch;
+  uint8_t step;         // SBUS units per click
+};
 
 struct BtnCfg {
   char     label[32];
-  uint8_t  ch;     // 1-based SBUS channel; 0 = unassigned
-  uint16_t val;    // value to send when pressed (172–1811)
+  uint8_t  ch;
+  uint16_t val;
+};
+
+// Configurable virtual buttons (Lua / on-screen buttons)
+// Each maps a momentary press to a specific SBUS channel+value, same as original BtnCfg.
+struct LuaBtnCfg {
+  char     label[32];
+  uint8_t  ch;     // 1-based; 0=unassigned
+  char     color[8]; // "#RRGGBB\0" — button accent color
+  uint16_t val;    // value when pressed; center when released
 };
 
 struct Config {
-  uint8_t joyLX;           // 1-based channel
-  uint8_t joyLY;
-  uint8_t joyRX;
-  uint8_t joyRY;
-  BtnCfg  buttons[MAX_BUTTONS];
-  bool    sbus24;           // true = SBUS-24 (36-byte), false = SBUS-16 (25-byte)
+  uint8_t   ver;
+  uint8_t   joyRX;   // CH1 Aileron
+  uint8_t   joyRY;   // CH2 Elevator
+  uint8_t   joyLY;   // CH3 Throttle
+  uint8_t   joyLX;   // CH4 Rudder
+  SwCfg     sw[MAX_SWITCHES];
+  SliderCfg slider[MAX_SLIDERS];
+  TrimCfg   trim[MAX_TRIMS];
+  BtnCfg    btn[MAX_BUTTONS];
+  LuaBtnCfg luaBtn[MAX_LUA_BTNS];
+  bool      sbus24;
+  // Per-axis output range (SBUS units).  axisMin[0]=RX, [1]=RY, [2]=LY, [3]=LX
+  // Default: full range (172-1811).  Swap min/max to reverse.
+  uint16_t  axisMin[4];
+  uint16_t  axisMax[4];
 };
 
 Config cfg;
 
-// ─── Runtime State ────────────────────────────────────────────────────────────
-
-uint16_t sbusChannels[SBUS_CH_COUNT_24];  // always sized for max; only [0..sbusChCount()-1] are sent
+// ─── Runtime state ────────────────────────────────────────────────────────────
+uint16_t sbusChannels[SBUS_CH_COUNT_24];
+uint8_t  swPos[MAX_SWITCHES];      // 0,1,2
+uint8_t  sliderPct[MAX_SLIDERS];   // 0-100
+int16_t  trimVal[MAX_TRIMS];       // current SBUS value for each trim
 uint32_t lastFrameMs = 0;
 
 // ─── Web server / WebSocket ───────────────────────────────────────────────────
-
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 // =============================================================================
-//  CONFIG  —  load / save / defaults
+//  CONFIG  —  defaults / init / load / save / build
 // =============================================================================
 
 void applyConfigDefaults() {
-  cfg.joyLX  = 1;
-  cfg.joyLY  = 2;
-  cfg.joyRX  = 3;
-  cfg.joyRY  = 4;
-  cfg.sbus24 = true;   // default to SBUS-24; change to false to start on SBUS-16
+  cfg.ver   = CFG_VER;
+  cfg.joyRX = 1;  cfg.joyRY = 2;  cfg.joyLY = 3;  cfg.joyLX = 4;
+  cfg.sbus24 = true;
+
+  // Switches SA-SH
+  const char* swLbls[]   = {"SA","SB","SC","SD","SE","SF","SG","SH"};
+  SwType      swTypes[]  = {SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_2POS,SW_3POS,SW_MOMENT};
+  for (int i = 0; i < MAX_SWITCHES; i++) {
+    strlcpy(cfg.sw[i].label, swLbls[i], 4);
+    cfg.sw[i].ch   = 5 + i;   // CH5..CH12
+    cfg.sw[i].type = swTypes[i];
+    // 3-pos: low/center/high; 2-pos & momentary: low/high/(unused)
+    cfg.sw[i].val[0] = SBUS_MIN;
+    cfg.sw[i].val[1] = (swTypes[i] == SW_3POS) ? SBUS_CENTER : SBUS_MAX;
+    cfg.sw[i].val[2] = SBUS_MAX;
+  }
+
+  // Sliders: LS, RS (sides of sticks), S1 & S2 (centre pots)
+  strlcpy(cfg.slider[0].label, "LS", 4);  cfg.slider[0].ch = 13;
+  strlcpy(cfg.slider[1].label, "RS", 4);  cfg.slider[1].ch = 14;
+  strlcpy(cfg.slider[2].label, "S1", 4);  cfg.slider[2].ch = 0;  // unassigned — user sets channel
+  strlcpy(cfg.slider[3].label, "S2", 4);  cfg.slider[3].ch = 0;
+
+  // Trims T1-T6
+  for (int i = 0; i < MAX_TRIMS; i++) {
+    char lb[4]; snprintf(lb, 4, "T%d", i + 1);
+    strlcpy(cfg.trim[i].label, lb, 4);
+    cfg.trim[i].ch   = 15 + i;   // CH15..CH20
+    cfg.trim[i].step = 10;
+  }
+
+  // Axis output range — full range by default; swap min/max to reverse
+  for (int i = 0; i < 4; i++) { cfg.axisMin[i] = SBUS_MIN; cfg.axisMax[i] = SBUS_MAX; }
+
+  // Lua / virtual buttons (configurable, restored from original design)
+  for (int i = 0; i < MAX_LUA_BTNS; i++) {
+    snprintf(cfg.luaBtn[i].label, sizeof(cfg.luaBtn[i].label), "Button %d", i + 1);
+    cfg.luaBtn[i].ch  = 0;
+    cfg.luaBtn[i].val = SBUS_MAX;
+    strlcpy(cfg.luaBtn[i].color, "#4fc3f7", sizeof(cfg.luaBtn[i].color));
+  }
+
+  // Physical momentary buttons S1-S4 assigned, S5/S6/RB1/RB2 unassigned
+  const char* btnLbls[] = {"S1","S2","S3","S4","S5","S6","RB1","RB2"};
   for (int i = 0; i < MAX_BUTTONS; i++) {
-    snprintf(cfg.buttons[i].label, sizeof(cfg.buttons[i].label), "Button %d", i + 1);
-    cfg.buttons[i].ch  = 0;
-    cfg.buttons[i].val = SBUS_MAX;
+    strlcpy(cfg.btn[i].label, btnLbls[i], sizeof(cfg.btn[i].label));
+    cfg.btn[i].ch  = (i < 4) ? 21 + i : 0;  // S1=CH21..S4=CH24
+    cfg.btn[i].val = SBUS_MAX;
+  }
+}
+
+void initRuntimeState() {
+  for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
+  for (int i = 0; i < MAX_SWITCHES; i++)
+    swPos[i] = (cfg.sw[i].type == SW_3POS) ? 1 : 0;
+  for (int i = 0; i < MAX_SLIDERS; i++) sliderPct[i] = 50;
+  for (int i = 0; i < MAX_TRIMS; i++)   trimVal[i]   = SBUS_CENTER;
+}
+
+// Write switch/slider/trim current state into sbusChannels.
+// Called once at boot; thereafter each WS message updates channels directly.
+void applyAllControls() {
+  for (int i = 0; i < MAX_SWITCHES; i++) {
+    auto& s = cfg.sw[i];
+    if (s.ch >= 1 && s.ch <= SBUS_CH_COUNT_24) {
+      uint8_t p = min(swPos[i], (uint8_t)2);
+      sbusChannels[s.ch - 1] = s.val[p];
+    }
+  }
+  for (int i = 0; i < MAX_SLIDERS; i++) {
+    auto& sl = cfg.slider[i];
+    if (sl.ch >= 1 && sl.ch <= SBUS_CH_COUNT_24) {
+      float pct = sliderPct[i] / 100.0f;
+      sbusChannels[sl.ch - 1] = (uint16_t)(pct * (SBUS_MAX - SBUS_MIN) + SBUS_MIN + 0.5f);
+    }
+  }
+  for (int i = 0; i < MAX_TRIMS; i++) {
+    auto& tr = cfg.trim[i];
+    if (tr.ch >= 1 && tr.ch <= SBUS_CH_COUNT_24)
+      sbusChannels[tr.ch - 1] = (uint16_t)constrain((int)trimVal[i], SBUS_MIN, SBUS_MAX);
   }
 }
 
@@ -157,68 +251,162 @@ void loadConfig() {
   File f = LittleFS.open(CONFIG_FILE, FILE_READ);
   if (!f) { Serial.println("[SBUS] Cannot open config."); return; }
 
-  StaticJsonDocument<4096> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) { Serial.println("[SBUS] Config parse error — using defaults."); return; }
 
-  cfg.joyLX  = doc["lx"]     | 1;
-  cfg.joyLY  = doc["ly"]     | 2;
-  cfg.joyRX  = doc["rx"]     | 3;
-  cfg.joyRY  = doc["ry"]     | 4;
+  int ver = doc["ver"] | 0;
+  if (ver < CFG_VER) {
+    Serial.printf("[SBUS] Config v%d is older than expected v%d — using defaults.\n", ver, CFG_VER);
+    return;
+  }
+
+  cfg.joyRX  = constrain((int)(doc["rx"] | 1), 1, SBUS_CH_COUNT_24);
+  cfg.joyRY  = constrain((int)(doc["ry"] | 2), 1, SBUS_CH_COUNT_24);
+  cfg.joyLY  = constrain((int)(doc["ly"] | 3), 1, SBUS_CH_COUNT_24);
+  cfg.joyLX  = constrain((int)(doc["lx"] | 4), 1, SBUS_CH_COUNT_24);
   cfg.sbus24 = doc["sbus24"] | true;
   g_sbus24   = cfg.sbus24;
 
-  // Clamp axis channels to 1–24 (max possible; unused in SBUS-16 mode)
-  auto clampCh = [](uint8_t v) -> uint8_t { return constrain(v, 1, SBUS_CH_COUNT_24); };
-  cfg.joyLX = clampCh(cfg.joyLX);
-  cfg.joyLY = clampCh(cfg.joyLY);
-  cfg.joyRX = clampCh(cfg.joyRX);
-  cfg.joyRY = clampCh(cfg.joyRY);
-
-  JsonArray arr = doc["b"].as<JsonArray>();
-  int i = 0;
-  for (JsonObject o : arr) {
-    if (i >= MAX_BUTTONS) break;
-    strlcpy(cfg.buttons[i].label, o["l"] | "", sizeof(cfg.buttons[i].label));
-    cfg.buttons[i].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
-    cfg.buttons[i].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
-    i++;
+  JsonArray swArr = doc["sw"].as<JsonArray>();
+  int idx = 0;
+  for (JsonObject o : swArr) {
+    if (idx >= MAX_SWITCHES) break;
+    strlcpy(cfg.sw[idx].label, o["l"] | cfg.sw[idx].label, 4);
+    cfg.sw[idx].ch   = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    cfg.sw[idx].type = (SwType)constrain((int)(o["t"] | 0), 0, 2);
+    if (o["v"].is<JsonArray>()) {
+      JsonArray va = o["v"].as<JsonArray>();
+      for (int j = 0; j < 3; j++)
+        cfg.sw[idx].val[j] = constrain((int)(va[j] | SBUS_CENTER), SBUS_MIN, SBUS_MAX);
+    }
+    idx++;
   }
-  Serial.println("[SBUS] Config loaded.");
+
+  JsonArray slArr = doc["sl"].as<JsonArray>();
+  idx = 0;
+  for (JsonObject o : slArr) {
+    if (idx >= MAX_SLIDERS) break;
+    strlcpy(cfg.slider[idx].label, o["l"] | cfg.slider[idx].label, 4);
+    cfg.slider[idx].ch = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    idx++;
+  }
+
+  JsonArray trArr = doc["tr"].as<JsonArray>();
+  idx = 0;
+  for (JsonObject o : trArr) {
+    if (idx >= MAX_TRIMS) break;
+    strlcpy(cfg.trim[idx].label, o["l"] | cfg.trim[idx].label, 4);
+    cfg.trim[idx].ch   = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    cfg.trim[idx].step = constrain((int)(o["s"] | 10), 1, 100);
+    idx++;
+  }
+
+  JsonArray btnArr = doc["btn"].as<JsonArray>();
+  idx = 0;
+  for (JsonObject o : btnArr) {
+    if (idx >= MAX_BUTTONS) break;
+    strlcpy(cfg.btn[idx].label, o["l"] | "", sizeof(cfg.btn[idx].label));
+    cfg.btn[idx].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    cfg.btn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    idx++;
+  }
+  // Lua buttons
+  JsonArray luaArr = doc["lua"].as<JsonArray>();
+  idx = 0;
+  for (JsonObject o : luaArr) {
+    if (idx >= MAX_LUA_BTNS) break;
+    strlcpy(cfg.luaBtn[idx].label, o["l"] | cfg.luaBtn[idx].label, sizeof(cfg.luaBtn[idx].label));
+    cfg.luaBtn[idx].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    cfg.luaBtn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    { const char* kv = o["k"] | ""; strlcpy(cfg.luaBtn[idx].color, kv[0] ? kv : cfg.luaBtn[idx].color, sizeof(cfg.luaBtn[idx].color)); }
+    idx++;
+  }
+  // Axis range
+  if (doc["aMin"].is<JsonArray>()) {
+    JsonArray mn = doc["aMin"].as<JsonArray>();
+    for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_MIN, SBUS_MAX);
+  }
+  if (doc["aMax"].is<JsonArray>()) {
+    JsonArray mx = doc["aMax"].as<JsonArray>();
+    for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+  }
+
+  Serial.println("[SBUS] Config loaded (v2).");
 }
 
 void saveConfig() {
   File f = LittleFS.open(CONFIG_FILE, FILE_WRITE);
   if (!f) { Serial.println("[SBUS] Cannot write config."); return; }
 
-  StaticJsonDocument<4096> doc;
-  doc["lx"]     = cfg.joyLX;
-  doc["ly"]     = cfg.joyLY;
+  JsonDocument doc;
+  doc["ver"]    = CFG_VER;
   doc["rx"]     = cfg.joyRX;
   doc["ry"]     = cfg.joyRY;
+  doc["ly"]     = cfg.joyLY;
+  doc["lx"]     = cfg.joyLX;
   doc["sbus24"] = cfg.sbus24;
 
-  JsonArray arr = doc.createNestedArray("b");
-  for (int i = 0; i < MAX_BUTTONS; i++) {
-    JsonObject o = arr.createNestedObject();
-    o["l"] = cfg.buttons[i].label;
-    o["c"] = cfg.buttons[i].ch;
-    o["v"] = cfg.buttons[i].val;
+  JsonArray swArr = doc.createNestedArray("sw");
+  for (int i = 0; i < MAX_SWITCHES; i++) {
+    JsonObject o = swArr.createNestedObject();
+    o["l"] = cfg.sw[i].label;
+    o["c"] = cfg.sw[i].ch;
+    o["t"] = (int)cfg.sw[i].type;
+    JsonArray va = o.createNestedArray("v");
+    va.add(cfg.sw[i].val[0]); va.add(cfg.sw[i].val[1]); va.add(cfg.sw[i].val[2]);
   }
+
+  JsonArray slArr = doc.createNestedArray("sl");
+  for (int i = 0; i < MAX_SLIDERS; i++) {
+    JsonObject o = slArr.createNestedObject();
+    o["l"] = cfg.slider[i].label;
+    o["c"] = cfg.slider[i].ch;
+  }
+
+  JsonArray trArr = doc.createNestedArray("tr");
+  for (int i = 0; i < MAX_TRIMS; i++) {
+    JsonObject o = trArr.createNestedObject();
+    o["l"] = cfg.trim[i].label;
+    o["c"] = cfg.trim[i].ch;
+    o["s"] = cfg.trim[i].step;
+  }
+
+  JsonArray btnArr = doc.createNestedArray("btn");
+  for (int i = 0; i < MAX_BUTTONS; i++) {
+    JsonObject o = btnArr.createNestedObject();
+    o["l"] = cfg.btn[i].label;
+    o["c"] = cfg.btn[i].ch;
+    o["v"] = cfg.btn[i].val;
+  }
+
+  JsonArray luaArr = doc.createNestedArray("lua");
+  for (int i = 0; i < MAX_LUA_BTNS; i++) {
+    JsonObject o = luaArr.createNestedObject();
+    o["l"] = cfg.luaBtn[i].label;
+    o["c"] = cfg.luaBtn[i].ch;
+    o["v"] = cfg.luaBtn[i].val;
+    o["k"] = cfg.luaBtn[i].color;
+  }
+
+  JsonArray mnArr = doc.createNestedArray("aMin");
+  JsonArray mxArr = doc.createNestedArray("aMax");
+  for (int i = 0; i < 4; i++) { mnArr.add(cfg.axisMin[i]); mxArr.add(cfg.axisMax[i]); }
+
   serializeJson(doc, f);
   f.close();
   Serial.println("[SBUS] Config saved.");
 }
 
-// Build the cfg event JSON string to send to browser clients
 String buildCfgJson() {
-  StaticJsonDocument<4096> doc;
+  JsonDocument doc;
   doc["e"]      = "cfg";
-  doc["lx"]     = cfg.joyLX;
-  doc["ly"]     = cfg.joyLY;
+  doc["ver"]    = CFG_VER;
   doc["rx"]     = cfg.joyRX;
   doc["ry"]     = cfg.joyRY;
+  doc["ly"]     = cfg.joyLY;
+  doc["lx"]     = cfg.joyLX;
   doc["sbus24"] = cfg.sbus24;
 #ifdef SBUS_DEBUG
   doc["dbg"]    = g_sbusDebug;
@@ -226,13 +414,55 @@ String buildCfgJson() {
   doc["dbg"]    = false;
 #endif
 
-  JsonArray arr = doc.createNestedArray("b");
-  for (int i = 0; i < MAX_BUTTONS; i++) {
-    JsonObject o = arr.createNestedObject();
-    o["l"] = cfg.buttons[i].label;
-    o["c"] = cfg.buttons[i].ch;
-    o["v"] = cfg.buttons[i].val;
+  JsonArray swArr = doc.createNestedArray("sw");
+  for (int i = 0; i < MAX_SWITCHES; i++) {
+    JsonObject o = swArr.createNestedObject();
+    o["l"]   = cfg.sw[i].label;
+    o["c"]   = cfg.sw[i].ch;
+    o["t"]   = (int)cfg.sw[i].type;
+    o["pos"] = swPos[i];
+    JsonArray va = o.createNestedArray("v");
+    va.add(cfg.sw[i].val[0]); va.add(cfg.sw[i].val[1]); va.add(cfg.sw[i].val[2]);
   }
+
+  JsonArray slArr = doc.createNestedArray("sl");
+  for (int i = 0; i < MAX_SLIDERS; i++) {
+    JsonObject o = slArr.createNestedObject();
+    o["l"]   = cfg.slider[i].label;
+    o["c"]   = cfg.slider[i].ch;
+    o["pct"] = sliderPct[i];
+  }
+
+  JsonArray trArr = doc.createNestedArray("tr");
+  for (int i = 0; i < MAX_TRIMS; i++) {
+    JsonObject o = trArr.createNestedObject();
+    o["l"]   = cfg.trim[i].label;
+    o["c"]   = cfg.trim[i].ch;
+    o["s"]   = cfg.trim[i].step;
+    o["cur"] = trimVal[i];
+  }
+
+  JsonArray btnArr = doc.createNestedArray("btn");
+  for (int i = 0; i < MAX_BUTTONS; i++) {
+    JsonObject o = btnArr.createNestedObject();
+    o["l"] = cfg.btn[i].label;
+    o["c"] = cfg.btn[i].ch;
+    o["v"] = cfg.btn[i].val;
+  }
+
+  JsonArray luaArr2 = doc.createNestedArray("lua");
+  for (int i = 0; i < MAX_LUA_BTNS; i++) {
+    JsonObject o = luaArr2.createNestedObject();
+    o["l"] = cfg.luaBtn[i].label;
+    o["c"] = cfg.luaBtn[i].ch;
+    o["v"] = cfg.luaBtn[i].val;
+    o["k"] = cfg.luaBtn[i].color;
+  }
+
+  JsonArray mnArr2 = doc.createNestedArray("aMin");
+  JsonArray mxArr2 = doc.createNestedArray("aMax");
+  for (int i = 0; i < 4; i++) { mnArr2.add(cfg.axisMin[i]); mxArr2.add(cfg.axisMax[i]); }
+
   String out;
   serializeJson(doc, out);
   return out;
@@ -242,39 +472,25 @@ String buildCfgJson() {
 //  SBUS  —  encode and transmit
 // =============================================================================
 
-// Pack N × 11-bit channel values into an SBUS frame.
-//
-// SBUS-16 (25 bytes):  0x0F + 22 data bytes (176 bits) + flags + 0x00
-// SBUS-24 (36 bytes):  0x0F + 33 data bytes (264 bits) + flags + 0x00
-//
-// Bit packing: channel i occupies bits [i*11 .. i*11+10], LSB-first.
-// Three bytes may be touched per channel; the third only when bit offset > 5.
-//
-// caller must supply a buffer of at least SBUS_FRAME_LEN_24 (36) bytes.
-//
 void buildSbusFrame(uint8_t* frame) {
   const int flen  = sbusFrameLen();
   const int chcnt = sbusChCount();
-
   memset(frame, 0, flen);
   frame[0]        = SBUS_HEADER;
   frame[flen - 2] = SBUS_FLAGS;
   frame[flen - 1] = SBUS_FOOTER;
-
   for (int i = 0; i < chcnt; i++) {
     uint16_t val = constrain(sbusChannels[i], SBUS_MIN, SBUS_MAX);
-    int b = i * 11;                    // bit offset within payload
-
+    int b = i * 11;
     frame[1 + b / 8]     |= (uint8_t)((val << (b % 8)) & 0xFF);
     frame[1 + b / 8 + 1] |= (uint8_t)((val >> (8 - b % 8)) & 0xFF);
-    if ((b % 8) > 5) {
+    if ((b % 8) > 5)
       frame[1 + b / 8 + 2] |= (uint8_t)((val >> (16 - b % 8)) & 0xFF);
-    }
   }
 }
 
 // =============================================================================
-//  SBUS DEBUG DUMP
+//  SBUS DEBUG
 // =============================================================================
 
 #ifdef SBUS_DEBUG
@@ -283,7 +499,6 @@ static uint32_t s_lastWsDbgMs     = 0;
 static uint16_t s_prevCh[SBUS_CH_COUNT_24];
 static bool     s_prevChInit = false;
 
-// ── Decode all channels from a packed SBUS frame into out[] ──────────────────
 static void decodeSbusFrame(const uint8_t* frame, uint16_t* out, int chcnt) {
   for (int i = 0; i < chcnt; i++) {
     int b = i * 11;
@@ -296,15 +511,6 @@ static void decodeSbusFrame(const uint8_t* frame, uint16_t* out, int chcnt) {
   }
 }
 
-// ── Serial: raw hex frame every print + delta channels on a second line ───────
-//
-// Output example (SBUS-24, joystick moved):
-//   SBUS-24 [36B]  hdr=0F | E0 07 3E 78 ... | fl=00 end=00
-//   Δ CH01: 750  CH02:1200
-//
-// When nothing changes the Δ line is omitted — the hex line alone confirms
-// the frame is being sent at the right rate and format.
-//
 static void printSbusDebug(const uint8_t* frame, int flen, int chcnt) {
   if (!g_sbusDebug) return;
   const uint32_t now = millis();
@@ -314,42 +520,34 @@ static void printSbusDebug(const uint8_t* frame, int flen, int chcnt) {
   uint16_t cur[SBUS_CH_COUNT_24];
   decodeSbusFrame(frame, cur, chcnt);
 
-  // ── Line 1: raw hex with annotated header / flags / footer ───────────────
   Serial.printf("SBUS-%d [%dB]  hdr=%02X |", chcnt, flen, frame[0]);
   for (int i = 1; i < flen - 2; i++) Serial.printf(" %02X", frame[i]);
   Serial.printf(" | fl=%02X end=%02X\n", frame[flen - 2], frame[flen - 1]);
 
-  // ── Line 2: only channels that changed since last print ───────────────────
   if (!s_prevChInit) {
-    memset(s_prevCh, 0xFF, sizeof(s_prevCh));   // force everything to print first time
+    memset(s_prevCh, 0xFF, sizeof(s_prevCh));
     s_prevChInit = true;
   }
-
   bool anyChange = false;
   for (int i = 0; i < chcnt; i++) if (cur[i] != s_prevCh[i]) { anyChange = true; break; }
-
   if (anyChange) {
-    Serial.print(F("  \xce\x94"));               // Δ in UTF-8
-    for (int i = 0; i < chcnt; i++) {
+    Serial.print(F("  \xce\x94"));
+    for (int i = 0; i < chcnt; i++)
       if (cur[i] != s_prevCh[i]) Serial.printf("  CH%02d:%4u", i + 1, cur[i]);
-    }
     Serial.println();
     memcpy(s_prevCh, cur, sizeof(uint16_t) * chcnt);
   }
 }
 
-// ── WebSocket: push channel array to browser at ~10 Hz ───────────────────────
-// Message: {"e":"chdata","ch":[v0,v1,...vN],"mode":24,"fl":36}
 static void sendWsDebug(const uint8_t* frame, int flen, int chcnt) {
   if (!g_sbusDebug) return;
   const uint32_t now = millis();
-  if (now - s_lastWsDbgMs < 100) return;   // 10 Hz
+  if (now - s_lastWsDbgMs < 100) return;
   s_lastWsDbgMs = now;
 
   uint16_t cur[SBUS_CH_COUNT_24];
   decodeSbusFrame(frame, cur, chcnt);
 
-  // Build JSON manually to avoid heap allocation of StaticJsonDocument
   String msg;
   msg.reserve(64 + chcnt * 5);
   msg  = "{\"e\":\"chdata\",\"mode\":";
@@ -357,17 +555,14 @@ static void sendWsDebug(const uint8_t* frame, int flen, int chcnt) {
   msg += ",\"fl\":";
   msg += flen;
   msg += ",\"ch\":[";
-  for (int i = 0; i < chcnt; i++) {
-    msg += cur[i];
-    if (i < chcnt - 1) msg += ',';
-  }
+  for (int i = 0; i < chcnt; i++) { msg += cur[i]; if (i < chcnt - 1) msg += ','; }
   msg += "]}";
   ws.textAll(msg);
 }
 #endif  // SBUS_DEBUG
 
 void transmitSbus() {
-  uint8_t frame[SBUS_FRAME_LEN_24];  // always allocate max; only flen bytes are sent
+  uint8_t frame[SBUS_FRAME_LEN_24];
   buildSbusFrame(frame);
 #ifdef SBUS_DEBUG
   const int flen  = sbusFrameLen();
@@ -382,132 +577,257 @@ void transmitSbus() {
 //  AXIS MAPPING
 // =============================================================================
 
-// Map a float -1.0..+1.0 joystick value to an SBUS channel value 172..1811.
 inline uint16_t axisToSbus(float v) {
-  // constrain first so out-of-range floats don't wrap
   v = constrain(v, -1.0f, 1.0f);
   return (uint16_t)((v * 0.5f + 0.5f) * (float)(SBUS_MAX - SBUS_MIN) + SBUS_MIN + 0.5f);
+}
+
+// Range-aware version: maps -1..+1 → mn..mx (supports reversal when mn > mx)
+inline uint16_t axisToSbusRange(float v, uint16_t mn, uint16_t mx) {
+  v = constrain(v, -1.0f, 1.0f);
+  float mapped = (v * 0.5f + 0.5f) * ((float)(int)mx - (float)(int)mn) + (float)(int)mn;
+  return (uint16_t)constrain((int)(mapped + 0.5f), SBUS_MIN, SBUS_MAX);
 }
 
 // =============================================================================
 //  WEBSOCKET HANDLER
 // =============================================================================
 
-void handleWsMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
-  data[len] = 0;  // null-terminate for JSON parser
-
-  StaticJsonDocument<1024> doc;
-  if (deserializeJson(doc, (char*)data)) return;
-
+void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) return;
   const char* t = doc["t"] | "";
 
-  // ── Axis update ──────────────────────────────────────────────────────────
-  // { "t":"a", "lx":f, "ly":f, "rx":f, "ry":f }   values -1.0 to +1.0
+  // ── Joystick axes ────────────────────────────────────────────────────────
+  // { "t":"a", "lx":f, "ly":f, "rx":f, "ry":f }
   if (!strcmp(t, "a")) {
-    float lx = doc["lx"] | 0.0f;
-    float ly = doc["ly"] | 0.0f;
-    float rx = doc["rx"] | 0.0f;
-    float ry = doc["ry"] | 0.0f;
-
-    // Y axes are inverted: screen-up (negative float) → high SBUS value
-    sbusChannels[cfg.joyLX - 1] = axisToSbus(lx);
-    sbusChannels[cfg.joyLY - 1] = axisToSbus(-ly);
-    sbusChannels[cfg.joyRX - 1] = axisToSbus(rx);
-    sbusChannels[cfg.joyRY - 1] = axisToSbus(-ry);
+    sbusChannels[cfg.joyRX - 1] = axisToSbusRange( (doc["rx"] | 0.0f),  cfg.axisMin[0], cfg.axisMax[0]);
+    sbusChannels[cfg.joyRY - 1] = axisToSbusRange(-(doc["ry"] | 0.0f),  cfg.axisMin[1], cfg.axisMax[1]);
+    sbusChannels[cfg.joyLY - 1] = axisToSbusRange(-(doc["ly"] | 0.0f),  cfg.axisMin[2], cfg.axisMax[2]);
+    sbusChannels[cfg.joyLX - 1] = axisToSbusRange( (doc["lx"] | 0.0f),  cfg.axisMin[3], cfg.axisMax[3]);
   }
 
-  // ── Button press / release ────────────────────────────────────────────────
-  // { "t":"b", "i":index, "p":true/false }
-  else if (!strcmp(t, "b")) {
-    int  idx     = doc["i"] | -1;
-    bool pressed = doc["p"] | false;
-    if (idx >= 0 && idx < MAX_BUTTONS) {
-      BtnCfg& btn = cfg.buttons[idx];
-      if (btn.ch >= 1 && btn.ch <= SBUS_CH_COUNT_24) {
-        sbusChannels[btn.ch - 1] = pressed ? btn.val : SBUS_CENTER;
+  // ── Switch position ───────────────────────────────────────────────────────
+  // { "t":"sw", "i":idx, "p":pos }  pos = 0/1/2
+  else if (!strcmp(t, "sw")) {
+    int idx = doc["i"] | -1;
+    int pos = doc["p"] | 0;
+    if (idx >= 0 && idx < MAX_SWITCHES) {
+      auto& s = cfg.sw[idx];
+      uint8_t maxPos = (s.type == SW_3POS) ? 2 : 1;
+      swPos[idx] = (uint8_t)constrain(pos, 0, (int)maxPos);
+      if (s.ch >= 1 && s.ch <= SBUS_CH_COUNT_24)
+        sbusChannels[s.ch - 1] = s.val[swPos[idx]];
+    }
+  }
+
+  // ── Slider value ──────────────────────────────────────────────────────────
+  // { "t":"sl", "i":idx, "v":pct }  pct = 0-100
+  else if (!strcmp(t, "sl")) {
+    int idx = doc["i"] | -1;
+    int pct = doc["v"] | 50;
+    if (idx >= 0 && idx < MAX_SLIDERS) {
+      sliderPct[idx] = (uint8_t)constrain(pct, 0, 100);
+      auto& sl = cfg.slider[idx];
+      if (sl.ch >= 1 && sl.ch <= SBUS_CH_COUNT_24) {
+        float p = sliderPct[idx] / 100.0f;
+        sbusChannels[sl.ch - 1] = (uint16_t)(p * (SBUS_MAX - SBUS_MIN) + SBUS_MIN + 0.5f);
       }
     }
   }
 
-  // ── Config save ───────────────────────────────────────────────────────────
-  // { "t":"cfg", "lx":1, "ly":2, "rx":3, "ry":4, "b":[...] }
-  else if (!strcmp(t, "cfg")) {
-    cfg.joyLX = constrain((int)(doc["lx"] | 1), 1, SBUS_CH_COUNT_24);
-    cfg.joyLY = constrain((int)(doc["ly"] | 2), 1, SBUS_CH_COUNT_24);
-    cfg.joyRX = constrain((int)(doc["rx"] | 3), 1, SBUS_CH_COUNT_24);
-    cfg.joyRY = constrain((int)(doc["ry"] | 4), 1, SBUS_CH_COUNT_24);
-
-    JsonArray arr = doc["b"].as<JsonArray>();
-    int i = 0;
-    for (JsonObject o : arr) {
-      if (i >= MAX_BUTTONS) break;
-      strlcpy(cfg.buttons[i].label, o["l"] | "", sizeof(cfg.buttons[i].label));
-      cfg.buttons[i].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
-      cfg.buttons[i].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
-      i++;
+  // ── Trim delta ────────────────────────────────────────────────────────────
+  // { "t":"tr", "i":idx, "d":delta }  d: +1/-1 step, 0 = reset to center
+  else if (!strcmp(t, "tr")) {
+    int idx   = doc["i"] | -1;
+    int delta = doc["d"] | 0;
+    if (idx >= 0 && idx < MAX_TRIMS) {
+      auto& tr = cfg.trim[idx];
+      if (delta == 0) {
+        trimVal[idx] = SBUS_CENTER;
+      } else {
+        int newVal = trimVal[idx] + (delta > 0 ? (int)tr.step : -(int)tr.step);
+        trimVal[idx] = (int16_t)constrain(newVal, SBUS_MIN, SBUS_MAX);
+      }
+      if (tr.ch >= 1 && tr.ch <= SBUS_CH_COUNT_24)
+        sbusChannels[tr.ch - 1] = trimVal[idx];
     }
-    saveConfig();
-    // Echo updated config back to all clients
-    String cfgJson = buildCfgJson();
-    ws.textAll(cfgJson);
-    Serial.println("[SBUS] Config updated via WebSocket.");
+  }
+
+  // ── Physical button press/release ────────────────────────────────────────
+  // { "t":"btn", "i":idx, "p":bool }
+  else if (!strcmp(t, "btn")) {
+    int  idx     = doc["i"] | -1;
+    bool pressed = doc["p"] | false;
+    if (idx >= 0 && idx < MAX_BUTTONS) {
+      auto& b = cfg.btn[idx];
+      if (b.ch >= 1 && b.ch <= SBUS_CH_COUNT_24)
+        sbusChannels[b.ch - 1] = pressed ? b.val : SBUS_CENTER;
+    }
+  }
+
+  // ── Lua / virtual button press/release ───────────────────────────────────
+  // { "t":"lua", "i":idx, "p":bool }
+  else if (!strcmp(t, "lua")) {
+    int  idx     = doc["i"] | -1;
+    bool pressed = doc["p"] | false;
+    if (idx >= 0 && idx < MAX_LUA_BTNS) {
+      auto& b = cfg.luaBtn[idx];
+      if (b.ch >= 1 && b.ch <= SBUS_CH_COUNT_24)
+        sbusChannels[b.ch - 1] = pressed ? b.val : SBUS_CENTER;
+    }
   }
 
   // ── SBUS mode toggle ──────────────────────────────────────────────────────
-  // { "t":"mode", "sbus24": true|false }
+  // { "t":"mode", "sbus24":bool }
   else if (!strcmp(t, "mode")) {
     bool newMode = doc["sbus24"] | g_sbus24;
     if (newMode != g_sbus24) {
       g_sbus24   = newMode;
       cfg.sbus24 = newMode;
       saveConfig();
-      // Reset all channels to center so no stale values carry over
       for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
-      Serial.printf("[SBUS] Mode switched → SBUS-%d (%d bytes/frame)\n",
-                    sbusChCount(), sbusFrameLen());
+      applyAllControls();
+      Serial.printf("[SBUS] Mode → SBUS-%d (%d bytes/frame)\n", sbusChCount(), sbusFrameLen());
     }
-    ws.textAll(buildCfgJson());  // broadcast new state to all clients
+    ws.textAll(buildCfgJson());
   }
 
   // ── Debug toggle ──────────────────────────────────────────────────────────
-  // { "t":"dbg", "on": true|false }
+  // { "t":"dbg", "on":bool }
   else if (!strcmp(t, "dbg")) {
 #ifdef SBUS_DEBUG
     g_sbusDebug = doc["on"] | !g_sbusDebug;
-    Serial.printf("[SBUS] Debug output %s\n", g_sbusDebug ? "ENABLED" : "DISABLED");
-    ws.textAll(buildCfgJson());  // broadcast updated dbg state
-#else
-    Serial.println("[SBUS] Debug not compiled in — define SBUS_DEBUG to enable.");
-    client->text("{\"e\":\"err\",\"msg\":\"Recompile with SBUS_DEBUG defined\"}");
+    Serial.printf("[SBUS] Debug %s\n", g_sbusDebug ? "ENABLED" : "DISABLED");
+    ws.textAll(buildCfgJson());
 #endif
   }
+
+  // ── Config save (axis channels + all control channels) ────────────────────
+  // { "t":"cfg", "rx":n, "ry":n, "ly":n, "lx":n, "sw":[...], ... }
+  else if (!strcmp(t, "cfg")) {
+    cfg.joyRX = constrain((int)(doc["rx"] | cfg.joyRX), 1, SBUS_CH_COUNT_24);
+    cfg.joyRY = constrain((int)(doc["ry"] | cfg.joyRY), 1, SBUS_CH_COUNT_24);
+    cfg.joyLY = constrain((int)(doc["ly"] | cfg.joyLY), 1, SBUS_CH_COUNT_24);
+    cfg.joyLX = constrain((int)(doc["lx"] | cfg.joyLX), 1, SBUS_CH_COUNT_24);
+
+    // Optional switch channel updates
+    if (doc["sw"].is<JsonArray>()) {
+      JsonArray arr = doc["sw"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : arr) {
+        if (i >= MAX_SWITCHES) break;
+        strlcpy(cfg.sw[i].label, o["l"] | cfg.sw[i].label, 4);
+        cfg.sw[i].ch = constrain((int)(o["c"] | cfg.sw[i].ch), 0, SBUS_CH_COUNT_24);
+        if (o["v"].is<JsonArray>()) {
+          JsonArray va = o["v"].as<JsonArray>();
+          for (int j = 0; j < 3; j++)
+            cfg.sw[i].val[j] = constrain((int)(va[j] | cfg.sw[i].val[j]), SBUS_MIN, SBUS_MAX);
+        }
+        i++;
+      }
+    }
+    // Optional slider channel updates
+    if (doc["sl"].is<JsonArray>()) {
+      JsonArray arr = doc["sl"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : arr) {
+        if (i >= MAX_SLIDERS) break;
+        cfg.slider[i].ch = constrain((int)(o["c"] | cfg.slider[i].ch), 0, SBUS_CH_COUNT_24);
+        i++;
+      }
+    }
+    // Optional trim updates
+    if (doc["tr"].is<JsonArray>()) {
+      JsonArray arr = doc["tr"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : arr) {
+        if (i >= MAX_TRIMS) break;
+        cfg.trim[i].ch   = constrain((int)(o["c"]  | cfg.trim[i].ch),   0, SBUS_CH_COUNT_24);
+        cfg.trim[i].step = constrain((int)(o["s"]  | cfg.trim[i].step),  1, 100);
+        i++;
+      }
+    }
+    // Optional button updates
+    if (doc["btn"].is<JsonArray>()) {
+      JsonArray arr = doc["btn"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : arr) {
+        if (i >= MAX_BUTTONS) break;
+        strlcpy(cfg.btn[i].label, o["l"] | cfg.btn[i].label, sizeof(cfg.btn[i].label));
+        cfg.btn[i].ch  = constrain((int)(o["c"] | cfg.btn[i].ch),  0, SBUS_CH_COUNT_24);
+        cfg.btn[i].val = constrain((int)(o["v"] | cfg.btn[i].val), SBUS_MIN, SBUS_MAX);
+        i++;
+      }
+    }
+    // Optional Lua button updates
+    if (doc["lua"].is<JsonArray>()) {
+      JsonArray arr = doc["lua"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : arr) {
+        if (i >= MAX_LUA_BTNS) break;
+        strlcpy(cfg.luaBtn[i].label, o["l"] | cfg.luaBtn[i].label, sizeof(cfg.luaBtn[i].label));
+        cfg.luaBtn[i].ch  = constrain((int)(o["c"] | cfg.luaBtn[i].ch),  0, SBUS_CH_COUNT_24);
+        cfg.luaBtn[i].val = constrain((int)(o["v"] | cfg.luaBtn[i].val), SBUS_MIN, SBUS_MAX);
+        { const char* kv = o["k"] | ""; strlcpy(cfg.luaBtn[i].color, kv[0] ? kv : cfg.luaBtn[i].color, sizeof(cfg.luaBtn[i].color)); }
+        i++;
+      }
+    }
+    // Axis range
+    if (doc["aMin"].is<JsonArray>()) {
+      JsonArray mn = doc["aMin"].as<JsonArray>();
+      for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_MIN, SBUS_MAX);
+    }
+    if (doc["aMax"].is<JsonArray>()) {
+      JsonArray mx = doc["aMax"].as<JsonArray>();
+      for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    }
+    saveConfig();
+    applyAllControls();
+    ws.textAll(buildCfgJson());
+    Serial.println("[SBUS] Config updated via WebSocket.");
+  }
 }
+
+// Accumulation buffer for multi-frame WebSocket messages.
+// Large payloads (e.g. full config with 15 lua buttons) exceed a single TCP
+// frame (~1400 B) and arrive fragmented.  We reassemble here before parsing.
+static String g_wsRxBuf;
 
 void onWsEvent(AsyncWebSocket* srv, AsyncWebSocketClient* client,
                AwsEventType type, void* arg, uint8_t* data, size_t len) {
   if (type == WS_EVT_CONNECT) {
     Serial.printf("[SBUS] WS#%u connected.\n", client->id());
-    // Send current config to newly connected client
     client->text(buildCfgJson());
-
   } else if (type == WS_EVT_DISCONNECT) {
     Serial.printf("[SBUS] WS#%u disconnected.\n", client->id());
-
+    g_wsRxBuf = "";
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo* info = (AwsFrameInfo*)arg;
-    // Only process complete, single-frame text messages
-    if (info->final && info->index == 0 && info->len == len
-        && info->opcode == WS_TEXT) {
-      handleWsMessage(client, data, len);
+    if (info->opcode != WS_TEXT) return;
+
+    // The library may deliver one logical message across multiple callbacks.
+    // info->index = byte offset of this chunk within the frame.
+    // info->len   = total frame length.
+    // info->final = true on the last WebSocket frame of the message.
+    // Done when: we have all bytes of this frame AND it is the final frame.
+    if (info->index == 0) {
+      g_wsRxBuf = "";
+      g_wsRxBuf.reserve((size_t)info->len + 1);
+    }
+    g_wsRxBuf.concat((const char*)data, len);
+
+    if (info->final && (info->index + len == info->len)) {
+      handleWsMessage(client, g_wsRxBuf.c_str());
+      g_wsRxBuf = "";
     }
   }
 }
 
 // =============================================================================
-//  EMBEDDED HTML  (served from PROGMEM)
+//  EMBEDDED HTML
 // =============================================================================
 
-// Raw string delimiter 'rawhtml' is chosen to be safe from any HTML content.
 static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -516,271 +836,434 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 <title>SBUS Controller</title>
 <style>
   :root {
-    --bg:     #0d0f14;
-    --panel:  #161920;
-    --border: #2a2d38;
-    --accent: #4fc3f7;
-    --green:  #66bb6a;
-    --red:    #ef5350;
-    --text:   #e0e4f0;
-    --muted:  #6b7280;
-    --stick-bg:  #1a1d28;
-    --stick-rim: #2e3450;
-    --thumb:     #4fc3f7;
+    --bg:       #0d0f14;
+    --panel:    #161920;
+    --border:   #2a2d38;
+    --accent:   #4fc3f7;
+    --green:    #66bb6a;
+    --red:      #ef5350;
+    --yellow:   #ffa726;
+    --text:     #e0e4f0;
+    --muted:    #6b7280;
+    --stick-bg: #1a1d28;
+    --stick-rim:#2e3450;
+    --thumb:    #4fc3f7;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{
     background:var(--bg);color:var(--text);
     font-family:'Segoe UI',system-ui,sans-serif;
     min-height:100vh;display:flex;flex-direction:column;
-    align-items:center;padding:14px;gap:12px;
+    align-items:center;padding:12px;gap:10px;
   }
 
   /* ── Header ────────────────────────────────────────────────────────────── */
   header{
-    width:100%;max-width:900px;
+    width:100%;max-width:960px;
     display:flex;align-items:center;justify-content:space-between;
     flex-wrap:wrap;gap:8px;
   }
-  .logo{font-size:1.15rem;font-weight:700;letter-spacing:.1em;color:var(--accent);}
+  .logo{font-size:1.05rem;font-weight:700;letter-spacing:.1em;color:var(--accent);}
   #connBadge{
-    font-size:.72rem;font-weight:600;letter-spacing:.06em;
+    font-size:.7rem;font-weight:600;letter-spacing:.06em;
     padding:4px 12px;border-radius:20px;
     background:var(--panel);border:1px solid var(--red);color:var(--red);
     transition:all .3s;
   }
   #connBadge.connected{border-color:var(--green);color:var(--green);}
-
-  /* mode + debug toggle buttons */
   .hdr-btn{
-    font-size:.72rem;font-weight:700;letter-spacing:.07em;
-    padding:4px 13px;border-radius:20px;cursor:pointer;
+    font-size:.7rem;font-weight:700;letter-spacing:.07em;
+    padding:4px 12px;border-radius:20px;cursor:pointer;
     background:var(--panel);border:1px solid var(--border);color:var(--muted);
     transition:all .2s;user-select:none;
   }
-  .hdr-btn.active-16 { border-color:#ffa726;color:#ffa726; }
-  .hdr-btn.active-24 { border-color:var(--accent);color:var(--accent); }
-  .hdr-btn.dbg-on    { border-color:var(--green);color:var(--green); }
+  .hdr-btn.active-16{border-color:var(--yellow);color:var(--yellow);}
+  .hdr-btn.active-24{border-color:var(--accent);color:var(--accent);}
+  .hdr-btn.dbg-on   {border-color:var(--green);color:var(--green);}
 
-  /* ── Joystick area ─────────────────────────────────────────────────────── */
-  .sticks-row{
-    width:100%;max-width:900px;
-    display:flex;gap:16px;justify-content:center;flex-wrap:wrap;
+  /* ── Switch pyramids: SF/SH top, SE/SG mid, SA+SB / SC+SD bottom pair ─── */
+  .sw-pyramid{
+    display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;
+  }
+  .sw-pair{
+    display:flex;flex-direction:row;gap:5px;
+  }
+  .sw-card{
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:7px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;
+    width:72px;
+  }
+  .sw-name{font-size:.62rem;font-weight:700;letter-spacing:.1em;color:var(--accent);text-transform:uppercase;}
+  .sw-ch  {font-size:.55rem;color:var(--muted);}
+  .sw-toggle{display:flex;flex-direction:column;gap:3px;width:100%;}
+  .sw-seg{
+    padding:5px 0;width:100%;border-radius:5px;cursor:pointer;
+    border:1px solid var(--border);background:var(--bg);
+    color:var(--muted);font-size:.68rem;font-weight:600;text-align:center;
+    transition:all .12s;user-select:none;
+  }
+  .sw-seg.sel{background:var(--accent);color:#000;border-color:var(--accent);}
+  .sw-seg:hover:not(.sel){border-color:var(--accent);color:var(--text);}
+  .sw-mom{
+    padding:10px 0;width:100%;border-radius:6px;cursor:pointer;
+    border:1px solid var(--border);background:var(--bg);
+    color:var(--text);font-size:.75rem;font-weight:700;text-align:center;
+    user-select:none;touch-action:none;transition:all .1s;
+  }
+  .sw-mom.held{background:var(--accent);color:#000;border-color:var(--accent);}
+
+  /* ── Main control area ──────────────────────────────────────────────────── */
+  .ctrl-area{
+    width:100%;max-width:960px;
+    display:flex;gap:6px;align-items:flex-start;justify-content:center;flex-wrap:wrap;
+  }
+
+  /* Trim+Slider outer columns */
+  .ts-col{
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    flex:0 0 auto;
+  }
+
+  /* Trim widget */
+  .trim-widget{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    padding:7px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .trim-lbl{font-size:.58rem;font-weight:700;color:var(--accent);letter-spacing:.08em;}
+  .trim-ch {font-size:.52rem;color:var(--muted);}
+  .trim-btn{
+    width:40px;height:26px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--border);background:var(--bg);color:var(--text);
+    font-size:.8rem;font-weight:700;user-select:none;touch-action:none;
+    transition:background .1s,border-color .1s;
+  }
+  .trim-btn:active,.trim-btn.held{background:var(--accent);color:#000;border-color:var(--accent);}
+  .trim-val{
+    font-size:.65rem;font-variant-numeric:tabular-nums;
+    color:var(--text);min-width:40px;text-align:center;
+  }
+  .trim-rst{
+    width:40px;height:16px;border-radius:3px;cursor:pointer;
+    border:1px solid var(--border);background:transparent;color:var(--muted);
+    font-size:.52rem;font-weight:700;
+  }
+
+  /* Slider widget */
+  .slider-widget{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    padding:8px;display:flex;flex-direction:column;align-items:center;gap:5px;
+  }
+  .slider-lbl{font-size:.6rem;font-weight:700;color:var(--accent);letter-spacing:.08em;}
+  .slider-ch {font-size:.52rem;color:var(--muted);}
+  .slider-wrap{width:40px;height:160px;display:flex;align-items:center;justify-content:center;overflow:visible;}
+  .slider-inp{
+    width:140px;
+    transform:rotate(-90deg);transform-origin:center;
+    cursor:pointer;accent-color:var(--accent);
+  }
+  .slider-val{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;}
+
+  /* Stick block */
+  .stick-block{
+    display:flex;flex-direction:column;align-items:center;gap:8px;flex:0 0 auto;
   }
   .stick-card{
     background:var(--panel);border:1px solid var(--border);border-radius:12px;
-    padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;
-    flex:0 0 auto;
+    padding:12px;display:flex;flex-direction:column;align-items:center;gap:7px;
   }
-  .stick-label{
-    font-size:.65rem;font-weight:700;letter-spacing:.1em;
-    text-transform:uppercase;color:var(--muted);
-  }
+  .stick-lbl{font-size:.62rem;font-weight:700;letter-spacing:.09em;color:var(--muted);text-transform:uppercase;}
   .stick-wrap{
-    position:relative;
-    width:min(240px,42vw);aspect-ratio:1;
-    border-radius:50%;
-    background:var(--stick-bg);border:2px solid var(--stick-rim);
+    position:relative;width:min(220px,38vw);aspect-ratio:1;
+    border-radius:50%;background:var(--stick-bg);border:2px solid var(--stick-rim);
     touch-action:none;user-select:none;cursor:crosshair;
   }
-  /* crosshair */
-  .stick-wrap::before,.stick-wrap::after{
-    content:'';position:absolute;background:var(--stick-rim);
-  }
+  .stick-wrap::before,.stick-wrap::after{content:'';position:absolute;background:var(--stick-rim);}
   .stick-wrap::before{width:1px;height:100%;left:50%;top:0;}
   .stick-wrap::after {width:100%;height:1px;top:50%;left:0;}
   .thumb{
-    position:absolute;width:40px;height:40px;border-radius:50%;
+    position:absolute;width:36px;height:36px;border-radius:50%;
     background:radial-gradient(circle at 35% 35%,#7fd6ff,var(--thumb));
-    box-shadow:0 0 12px rgba(79,195,247,.45);
+    box-shadow:0 0 10px rgba(79,195,247,.4);
     transform:translate(-50%,-50%);pointer-events:none;
-    transition:box-shadow .15s;
   }
-  .stick-wrap.active .thumb{box-shadow:0 0 22px rgba(79,195,247,.85);}
-  .stick-readout{
-    font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;
-    letter-spacing:.03em;white-space:nowrap;
+  .stick-readout{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+  /* Trim row below sticks */
+  .trim-row{display:flex;gap:8px;justify-content:center;}
+  .trim-h{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    padding:6px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .trim-h-btns{display:flex;gap:4px;align-items:center;}
+
+  /* ── Stick center wrapper (sticks + tucked-under controls) ─────────────── */
+  .stick-center{
+    display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;
+  }
+  .sticks-row{
+    display:flex;gap:10px;align-items:flex-start;
   }
 
-  /* ── Button grid ───────────────────────────────────────────────────────── */
-  .btn-section{width:100%;max-width:900px;}
-  .btn-grid{
-    display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+  /* ── S1/S2 pot row ─────────────────────────────────────────────────────── */
+  .pot-row{
+    display:flex;gap:12px;justify-content:center;flex-wrap:wrap;width:100%;
   }
-  @media(max-width:500px){
-    .sticks-row{flex-direction:column;align-items:center;}
-    .btn-grid{grid-template-columns:repeat(3,1fr);}
+  .pot-widget{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    padding:8px 16px;display:flex;flex-direction:column;align-items:center;gap:5px;
+    min-width:160px;
   }
-  .ctrl-btn{
+  .pot-lbl{font-size:.62rem;font-weight:700;color:var(--accent);letter-spacing:.08em;}
+  .pot-ch {font-size:.52rem;color:var(--muted);}
+  .pot-inp{width:180px;cursor:pointer;accent-color:var(--accent);}
+  .pot-val{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;}
+
+  /* ── Trim bank (all trims in a row, tucked under sticks) ─────────────── */
+  .trim-bank{
+    display:flex;gap:6px;justify-content:center;flex-wrap:wrap;width:100%;
+  }
+
+  /* ── Lua button grid ────────────────────────────────────────────────────── */
+  .lua-section{width:100%;max-width:960px;}
+  .lua-header{margin-bottom:6px;}
+  .lua-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;}
+  @media(max-width:600px){.lua-grid{grid-template-columns:repeat(3,1fr);}}
+  .lua-btn{
+    --btn-color: #4fc3f7;
     padding:14px 6px;
     border:1px solid var(--border);border-radius:8px;
     background:#1a1d28;color:var(--text);
-    font-size:.78rem;font-weight:600;
-    cursor:pointer;text-align:center;word-break:break-word;
-    transition:border-color .15s,background .15s,transform .1s;
+    font-size:.75rem;font-weight:600;cursor:pointer;text-align:center;word-break:break-word;
+    transition:border-color .12s,background .12s,color .12s,transform .1s;
+    -webkit-tap-highlight-color:transparent;user-select:none;touch-action:none;
+  }
+  .lua-btn:not(.unassigned){background:var(--btn-color);color:#000;border-color:var(--btn-color);}
+  .lua-btn.unassigned{background:transparent;border-color:var(--btn-color);border-style:dashed;color:var(--muted);opacity:.55;cursor:default;}
+  .lua-btn.pressed{filter:brightness(.75);transform:scale(.96);}
+  .lua-btn:not(.unassigned):hover{filter:brightness(1.15);}
+
+  /* ── Button bank ────────────────────────────────────────────────────────── */
+  .btn-bank{
+    display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;
+  }
+  .btn-group{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
+  .sep{width:1px;background:var(--border);align-self:stretch;margin:0 4px;}
+  .ctrl-btn{
+    padding:12px 8px;min-width:56px;
+    border:1px solid var(--border);border-radius:8px;
+    background:#1a1d28;color:var(--text);
+    font-size:.75rem;font-weight:600;cursor:pointer;text-align:center;
+    transition:all .12s;user-select:none;touch-action:none;
     -webkit-tap-highlight-color:transparent;
-    user-select:none;
   }
   .ctrl-btn.unassigned{color:var(--muted);border-style:dashed;cursor:default;}
-  .ctrl-btn.pressed{background:var(--accent);color:#000;border-color:var(--accent);transform:scale(.96);}
+  .ctrl-btn.pressed{background:var(--accent);color:#000;border-color:var(--accent);}
   .ctrl-btn:not(.unassigned):hover{border-color:var(--accent);}
 
-  /* ── Settings panel ────────────────────────────────────────────────────── */
-  .settings-wrap{width:100%;max-width:900px;}
+  /* ── Settings panel ─────────────────────────────────────────────────────── */
+  .settings-wrap{width:100%;max-width:960px;}
   details{width:100%;}
   summary{
-    cursor:pointer;
-    font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--muted);padding:10px 14px;
+    cursor:pointer;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);padding:9px 14px;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;
     list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
   }
   summary::-webkit-details-marker{display:none;}
-  summary::before{content:'▶';transition:transform .2s;font-size:.6rem;}
+  summary::before{content:'▶';transition:transform .2s;font-size:.58rem;}
   details[open] summary{border-radius:10px 10px 0 0;}
   details[open] summary::before{transform:rotate(90deg);}
   .settings-body{
     background:var(--panel);border:1px solid var(--border);border-top:none;
-    border-radius:0 0 10px 10px;padding:16px;display:flex;flex-direction:column;gap:16px;
+    border-radius:0 0 10px 10px;padding:14px;display:flex;flex-direction:column;gap:14px;
   }
-  .section-title{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
-
-  /* axis rows */
-  .axis-table{display:flex;flex-direction:column;gap:6px;}
-  .axis-row{display:flex;align-items:center;gap:10px;}
-  .axis-row label{font-size:.78rem;color:var(--text);width:80px;flex-shrink:0;}
-  .axis-row select{
-    background:var(--bg);border:1px solid var(--border);border-radius:6px;
-    color:var(--text);padding:6px 8px;font-size:.78rem;flex:1;max-width:160px;
+  .sec-title{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .cfg-table{width:100%;border-collapse:collapse;font-size:.74rem;}
+  .cfg-table th{font-size:.6rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);}
+  .cfg-table td{padding:4px 6px;vertical-align:middle;}
+  .cfg-table tr:nth-child(even) td{background:rgba(255,255,255,.02);}
+  .cfg-table input,.cfg-table select{
+    background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    color:var(--text);padding:4px 6px;font-size:.72rem;width:100%;
   }
-  .axis-row select:focus{outline:none;border-color:var(--accent);}
-
-  /* button config table */
-  .btn-table{width:100%;border-collapse:collapse;}
-  .btn-table th{
-    font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--muted);padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);
-  }
-  .btn-table td{padding:4px 6px;vertical-align:middle;}
-  .btn-table tr:nth-child(even) td{background:rgba(255,255,255,.02);}
-  .btn-table input[type=text],.btn-table select,.btn-table input[type=number]{
-    background:var(--bg);border:1px solid var(--border);border-radius:5px;
-    color:var(--text);padding:5px 7px;font-size:.76rem;width:100%;
-  }
-  .btn-table input:focus,.btn-table select:focus{outline:none;border-color:var(--accent);}
+  .cfg-table input:focus,.cfg-table select:focus{outline:none;border-color:var(--accent);}
+  .axis-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .axis-item{display:flex;flex-direction:column;gap:4px;}
+  .axis-item label{font-size:.65rem;color:var(--muted);}
+  .axis-item select{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    color:var(--text);padding:5px 6px;font-size:.74rem;}
   .save-btn{
-    align-self:flex-end;
-    padding:9px 22px;border-radius:8px;
+    align-self:flex-end;padding:8px 20px;border-radius:8px;
     border:1px solid var(--accent);background:transparent;color:var(--accent);
-    font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;
+    font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;
   }
   .save-btn:hover{background:var(--accent);color:#000;}
 
-  /* ── Debug channel grid ────────────────────────────────────────────────── */
-  .dbg-grid{
-    display:grid;
-    grid-template-columns:repeat(8,1fr);
-    gap:5px;
+  /* ── Debug panel ────────────────────────────────────────────────────────── */
+  .dbg-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
+  @media(max-width:600px){.dbg-grid{grid-template-columns:repeat(4,1fr);}}
+  .dbg-cell{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    padding:4px;text-align:center;transition:border-color .1s;}
+  .dbg-cell .dcn{font-size:.55rem;color:var(--muted);}
+  .dbg-cell .dcv{font-size:.75rem;font-variant-numeric:tabular-nums;color:var(--text);display:block;margin-top:1px;}
+  .dbg-cell.lit{border-color:var(--accent);}
+  .dbg-cell.lit .dcv{color:var(--accent);}
+  .dbg-info{font-size:.65rem;color:var(--muted);margin-top:5px;display:flex;gap:14px;flex-wrap:wrap;}
+  .dbg-info .di-val{color:var(--text);}
+
+  @media(max-width:620px){
+    .ctrl-area{flex-direction:column;align-items:center;}
+    .axis-grid{grid-template-columns:repeat(2,1fr);}
   }
-  @media(max-width:600px){ .dbg-grid{grid-template-columns:repeat(4,1fr);} }
-  .dbg-cell{
-    background:var(--bg);border:1px solid var(--border);border-radius:5px;
-    padding:5px 4px;text-align:center;transition:border-color .1s;
-  }
-  .dbg-cell .dcn{ font-size:.58rem;color:var(--muted);letter-spacing:.04em; }
-  .dbg-cell .dcv{
-    font-size:.78rem;font-variant-numeric:tabular-nums;
-    color:var(--text);display:block;margin-top:1px;
-  }
-  .dbg-cell.lit{ border-color:var(--accent); }
-  .dbg-cell.lit .dcv{ color:var(--accent); }
-  .dbg-info{
-    font-size:.68rem;color:var(--muted);margin-top:6px;
-    display:flex;gap:16px;flex-wrap:wrap;
-  }
-  .dbg-info span{ white-space:nowrap; }
-  .dbg-info .di-val{ color:var(--text); }
 </style>
 </head>
 <body>
 
-<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
 <header>
   <div class="logo">SBUS CONTROLLER</div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-    <button class="hdr-btn" id="modeBtn"  onclick="toggleMode()" title="Toggle SBUS-16 / SBUS-24">SBUS-24</button>
-    <button class="hdr-btn" id="debugBtn" onclick="toggleDebug()" title="Toggle Serial debug output">DEBUG OFF</button>
+  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+    <button class="hdr-btn" id="modeBtn"  onclick="toggleMode()">SBUS-24</button>
+    <button class="hdr-btn" id="debugBtn" onclick="toggleDebug()">DEBUG OFF</button>
     <div id="connBadge">DISCONNECTED</div>
   </div>
 </header>
 
-<!-- ── Joysticks ──────────────────────────────────────────────────────────── -->
-<div class="sticks-row">
-
-  <div class="stick-card">
-    <div class="stick-label" id="labelL">LEFT STICK — LX:CH1  LY:CH2</div>
-    <div class="stick-wrap" id="stickL">
-      <div class="thumb" id="thumbL" style="left:50%;top:50%"></div>
-    </div>
-    <div class="stick-readout" id="readL">LX: 992&nbsp;&nbsp;LY: 992</div>
+<!-- ── Lua / virtual buttons — top of page for easy access ─────────────────── -->
+<div class="lua-section" id="luaSection">
+  <div class="lua-header">
+    <span style="font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);">Lua Buttons</span>
   </div>
+  <div class="lua-grid" id="luaGrid"></div>
+</div>
 
-  <div class="stick-card">
-    <div class="stick-label" id="labelR">RIGHT STICK — RX:CH3  RY:CH4</div>
-    <div class="stick-wrap" id="stickR">
-      <div class="thumb" id="thumbR" style="left:50%;top:50%"></div>
-    </div>
-    <div class="stick-readout" id="readR">RX: 992&nbsp;&nbsp;RY: 992</div>
-  </div>
+<!-- ── Main row: [L-pyramid] [LS] [stick-center] [RS] [R-pyramid] -->
+<div class="ctrl-area">
+
+  <!-- Left pyramid: SF top, SE mid, SA+SB bottom pair -->
+  <div class="sw-pyramid" id="swPyramidLeft"></div>
+
+  <!-- LS slider -->
+  <div class="ts-col" id="slLSCol"></div>
+
+  <!-- Center: sticks + all sub-controls tucked underneath -->
+  <div class="stick-center">
+    <div class="sticks-row">
+
+      <!-- Left stick -->
+      <div class="stick-block">
+        <div class="stick-card">
+          <div class="stick-lbl" id="lblL">LEFT  LX:CH4  LY:CH3</div>
+          <div class="stick-wrap" id="stickL">
+            <div class="thumb" id="thumbL" style="left:50%;top:50%"></div>
+          </div>
+          <div class="stick-readout" id="readL">LX: 992&nbsp;&nbsp;LY: 992</div>
+        </div>
+      </div>
+
+      <!-- Right stick -->
+      <div class="stick-block">
+        <div class="stick-card">
+          <div class="stick-lbl" id="lblR">RIGHT  RX:CH1  RY:CH2</div>
+          <div class="stick-wrap" id="stickR">
+            <div class="thumb" id="thumbR" style="left:50%;top:50%"></div>
+          </div>
+          <div class="stick-readout" id="readR">RX: 992&nbsp;&nbsp;RY: 992</div>
+        </div>
+      </div>
+
+    </div><!-- /sticks-row -->
+
+    <!-- S1/S2 pots tucked directly under sticks -->
+    <div class="pot-row" id="potRow"></div>
+
+    <!-- Trims tucked under pots -->
+    <div class="trim-bank" id="trimBank"></div>
+
+    <!-- Physical buttons tucked under trims -->
+    <div class="btn-bank" id="btnBank"></div>
+
+  </div><!-- /stick-center -->
+
+  <!-- RS slider -->
+  <div class="ts-col" id="slRSCol"></div>
+
+  <!-- Right pyramid: SH top, SG mid, SC+SD bottom pair -->
+  <div class="sw-pyramid" id="swPyramidRight"></div>
 
 </div>
 
-<!-- ── Button grid ─────────────────────────────────────────────────────────── -->
-<div class="btn-section">
-  <div class="btn-grid" id="btnGrid"></div>
-</div>
-
-<!-- ── Settings panel ─────────────────────────────────────────────────────── -->
+<!-- ── Settings ─────────────────────────────────────────────────────────────── -->
 <div class="settings-wrap">
   <details>
     <summary>Settings</summary>
     <div class="settings-body">
 
-      <!-- Axis channel assignment -->
-      <div class="section-title">Joystick Channels</div>
-      <div class="axis-table">
-        <div class="axis-row"><label>Left X</label>  <select id="selLX"></select></div>
-        <div class="axis-row"><label>Left Y</label>  <select id="selLY"></select></div>
-        <div class="axis-row"><label>Right X</label> <select id="selRX"></select></div>
-        <div class="axis-row"><label>Right Y</label> <select id="selRY"></select></div>
+      <div>
+        <div class="sec-title">Joystick Channels &amp; Range</div>
+        <table class="cfg-table" style="min-width:480px;">
+          <thead><tr><th>Axis</th><th>Channel</th><th>Min (SBUS)</th><th>Max (SBUS)</th><th style="font-size:.55rem;color:var(--muted)">swap min/max to reverse</th></tr></thead>
+          <tbody>
+            <tr><td>Right X (AIL)</td><td><select id="selRX"></select></td><td><input type="number" id="axMin0" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax0" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Right Y (ELE)</td><td><select id="selRY"></select></td><td><input type="number" id="axMin1" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax1" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Left Y (THR)</td> <td><select id="selLY"></select></td><td><input type="number" id="axMin2" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax2" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Left X (RUD)</td> <td><select id="selLX"></select></td><td><input type="number" id="axMin3" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax3" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
+          </tbody>
+        </table>
       </div>
 
-      <!-- Button config table -->
-      <div class="section-title">Button Configuration</div>
-      <table class="btn-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Label</th>
-            <th>Channel</th>
-            <th>Pressed Value</th>
-          </tr>
-        </thead>
-        <tbody id="btnConfigBody"></tbody>
-      </table>
+      <div>
+        <div class="sec-title">Switches</div>
+        <table class="cfg-table">
+          <thead><tr><th>Name</th><th>Channel</th><th>Low Val</th><th>Mid Val</th><th>High Val</th></tr></thead>
+          <tbody id="swCfgBody"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="sec-title">Sliders &amp; Pots (LS / RS / S1 / S2)</div>
+        <table class="cfg-table">
+          <thead><tr><th>Name</th><th>Channel</th></tr></thead>
+          <tbody id="slCfgBody"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="sec-title">Trims</div>
+        <table class="cfg-table">
+          <thead><tr><th>Name</th><th>Channel</th><th>Step (SBUS units)</th></tr></thead>
+          <tbody id="trCfgBody"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="sec-title">Physical Buttons (S1–S6, RB1, RB2)</div>
+        <table class="cfg-table">
+          <thead><tr><th>Name</th><th>Label</th><th>Channel</th><th>Pressed Value</th></tr></thead>
+          <tbody id="btnCfgBody"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="sec-title">Lua Buttons (15 virtual)</div>
+        <table class="cfg-table">
+          <thead><tr><th>#</th><th>Label</th><th>Channel</th><th>Pressed Value</th><th>Color</th></tr></thead>
+          <tbody id="luaCfgBody"></tbody>
+        </table>
+      </div>
 
       <button class="save-btn" onclick="saveConfig()">&#128190; Save Config</button>
-
     </div>
   </details>
 </div>
 
-<!-- ── Debug panel (always rendered; data only flows when DEBUG ON) ─────────── -->
-<div class="settings-wrap" id="debugWrap">
-  <details id="debugDetails" open>
+<!-- ── Debug panel ───────────────────────────────────────────────────────────── -->
+<div class="settings-wrap">
+  <details id="dbgDetails" open>
     <summary>Live Channel Monitor</summary>
     <div class="settings-body">
-      <div id="dbgOffMsg" style="font-size:.75rem;color:var(--muted);text-align:center;padding:8px 0;">
+      <div id="dbgOffMsg" style="font-size:.74rem;color:var(--muted);text-align:center;padding:6px 0;">
         Enable <strong style="color:var(--text)">DEBUG</strong> to start live data
       </div>
       <div class="dbg-grid" id="dbgGrid" style="display:none"></div>
@@ -798,42 +1281,36 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 // =============================================================================
 //  Constants & state
 // =============================================================================
-
 const SBUS_MIN = 172, SBUS_MAX = 1811, SBUS_CENTER = 992;
-const BTN_COUNT = 15;
 
 let ws;
 let cfg = {
-  lx: 1, ly: 2, rx: 3, ry: 4,
-  sbus24: true,
-  b: Array.from({length: BTN_COUNT}, (_, i) => ({l: `Button ${i+1}`, c: 0, v: 1811}))
+  rx:1, ry:2, ly:3, lx:4, sbus24:true,
+  aMin: [172, 172, 172, 172],
+  aMax: [1811,1811,1811,1811],
+  sw:  Array.from({length:8},  (_,i)=>({l:`S${i}`, c:0, t:0, v:[172,992,1811], pos:1})),
+  sl:  Array.from({length:4},  (_,i)=>({l:['LS','RS','S1','S2'][i]||`SL${i}`, c:0, pct:50})),
+  tr:  Array.from({length:6},  (_,i)=>({l:`T${i+1}`, c:0, s:10, cur:992})),
+  btn: Array.from({length:8},  (_,i)=>({l:`Btn${i+1}`, c:0, v:1811})),
+  lua: Array.from({length:15}, (_,i)=>({l:`Button ${i+1}`, c:0, v:1811}))
 };
-
-// Track debug state locally so the button reflects it
 let g_dbgOn = false;
+
+// Local trim values (SBUS units) — mirrored from server on connect, then tracked locally
+let trimCur = Array(6).fill(SBUS_CENTER);
+
+// Joystick state
+const sticks = { L:{x:0,y:0,active:false,touchId:null}, R:{x:0,y:0,active:false,touchId:null} };
+let joyTimer = null;
 
 // =============================================================================
 //  WebSocket
 // =============================================================================
-
 function connect() {
   ws = new WebSocket(`ws://${location.hostname}/ws`);
-
-  ws.onopen = () => {
-    const b = document.getElementById('connBadge');
-    b.textContent = 'CONNECTED';
-    b.className = 'connected';
-  };
-
-  ws.onclose = () => {
-    const b = document.getElementById('connBadge');
-    b.textContent = 'DISCONNECTED';
-    b.className = '';
-    setTimeout(connect, 3000);
-  };
-
+  ws.onopen  = () => { setBadge(true); };
+  ws.onclose = () => { setBadge(false); setTimeout(connect, 3000); };
   ws.onerror = () => {};
-
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -842,456 +1319,654 @@ function connect() {
     } catch(_) {}
   };
 }
-
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
-
-// =============================================================================
-//  Config handling
-// =============================================================================
-
-function applyCfg(msg) {
-  cfg.lx     = msg.lx     || 1;
-  cfg.ly     = msg.ly     || 2;
-  cfg.rx     = msg.rx     || 3;
-  cfg.ry     = msg.ry     || 4;
-  cfg.sbus24 = (msg.sbus24 !== undefined) ? msg.sbus24 : true;
-  g_dbgOn    = msg.dbg || false;
-  if (Array.isArray(msg.b)) {
-    for (let i = 0; i < BTN_COUNT; i++) {
-      if (msg.b[i]) {
-        cfg.b[i] = {
-          l: msg.b[i].l || `Button ${i+1}`,
-          c: msg.b[i].c || 0,
-          v: msg.b[i].v || SBUS_MAX
-        };
-      }
-    }
-  }
-  renderAll();
-  updateModeBtn();
-  updateDebugBtn();
+function setBadge(on) {
+  const b = document.getElementById('connBadge');
+  b.textContent = on ? 'CONNECTED' : 'DISCONNECTED';
+  b.className   = on ? 'connected' : '';
 }
 
-// ─── Mode toggle ─────────────────────────────────────────────────────────────
+// =============================================================================
+//  Config
+// =============================================================================
+function applyCfg(msg) {
+  cfg.rx     = msg.rx    || 1;
+  cfg.ry     = msg.ry    || 2;
+  cfg.ly     = msg.ly    || 3;
+  cfg.lx     = msg.lx    || 4;
+  cfg.sbus24 = (msg.sbus24 !== undefined) ? msg.sbus24 : true;
+  g_dbgOn    = msg.dbg   || false;
+  if (Array.isArray(msg.aMin)) cfg.aMin = msg.aMin;
+  if (Array.isArray(msg.aMax)) cfg.aMax = msg.aMax;
+  if (Array.isArray(msg.sw))  cfg.sw  = msg.sw;
+  if (Array.isArray(msg.sl))  cfg.sl  = msg.sl;
+  if (Array.isArray(msg.tr))  {
+    cfg.tr  = msg.tr;
+    trimCur = cfg.tr.map(t => t.cur !== undefined ? t.cur : SBUS_CENTER);
+  }
+  if (Array.isArray(msg.btn)) cfg.btn = msg.btn;
+  if (Array.isArray(msg.lua)) {
+    cfg.lua = msg.lua;
+  } else if (!cfg.lua) {
+    cfg.lua = Array.from({length:15}, (_,i)=>({l:`Button ${i+1}`,c:0,v:1811,k:'#4fc3f7'}));
+  }
+  renderAll();
+}
 
 function toggleMode() {
   cfg.sbus24 = !cfg.sbus24;
-  send({t: 'mode', sbus24: cfg.sbus24});
+  send({t:'mode', sbus24:cfg.sbus24});
   updateModeBtn();
 }
-
-function updateModeBtn() {
-  const btn = document.getElementById('modeBtn');
-  if (cfg.sbus24) {
-    btn.textContent = 'SBUS-24';
-    btn.className   = 'hdr-btn active-24';
-    btn.title       = 'Running SBUS-24 (36-byte frame) — click to switch to SBUS-16';
-  } else {
-    btn.textContent = 'SBUS-16';
-    btn.className   = 'hdr-btn active-16';
-    btn.title       = 'Running SBUS-16 (25-byte frame) — click to switch to SBUS-24';
-  }
-}
-
-// ─── Debug toggle ─────────────────────────────────────────────────────────────
-
 function toggleDebug() {
   g_dbgOn = !g_dbgOn;
-  send({t: 'dbg', on: g_dbgOn});
+  send({t:'dbg', on:g_dbgOn});
   updateDebugBtn();
 }
-
+function updateModeBtn() {
+  const btn = document.getElementById('modeBtn');
+  if (cfg.sbus24) { btn.textContent='SBUS-24'; btn.className='hdr-btn active-24'; }
+  else            { btn.textContent='SBUS-16'; btn.className='hdr-btn active-16'; }
+}
 function updateDebugBtn() {
   const btn    = document.getElementById('debugBtn');
   const offMsg = document.getElementById('dbgOffMsg');
   if (g_dbgOn) {
-    btn.textContent = 'DEBUG ON';
-    btn.className   = 'hdr-btn dbg-on';
-    btn.title       = 'Serial + web debug active — click to disable';
-    if (offMsg) offMsg.style.display = 'none';
+    btn.textContent='DEBUG ON'; btn.className='hdr-btn dbg-on';
+    if (offMsg) offMsg.style.display='none';
   } else {
-    btn.textContent = 'DEBUG OFF';
-    btn.className   = 'hdr-btn';
-    btn.title       = 'Debug inactive — click to enable';
-    // hide the grid but keep the panel visible
-    if (offMsg) offMsg.style.display = '';
-    const grid = document.getElementById('dbgGrid');
-    const info = document.getElementById('dbgInfo');
-    if (grid) grid.style.display = 'none';
-    if (info) info.style.display = 'none';
+    btn.textContent='DEBUG OFF'; btn.className='hdr-btn';
+    if (offMsg) offMsg.style.display='';
+    const grid=document.getElementById('dbgGrid');
+    const info=document.getElementById('dbgInfo');
+    if (grid) grid.style.display='none';
+    if (info) info.style.display='none';
   }
 }
 
 // =============================================================================
-//  Live channel data (from debug WebSocket push)
+//  Render
 // =============================================================================
-
-let dbgCells  = [];   // array of {cell, valEl} per channel
-let dbgLitTimers = [];
-let dbgLastT  = 0;
-let dbgUpdateCount = 0;
-let dbgRateTimer   = null;
-let dbgUpdatesInWindow = 0;
-
-function initDbgGrid(chcnt) {
-  const grid = document.getElementById('dbgGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  dbgCells = [];
-  dbgLitTimers = new Array(chcnt).fill(null);
-
-  for (let i = 0; i < chcnt; i++) {
-    const cell   = document.createElement('div');
-    cell.className = 'dbg-cell';
-
-    const cn = document.createElement('div');
-    cn.className = 'dcn';
-    cn.textContent = `CH${String(i + 1).padStart(2, '0')}`;
-
-    const cv = document.createElement('span');
-    cv.className = 'dcv';
-    cv.textContent = '—';
-
-    cell.appendChild(cn);
-    cell.appendChild(cv);
-    grid.appendChild(cell);
-    dbgCells.push({cell, cv});
-  }
-}
-
-function handleChData(msg) {
-  const ch   = msg.ch;
-  const mode = msg.mode;
-  const fl   = msg.fl;
-  if (!Array.isArray(ch)) return;
-
-  // First data arrival — swap the "off" message for the live grid
-  const offMsg = document.getElementById('dbgOffMsg');
-  const grid   = document.getElementById('dbgGrid');
-  const info   = document.getElementById('dbgInfo');
-  if (offMsg) offMsg.style.display = 'none';
-  if (grid)   grid.style.display   = '';
-  if (info)   info.style.display   = '';
-
-  // Rebuild grid if channel count changed
-  if (dbgCells.length !== ch.length) initDbgGrid(ch.length);
-
-  const now = performance.now();
-
-  ch.forEach((val, i) => {
-    const entry = dbgCells[i];
-    if (!entry) return;
-    const prev = parseInt(entry.cv.textContent) || -1;
-
-    entry.cv.textContent = val;
-
-    if (val !== prev) {
-      // Flash the cell accent colour, then fade back after 300 ms
-      entry.cell.classList.add('lit');
-      if (dbgLitTimers[i]) clearTimeout(dbgLitTimers[i]);
-      dbgLitTimers[i] = setTimeout(() => {
-        entry.cell.classList.remove('lit');
-        dbgLitTimers[i] = null;
-      }, 300);
-    }
-  });
-
-  // Update info bar
-  const modeEl  = document.getElementById('diMode');
-  const frameEl = document.getElementById('diFrame');
-  const chEl    = document.getElementById('diCh');
-  if (modeEl)  modeEl.textContent  = `SBUS-${mode}`;
-  if (frameEl) frameEl.textContent = fl;
-  if (chEl)    chEl.textContent    = ch.length;
-
-  // Rolling update-rate counter (updates/sec over last second)
-  dbgUpdatesInWindow++;
-  if (!dbgRateTimer) {
-    dbgRateTimer = setInterval(() => {
-      const rateEl = document.getElementById('diRate');
-      if (rateEl) rateEl.textContent = `${dbgUpdatesInWindow}/s`;
-      dbgUpdatesInWindow = 0;
-    }, 1000);
-  }
-}
-
-function saveConfig() {
-  // Read axis selects
-  cfg.lx = parseInt(document.getElementById('selLX').value);
-  cfg.ly = parseInt(document.getElementById('selLY').value);
-  cfg.rx = parseInt(document.getElementById('selRX').value);
-  cfg.ry = parseInt(document.getElementById('selRY').value);
-
-  // Read button config rows
-  const tbody = document.getElementById('btnConfigBody');
-  for (let i = 0; i < BTN_COUNT; i++) {
-    const row = tbody.rows[i];
-    cfg.b[i].l = row.cells[1].querySelector('input').value;
-    cfg.b[i].c = parseInt(row.cells[2].querySelector('select').value);
-    cfg.b[i].v = parseInt(row.cells[3].querySelector('input').value);
-  }
-
-  send({t: 'cfg', lx: cfg.lx, ly: cfg.ly, rx: cfg.rx, ry: cfg.ry, b: cfg.b});
-}
-
-// =============================================================================
-//  Render helpers
-// =============================================================================
-
 function axisToSbus(v) {
-  // v is -1..+1; returns integer SBUS value
-  return Math.round((v * 0.5 + 0.5) * (SBUS_MAX - SBUS_MIN) + SBUS_MIN);
+  return Math.round((v*0.5+0.5)*(SBUS_MAX-SBUS_MIN)+SBUS_MIN);
 }
-
-function renderAll() {
-  updateStickLabels();
-  renderButtons();
-  renderSettings();
-  updateReadouts();
-  updateModeBtn();
-  updateDebugBtn();
+function axisToSbusRange(v, mn, mx) {
+  return Math.max(SBUS_MIN, Math.min(SBUS_MAX, Math.round((v*0.5+0.5)*(mx-mn)+mn)));
 }
-
-function updateStickLabels() {
-  document.getElementById('labelL').textContent =
-    `LEFT STICK — LX:CH${cfg.lx}  LY:CH${cfg.ly}`;
-  document.getElementById('labelR').textContent =
-    `RIGHT STICK — RX:CH${cfg.rx}  RY:CH${cfg.ry}`;
+function sbusFromPct(pct) {
+  return Math.round(pct/100*(SBUS_MAX-SBUS_MIN)+SBUS_MIN);
 }
-
-function updateReadouts() {
-  // Read directly from stick state — never through the channel array.
-  // Channel assignments control the SBUS output mapping; they must not affect
-  // which stick drives which readout.  If two axes share a channel the SBUS
-  // output is intentionally overwritten, but the display stays correct.
-  document.getElementById('readL').innerHTML =
-    `LX:&nbsp;${axisToSbus(sticks.L.x)}&nbsp;&nbsp;LY:&nbsp;${axisToSbus(-sticks.L.y)}`;
-  document.getElementById('readR').innerHTML =
-    `RX:&nbsp;${axisToSbus(sticks.R.x)}&nbsp;&nbsp;RY:&nbsp;${axisToSbus(-sticks.R.y)}`;
+function trimOffset(cur) {
+  const d = cur - SBUS_CENTER;
+  return (d >= 0 ? '+' : '') + d;
 }
-
-// Build channel <select> options: None + CH1–CH24
-function buildChSelect(selectedVal, includeNone) {
+function buildChSel(val, includeNone) {
   const sel = document.createElement('select');
   if (includeNone) {
-    const opt = document.createElement('option');
-    opt.value = '0'; opt.textContent = 'None';
-    if (selectedVal === 0) opt.selected = true;
-    sel.appendChild(opt);
+    const o=document.createElement('option'); o.value='0'; o.textContent='None';
+    if (!val) o.selected=true; sel.appendChild(o);
   }
-  for (let c = 1; c <= 24; c++) {
-    const opt = document.createElement('option');
-    opt.value = String(c);
-    opt.textContent = `CH${c}`;
-    if (c === selectedVal) opt.selected = true;
-    sel.appendChild(opt);
+  for (let c=1;c<=24;c++) {
+    const o=document.createElement('option'); o.value=String(c); o.textContent=`CH${c}`;
+    if (c===val) o.selected=true; sel.appendChild(o);
   }
   return sel;
 }
 
-// ── Button grid ───────────────────────────────────────────────────────────────
+function renderAll() {
+  updateModeBtn();
+  updateDebugBtn();
+  updateStickLabels();
+  updateReadouts();
+  renderSwitchCols();
+  renderSliders();      // LS beside left stick, RS beside right stick
+  renderPots();         // S1/S2 in pot row above sticks
+  renderTrimBank();     // all 6 trims in a row below sticks
+  renderButtons();      // physical S1-S6, RB1-RB2
+  renderLuaButtons();   // 15 configurable virtual buttons
+  renderSettings();
+}
 
-function renderButtons() {
-  const grid = document.getElementById('btnGrid');
-  grid.innerHTML = '';
-  for (let i = 0; i < BTN_COUNT; i++) {
-    const btn = cfg.b[i];
-    const el = document.createElement('button');
-    el.textContent = btn.l || `Button ${i+1}`;
-    el.className = 'ctrl-btn' + (btn.c === 0 ? ' unassigned' : '');
-    el.dataset.idx = i;
+function updateStickLabels() {
+  document.getElementById('lblL').textContent =
+    `LEFT  LX:CH${cfg.lx}  LY:CH${cfg.ly}`;
+  document.getElementById('lblR').textContent =
+    `RIGHT  RX:CH${cfg.rx}  RY:CH${cfg.ry}`;
+}
+function updateReadouts() {
+  // Use per-axis range so readout reflects actual SBUS output
+  document.getElementById('readL').innerHTML =
+    `LX:&nbsp;${axisToSbusRange(sticks.L.x,  cfg.aMin[3],cfg.aMax[3])}&nbsp;&nbsp;` +
+    `LY:&nbsp;${axisToSbusRange(-sticks.L.y, cfg.aMin[2],cfg.aMax[2])}`;
+  document.getElementById('readR').innerHTML =
+    `RX:&nbsp;${axisToSbusRange(sticks.R.x,  cfg.aMin[0],cfg.aMax[0])}&nbsp;&nbsp;` +
+    `RY:&nbsp;${axisToSbusRange(-sticks.R.y, cfg.aMin[1],cfg.aMax[1])}`;
+}
 
-    if (btn.c !== 0) {
-      // Touch events
-      el.addEventListener('touchstart', (e) => { e.preventDefault(); btnPress(i, el); }, {passive: false});
-      el.addEventListener('touchend',   (e) => { e.preventDefault(); btnRelease(i, el); }, {passive: false});
-      // Mouse events
-      el.addEventListener('mousedown',   () => btnPress(i, el));
-      el.addEventListener('mouseup',     () => btnRelease(i, el));
-      el.addEventListener('mouseleave',  () => btnRelease(i, el));
+// ── Switches ──────────────────────────────────────────────────────────────────
+// Build a single switch card for index i in cfg.sw
+function makeSwitchCard(i) {
+  const sw   = cfg.sw[i];
+  const card = document.createElement('div');
+  card.className = 'sw-card';
+
+  const nm = document.createElement('div'); nm.className='sw-name'; nm.textContent=sw.l;
+  const ch = document.createElement('div'); ch.className='sw-ch';
+  ch.textContent = sw.c ? `CH${sw.c}` : 'N/A';
+  card.appendChild(nm); card.appendChild(ch);
+
+  if (sw.t === 2) {
+    // Momentary
+    const btn = document.createElement('button');
+    btn.className = 'sw-mom'; btn.textContent = sw.l;
+    const press = () => { btn.classList.add('held');    send({t:'sw',i,p:1}); };
+    const rel   = () => { btn.classList.remove('held'); send({t:'sw',i,p:0}); };
+    btn.addEventListener('mousedown',  press);
+    btn.addEventListener('mouseup',    rel);
+    btn.addEventListener('mouseleave', rel);
+    btn.addEventListener('touchstart', (e)=>{e.preventDefault();press();},{passive:false});
+    btn.addEventListener('touchend',   (e)=>{e.preventDefault();rel();},  {passive:false});
+    card.appendChild(btn);
+  } else {
+    const toggle  = document.createElement('div'); toggle.className='sw-toggle';
+    const numPos  = (sw.t===1) ? 2 : 3;
+    const labels  = numPos===2 ? ['▼','▲'] : ['▼','—','▲'];
+    // Render high→mid→low top-to-bottom
+    for (let p = numPos-1; p >= 0; p--) {
+      const seg = document.createElement('button');
+      seg.className = 'sw-seg' + (sw.pos===p ? ' sel' : '');
+      seg.textContent = labels[p];
+      seg.addEventListener('click', () => {
+        sw.pos = p;
+        toggle.querySelectorAll('.sw-seg').forEach((s,si) => {
+          s.classList.toggle('sel', (numPos-1-si)===p);
+        });
+        send({t:'sw', i, p});
+      });
+      toggle.appendChild(seg);
     }
-    grid.appendChild(el);
+    card.appendChild(toggle);
+  }
+  return card;
+}
+
+// Build a switch pyramid:  topIdx single card, midIdx single card, then pair side-by-side
+//   Left:  SF(5) top, SE(4) mid, SA(0)+SB(1) bottom pair
+//   Right: SH(7) top, SG(6) mid, SC(2)+SD(3) bottom pair
+function renderSwitchCols() {
+  function buildPyramid(id, topIdx, midIdx, pairA, pairB) {
+    const root = document.getElementById(id);
+    root.innerHTML = '';
+    root.appendChild(makeSwitchCard(topIdx));   // SF or SH
+    root.appendChild(makeSwitchCard(midIdx));   // SE or SG
+    const pair = document.createElement('div');
+    pair.className = 'sw-pair';
+    pair.appendChild(makeSwitchCard(pairA));    // SA or SC
+    pair.appendChild(makeSwitchCard(pairB));    // SB or SD
+    root.appendChild(pair);
+  }
+  buildPyramid('swPyramidLeft',  5, 4, 0, 1);  // SF SE | SA SB
+  buildPyramid('swPyramidRight', 7, 6, 2, 3);  // SH SG | SC SD
+}
+
+// ── Trim + Slider columns ─────────────────────────────────────────────────────
+// Left col: T5 (idx=4) + LS (idx=0)
+// Right col: RS (idx=1) + T6 (idx=5)
+function makeTrimWidget(trIdx) {
+  const tr  = cfg.tr[trIdx];
+  const div = document.createElement('div'); div.className='trim-widget';
+
+  const lbl = document.createElement('div'); lbl.className='trim-lbl'; lbl.textContent=tr.l;
+  const ch  = document.createElement('div'); ch.className='trim-ch';
+  ch.textContent = tr.c ? `CH${tr.c}` : 'N/A';
+
+  const valEl = document.createElement('div'); valEl.className='trim-val';
+  valEl.id = `trv${trIdx}`; valEl.textContent = trimOffset(trimCur[trIdx]);
+
+  const btnUp  = document.createElement('button'); btnUp.className='trim-btn'; btnUp.textContent='▲';
+  const btnDn  = document.createElement('button'); btnDn.className='trim-btn'; btnDn.textContent='▼';
+  const btnRst = document.createElement('button'); btnRst.className='trim-rst'; btnRst.textContent='RST';
+
+  btnRst.onclick = () => {
+    trimCur[trIdx] = SBUS_CENTER;
+    valEl.textContent = trimOffset(trimCur[trIdx]);
+    send({t:'tr', i:trIdx, d:0});
+  };
+
+  function applyTrimDelta(delta) {
+    const step = tr.s || 10;
+    trimCur[trIdx] = Math.max(SBUS_MIN, Math.min(SBUS_MAX, trimCur[trIdx] + delta*step));
+    valEl.textContent = trimOffset(trimCur[trIdx]);
+    send({t:'tr', i:trIdx, d:delta});
+  }
+
+  function makeRepeater(btn, delta) {
+    let hold=null, rep=null;
+    const start = () => {
+      applyTrimDelta(delta);
+      hold = setTimeout(()=>{ rep=setInterval(()=>applyTrimDelta(delta), 80); }, 400);
+    };
+    const stop = () => {
+      if (hold) { clearTimeout(hold); hold=null; }
+      if (rep)  { clearInterval(rep); rep=null;  }
+    };
+    btn.addEventListener('mousedown',  start);
+    btn.addEventListener('mouseup',    stop);
+    btn.addEventListener('mouseleave', stop);
+    btn.addEventListener('touchstart', (e)=>{e.preventDefault();start();},{passive:false});
+    btn.addEventListener('touchend',   (e)=>{e.preventDefault();stop(); },{passive:false});
+  }
+  makeRepeater(btnUp, +1);
+  makeRepeater(btnDn, -1);
+
+  div.appendChild(lbl); div.appendChild(ch); div.appendChild(btnUp);
+  div.appendChild(valEl); div.appendChild(btnDn); div.appendChild(btnRst);
+  return div;
+}
+
+function makeSliderWidget(slIdx) {
+  const sl  = cfg.sl[slIdx];
+  const div = document.createElement('div'); div.className='slider-widget';
+
+  const lbl = document.createElement('div'); lbl.className='slider-lbl'; lbl.textContent=sl.l;
+  const ch  = document.createElement('div'); ch.className='slider-ch';
+  ch.textContent = sl.c ? `CH${sl.c}` : 'N/A';
+
+  const wrap = document.createElement('div'); wrap.className='slider-wrap';
+  const inp  = document.createElement('input');
+  inp.type='range'; inp.className='slider-inp';
+  inp.min='0'; inp.max='100'; inp.value=String(sl.pct||50);
+  wrap.appendChild(inp);
+
+  const valEl = document.createElement('div'); valEl.className='slider-val';
+  valEl.id = `slv${slIdx}`;
+  valEl.textContent = sbusFromPct(sl.pct||50);
+
+  inp.oninput = () => {
+    const pct = parseInt(inp.value);
+    valEl.textContent = sbusFromPct(pct);
+    send({t:'sl', i:slIdx, v:pct});
+  };
+
+  div.appendChild(lbl); div.appendChild(ch); div.appendChild(wrap); div.appendChild(valEl);
+  return div;
+}
+
+// ── Sliders: LS left of left stick, RS right of right stick ──────────────────
+function renderSliders() {
+  // LS (index 0) beside left stick
+  const lsCol = document.getElementById('slLSCol');
+  lsCol.innerHTML = '';
+  lsCol.appendChild(makeSliderWidget(0));
+
+  // RS (index 1) beside right stick
+  const rsCol = document.getElementById('slRSCol');
+  rsCol.innerHTML = '';
+  rsCol.appendChild(makeSliderWidget(1));
+}
+
+// ── S1/S2 pots: horizontal sliders in their own row ──────────────────────────
+function renderPots() {
+  const row = document.getElementById('potRow');
+  row.innerHTML = '';
+  // cfg.sl[2] = S1, cfg.sl[3] = S2
+  for (let i = 2; i < Math.min(cfg.sl.length, 4); i++) {
+    const sl  = cfg.sl[i];
+    const div = document.createElement('div'); div.className='pot-widget';
+
+    const lbl = document.createElement('div'); lbl.className='pot-lbl'; lbl.textContent=sl.l;
+    const ch  = document.createElement('div'); ch.className='pot-ch';
+    ch.textContent = sl.c ? `CH${sl.c}` : 'N/A';
+
+    const inp = document.createElement('input');
+    inp.type='range'; inp.className='pot-inp';
+    inp.min='0'; inp.max='100'; inp.value=String(sl.pct||50);
+
+    const valEl = document.createElement('div'); valEl.className='pot-val';
+    valEl.id=`slv${i}`; valEl.textContent=sbusFromPct(sl.pct||50);
+
+    const idx = i; // capture
+    inp.oninput = () => {
+      const pct = parseInt(inp.value);
+      valEl.textContent = sbusFromPct(pct);
+      send({t:'sl', i:idx, v:pct});
+    };
+    div.appendChild(lbl); div.appendChild(ch); div.appendChild(inp); div.appendChild(valEl);
+    row.appendChild(div);
   }
 }
 
-function btnPress(idx, el) {
-  el.classList.add('pressed');
-  send({t: 'b', i: idx, p: true});
+// ── All 6 trims in a single row below the sticks ─────────────────────────────
+// Order on X18 (left→right): T4, T5, T3, T6, T1, T2  (roughly)
+// Simplified order by index: T1..T6 left-to-right; user can re-read as needed
+function renderTrimBank() {
+  const bank = document.getElementById('trimBank');
+  bank.innerHTML = '';
+  for (let i = 0; i < cfg.tr.length; i++) {
+    bank.appendChild(makeTrimWidget(i));
+  }
 }
 
-function btnRelease(idx, el) {
-  el.classList.remove('pressed');
-  send({t: 'b', i: idx, p: false});
+// ── Buttons S1-S6, RB1-RB2 ───────────────────────────────────────────────────
+function renderButtons() {
+  const bank = document.getElementById('btnBank');
+  bank.innerHTML = '';
+
+  const grpS = document.createElement('div'); grpS.className='btn-group';
+  const grpR = document.createElement('div'); grpR.className='btn-group';
+  const sep  = document.createElement('div'); sep.className='sep';
+
+  cfg.btn.forEach((btn, i) => {
+    const el = document.createElement('button');
+    el.textContent = btn.l || `Btn${i+1}`;
+    el.className   = 'ctrl-btn' + (btn.c===0 ? ' unassigned' : '');
+    if (btn.c !== 0) {
+      const press = () => { el.classList.add('pressed');   send({t:'btn',i,p:true}); };
+      const rel   = () => { el.classList.remove('pressed'); send({t:'btn',i,p:false}); };
+      el.addEventListener('mousedown',  press);
+      el.addEventListener('mouseup',    rel);
+      el.addEventListener('mouseleave', rel);
+      el.addEventListener('touchstart', (e)=>{e.preventDefault();press();},{passive:false});
+      el.addEventListener('touchend',   (e)=>{e.preventDefault();rel();},  {passive:false});
+    }
+    // S1-S6 → first 6; RB1/RB2 → last 2
+    (i < 6 ? grpS : grpR).appendChild(el);
+  });
+
+  bank.appendChild(grpS);
+  bank.appendChild(sep);
+  bank.appendChild(grpR);
+}
+
+// ── Lua / virtual button grid (15 buttons) ───────────────────────────────────
+function renderLuaButtons() {
+  const grid = document.getElementById('luaGrid');
+  grid.innerHTML = '';
+  (cfg.lua || []).forEach((btn, i) => {
+    const el = document.createElement('button');
+    el.textContent = btn.l || `Button ${i+1}`;
+    const assigned = btn.c !== 0;
+    el.className   = 'lua-btn' + (assigned ? '' : ' unassigned');
+    // Always apply color so it's visible even on unassigned buttons
+    el.style.setProperty('--btn-color', btn.k && btn.k.length === 7 ? btn.k : '#4fc3f7');
+    if (assigned) {
+      const press = () => { el.classList.add('pressed');    send({t:'lua',i,p:true}); };
+      const rel   = () => { el.classList.remove('pressed'); send({t:'lua',i,p:false}); };
+      el.addEventListener('mousedown',  press);
+      el.addEventListener('mouseup',    rel);
+      el.addEventListener('mouseleave', rel);
+      el.addEventListener('touchstart', (e)=>{e.preventDefault();press();},{passive:false});
+      el.addEventListener('touchend',   (e)=>{e.preventDefault();rel();},  {passive:false});
+    }
+    grid.appendChild(el);
+  });
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
-
 function renderSettings() {
-  // Axis selects
-  const ids   = ['selLX','selLY','selRX','selRY'];
-  const vals  = [cfg.lx, cfg.ly, cfg.rx, cfg.ry];
-  ids.forEach((id, i) => {
-    const container = document.getElementById(id).parentNode;
-    const newSel    = buildChSelect(vals[i], false);
-    newSel.id = id;
-    container.replaceChild(newSel, document.getElementById(id));
+  // Axis channel dropdowns
+  [['selRX',cfg.rx],['selRY',cfg.ry],['selLY',cfg.ly],['selLX',cfg.lx]].forEach(([id,val])=>{
+    const cont = document.getElementById(id).parentNode;
+    const sel  = buildChSel(val, false); sel.id=id;
+    cont.replaceChild(sel, document.getElementById(id));
+  });
+  // Axis min/max inputs
+  [0,1,2,3].forEach(i=>{
+    const mnEl=document.getElementById(`axMin${i}`);
+    const mxEl=document.getElementById(`axMax${i}`);
+    if(mnEl) mnEl.value=cfg.aMin[i]??172;
+    if(mxEl) mxEl.value=cfg.aMax[i]??1811;
   });
 
-  // Button config table
-  const tbody = document.getElementById('btnConfigBody');
-  tbody.innerHTML = '';
-  for (let i = 0; i < BTN_COUNT; i++) {
-    const btn = cfg.b[i];
-    const tr  = document.createElement('tr');
+  // Switch table
+  const swTb = document.getElementById('swCfgBody'); swTb.innerHTML='';
+  cfg.sw.forEach((sw, i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${sw.l}</td>`;
+    const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(sw.c,true)); tr.appendChild(tdCh);
+    for(let j=0;j<3;j++){
+      const td=document.createElement('td');
+      const inp=document.createElement('input'); inp.type='number';
+      inp.min=SBUS_MIN; inp.max=SBUS_MAX; inp.value=sw.v[j]||SBUS_CENTER;
+      td.appendChild(inp); tr.appendChild(td);
+    }
+    swTb.appendChild(tr);
+  });
 
+  // Slider/pot table (all 4: LS, RS, S1, S2)
+  const slTb = document.getElementById('slCfgBody'); slTb.innerHTML='';
+  cfg.sl.forEach((sl,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${sl.l}</td>`;
+    const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(sl.c,true)); tr.appendChild(tdCh);
+    slTb.appendChild(tr);
+  });
+
+  // Trim table
+  const trTb = document.getElementById('trCfgBody'); trTb.innerHTML='';
+  cfg.tr.forEach((t,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${t.l}</td>`;
+    const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(t.c,false)); tr.appendChild(tdCh);
+    const tdS=document.createElement('td');
+    const si=document.createElement('input'); si.type='number'; si.min=1; si.max=100; si.value=t.s||10;
+    si.style.width='60px'; tdS.appendChild(si); tr.appendChild(tdS);
+    trTb.appendChild(tr);
+  });
+
+  // Physical button table
+  const btnTb = document.getElementById('btnCfgBody'); btnTb.innerHTML='';
+  cfg.btn.forEach((b,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${b.l}</td>`;
+    const tdL=document.createElement('td');
+    const li=document.createElement('input'); li.type='text'; li.value=b.l; li.maxLength=31;
+    tdL.appendChild(li); tr.appendChild(tdL);
+    const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(b.c,true)); tr.appendChild(tdCh);
+    const tdV=document.createElement('td');
+    const vi=document.createElement('input'); vi.type='number'; vi.min=SBUS_MIN; vi.max=SBUS_MAX; vi.value=b.v;
+    vi.style.width='70px'; tdV.appendChild(vi); tr.appendChild(tdV);
+    btnTb.appendChild(tr);
+  });
+
+  // Lua button table
+  const luaTb = document.getElementById('luaCfgBody'); luaTb.innerHTML='';
+  (cfg.lua||[]).forEach((b,i)=>{
+    const tr=document.createElement('tr');
     // # column
-    const tdNum = document.createElement('td');
-    tdNum.textContent = i + 1;
-    tdNum.style.cssText = 'font-size:.7rem;color:var(--muted);text-align:center;';
-    tr.appendChild(tdNum);
+    const tdN=document.createElement('td'); tdN.textContent=i+1;
+    tdN.style.cssText='font-size:.68rem;color:var(--muted);text-align:center;';
+    tr.appendChild(tdN);
+    // Label
+    const tdL=document.createElement('td');
+    const li=document.createElement('input'); li.type='text'; li.value=b.l; li.maxLength=31;
+    tdL.appendChild(li); tr.appendChild(tdL);
+    // Channel
+    const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(b.c,true)); tr.appendChild(tdCh);
+    // Value
+    const tdV=document.createElement('td');
+    const vi=document.createElement('input'); vi.type='number'; vi.min=SBUS_MIN; vi.max=SBUS_MAX; vi.value=b.v||SBUS_MAX;
+    vi.style.width='70px'; tdV.appendChild(vi); tr.appendChild(tdV);
+    // Color
+    const tdK=document.createElement('td'); tdK.style.textAlign='center';
+    const ki=document.createElement('input'); ki.type='color'; ki.value=b.k||'#4fc3f7';
+    ki.style.cssText='width:40px;height:28px;padding:2px;border:none;border-radius:4px;cursor:pointer;background:none;';
+    // Live-preview: update the button color in the grid as the user picks
+    ki.addEventListener('input', () => {
+      const btns = document.querySelectorAll('#luaGrid .lua-btn');
+      if (btns[i]) btns[i].style.setProperty('--btn-color', ki.value);
+    });
+    tdK.appendChild(ki); tr.appendChild(tdK);
+    luaTb.appendChild(tr);
+  });
+}
 
-    // Label column
-    const tdLbl = document.createElement('td');
-    const inp   = document.createElement('input');
-    inp.type = 'text';
-    inp.value = btn.l;
-    inp.maxLength = 31;
-    inp.oninput = () => { cfg.b[i].l = inp.value; renderButtons(); };
-    tdLbl.appendChild(inp);
-    tr.appendChild(tdLbl);
+function saveConfig() {
+  const payload = {t:'cfg'};
+  payload.rx = parseInt(document.getElementById('selRX').value);
+  payload.ry = parseInt(document.getElementById('selRY').value);
+  payload.ly = parseInt(document.getElementById('selLY').value);
+  payload.lx = parseInt(document.getElementById('selLX').value);
+  payload.aMin = [0,1,2,3].map(i => parseInt(document.getElementById(`axMin${i}`).value)||172);
+  payload.aMax = [0,1,2,3].map(i => parseInt(document.getElementById(`axMax${i}`).value)||1811);
 
-    // Channel column
-    const tdCh = document.createElement('td');
-    tdCh.appendChild(buildChSelect(btn.c, true));
-    tr.appendChild(tdCh);
+  const swRows = document.getElementById('swCfgBody').rows;
+  payload.sw = cfg.sw.map((sw, i) => {
+    const row = swRows[i];
+    const ch = parseInt(row.cells[1].querySelector('select').value);
+    const v = [0,1,2].map(j=>parseInt(row.cells[2+j].querySelector('input').value));
+    return {l:sw.l, c:ch, t:sw.t, v};
+  });
 
-    // Value column
-    const tdVal = document.createElement('td');
-    const numInp = document.createElement('input');
-    numInp.type = 'number';
-    numInp.min = String(SBUS_MIN);
-    numInp.max = String(SBUS_MAX);
-    numInp.value = btn.v;
-    tdVal.appendChild(numInp);
-    tr.appendChild(tdVal);
+  const slRows = document.getElementById('slCfgBody').rows;
+  payload.sl = cfg.sl.map((sl, i) => ({
+    l: sl.l,
+    c: parseInt(slRows[i].cells[1].querySelector('select').value)
+  }));
 
-    tbody.appendChild(tr);
+  const trRows = document.getElementById('trCfgBody').rows;
+  payload.tr = cfg.tr.map((t, i) => ({
+    l: t.l,
+    c: parseInt(trRows[i].cells[1].querySelector('select').value),
+    s: parseInt(trRows[i].cells[2].querySelector('input').value)
+  }));
+
+  const btnRows = document.getElementById('btnCfgBody').rows;
+  payload.btn = cfg.btn.map((b, i) => ({
+    l: btnRows[i].cells[1].querySelector('input').value,
+    c: parseInt(btnRows[i].cells[2].querySelector('select').value),
+    v: parseInt(btnRows[i].cells[3].querySelector('input').value)
+  }));
+
+  const luaRows = document.getElementById('luaCfgBody').rows;
+  payload.lua = (cfg.lua||[]).map((b, i) => ({
+    l: luaRows[i].cells[1].querySelector('input').value,
+    c: parseInt(luaRows[i].cells[2].querySelector('select').value),
+    v: parseInt(luaRows[i].cells[3].querySelector('input').value),
+    k: luaRows[i].cells[4].querySelector('input[type=color]').value
+  }));
+
+  send(payload);
+}
+
+// =============================================================================
+//  Debug channel grid
+// =============================================================================
+let dbgCells=[], dbgLitTimers=[], dbgUpdatesInWindow=0, dbgRateTimer=null;
+
+function initDbgGrid(n) {
+  const grid=document.getElementById('dbgGrid'); if(!grid)return;
+  grid.innerHTML=''; dbgCells=[]; dbgLitTimers=new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    const cell=document.createElement('div'); cell.className='dbg-cell';
+    const cn=document.createElement('div'); cn.className='dcn'; cn.textContent=`CH${String(i+1).padStart(2,'0')}`;
+    const cv=document.createElement('span'); cv.className='dcv'; cv.textContent='—';
+    cell.appendChild(cn); cell.appendChild(cv); grid.appendChild(cell);
+    dbgCells.push({cell,cv});
+  }
+}
+
+function handleChData(msg) {
+  const ch=msg.ch, mode=msg.mode, fl=msg.fl;
+  if(!Array.isArray(ch)) return;
+  const offMsg=document.getElementById('dbgOffMsg');
+  const grid=document.getElementById('dbgGrid');
+  const info=document.getElementById('dbgInfo');
+  if(offMsg) offMsg.style.display='none';
+  if(grid)   grid.style.display='';
+  if(info)   info.style.display='';
+  if(dbgCells.length!==ch.length) initDbgGrid(ch.length);
+  ch.forEach((val,i)=>{
+    const e=dbgCells[i]; if(!e) return;
+    const prev=parseInt(e.cv.textContent)||-1;
+    e.cv.textContent=val;
+    if(val!==prev){
+      e.cell.classList.add('lit');
+      if(dbgLitTimers[i]) clearTimeout(dbgLitTimers[i]);
+      dbgLitTimers[i]=setTimeout(()=>{e.cell.classList.remove('lit');dbgLitTimers[i]=null;},300);
+    }
+  });
+  const mEl=document.getElementById('diMode'); if(mEl) mEl.textContent=`SBUS-${mode}`;
+  const fEl=document.getElementById('diFrame'); if(fEl) fEl.textContent=fl;
+  const cEl=document.getElementById('diCh');   if(cEl) cEl.textContent=ch.length;
+  dbgUpdatesInWindow++;
+  if(!dbgRateTimer){
+    dbgRateTimer=setInterval(()=>{
+      const rEl=document.getElementById('diRate'); if(rEl) rEl.textContent=`${dbgUpdatesInWindow}/s`;
+      dbgUpdatesInWindow=0;
+    },1000);
   }
 }
 
 // =============================================================================
-//  Joystick logic
+//  Joystick
 // =============================================================================
-
-const sticks = {
-  L: {x: 0, y: 0, active: false, touchId: null},
-  R: {x: 0, y: 0, active: false, touchId: null}
-};
-
-let joyTimer = null;
-
 function scheduleJoySend() {
-  if (joyTimer) return;
-  joyTimer = setTimeout(() => {
-    joyTimer = null;
-    send({t: 'a', lx: sticks.L.x, ly: sticks.L.y, rx: sticks.R.x, ry: sticks.R.y});
+  if(joyTimer) return;
+  joyTimer=setTimeout(()=>{
+    joyTimer=null;
+    send({t:'a', lx:sticks.L.x, ly:sticks.L.y, rx:sticks.R.x, ry:sticks.R.y});
     updateReadouts();
-  }, 30);
+  },30);
 }
-
-function posFromClientXY(clientX, clientY, wrap) {
-  const r  = wrap.getBoundingClientRect();
-  const cx = r.left + r.width  / 2;
-  const cy = r.top  + r.height / 2;
-  let nx = (clientX - cx) / (r.width  / 2);
-  let ny = (clientY - cy) / (r.height / 2);
-  // Clamp to unit circle
-  const mag = Math.sqrt(nx * nx + ny * ny);
-  if (mag > 1) { nx /= mag; ny /= mag; }
-  return [+nx.toFixed(3), +ny.toFixed(3)];
+function posFromXY(cx,cy,wrap){
+  const r=wrap.getBoundingClientRect();
+  let nx=(cx-r.left-r.width/2)/(r.width/2);
+  let ny=(cy-r.top-r.height/2)/(r.height/2);
+  const mag=Math.sqrt(nx*nx+ny*ny); if(mag>1){nx/=mag;ny/=mag;}
+  return[+nx.toFixed(3),+ny.toFixed(3)];
 }
-
-function applyStick(side, nx, ny) {
-  sticks[side].x = nx;
-  sticks[side].y = ny;
-  const thumb = document.getElementById('thumb' + side);
-  thumb.style.left = (50 + nx * 44) + '%';
-  thumb.style.top  = (50 + ny * 44) + '%';
+function applyStick(side,nx,ny){
+  sticks[side].x=nx; sticks[side].y=ny;
+  const th=document.getElementById('thumb'+side);
+  th.style.left=(50+nx*44)+'%'; th.style.top=(50+ny*44)+'%';
   scheduleJoySend();
 }
+function springBack(side){ applyStick(side,0,0); }
 
-function springBack(side) {
-  applyStick(side, 0, 0);
-}
-
-// ── Touch ─────────────────────────────────────────────────────────────────────
-
-function initStick(side) {
-  const wrap = document.getElementById('stick' + side);
-
-  wrap.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const t = e.changedTouches[0];
-    sticks[side].touchId = t.identifier;
-    sticks[side].active  = true;
+function initStick(side){
+  const wrap=document.getElementById('stick'+side);
+  wrap.addEventListener('touchstart',(e)=>{
+    e.preventDefault(); const t=e.changedTouches[0];
+    sticks[side].touchId=t.identifier; sticks[side].active=true;
     wrap.classList.add('active');
-    const [nx, ny] = posFromClientXY(t.clientX, t.clientY, wrap);
-    applyStick(side, nx, ny);
-  }, {passive: false});
-
-  wrap.addEventListener('touchmove', (e) => {
+    const[nx,ny]=posFromXY(t.clientX,t.clientY,wrap); applyStick(side,nx,ny);
+  },{passive:false});
+  wrap.addEventListener('touchmove',(e)=>{
     e.preventDefault();
-    for (const t of e.changedTouches) {
-      if (t.identifier === sticks[side].touchId) {
-        const [nx, ny] = posFromClientXY(t.clientX, t.clientY, wrap);
-        applyStick(side, nx, ny);
+    for(const t of e.changedTouches){
+      if(t.identifier===sticks[side].touchId){
+        const[nx,ny]=posFromXY(t.clientX,t.clientY,wrap); applyStick(side,nx,ny);
       }
     }
-  }, {passive: false});
-
-  wrap.addEventListener('touchend', (e) => {
+  },{passive:false});
+  wrap.addEventListener('touchend',(e)=>{
     e.preventDefault();
-    for (const t of e.changedTouches) {
-      if (t.identifier === sticks[side].touchId) {
-        sticks[side].active  = false;
-        sticks[side].touchId = null;
-        wrap.classList.remove('active');
-        springBack(side);
+    for(const t of e.changedTouches){
+      if(t.identifier===sticks[side].touchId){
+        sticks[side].active=false; sticks[side].touchId=null;
+        wrap.classList.remove('active'); springBack(side);
       }
     }
-  }, {passive: false});
-
-  // ── Mouse ──────────────────────────────────────────────────────────────────
-
-  wrap.addEventListener('mousedown', (e) => {
-    sticks[side].active = true;
-    wrap.classList.add('active');
-    const [nx, ny] = posFromClientXY(e.clientX, e.clientY, wrap);
-    applyStick(side, nx, ny);
-
-    const onMove = (ev) => {
-      if (!sticks[side].active) return;
-      const [nx2, ny2] = posFromClientXY(ev.clientX, ev.clientY, wrap);
-      applyStick(side, nx2, ny2);
-    };
-    const onUp = () => {
-      sticks[side].active = false;
-      wrap.classList.remove('active');
-      springBack(side);
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup',   onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup',   onUp);
+  },{passive:false});
+  wrap.addEventListener('mousedown',(e)=>{
+    sticks[side].active=true; wrap.classList.add('active');
+    const[nx,ny]=posFromXY(e.clientX,e.clientY,wrap); applyStick(side,nx,ny);
+    const onMove=(ev)=>{ if(!sticks[side].active)return; const[nx2,ny2]=posFromXY(ev.clientX,ev.clientY,wrap); applyStick(side,nx2,ny2); };
+    const onUp=()=>{ sticks[side].active=false; wrap.classList.remove('active'); springBack(side); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
+    document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
   });
 }
+
+// =============================================================================
+//  Serial command hint (displayed on Serial Monitor)
+// =============================================================================
 
 // =============================================================================
 //  Boot
 // =============================================================================
-
 initStick('L');
 initStick('R');
 renderAll();
@@ -1307,18 +1982,11 @@ connect();
 void setup() {
   Serial.begin(115200);
   delay(400);
-  Serial.println("\n[SBUS] SBUSController booting...");
+  Serial.println("\n[SBUS] SBUSController booting (X18 edition)...");
 
-  // SBUS output: 100 kbaud, 8E2, inverted signal
-  // Serial1.begin(baud, config, rx_pin, tx_pin, invert)
-  // rx_pin = -1 → RX not used
-  Serial1.begin(SBUS_BAUD, SERIAL_8E2, -1, SBUS_TX_PIN, true /*invert*/);
+  // SBUS output: 100 kbaud, 8E2, inverted
+  Serial1.begin(SBUS_BAUD, SERIAL_8E2, -1, SBUS_TX_PIN, true);
   Serial.printf("[SBUS] Serial1 TX on GPIO%d  (100kbaud 8E2 inverted)\n", SBUS_TX_PIN);
-
-  // Initialize all channels to center (always fill the full 24-channel array)
-  for (int i = 0; i < SBUS_CH_COUNT_24; i++) {
-    sbusChannels[i] = SBUS_CENTER;
-  }
 
   // LittleFS
   if (!LittleFS.begin(true)) {
@@ -1327,53 +1995,53 @@ void setup() {
     loadConfig();
   }
 
-  // Start web server BEFORE connecting to WiFi.
-  // AsyncTCP allocates its TCP socket via LWIP's tcp_alloc(), which requires the
-  // TCPIP core mutex.  Calling server.begin() after WiFi.begin() returns can hit a
-  // timing window where the mutex is already held by the WiFi/IP stack, causing the
-  // "Required to lock TCPIP core functionality!" assert.  Starting the server while
-  // LWIP is initialised but idle (before any connection attempt) avoids this entirely.
-  // The server binds to INADDR_ANY so it works on whichever interface comes up.
-  WiFi.persistent(false);        // don't write credentials to flash on every connect
-  WiFi.mode(WIFI_STA);           // initialise LWIP now, before server.begin()
+  // Init runtime state after config is loaded
+  initRuntimeState();
+  applyAllControls();
+
+  // Start web server BEFORE WiFi (avoids AsyncTCP mutex race on ESP32 core 3.x)
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
 
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->send_P(200, "text/html", HTML);
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest* req){
+    Serial.printf("[SBUS] HTTP GET /  from %s\n", req->client()->remoteIP().toString().c_str());
+    req->send(200, "text/html", HTML);  // send() preferred over send_P() in ESP32Async v3.x
   });
-  server.onNotFound([](AsyncWebServerRequest* req) {
+  // Lightweight health-check — load this first to verify server is alive before full page
+  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest* req){
+    Serial.println("[SBUS] HTTP GET /ping");
+    req->send(200, "text/plain", "pong");
+  });
+  server.onNotFound([](AsyncWebServerRequest* req){
+    Serial.printf("[SBUS] 404: %s\n", req->url().c_str());
     req->send(404, "text/plain", "Not found");
   });
   server.begin();
   Serial.println("[SBUS] Web server started.");
 
-  // WiFi — cascading: primary → fallback → AP
-  // Mode is already STA; just call begin() + wait.
+  // WiFi cascade
   auto tryConnect = [](const char* ssid, const char* pass) -> bool {
     Serial.printf("[SBUS] Trying \"%s\"...\n", ssid);
     WiFi.disconnect(false);
     WiFi.begin(ssid, pass);
     const uint32_t t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_STA_TIMEOUT_MS) {
-      delay(100);
-    }
+    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_STA_TIMEOUT_MS) delay(100);
     return WiFi.status() == WL_CONNECTED;
   };
 
   if (tryConnect(WIFI_PRIMARY_SSID, WIFI_PRIMARY_PASS)) {
-    Serial.printf("[SBUS] ✓ Connected to \"%s\"  →  http://%s\n",
+    Serial.printf("[SBUS] Connected to \"%s\"  ->  http://%s\n",
       WIFI_PRIMARY_SSID, WiFi.localIP().toString().c_str());
-
   } else if (tryConnect(WIFI_FALLBACK_SSID, WIFI_FALLBACK_PASS)) {
-    Serial.printf("[SBUS] ✓ Connected to \"%s\"  →  http://%s\n",
+    Serial.printf("[SBUS] Connected to \"%s\"  ->  http://%s\n",
       WIFI_FALLBACK_SSID, WiFi.localIP().toString().c_str());
-
   } else {
-    Serial.printf("[SBUS] ✗ Both networks failed — starting AP \"%s\"\n", WIFI_AP_SSID);
+    Serial.printf("[SBUS] Both networks failed — AP \"%s\"\n", WIFI_AP_SSID);
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-    Serial.printf("[SBUS] AP ready  →  http://%s\n", WiFi.softAPIP().toString().c_str());
+    Serial.printf("[SBUS] AP ready  ->  http://%s\n", WiFi.softAPIP().toString().c_str());
   }
 
   Serial.printf("[SBUS] Mode: SBUS-%d  (%d ch, %d bytes/frame)\n",
@@ -1386,10 +2054,6 @@ void setup() {
 //  LOOP
 // =============================================================================
 
-// Handle single-character Serial commands:
-//   m  →  toggle SBUS mode (SBUS-16 ↔ SBUS-24)
-//   d  →  toggle debug output on/off
-//   ?  →  print current status
 static void handleSerialCommands() {
   while (Serial.available()) {
     char c = (char)Serial.read();
@@ -1400,8 +2064,8 @@ static void handleSerialCommands() {
       cfg.sbus24 = g_sbus24;
       saveConfig();
       for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
-      Serial.printf("[SBUS] Mode → SBUS-%d (%d ch, %d bytes/frame)\n",
-                    sbusChCount(), sbusChCount(), sbusFrameLen());
+      applyAllControls();
+      Serial.printf("[SBUS] Mode -> SBUS-%d (%d bytes/frame)\n", sbusChCount(), sbusFrameLen());
       ws.textAll(buildCfgJson());
 
     } else if (c == 'd') {
@@ -1420,21 +2084,27 @@ static void handleSerialCommands() {
       Serial.printf("  |  Debug: %s", g_sbusDebug ? "ON" : "OFF");
 #endif
       Serial.println();
+      Serial.println("[SBUS] Switch positions:");
+      for (int i = 0; i < MAX_SWITCHES; i++)
+        Serial.printf("  %s(CH%d)=pos%d  ", cfg.sw[i].label, cfg.sw[i].ch, swPos[i]);
+      Serial.println();
+      Serial.println("[SBUS] Trim values (offset from center):");
+      for (int i = 0; i < MAX_TRIMS; i++)
+        Serial.printf("  %s(CH%d)=%+d  ", cfg.trim[i].label, cfg.trim[i].ch,
+                      (int)trimVal[i] - SBUS_CENTER);
+      Serial.println();
     }
   }
 }
 
 void loop() {
-  // Handle Serial commands (m=mode, d=debug, ?=status)
   handleSerialCommands();
 
-  // Transmit SBUS frame every 14 ms
   uint32_t now = millis();
   if (now - lastFrameMs >= SBUS_FRAME_MS) {
     lastFrameMs = now;
     transmitSbus();
   }
 
-  // Periodically clean up stale WebSocket clients
   ws.cleanupClients();
 }
