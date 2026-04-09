@@ -36,18 +36,17 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
 // ─── WiFi ─────────────────────────────────────────────────────────────────────
-#define WIFI_PRIMARY_SSID   "RHN-COMM"
-#define WIFI_PRIMARY_PASS   "0o9i8u7y)O(I*U&Y"
-#define WIFI_FALLBACK_SSID  "HelloEverybody"
-#define WIFI_FALLBACK_PASS  "thedeskisbrown"
+#define MAX_WIFI_NETS       4
 #define WIFI_AP_SSID        "SBUSCtrl"
 #define WIFI_AP_PASS        "sbus1234"
 #define WIFI_STA_TIMEOUT_MS 5000
+#define MDNS_HOST           "sbusctrl"
 
 // ─── Pins ─────────────────────────────────────────────────────────────────────
 #define SBUS_TX_PIN     5    // Serial1 TX → Kyber SBUS input (inverted)
@@ -123,6 +122,11 @@ struct LuaBtnCfg {
   uint16_t val;    // value when pressed; center when released
 };
 
+struct WifiNetCfg {
+  char ssid[33];   // up to 32-char SSID + null
+  char pass[65];   // up to 64-char password + null
+};
+
 struct Config {
   uint8_t   ver;
   uint8_t   joyRX;   // CH1 Aileron
@@ -136,12 +140,16 @@ struct Config {
   LuaBtnCfg luaBtn[MAX_LUA_BTNS];
   bool      sbus24;
   // Per-axis output range (SBUS units).  axisMin[0]=RX, [1]=RY, [2]=LY, [3]=LX
-  // Default: full range (172-1811).  Swap min/max to reverse.
   uint16_t  axisMin[4];
   uint16_t  axisMax[4];
+  // WiFi networks (tried in order; 0=auto cascade)
+  WifiNetCfg wifiNets[MAX_WIFI_NETS];
+  uint8_t    wifiCount;  // number of configured networks
+  uint8_t    wifiPref;   // 0=auto, 1..wifiCount=specific net, 255=AP only
 };
 
 Config cfg;
+int8_t g_wifiNet = -1;   // index into cfg.wifiNets of active connection; -1 = AP mode
 
 // ─── Runtime state ────────────────────────────────────────────────────────────
 uint16_t sbusChannels[SBUS_CH_COUNT_24];
@@ -208,6 +216,17 @@ void applyConfigDefaults() {
     cfg.btn[i].ch  = (i < 4) ? 21 + i : 0;  // S1=CH21..S4=CH24
     cfg.btn[i].val = SBUS_MAX;
   }
+
+  // WiFi networks — three defaults, tried in order
+  cfg.wifiCount = 3;
+  cfg.wifiPref  = 0;   // 0 = auto cascade
+  strlcpy(cfg.wifiNets[0].ssid, "RHN-COMM",        sizeof(cfg.wifiNets[0].ssid));
+  strlcpy(cfg.wifiNets[0].pass, "0o9i8u7y)O(I*U&Y",sizeof(cfg.wifiNets[0].pass));
+  strlcpy(cfg.wifiNets[1].ssid, "HelloEverybody",   sizeof(cfg.wifiNets[1].ssid));
+  strlcpy(cfg.wifiNets[1].pass, "thedeskisbrown",   sizeof(cfg.wifiNets[1].pass));
+  strlcpy(cfg.wifiNets[2].ssid, "KYBER_0908",       sizeof(cfg.wifiNets[2].ssid));
+  strlcpy(cfg.wifiNets[2].pass, "12345678",         sizeof(cfg.wifiNets[2].pass));
+  memset(&cfg.wifiNets[3], 0, sizeof(cfg.wifiNets[3]));
 }
 
 void initRuntimeState() {
@@ -333,7 +352,24 @@ void loadConfig() {
     for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
   }
 
-  Serial.println("[SBUS] Config loaded (v2).");
+  // WiFi networks
+  cfg.wifiPref = doc["wifiPref"] | cfg.wifiPref;
+  if (doc["wifiNets"].is<JsonArray>()) {
+    JsonArray wa = doc["wifiNets"].as<JsonArray>();
+    cfg.wifiCount = 0;
+    for (JsonObject o : wa) {
+      if (cfg.wifiCount >= MAX_WIFI_NETS) break;
+      strlcpy(cfg.wifiNets[cfg.wifiCount].ssid, o["s"] | "", sizeof(cfg.wifiNets[0].ssid));
+      strlcpy(cfg.wifiNets[cfg.wifiCount].pass, o["p"] | "", sizeof(cfg.wifiNets[0].pass));
+      if (cfg.wifiNets[cfg.wifiCount].ssid[0]) cfg.wifiCount++;
+    }
+  } else {
+    // File predates WiFi config support — resave immediately so export includes networks
+    Serial.println("[SBUS] WiFi section missing from config — upgrading file.");
+    saveConfig();
+  }
+
+  Serial.println("[SBUS] Config loaded.");
 }
 
 void saveConfig() {
@@ -393,6 +429,14 @@ void saveConfig() {
   JsonArray mnArr = doc.createNestedArray("aMin");
   JsonArray mxArr = doc.createNestedArray("aMax");
   for (int i = 0; i < 4; i++) { mnArr.add(cfg.axisMin[i]); mxArr.add(cfg.axisMax[i]); }
+
+  doc["wifiPref"] = cfg.wifiPref;
+  JsonArray wArr = doc.createNestedArray("wifiNets");
+  for (int i = 0; i < cfg.wifiCount; i++) {
+    JsonObject o = wArr.createNestedObject();
+    o["s"] = cfg.wifiNets[i].ssid;
+    o["p"] = cfg.wifiNets[i].pass;
+  }
 
   serializeJson(doc, f);
   f.close();
@@ -462,6 +506,18 @@ String buildCfgJson() {
   JsonArray mnArr2 = doc.createNestedArray("aMin");
   JsonArray mxArr2 = doc.createNestedArray("aMax");
   for (int i = 0; i < 4; i++) { mnArr2.add(cfg.axisMin[i]); mxArr2.add(cfg.axisMax[i]); }
+
+  // WiFi status + configured networks
+  doc["wifiPref"] = cfg.wifiPref;
+  doc["wifiNet"]  = g_wifiNet;
+  doc["wifiIP"]   = (g_wifiNet >= 0) ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  doc["wifiMDNS"] = MDNS_HOST ".local";
+  JsonArray wArr2 = doc.createNestedArray("wifiNets");
+  for (int i = 0; i < cfg.wifiCount; i++) {
+    JsonObject o = wArr2.createNestedObject();
+    o["s"] = cfg.wifiNets[i].ssid;
+    o["p"] = cfg.wifiNets[i].pass;
+  }
 
   String out;
   serializeJson(doc, out);
@@ -786,6 +842,37 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     applyAllControls();
     ws.textAll(buildCfgJson());
     Serial.println("[SBUS] Config updated via WebSocket.");
+
+  // ── WiFi config + switch ───────────────────────────────────────────────────
+  // { "t":"wificfg", "pref":N, "nets":[{"s":"SSID","p":"pass"},...] }
+  } else if (!strcmp(t, "wificfg")) {
+    // Save updated network list
+    if (doc["nets"].is<JsonArray>()) {
+      JsonArray na = doc["nets"].as<JsonArray>();
+      cfg.wifiCount = 0;
+      for (JsonObject o : na) {
+        if (cfg.wifiCount >= MAX_WIFI_NETS) break;
+        strlcpy(cfg.wifiNets[cfg.wifiCount].ssid, o["s"] | "", sizeof(cfg.wifiNets[0].ssid));
+        strlcpy(cfg.wifiNets[cfg.wifiCount].pass, o["p"] | "", sizeof(cfg.wifiNets[0].pass));
+        if (cfg.wifiNets[cfg.wifiCount].ssid[0]) cfg.wifiCount++;
+      }
+    }
+    uint8_t pref = (uint8_t)(doc["pref"] | cfg.wifiPref);
+    cfg.wifiPref = pref;
+    saveConfig();
+    // Notify browser BEFORE switching (IP may change)
+    const char* targetSSID = (pref == 0 && cfg.wifiCount > 0) ? cfg.wifiNets[0].ssid :
+                             (pref >= 1 && pref <= cfg.wifiCount) ? cfg.wifiNets[pref-1].ssid :
+                             WIFI_AP_SSID;
+    JsonDocument nd;
+    nd["e"]    = "wifi_switching";
+    nd["ssid"] = targetSSID;
+    nd["mdns"] = MDNS_HOST ".local";
+    String ns; serializeJson(nd, ns);
+    ws.textAll(ns);
+    delay(300);   // let WS frame flush before IP changes
+    switchWifi(pref);
+    ws.textAll(buildCfgJson());
   }
 }
 
@@ -1109,6 +1196,35 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .io-btn.import:hover{background:var(--yellow);color:#000;}
   #importStatus{font-size:.72rem;color:var(--muted);}
 
+  /* ── WiFi panel ─────────────────────────────────────────────────────────── */
+  .wifi-status{font-size:.72rem;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;}
+  .wifi-status b{color:var(--text);}
+  .wifi-net-row{display:grid;grid-template-columns:auto 1fr 1fr auto auto auto;gap:6px;align-items:center;margin-bottom:5px;}
+  .wifi-net-row .drag-num{font-size:.65rem;color:var(--muted);text-align:center;width:18px;}
+  .wifi-net-row input{background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:.72rem;}
+  .wifi-net-row input:focus{outline:none;border-color:var(--accent);}
+  .wifi-pass-wrap{position:relative;display:flex;}
+  .wifi-pass-wrap input{flex:1;padding-right:28px;}
+  .wifi-pass-wrap button{position:absolute;right:4px;top:50%;transform:translateY(-50%);
+    background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:0;}
+  .wifi-arrow{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);
+    cursor:pointer;font-size:.7rem;padding:3px 6px;line-height:1;}
+  .wifi-arrow:hover{border-color:var(--accent);color:var(--accent);}
+  .wifi-del{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);
+    cursor:pointer;font-size:.7rem;padding:3px 6px;}
+  .wifi-del:hover{border-color:var(--red);color:var(--red);}
+  .wifi-add{background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);
+    cursor:pointer;font-size:.72rem;padding:5px;width:100%;margin-top:4px;transition:all .15s;}
+  .wifi-add:hover{border-color:var(--accent);color:var(--accent);}
+  .wifi-footer{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+  .wifi-footer label{font-size:.7rem;color:var(--muted);}
+  .wifi-footer select{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    color:var(--text);padding:4px 8px;font-size:.72rem;}
+  .wifi-apply{padding:7px 18px;border-radius:8px;border:1px solid var(--accent);
+    background:transparent;color:var(--accent);font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;}
+  .wifi-apply:hover{background:var(--accent);color:#000;}
+  #wifiMsg{font-size:.72rem;color:var(--yellow);display:none;}
+
   /* ── Debug panel ────────────────────────────────────────────────────────── */
   .dbg-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
   @media(max-width:600px){.dbg-grid{grid-template-columns:repeat(4,1fr);}}
@@ -1276,6 +1392,28 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   </details>
 </div>
 
+<!-- ── WiFi panel ────────────────────────────────────────────────────────────── -->
+<div class="settings-wrap">
+  <details id="wifiDetails">
+    <summary>WiFi Networks</summary>
+    <div class="settings-body">
+      <div class="wifi-status">
+        <span>Status: <b id="wifiStatusSSID">—</b></span>
+        <span>IP: <b id="wifiStatusIP">—</b></span>
+        <span>mDNS: <b id="wifiStatusMDNS">—</b></span>
+      </div>
+      <div id="wifiNetList"></div>
+      <button class="wifi-add" onclick="wifiAddRow()">+ Add Network</button>
+      <div class="wifi-footer">
+        <label>Connect:</label>
+        <select id="wifiPrefSel"></select>
+        <button class="wifi-apply" onclick="wifiApply()">&#8646; Save &amp; Connect</button>
+        <span id="wifiMsg"></span>
+      </div>
+    </div>
+  </details>
+</div>
+
 <!-- ── Debug panel ───────────────────────────────────────────────────────────── -->
 <div class="settings-wrap">
   <details id="dbgDetails" open>
@@ -1332,8 +1470,9 @@ function connect() {
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if      (msg.e === 'cfg')    applyCfg(msg);
-      else if (msg.e === 'chdata') handleChData(msg);
+      if      (msg.e === 'cfg')            applyCfg(msg);
+      else if (msg.e === 'chdata')         handleChData(msg);
+      else if (msg.e === 'wifi_switching') handleWifiSwitching(msg);
     } catch(_) {}
   };
 }
@@ -1370,7 +1509,14 @@ function applyCfg(msg) {
   } else if (!cfg.lua) {
     cfg.lua = Array.from({length:15}, (_,i)=>({l:`Button ${i+1}`,c:0,v:1811,k:'#4fc3f7'}));
   }
+  // WiFi
+  if (Array.isArray(msg.wifiNets)) cfg.wifiNets = msg.wifiNets;
+  if (msg.wifiPref  != null) cfg.wifiPref  = msg.wifiPref;
+  if (msg.wifiNet   != null) cfg.wifiNet   = msg.wifiNet;
+  if (msg.wifiIP    != null) cfg.wifiIP    = msg.wifiIP;
+  if (msg.wifiMDNS  != null) cfg.wifiMDNS  = msg.wifiMDNS;
   renderAll();
+  renderWifiPanel();
 }
 
 function toggleMode() {
@@ -1821,6 +1967,113 @@ function renderSettings() {
   });
 }
 
+// =============================================================================
+//  WiFi panel
+// =============================================================================
+
+function renderWifiPanel() {
+  // Status bar
+  const nets = cfg.wifiNets || [];
+  const ni   = cfg.wifiNet != null ? cfg.wifiNet : -1;
+  document.getElementById('wifiStatusSSID').textContent =
+    ni >= 0 && nets[ni] ? nets[ni].s : (ni === -1 ? 'AP (' + (cfg.wifiIP||'') + ')' : '—');
+  document.getElementById('wifiStatusIP').textContent   = cfg.wifiIP   || '—';
+  document.getElementById('wifiStatusMDNS').textContent = cfg.wifiMDNS || '—';
+
+  // Network rows
+  const list = document.getElementById('wifiNetList');
+  list.innerHTML = '';
+  nets.forEach((net, i) => {
+    const row = document.createElement('div');
+    row.className = 'wifi-net-row';
+    row.dataset.idx = i;
+
+    const num  = document.createElement('span'); num.className='drag-num'; num.textContent=i+1+'.';
+    const ssid = document.createElement('input'); ssid.type='text'; ssid.placeholder='SSID';
+    ssid.value = net.s || ''; ssid.maxLength = 32;
+
+    const passWrap = document.createElement('div'); passWrap.className='wifi-pass-wrap';
+    const pass = document.createElement('input'); pass.type='password'; pass.placeholder='Password';
+    pass.value = net.p || ''; pass.maxLength = 64;
+    const eye  = document.createElement('button'); eye.textContent='👁'; eye.title='Show/hide';
+    eye.onclick = () => { pass.type = pass.type==='password' ? 'text' : 'password'; };
+    passWrap.appendChild(pass); passWrap.appendChild(eye);
+
+    const up  = document.createElement('button'); up.className='wifi-arrow';  up.textContent='▲';
+    const dn  = document.createElement('button'); dn.className='wifi-arrow';  dn.textContent='▼';
+    const del = document.createElement('button'); del.className='wifi-del';   del.textContent='✕';
+    up.onclick  = () => { if(i>0){const t=nets[i];nets[i]=nets[i-1];nets[i-1]=t;renderWifiPanel();} };
+    dn.onclick  = () => { if(i<nets.length-1){const t=nets[i];nets[i]=nets[i+1];nets[i+1]=t;renderWifiPanel();} };
+    del.onclick = () => { nets.splice(i,1); renderWifiPanel(); };
+
+    row.appendChild(num); row.appendChild(ssid); row.appendChild(passWrap);
+    row.appendChild(up);  row.appendChild(dn);   row.appendChild(del);
+    list.appendChild(row);
+  });
+
+  // Preference dropdown
+  const sel = document.getElementById('wifiPrefSel');
+  sel.innerHTML = '<option value="0">Auto (try in order)</option>';
+  nets.forEach((n, i) => {
+    const o = document.createElement('option');
+    o.value = i + 1;
+    o.textContent = `Net ${i+1}: ${n.s || '(blank)'}`;
+    sel.appendChild(o);
+  });
+  const apOpt = document.createElement('option'); apOpt.value=255; apOpt.textContent='AP Only';
+  sel.appendChild(apOpt);
+  sel.value = cfg.wifiPref != null ? cfg.wifiPref : 0;
+}
+
+function wifiAddRow() {
+  if (!cfg.wifiNets) cfg.wifiNets = [];
+  if (cfg.wifiNets.length >= 4) return;
+  cfg.wifiNets.push({s:'', p:''});
+  renderWifiPanel();
+}
+
+// Read current row values back into cfg.wifiNets before sending
+function wifiCollect() {
+  const rows = document.getElementById('wifiNetList').children;
+  cfg.wifiNets = [];
+  for (const row of rows) {
+    const inputs = row.querySelectorAll('input');
+    const s = inputs[0].value.trim();
+    const p = inputs[1].value;
+    if (s) cfg.wifiNets.push({s, p});
+  }
+}
+
+function wifiApply() {
+  wifiCollect();
+  cfg.wifiPref = parseInt(document.getElementById('wifiPrefSel').value) || 0;
+  send({t:'wificfg', pref: cfg.wifiPref, nets: cfg.wifiNets});
+  const msg = document.getElementById('wifiMsg');
+  msg.style.display = 'inline';
+  msg.textContent = 'Connecting…';
+}
+
+function handleWifiSwitching(msg) {
+  const el = document.getElementById('wifiMsg');
+  el.style.display = 'inline';
+  el.textContent = `Switching to "${msg.ssid}"… reconnect at http://${msg.mdns}`;
+}
+
+// =============================================================================
+//  Export / Import
+// =============================================================================
+
+// ── Military DTG: DDHHMMZMONYR  e.g. 091234ZAPR26 ───────────────────────────
+function getDTG() {
+  const now = new Date();
+  const mo  = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const dd  = String(now.getUTCDate()).padStart(2,'0');
+  const hh  = String(now.getUTCHours()).padStart(2,'0');
+  const mm  = String(now.getUTCMinutes()).padStart(2,'0');
+  const yy  = String(now.getUTCFullYear()).slice(-2);
+  return `${dd}${hh}${mm}Z${mo[now.getUTCMonth()]}${yy}`;
+}
+
 // ── Export: fetch the saved JSON from the ESP and trigger a browser download ──
 function exportConfig() {
   fetch('/cfg')
@@ -1829,7 +2082,7 @@ function exportConfig() {
       const url = URL.createObjectURL(blob);
       const a   = document.createElement('a');
       a.href = url;
-      a.download = 'sbus_config.json';
+      a.download = `sbus_config_${getDTG()}.json`;
       a.click();
       URL.revokeObjectURL(url);
     })
@@ -2043,6 +2296,7 @@ function initStick(side){
 initStick('L');
 initStick('R');
 renderAll();
+renderWifiPanel();
 connect();
 </script>
 </body>
@@ -2050,6 +2304,50 @@ connect();
 
 // =============================================================================
 //  SETUP
+// =============================================================================
+//  WIFI CONNECT
+// =============================================================================
+
+// pref: 0=auto cascade, 1..wifiCount=specific net, 255=AP only
+void switchWifi(uint8_t pref) {
+  g_wifiNet = -1;
+
+  if (pref != 255) {
+    WiFi.mode(WIFI_STA);
+
+    auto tryNet = [](int idx) -> bool {
+      if (idx < 0 || idx >= cfg.wifiCount || !cfg.wifiNets[idx].ssid[0]) return false;
+      Serial.printf("[SBUS] Trying \"%s\"...\n", cfg.wifiNets[idx].ssid);
+      WiFi.disconnect(false);
+      WiFi.begin(cfg.wifiNets[idx].ssid, cfg.wifiNets[idx].pass);
+      uint32_t t = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_STA_TIMEOUT_MS) delay(100);
+      return WiFi.status() == WL_CONNECTED;
+    };
+
+    if (pref == 0) {
+      for (int i = 0; i < cfg.wifiCount && g_wifiNet < 0; i++)
+        if (tryNet(i)) g_wifiNet = i;
+    } else {
+      int idx = (int)pref - 1;
+      if (tryNet(idx)) g_wifiNet = idx;
+    }
+  }
+
+  if (g_wifiNet >= 0) {
+    Serial.printf("[SBUS] Connected to \"%s\"\n", cfg.wifiNets[g_wifiNet].ssid);
+    Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.localIP().toString().c_str());
+    if (MDNS.begin(MDNS_HOST))
+      Serial.printf("[SBUS]   mDNS: http://%s.local\n", MDNS_HOST);
+  } else {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+    Serial.printf("[SBUS] AP mode  SSID: %s  Pass: %s\n", WIFI_AP_SSID, WIFI_AP_PASS);
+    Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.softAPIP().toString().c_str());
+  }
+}
+
 // =============================================================================
 
 void setup() {
@@ -2100,32 +2398,12 @@ void setup() {
   server.begin();
   Serial.println("[SBUS] Web server started.");
 
-  // WiFi cascade
-  auto tryConnect = [](const char* ssid, const char* pass) -> bool {
-    Serial.printf("[SBUS] Trying \"%s\"...\n", ssid);
-    WiFi.disconnect(false);
-    WiFi.begin(ssid, pass);
-    const uint32_t t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_STA_TIMEOUT_MS) delay(100);
-    return WiFi.status() == WL_CONNECTED;
-  };
-
-  if (tryConnect(WIFI_PRIMARY_SSID, WIFI_PRIMARY_PASS)) {
-    Serial.printf("[SBUS] Connected to \"%s\"  ->  http://%s\n",
-      WIFI_PRIMARY_SSID, WiFi.localIP().toString().c_str());
-  } else if (tryConnect(WIFI_FALLBACK_SSID, WIFI_FALLBACK_PASS)) {
-    Serial.printf("[SBUS] Connected to \"%s\"  ->  http://%s\n",
-      WIFI_FALLBACK_SSID, WiFi.localIP().toString().c_str());
-  } else {
-    Serial.printf("[SBUS] Both networks failed — AP \"%s\"\n", WIFI_AP_SSID);
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-    Serial.printf("[SBUS] AP ready  ->  http://%s\n", WiFi.softAPIP().toString().c_str());
-  }
+  // WiFi — connect based on saved preference
+  switchWifi(cfg.wifiPref);
 
   Serial.printf("[SBUS] Mode: SBUS-%d  (%d ch, %d bytes/frame)\n",
                 sbusChCount(), sbusChCount(), sbusFrameLen());
-  Serial.println("[SBUS] Serial cmds:  m=toggle mode  d=toggle debug  ?=status");
+  Serial.println("[SBUS] Serial cmds:  m=toggle mode  d=toggle debug  ?=status  w=wifi  w1-w4=switch net  wa=AP");
   Serial.println("[SBUS] Ready.");
 }
 
@@ -2155,6 +2433,38 @@ static void handleSerialCommands() {
 #else
       Serial.println("[SBUS] Debug not compiled in — uncomment #define SBUS_DEBUG");
 #endif
+
+    } else if (c == 'w') {
+      // WiFi switch: send 'w' then immediately '0'-'4' or 'a' (no Enter needed)
+      // w0=auto  w1..w4=specific net  wa=AP only  w alone=show status
+      delay(30);  // brief wait for the digit to arrive in the buffer
+      // Drain whitespace/newlines so Enter alone doesn't trigger a switch
+      while (Serial.available() && (Serial.peek() == '\r' || Serial.peek() == '\n' || Serial.peek() == ' '))
+        Serial.read();
+      {
+        char nc = Serial.available() ? (char)Serial.read() : 0;
+        bool doSwitch = false;
+        uint8_t pref  = 255;
+        if      (nc >= '0' && nc <= '4') { pref = nc - '0'; doSwitch = true; }
+        else if (nc == 'a' || nc == 'A') { pref = 255;      doSwitch = true; }
+        if (doSwitch) {
+          Serial.printf("[WiFi] Switching (pref=%u)...\n", pref);
+          switchWifi(pref);
+          cfg.wifiPref = pref;
+          saveConfig();
+          ws.textAll(buildCfgJson());
+        } else {
+          // Status only
+          if (g_wifiNet >= 0)
+            Serial.printf("[WiFi] Connected: \"%s\"  IP: %s  (net %d)\n",
+              cfg.wifiNets[g_wifiNet].ssid, WiFi.localIP().toString().c_str(), g_wifiNet + 1);
+          else
+            Serial.printf("[WiFi] AP mode  IP: %s\n", WiFi.softAPIP().toString().c_str());
+          Serial.println("[WiFi] Cmds: w0=auto  w1-w4=net  wa=AP");
+          for (int i = 0; i < cfg.wifiCount; i++)
+            Serial.printf("  [%d] %s\n", i + 1, cfg.wifiNets[i].ssid);
+        }
+      }
 
     } else if (c == '?') {
       Serial.printf("[SBUS] Mode: SBUS-%d  |  Frame: %d bytes  |  Channels: %d",
