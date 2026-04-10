@@ -59,6 +59,10 @@
 #define SBUS_MIN            172
 #define SBUS_MAX            1811
 #define SBUS_CENTER         992
+// Extended user-configurable value range (allows testing out-of-spec values)
+// Note: SBUS protocol is 11-bit so the frame packer hard-caps at 2047
+#define SBUS_USER_MIN       1
+#define SBUS_USER_MAX       2047
 #define SBUS_FRAME_MS       9     // 9 ms = ~111 Hz (FrSky standard)
 
 #define SBUS_CH_COUNT_16    16
@@ -298,7 +302,7 @@ void loadConfig() {
     if (o["v"].is<JsonArray>()) {
       JsonArray va = o["v"].as<JsonArray>();
       for (int j = 0; j < 3; j++)
-        cfg.sw[idx].val[j] = constrain((int)(va[j] | SBUS_CENTER), SBUS_MIN, SBUS_MAX);
+        cfg.sw[idx].val[j] = constrain((int)(va[j] | SBUS_CENTER), SBUS_USER_MIN, SBUS_USER_MAX);
     }
     idx++;
   }
@@ -328,7 +332,7 @@ void loadConfig() {
     if (idx >= MAX_BUTTONS) break;
     strlcpy(cfg.btn[idx].label, o["l"] | "", sizeof(cfg.btn[idx].label));
     cfg.btn[idx].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
-    cfg.btn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    cfg.btn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
     idx++;
   }
   // Lua buttons
@@ -338,18 +342,18 @@ void loadConfig() {
     if (idx >= MAX_LUA_BTNS) break;
     strlcpy(cfg.luaBtn[idx].label, o["l"] | cfg.luaBtn[idx].label, sizeof(cfg.luaBtn[idx].label));
     cfg.luaBtn[idx].ch  = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
-    cfg.luaBtn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    cfg.luaBtn[idx].val = constrain((int)(o["v"] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
     { const char* kv = o["k"] | ""; strlcpy(cfg.luaBtn[idx].color, kv[0] ? kv : cfg.luaBtn[idx].color, sizeof(cfg.luaBtn[idx].color)); }
     idx++;
   }
   // Axis range
   if (doc["aMin"].is<JsonArray>()) {
     JsonArray mn = doc["aMin"].as<JsonArray>();
-    for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_MIN, SBUS_MAX);
+    for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_USER_MIN, SBUS_USER_MAX);
   }
   if (doc["aMax"].is<JsonArray>()) {
     JsonArray mx = doc["aMax"].as<JsonArray>();
-    for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+    for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
   }
 
   // WiFi networks
@@ -536,7 +540,7 @@ void buildSbusFrame(uint8_t* frame) {
   frame[flen - 2] = SBUS_FLAGS;
   frame[flen - 1] = SBUS_FOOTER;
   for (int i = 0; i < chcnt; i++) {
-    uint16_t val = constrain(sbusChannels[i], SBUS_MIN, SBUS_MAX);
+    uint16_t val = (uint16_t)constrain((int)sbusChannels[i], 0, 2047);  // 11-bit protocol max
     int b = i * 11;
     frame[1 + b / 8]     |= (uint8_t)((val << (b % 8)) & 0xFF);
     frame[1 + b / 8 + 1] |= (uint8_t)((val >> (8 - b % 8)) & 0xFF);
@@ -642,7 +646,7 @@ inline uint16_t axisToSbus(float v) {
 inline uint16_t axisToSbusRange(float v, uint16_t mn, uint16_t mx) {
   v = constrain(v, -1.0f, 1.0f);
   float mapped = (v * 0.5f + 0.5f) * ((float)(int)mx - (float)(int)mn) + (float)(int)mn;
-  return (uint16_t)constrain((int)(mapped + 0.5f), SBUS_MIN, SBUS_MAX);
+  return (uint16_t)constrain((int)(mapped + 0.5f), 0, 2047);  // 11-bit protocol max; frame packer also caps
 }
 
 // =============================================================================
@@ -778,7 +782,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
         if (o["v"].is<JsonArray>()) {
           JsonArray va = o["v"].as<JsonArray>();
           for (int j = 0; j < 3; j++)
-            cfg.sw[i].val[j] = constrain((int)(va[j] | cfg.sw[i].val[j]), SBUS_MIN, SBUS_MAX);
+            cfg.sw[i].val[j] = constrain((int)(va[j] | cfg.sw[i].val[j]), SBUS_USER_MIN, SBUS_USER_MAX);
         }
         i++;
       }
@@ -812,7 +816,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
         if (i >= MAX_BUTTONS) break;
         strlcpy(cfg.btn[i].label, o["l"] | cfg.btn[i].label, sizeof(cfg.btn[i].label));
         cfg.btn[i].ch  = constrain((int)(o["c"] | cfg.btn[i].ch),  0, SBUS_CH_COUNT_24);
-        cfg.btn[i].val = constrain((int)(o["v"] | cfg.btn[i].val), SBUS_MIN, SBUS_MAX);
+        cfg.btn[i].val = constrain((int)(o["v"] | cfg.btn[i].val), SBUS_USER_MIN, SBUS_USER_MAX);
         i++;
       }
     }
@@ -824,7 +828,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
         if (i >= MAX_LUA_BTNS) break;
         strlcpy(cfg.luaBtn[i].label, o["l"] | cfg.luaBtn[i].label, sizeof(cfg.luaBtn[i].label));
         cfg.luaBtn[i].ch  = constrain((int)(o["c"] | cfg.luaBtn[i].ch),  0, SBUS_CH_COUNT_24);
-        cfg.luaBtn[i].val = constrain((int)(o["v"] | cfg.luaBtn[i].val), SBUS_MIN, SBUS_MAX);
+        cfg.luaBtn[i].val = constrain((int)(o["v"] | cfg.luaBtn[i].val), SBUS_USER_MIN, SBUS_USER_MAX);
         { const char* kv = o["k"] | ""; strlcpy(cfg.luaBtn[i].color, kv[0] ? kv : cfg.luaBtn[i].color, sizeof(cfg.luaBtn[i].color)); }
         i++;
       }
@@ -832,11 +836,11 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     // Axis range
     if (doc["aMin"].is<JsonArray>()) {
       JsonArray mn = doc["aMin"].as<JsonArray>();
-      for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_MIN, SBUS_MAX);
+      for (int i = 0; i < 4; i++) cfg.axisMin[i] = constrain((int)(mn[i] | SBUS_MIN), SBUS_USER_MIN, SBUS_USER_MAX);
     }
     if (doc["aMax"].is<JsonArray>()) {
       JsonArray mx = doc["aMax"].as<JsonArray>();
-      for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_MIN, SBUS_MAX);
+      for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
     }
     saveConfig();
     applyAllControls();
@@ -1319,6 +1323,25 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 
 </div>
 
+<!-- ── Debug panel ───────────────────────────────────────────────────────────── -->
+<div class="settings-wrap">
+  <details id="dbgDetails" open>
+    <summary>Live Channel Monitor</summary>
+    <div class="settings-body">
+      <div id="dbgOffMsg" style="font-size:.74rem;color:var(--muted);text-align:center;padding:6px 0;">
+        Enable <strong style="color:var(--text)">DEBUG</strong> to start live data
+      </div>
+      <div class="dbg-grid" id="dbgGrid" style="display:none"></div>
+      <div class="dbg-info" id="dbgInfo" style="display:none">
+        <span>Mode: <span class="di-val" id="diMode">—</span></span>
+        <span>Frame: <span class="di-val" id="diFrame">—</span> bytes</span>
+        <span>Channels: <span class="di-val" id="diCh">—</span></span>
+        <span>Updates: <span class="di-val" id="diRate">—</span></span>
+      </div>
+    </div>
+  </details>
+</div>
+
 <!-- ── Settings ─────────────────────────────────────────────────────────────── -->
 <div class="settings-wrap">
   <details>
@@ -1330,10 +1353,10 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
         <table class="cfg-table" style="min-width:480px;">
           <thead><tr><th>Axis</th><th>Channel</th><th>Min (SBUS)</th><th>Max (SBUS)</th><th style="font-size:.55rem;color:var(--muted)">swap min/max to reverse</th></tr></thead>
           <tbody>
-            <tr><td>Right X (AIL)</td><td><select id="selRX"></select></td><td><input type="number" id="axMin0" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax0" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
-            <tr><td>Right Y (ELE)</td><td><select id="selRY"></select></td><td><input type="number" id="axMin1" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax1" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
-            <tr><td>Left Y (THR)</td> <td><select id="selLY"></select></td><td><input type="number" id="axMin2" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax2" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
-            <tr><td>Left X (RUD)</td> <td><select id="selLX"></select></td><td><input type="number" id="axMin3" min="172" max="1811" value="172" style="width:70px"></td><td><input type="number" id="axMax3" min="172" max="1811" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Right X (AIL)</td><td><select id="selRX"></select></td><td><input type="number" id="axMin0" min="1" max="2047" value="172" style="width:70px"></td><td><input type="number" id="axMax0" min="1" max="2047" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Right Y (ELE)</td><td><select id="selRY"></select></td><td><input type="number" id="axMin1" min="1" max="2047" value="172" style="width:70px"></td><td><input type="number" id="axMax1" min="1" max="2047" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Left Y (THR)</td> <td><select id="selLY"></select></td><td><input type="number" id="axMin2" min="1" max="2047" value="172" style="width:70px"></td><td><input type="number" id="axMax2" min="1" max="2047" value="1811" style="width:70px"></td><td></td></tr>
+            <tr><td>Left X (RUD)</td> <td><select id="selLX"></select></td><td><input type="number" id="axMin3" min="1" max="2047" value="172" style="width:70px"></td><td><input type="number" id="axMax3" min="1" max="2047" value="1811" style="width:70px"></td><td></td></tr>
           </tbody>
         </table>
       </div>
@@ -1414,30 +1437,12 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   </details>
 </div>
 
-<!-- ── Debug panel ───────────────────────────────────────────────────────────── -->
-<div class="settings-wrap">
-  <details id="dbgDetails" open>
-    <summary>Live Channel Monitor</summary>
-    <div class="settings-body">
-      <div id="dbgOffMsg" style="font-size:.74rem;color:var(--muted);text-align:center;padding:6px 0;">
-        Enable <strong style="color:var(--text)">DEBUG</strong> to start live data
-      </div>
-      <div class="dbg-grid" id="dbgGrid" style="display:none"></div>
-      <div class="dbg-info" id="dbgInfo" style="display:none">
-        <span>Mode: <span class="di-val" id="diMode">—</span></span>
-        <span>Frame: <span class="di-val" id="diFrame">—</span> bytes</span>
-        <span>Channels: <span class="di-val" id="diCh">—</span></span>
-        <span>Updates: <span class="di-val" id="diRate">—</span></span>
-      </div>
-    </div>
-  </details>
-</div>
-
 <script>
 // =============================================================================
 //  Constants & state
 // =============================================================================
 const SBUS_MIN = 172, SBUS_MAX = 1811, SBUS_CENTER = 992;
+const SBUS_USER_MIN = 1, SBUS_USER_MAX = 2047;  // extended range for testing
 
 let ws;
 let cfg = {
@@ -1557,7 +1562,7 @@ function axisToSbus(v) {
   return Math.round((v*0.5+0.5)*(SBUS_MAX-SBUS_MIN)+SBUS_MIN);
 }
 function axisToSbusRange(v, mn, mx) {
-  return Math.max(SBUS_MIN, Math.min(SBUS_MAX, Math.round((v*0.5+0.5)*(mx-mn)+mn)));
+  return Math.max(SBUS_USER_MIN, Math.min(SBUS_USER_MAX, Math.round((v*0.5+0.5)*(mx-mn)+mn)));
 }
 function sbusFromPct(pct) {
   return Math.round(pct/100*(SBUS_MAX-SBUS_MIN)+SBUS_MIN);
