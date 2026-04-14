@@ -168,6 +168,7 @@ struct Config {
   uint8_t    wifiPref;   // 0=auto, 1..wifiCount=specific net, 255=AP only
   // RC PWM outputs (4 pins mirroring selected SBUS channels)
   PwmOutCfg  pwm[PWM_CH_COUNT];
+  bool       pwmExtended;  // false = standard 1000-2000µs, true = extended 500-2500µs
 };
 
 Config cfg;
@@ -264,15 +265,25 @@ void initRuntimeState() {
 }
 
 // =============================================================================
-//  RC PWM outputs  —  50 Hz, 1000–2159 µs  (mirrors selected SBUS channels)
+//  RC PWM outputs  —  50 Hz  (mirrors selected SBUS channels)
 // =============================================================================
 static const uint8_t PWM_PINS[PWM_CH_COUNT] = { PWM_PIN_0, PWM_PIN_1, PWM_PIN_2, PWM_PIN_3 };
 
-// Map SBUS raw value (172–2047) to RC pulse width in microseconds (1000–2159)
-inline uint32_t sbusToPwmUs(uint16_t sbus) {
-  // Linear map: 172→1000 µs, 1811→2000 µs, 2047→2159 µs
+// Map SBUS raw value to RC pulse width in microseconds.
+// Standard:  172→1000 µs, 992→1500 µs, 1811→2000 µs  (clamped 1000–2000)
+// Extended:  0→500 µs,    992→1500 µs, 2047→2500 µs  (piecewise, center locked)
+inline uint32_t sbusToPwmUs(uint16_t sbus, bool extended) {
+  if (extended) {
+    int32_t us;
+    if (sbus <= 992) {
+      us = 500 + (int32_t)sbus * 1000 / 992;
+    } else {
+      us = 1500 + (int32_t)(sbus - 992) * 1000 / (2047 - 992);
+    }
+    return (uint32_t)constrain(us, 500, 2500);
+  }
   int32_t us = 1000 + (int32_t)(sbus - 172) * 1000 / (1811 - 172);
-  return (uint32_t)constrain(us, 1000, 2200);
+  return (uint32_t)constrain(us, 1000, 2000);
 }
 
 // Convert microseconds to 16-bit LEDC duty at 50 Hz (20000 µs period)
@@ -294,7 +305,7 @@ void updatePwmOutputs() {
   for (int i = 0; i < PWM_CH_COUNT; i++) {
     uint8_t ch = cfg.pwm[i].ch;
     if (ch >= 1 && ch <= SBUS_CH_COUNT_24) {
-      ledcWrite(PWM_PINS[i], pwmUsToDuty(sbusToPwmUs(sbusChannels[ch - 1])));
+      ledcWrite(PWM_PINS[i], pwmUsToDuty(sbusToPwmUs(sbusChannels[ch - 1], cfg.pwmExtended)));
     }
   }
 }
@@ -442,6 +453,7 @@ void loadConfig() {
       idx++;
     }
   }
+  cfg.pwmExtended = doc["pwmExt"] | false;
 
   Serial.println("[SBUS] Config loaded.");
 }
@@ -518,6 +530,7 @@ void saveConfig() {
     JsonObject o = pwmArr.createNestedObject();
     o["c"] = cfg.pwm[i].ch;
   }
+  doc["pwmExt"] = cfg.pwmExtended;
 
   serializeJson(doc, f);
   f.close();
@@ -606,6 +619,7 @@ String buildCfgJson() {
     JsonObject o = pwmArr2.createNestedObject();
     o["c"] = cfg.pwm[i].ch;
   }
+  doc["pwmExt"] = cfg.pwmExtended;
 
   String out;
   serializeJson(doc, out);
@@ -938,6 +952,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
         i++;
       }
     }
+    if (doc["pwmExt"].is<bool>()) cfg.pwmExtended = doc["pwmExt"].as<bool>();
     saveConfig();
     applyAllControls();
     ws.textAll(buildCfgJson());
@@ -1498,7 +1513,13 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       </div>
 
       <div>
-        <div class="sec-title">RC PWM Outputs (GPIO 4/6/15/17 &mdash; WCB v3.x Serial1-4 TX)</div>
+        <div class="sec-title" style="display:flex;align-items:center;gap:12px;">
+          RC PWM Outputs (GPIO 4/6/15/17 &mdash; WCB v3.x Serial1-4 TX)
+          <label style="font-size:.8rem;font-weight:normal;display:flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="checkbox" id="pwmExtChk" onchange="onPwmExtChange()">
+            Extended range (500&ndash;2500&nbsp;&micro;s)
+          </label>
+        </div>
         <table class="cfg-table">
           <thead><tr><th>Output</th><th>GPIO</th><th>SBUS Channel</th></tr></thead>
           <tbody id="pwmCfgBody"></tbody>
@@ -1554,6 +1575,7 @@ let cfg = {
   aMin: [172, 172, 172, 172],
   aMax: [1811,1811,1811,1811],
   pwm: Array.from({length:4}, (_,i)=>({c:i+1})),
+  pwmExt: false,
   sw:  Array.from({length:8},  (_,i)=>({l:`S${i}`, c:0, t:0, v:[172,992,1811], pos:1})),
   sl:  Array.from({length:4},  (_,i)=>({l:['LS','RS','S1','S2'][i]||`SL${i}`, c:0, pct:50})),
   tr:  Array.from({length:6},  (_,i)=>({l:`T${i+1}`, c:0, s:10, cur:992})),
@@ -1621,6 +1643,7 @@ function applyCfg(msg) {
   }
   // PWM outputs
   if (Array.isArray(msg.pwm)) cfg.pwm = msg.pwm;
+  if (msg.pwmExt != null) cfg.pwmExt = !!msg.pwmExt;
   // WiFi
   if (Array.isArray(msg.wifiNets)) cfg.wifiNets = msg.wifiNets;
   if (msg.wifiPref  != null) cfg.wifiPref  = msg.wifiPref;
@@ -2090,6 +2113,7 @@ function renderSettings() {
   });
 
   // PWM output table
+  document.getElementById('pwmExtChk').checked = !!cfg.pwmExt;
   const pwmPins = [4, 6, 15, 17];
   const pwmTb = document.getElementById('pwmCfgBody'); pwmTb.innerHTML='';
   (cfg.pwm || Array.from({length:4}, (_,i)=>({c:i+1}))).forEach((p, i) => {
@@ -2313,8 +2337,18 @@ function saveConfig() {
   payload.pwm = Array.from(pwmRows).map(row => ({
     c: parseInt(row.cells[2].querySelector('select').value) || 0
   }));
+  payload.pwmExt = document.getElementById('pwmExtChk').checked;
 
   send(payload);
+}
+
+function onPwmExtChange() {
+  // Live-update the firmware immediately when the checkbox is toggled
+  send({ t:'cfg', pwmExt: document.getElementById('pwmExtChk').checked,
+         pwm: Array.from(document.getElementById('pwmCfgBody').rows).map(row => ({
+           c: parseInt(row.cells[2].querySelector('select').value) || 0
+         }))
+  });
 }
 
 // =============================================================================
