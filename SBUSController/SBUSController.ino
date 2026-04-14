@@ -108,6 +108,7 @@ struct SwCfg {
   uint8_t  ch;          // 1-based SBUS channel; 0=unassigned
   SwType   type;
   uint16_t val[3];      // SBUS values for positions 0,1,2
+  uint8_t  defaultPos;  // position on boot: 0=low, 1=center, 2=high
 };
 
 struct SliderCfg {
@@ -202,6 +203,7 @@ void applyConfigDefaults() {
     cfg.sw[i].val[0] = SBUS_MIN;
     cfg.sw[i].val[1] = (swTypes[i] == SW_3POS) ? SBUS_CENTER : SBUS_MAX;
     cfg.sw[i].val[2] = SBUS_MAX;
+    cfg.sw[i].defaultPos = 0;
   }
 
   // Sliders: LS, RS (sides of sticks), S1 & S2 (centre pots)
@@ -255,7 +257,7 @@ void applyConfigDefaults() {
 void initRuntimeState() {
   for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
   for (int i = 0; i < MAX_SWITCHES; i++)
-    swPos[i] = (cfg.sw[i].type == SW_3POS) ? 1 : 0;
+    swPos[i] = min(cfg.sw[i].defaultPos, (uint8_t)(cfg.sw[i].type == SW_3POS ? 2 : 1));
   for (int i = 0; i < MAX_SLIDERS; i++) sliderPct[i] = 50;
   for (int i = 0; i < MAX_TRIMS; i++)   trimVal[i]   = SBUS_CENTER;
 }
@@ -352,8 +354,9 @@ void loadConfig() {
   for (JsonObject o : swArr) {
     if (idx >= MAX_SWITCHES) break;
     strlcpy(cfg.sw[idx].label, o["l"] | cfg.sw[idx].label, 4);
-    cfg.sw[idx].ch   = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
-    cfg.sw[idx].type = (SwType)constrain((int)(o["t"] | 0), 0, 2);
+    cfg.sw[idx].ch         = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+    cfg.sw[idx].type       = (SwType)constrain((int)(o["t"] | 0), 0, 2);
+    cfg.sw[idx].defaultPos = constrain((int)(o["d"] | 0), 0, 2);
     if (o["v"].is<JsonArray>()) {
       JsonArray va = o["v"].as<JsonArray>();
       for (int j = 0; j < 3; j++)
@@ -460,6 +463,7 @@ void saveConfig() {
     o["l"] = cfg.sw[i].label;
     o["c"] = cfg.sw[i].ch;
     o["t"] = (int)cfg.sw[i].type;
+    o["d"] = cfg.sw[i].defaultPos;
     JsonArray va = o.createNestedArray("v");
     va.add(cfg.sw[i].val[0]); va.add(cfg.sw[i].val[1]); va.add(cfg.sw[i].val[2]);
   }
@@ -540,6 +544,7 @@ String buildCfgJson() {
     o["l"]   = cfg.sw[i].label;
     o["c"]   = cfg.sw[i].ch;
     o["t"]   = (int)cfg.sw[i].type;
+    o["d"]   = cfg.sw[i].defaultPos;
     o["pos"] = swPos[i];
     JsonArray va = o.createNestedArray("v");
     va.add(cfg.sw[i].val[0]); va.add(cfg.sw[i].val[1]); va.add(cfg.sw[i].val[2]);
@@ -857,7 +862,8 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
       for (JsonObject o : arr) {
         if (i >= MAX_SWITCHES) break;
         strlcpy(cfg.sw[i].label, o["l"] | cfg.sw[i].label, 4);
-        cfg.sw[i].ch = constrain((int)(o["c"] | cfg.sw[i].ch), 0, SBUS_CH_COUNT_24);
+        cfg.sw[i].ch         = constrain((int)(o["c"] | cfg.sw[i].ch), 0, SBUS_CH_COUNT_24);
+        cfg.sw[i].defaultPos = constrain((int)(o["d"] | cfg.sw[i].defaultPos), 0, 2);
         if (o["v"].is<JsonArray>()) {
           JsonArray va = o["v"].as<JsonArray>();
           for (int j = 0; j < 3; j++)
@@ -1453,7 +1459,7 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       <div>
         <div class="sec-title">Switches</div>
         <table class="cfg-table">
-          <thead><tr><th>Name</th><th>Channel</th><th>Low Val</th><th>Mid Val</th><th>High Val</th></tr></thead>
+          <thead><tr><th>Name</th><th>Channel</th><th>Low Val</th><th>Mid Val</th><th>High Val</th><th>Default Pos</th></tr></thead>
           <tbody id="swCfgBody"></tbody>
         </table>
       </div>
@@ -2001,6 +2007,17 @@ function renderSettings() {
       inp.min=SBUS_MIN; inp.max=SBUS_MAX; inp.value=sw.v[j]||SBUS_CENTER;
       td.appendChild(inp); tr.appendChild(td);
     }
+    // Default position dropdown
+    const tdD=document.createElement('td');
+    const dSel=document.createElement('select');
+    dSel.style.cssText='background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:.74rem;';
+    const posLabels = sw.t===1 || sw.t===2 ? ['▲ Up','▼ Down','—'] : ['▲ Up','Center','▼ Down'];
+    posLabels.forEach((lbl,idx)=>{
+      const opt=document.createElement('option'); opt.value=idx; opt.textContent=lbl;
+      if(idx===(sw.d??0)) opt.selected=true;
+      dSel.appendChild(opt);
+    });
+    tdD.appendChild(dSel); tr.appendChild(tdD);
     swTb.appendChild(tr);
   });
 
@@ -2259,7 +2276,8 @@ function saveConfig() {
     const row = swRows[i];
     const ch = parseInt(row.cells[1].querySelector('select').value);
     const v = [0,1,2].map(j=>parseInt(row.cells[2+j].querySelector('input').value));
-    return {l:sw.l, c:ch, t:sw.t, v};
+    const d = parseInt(row.cells[5].querySelector('select').value);
+    return {l:sw.l, c:ch, t:sw.t, d, v};
   });
 
   const slRows = document.getElementById('slCfgBody').rows;
