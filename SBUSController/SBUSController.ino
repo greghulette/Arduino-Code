@@ -19,7 +19,11 @@
 //     8 buttons        S1-S6, RB1, RB2
 //
 //  ─── Hardware Wiring ────────────────────────────────────────────────────────
-//   Kyber SBUS input  ←  GPIO 5  (Serial1 TX, inverted 100 kbaud 8E2)
+//   Kyber SBUS input  ←  GPIO 9  (Serial5 TX on WCB v3.x, inverted 100 kbaud 8E2)
+//   RC PWM output 1   ←  GPIO 4  (Serial1 TX on WCB v3.x)
+//   RC PWM output 2   ←  GPIO 6  (Serial2 TX on WCB v3.x)
+//   RC PWM output 3   ←  GPIO 15 (Serial3 TX on WCB v3.x)
+//   RC PWM output 4   ←  GPIO 17 (Serial4 TX on WCB v3.x)
 //   USB               ↔  Serial  (debug @ 115200)
 //
 //  ─── Default Channel Map ────────────────────────────────────────────────────
@@ -49,7 +53,13 @@
 #define MDNS_HOST           "sbusctrl"
 
 // ─── Pins ─────────────────────────────────────────────────────────────────────
-#define SBUS_TX_PIN     5    // Serial1 TX → Kyber SBUS input (inverted)
+// WCB v3.x pin assignments (matches wcb_pin_map.cpp v3.2)
+#define SBUS_TX_PIN     9    // Serial5 TX → SBUS output (inverted 100kbaud 8E2)
+#define PWM_PIN_0       4    // Serial1 TX → RC PWM CH output 1
+#define PWM_PIN_1       6    // Serial2 TX → RC PWM CH output 2
+#define PWM_PIN_2       15   // Serial3 TX → RC PWM CH output 3
+#define PWM_PIN_3       17   // Serial4 TX → RC PWM CH output 4
+#define PWM_CH_COUNT    4
 
 // ─── SBUS Protocol ────────────────────────────────────────────────────────────
 #define SBUS_BAUD           100000
@@ -131,6 +141,10 @@ struct WifiNetCfg {
   char pass[65];   // up to 64-char password + null
 };
 
+struct PwmOutCfg {
+  uint8_t ch;   // 1-based SBUS channel to mirror; 0 = disabled
+};
+
 struct Config {
   uint8_t   ver;
   uint8_t   joyRX;   // CH1 Aileron
@@ -150,6 +164,8 @@ struct Config {
   WifiNetCfg wifiNets[MAX_WIFI_NETS];
   uint8_t    wifiCount;  // number of configured networks
   uint8_t    wifiPref;   // 0=auto, 1..wifiCount=specific net, 255=AP only
+  // RC PWM outputs (4 pins mirroring selected SBUS channels)
+  PwmOutCfg  pwm[PWM_CH_COUNT];
 };
 
 Config cfg;
@@ -231,6 +247,9 @@ void applyConfigDefaults() {
   strlcpy(cfg.wifiNets[2].ssid, "KYBER_0908",       sizeof(cfg.wifiNets[2].ssid));
   strlcpy(cfg.wifiNets[2].pass, "12345678",         sizeof(cfg.wifiNets[2].pass));
   memset(&cfg.wifiNets[3], 0, sizeof(cfg.wifiNets[3]));
+
+  // PWM outputs — default to mirroring the first 4 SBUS channels
+  for (int i = 0; i < PWM_CH_COUNT; i++) cfg.pwm[i].ch = i + 1;
 }
 
 void initRuntimeState() {
@@ -239,6 +258,42 @@ void initRuntimeState() {
     swPos[i] = (cfg.sw[i].type == SW_3POS) ? 1 : 0;
   for (int i = 0; i < MAX_SLIDERS; i++) sliderPct[i] = 50;
   for (int i = 0; i < MAX_TRIMS; i++)   trimVal[i]   = SBUS_CENTER;
+}
+
+// =============================================================================
+//  RC PWM outputs  —  50 Hz, 1000–2159 µs  (mirrors selected SBUS channels)
+// =============================================================================
+static const uint8_t PWM_PINS[PWM_CH_COUNT] = { PWM_PIN_0, PWM_PIN_1, PWM_PIN_2, PWM_PIN_3 };
+
+// Map SBUS raw value (172–2047) to RC pulse width in microseconds (1000–2159)
+inline uint32_t sbusToPwmUs(uint16_t sbus) {
+  // Linear map: 172→1000 µs, 1811→2000 µs, 2047→2159 µs
+  int32_t us = 1000 + (int32_t)(sbus - 172) * 1000 / (1811 - 172);
+  return (uint32_t)constrain(us, 1000, 2200);
+}
+
+// Convert microseconds to 16-bit LEDC duty at 50 Hz (20000 µs period)
+inline uint32_t pwmUsToDuty(uint32_t us) {
+  return (uint32_t)((uint64_t)us * 65536UL / 20000UL);
+}
+
+void initPwmOutputs() {
+  for (int i = 0; i < PWM_CH_COUNT; i++) {
+    // LEDC: 50 Hz RC PWM, 16-bit resolution (65536 ticks per 20 ms period)
+    ledcAttach(PWM_PINS[i], 50, 16);
+    // Start at center (1500 µs)
+    ledcWrite(PWM_PINS[i], pwmUsToDuty(1500));
+    Serial.printf("[PWM] Output %d on GPIO%d -> CH%d\n", i + 1, PWM_PINS[i], cfg.pwm[i].ch);
+  }
+}
+
+void updatePwmOutputs() {
+  for (int i = 0; i < PWM_CH_COUNT; i++) {
+    uint8_t ch = cfg.pwm[i].ch;
+    if (ch >= 1 && ch <= SBUS_CH_COUNT_24) {
+      ledcWrite(PWM_PINS[i], pwmUsToDuty(sbusToPwmUs(sbusChannels[ch - 1])));
+    }
+  }
 }
 
 // Write switch/slider/trim current state into sbusChannels.
@@ -373,6 +428,17 @@ void loadConfig() {
     saveConfig();
   }
 
+  // PWM outputs
+  if (doc["pwm"].is<JsonArray>()) {
+    JsonArray pa = doc["pwm"].as<JsonArray>();
+    int idx = 0;
+    for (JsonObject o : pa) {
+      if (idx >= PWM_CH_COUNT) break;
+      cfg.pwm[idx].ch = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+      idx++;
+    }
+  }
+
   Serial.println("[SBUS] Config loaded.");
 }
 
@@ -440,6 +506,12 @@ void saveConfig() {
     JsonObject o = wArr.createNestedObject();
     o["s"] = cfg.wifiNets[i].ssid;
     o["p"] = cfg.wifiNets[i].pass;
+  }
+
+  JsonArray pwmArr = doc.createNestedArray("pwm");
+  for (int i = 0; i < PWM_CH_COUNT; i++) {
+    JsonObject o = pwmArr.createNestedObject();
+    o["c"] = cfg.pwm[i].ch;
   }
 
   serializeJson(doc, f);
@@ -521,6 +593,12 @@ String buildCfgJson() {
     JsonObject o = wArr2.createNestedObject();
     o["s"] = cfg.wifiNets[i].ssid;
     o["p"] = cfg.wifiNets[i].pass;
+  }
+
+  JsonArray pwmArr2 = doc.createNestedArray("pwm");
+  for (int i = 0; i < PWM_CH_COUNT; i++) {
+    JsonObject o = pwmArr2.createNestedObject();
+    o["c"] = cfg.pwm[i].ch;
   }
 
   String out;
@@ -631,6 +709,7 @@ void transmitSbus() {
   sendWsDebug(frame, flen, chcnt);
 #endif
   Serial1.write(frame, sbusFrameLen());
+  updatePwmOutputs();
 }
 
 // =============================================================================
@@ -841,6 +920,16 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     if (doc["aMax"].is<JsonArray>()) {
       JsonArray mx = doc["aMax"].as<JsonArray>();
       for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
+    }
+    // PWM channel assignments
+    if (doc["pwm"].is<JsonArray>()) {
+      JsonArray pa = doc["pwm"].as<JsonArray>();
+      int i = 0;
+      for (JsonObject o : pa) {
+        if (i >= PWM_CH_COUNT) break;
+        cfg.pwm[i].ch = constrain((int)(o["c"] | 0), 0, SBUS_CH_COUNT_24);
+        i++;
+      }
     }
     saveConfig();
     applyAllControls();
@@ -1401,6 +1490,14 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
         </table>
       </div>
 
+      <div>
+        <div class="sec-title">RC PWM Outputs (GPIO 4/6/15/17 &mdash; WCB v3.x Serial1-4 TX)</div>
+        <table class="cfg-table">
+          <thead><tr><th>Output</th><th>GPIO</th><th>SBUS Channel</th></tr></thead>
+          <tbody id="pwmCfgBody"></tbody>
+        </table>
+      </div>
+
       <div class="cfg-io-row">
         <span id="importStatus"></span>
         <button class="io-btn export" onclick="exportConfig()">&#11015; Export JSON</button>
@@ -1449,6 +1546,7 @@ let cfg = {
   rx:1, ry:2, ly:3, lx:4, sbus24:true,
   aMin: [172, 172, 172, 172],
   aMax: [1811,1811,1811,1811],
+  pwm: Array.from({length:4}, (_,i)=>({c:i+1})),
   sw:  Array.from({length:8},  (_,i)=>({l:`S${i}`, c:0, t:0, v:[172,992,1811], pos:1})),
   sl:  Array.from({length:4},  (_,i)=>({l:['LS','RS','S1','S2'][i]||`SL${i}`, c:0, pct:50})),
   tr:  Array.from({length:6},  (_,i)=>({l:`T${i+1}`, c:0, s:10, cur:992})),
@@ -1514,6 +1612,8 @@ function applyCfg(msg) {
   } else if (!cfg.lua) {
     cfg.lua = Array.from({length:15}, (_,i)=>({l:`Button ${i+1}`,c:0,v:1811,k:'#4fc3f7'}));
   }
+  // PWM outputs
+  if (Array.isArray(msg.pwm)) cfg.pwm = msg.pwm;
   // WiFi
   if (Array.isArray(msg.wifiNets)) cfg.wifiNets = msg.wifiNets;
   if (msg.wifiPref  != null) cfg.wifiPref  = msg.wifiPref;
@@ -1970,6 +2070,16 @@ function renderSettings() {
     tdK.appendChild(ki); tr.appendChild(tdK);
     luaTb.appendChild(tr);
   });
+
+  // PWM output table
+  const pwmPins = [4, 6, 15, 17];
+  const pwmTb = document.getElementById('pwmCfgBody'); pwmTb.innerHTML='';
+  (cfg.pwm || Array.from({length:4}, (_,i)=>({c:i+1}))).forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>PWM ${i+1}</td><td style="color:var(--muted);font-size:.75rem;">GPIO ${pwmPins[i]}</td>`;
+    const tdCh = document.createElement('td'); tdCh.appendChild(buildChSel(p.c, true)); tr.appendChild(tdCh);
+    pwmTb.appendChild(tr);
+  });
 }
 
 // =============================================================================
@@ -2122,6 +2232,7 @@ function importConfig(input) {
       if (data.tr    != null) payload.tr   = data.tr;
       if (data.btn   != null) payload.btn  = data.btn;
       if (data.lua   != null) payload.lua  = data.lua;
+      if (data.pwm   != null) payload.pwm  = data.pwm;
       send(payload);
       status.style.color = 'var(--green)';
       status.textContent = '\u2713 Imported — config applied & saved.';
@@ -2177,6 +2288,11 @@ function saveConfig() {
     c: parseInt(luaRows[i].cells[2].querySelector('select').value),
     v: parseInt(luaRows[i].cells[3].querySelector('input').value),
     k: luaRows[i].cells[4].querySelector('input[type=color]').value
+  }));
+
+  const pwmRows = document.getElementById('pwmCfgBody').rows;
+  payload.pwm = Array.from(pwmRows).map(row => ({
+    c: parseInt(row.cells[2].querySelector('select').value) || 0
   }));
 
   send(payload);
@@ -2360,9 +2476,12 @@ void setup() {
   delay(400);
   Serial.println("\n[SBUS] SBUSController booting (X18 edition)...");
 
-  // SBUS output: 100 kbaud, 8E2, inverted
+  // SBUS output: 100 kbaud, 8E2, inverted (GPIO9 = Serial5 TX on WCB v3.x)
   Serial1.begin(SBUS_BAUD, SERIAL_8E2, -1, SBUS_TX_PIN, true);
-  Serial.printf("[SBUS] Serial1 TX on GPIO%d  (100kbaud 8E2 inverted)\n", SBUS_TX_PIN);
+  Serial.printf("[SBUS] SBUS TX on GPIO%d  (100kbaud 8E2 inverted)\n", SBUS_TX_PIN);
+
+  // RC PWM outputs on GPIO4/6/15/17 (Serial1-4 TX on WCB v3.x)
+  initPwmOutputs();
 
   // LittleFS
   if (!LittleFS.begin(true)) {

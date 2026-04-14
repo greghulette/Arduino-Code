@@ -176,11 +176,22 @@ inline void _debugPrintln() { Serial.println(); sDebugSuppressNewClient = false;
 #define GREG_LIFTER_1875_ROTARY_MIN_POWER   40
 #define GREG_LIFTER_1875_DISTANCE           1225 // measured average from calibration
 
+// --- Greg Hulette periscope lifter — Pololu 4758 (10:1 gear ratio) ---
+// Intermediate gear ratio — faster than 18.75:1, more torque than 6.25:1.
+// Estimated tick count: 64 CPR × 10 ≈ 680 ticks full travel (confirm with calibration).
+// Direction: unknown until tested — try #PILM to toggle if motor goes the wrong way.
+// Power levels are conservative starting points; calibration will refine them.
+#define GREG_LIFTER_10_MINIMUM_POWER        60
+#define GREG_LIFTER_10_SEEKBOTTTOM_POWER    40
+#define GREG_LIFTER_10_ROTARY_MIN_POWER     40
+#define GREG_LIFTER_10_DISTANCE             680  // estimated — update after first calibration
+
 // -----------------------------------------------------------------------
 // Active motor profile — change ACTIVE_MOTOR_PROFILE to match your motor:
 //   1 = Pololu 4757 (6.25:1)  — original Greg Hulette motor
 //   2 = Pololu 4751 (18.75:1) — higher-torque replacement (reversed shaft, use #PILM)
 //   3 = IA-Parts lifter
+//   4 = Pololu 4758 (10:1)    — intermediate speed/torque (test direction with #PILM)
 // -----------------------------------------------------------------------
 #define ACTIVE_MOTOR_PROFILE    2
 
@@ -199,8 +210,13 @@ inline void _debugPrintln() { Serial.println(); sDebugSuppressNewClient = false;
   #define DEFAULT_LIFTER_SEEKBOTTTOM_POWER  IAPARTS_LIFTER_SEEKBOTTTOM_POWER
   #define DEFAULT_ROTARY_MINIMUM_POWER      IAPARTS_ROTARY_MINIMUM_POWER
   #define DEFAULT_LIFTER_DISTANCE           IAPARTS_LIFTER_DISTANCE
+#elif ACTIVE_MOTOR_PROFILE == 4
+  #define DEFAULT_LIFTER_MINIMUM_POWER      GREG_LIFTER_10_MINIMUM_POWER
+  #define DEFAULT_LIFTER_SEEKBOTTTOM_POWER  GREG_LIFTER_10_SEEKBOTTTOM_POWER
+  #define DEFAULT_ROTARY_MINIMUM_POWER      GREG_LIFTER_10_ROTARY_MIN_POWER
+  #define DEFAULT_LIFTER_DISTANCE           GREG_LIFTER_10_DISTANCE
 #else
-  #error "ACTIVE_MOTOR_PROFILE must be 1, 2, or 3"
+  #error "ACTIVE_MOTOR_PROFILE must be 1, 2, 3, or 4"
 #endif
 
 // Rotary is blocked below this height to avoid hitting the dome.
@@ -2329,7 +2345,13 @@ public:
                 DEBUG_PRINTLN(rotaryMotorCurrentPosition());
                 goto retry;
             }
-            long outputLimit = max(long(topSpeed * OUTPUT_LIMIT_PRESCALE), 10L);
+            // Scale outputLimit proportionally to targetDistance so the PID deceleration
+            // zone covers the same fraction of travel regardless of motor gear ratio.
+            // OUTPUT_LIMIT_PRESCALE (3.1) was tuned for the IA-Parts 845-tick motor;
+            // normalising by 845 keeps behaviour identical for that motor while giving
+            // the correct (larger) outputLimit for longer-travel motors like the 1225-tick
+            // Pololu 4751, restoring the intended "stalls just short on first try" pattern.
+            long outputLimit = max(long(topSpeed * OUTPUT_LIMIT_PRESCALE * targetDistance / 845L), 10L);
             Serial.print("SPEED: "); Serial.println(topSpeed);
             while (outputLimit >= 0 && tries < CALIBRATION_MAX_TRIES)
             {
