@@ -1059,7 +1059,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     align-items:center;padding:12px;gap:10px;
   }
 
-  /* ── Header ────────────────────────────────────────────────────────────── */
   header{
     width:100%;max-width:960px;
     display:flex;align-items:center;justify-content:space-between;
@@ -1083,7 +1082,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .hdr-btn.active-24{border-color:var(--accent);color:var(--accent);}
   .hdr-btn.dbg-on   {border-color:var(--green);color:var(--green);}
 
-  /* ── Switch pyramids: SF/SH top, SE/SG mid, SA+SB / SC+SD bottom pair ─── */
   .sw-pyramid{
     display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;
   }
@@ -1114,19 +1112,16 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   }
   .sw-mom.held{background:var(--accent);color:#000;border-color:var(--accent);}
 
-  /* ── Main control area ──────────────────────────────────────────────────── */
   .ctrl-area{
     width:100%;max-width:960px;
     display:flex;gap:6px;align-items:flex-start;justify-content:center;flex-wrap:wrap;
   }
 
-  /* Trim+Slider outer columns */
   .ts-col{
     display:flex;flex-direction:column;align-items:center;gap:8px;
     flex:0 0 auto;
   }
 
-  /* Trim widget */
   .trim-widget{
     background:var(--panel);border:1px solid var(--border);border-radius:8px;
     padding:7px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;
@@ -1150,7 +1145,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     font-size:.52rem;font-weight:700;
   }
 
-  /* Slider widget */
   .slider-widget{
     background:var(--panel);border:1px solid var(--border);border-radius:8px;
     padding:8px;display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -1165,7 +1159,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   }
   .slider-val{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;}
 
-  /* Stick block */
   .stick-block{
     display:flex;flex-direction:column;align-items:center;gap:8px;flex:0 0 auto;
   }
@@ -1190,7 +1183,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   }
   .stick-readout{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
 
-  /* Trim row below sticks */
   .trim-row{display:flex;gap:8px;justify-content:center;}
   .trim-h{
     background:var(--panel);border:1px solid var(--border);border-radius:8px;
@@ -1198,7 +1190,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   }
   .trim-h-btns{display:flex;gap:4px;align-items:center;}
 
-  /* ── Stick center wrapper (sticks + tucked-under controls) ─────────────── */
   .stick-center{
     display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;
   }
@@ -1206,7 +1197,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     display:flex;gap:10px;align-items:flex-start;
   }
 
-  /* ── S1/S2 pot row ─────────────────────────────────────────────────────── */
   .pot-row{
     display:flex;gap:12px;justify-content:center;flex-wrap:wrap;width:100%;
   }
@@ -1220,12 +1210,10 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .pot-inp{width:180px;cursor:pointer;accent-color:var(--accent);}
   .pot-val{font-size:.65rem;color:var(--muted);font-variant-numeric:tabular-nums;}
 
-  /* ── Trim bank (all trims in a row, tucked under sticks) ─────────────── */
   .trim-bank{
     display:flex;gap:6px;justify-content:center;flex-wrap:wrap;width:100%;
   }
 
-  /* ── Lua button grid ────────────────────────────────────────────────────── */
   .lua-section{width:100%;max-width:960px;}
   .lua-header{margin-bottom:6px;}
   .lua-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;}
@@ -1244,7 +1232,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .lua-btn.pressed{filter:brightness(.75);transform:scale(.96);}
   .lua-btn:not(.unassigned):hover{filter:brightness(1.15);}
 
-  /* ── Button bank ────────────────────────────────────────────────────────── */
   .btn-bank{
     display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;
   }
@@ -1262,7 +1249,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .ctrl-btn.pressed{background:var(--accent);color:#000;border-color:var(--accent);}
   .ctrl-btn:not(.unassigned):hover{border-color:var(--accent);}
 
-  /* ── Settings panel ─────────────────────────────────────────────────────── */
   .settings-wrap{width:100%;max-width:960px;}
   details{width:100%;}
   summary{
@@ -1311,7 +1297,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .io-btn.import:hover{background:var(--yellow);color:#000;}
   #importStatus{font-size:.72rem;color:var(--muted);}
 
-  /* ── WiFi panel ─────────────────────────────────────────────────────────── */
   .wifi-status{font-size:.72rem;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;}
   .wifi-status b{color:var(--text);}
   .wifi-net-row{display:grid;grid-template-columns:auto 1fr 1fr auto auto auto;gap:6px;align-items:center;margin-bottom:5px;}
@@ -1340,7 +1325,6 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .wifi-apply:hover{background:var(--accent);color:#000;}
   #wifiMsg{font-size:.72rem;color:var(--yellow);display:none;}
 
-  /* ── Debug panel ────────────────────────────────────────────────────────── */
   .dbg-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
   @media(max-width:600px){.dbg-grid{grid-template-columns:repeat(4,1fr);}}
   .dbg-cell{background:var(--bg);border:1px solid var(--border);border-radius:4px;
@@ -1352,9 +1336,35 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .dbg-info{font-size:.65rem;color:var(--muted);margin-top:5px;display:flex;gap:14px;flex-wrap:wrap;}
   .dbg-info .di-val{color:var(--text);}
 
-  @media(max-width:620px){
-    .ctrl-area{flex-direction:column;align-items:center;}
-    .axis-grid{grid-template-columns:repeat(2,1fr);}
+  @media(max-width:768px){.axis-grid{grid-template-columns:repeat(2,1fr);}.wifi-net-row{grid-template-columns:auto 1fr 1fr auto auto;}}
+  @media(max-width:540px){
+    body{padding:6px;gap:6px;}
+    header{flex-direction:column;align-items:flex-start;gap:5px;}
+    header>div{width:100%;justify-content:space-between;}
+    .ctrl-area{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto auto;gap:6px;align-items:start;}
+    .stick-center{grid-column:1/3;grid-row:1;width:100%;}
+    #swPyramidLeft{grid-column:1;grid-row:2;justify-self:center;}
+    #swPyramidRight{grid-column:2;grid-row:2;justify-self:center;}
+    #slLSCol{grid-column:1;grid-row:3;justify-self:stretch;align-self:center;}
+    #slRSCol{grid-column:2;grid-row:3;justify-self:stretch;align-self:center;}
+    .sticks-row{width:100%;justify-content:space-around;}
+    .stick-block{flex:1;}.stick-card{padding:8px;}
+    .stick-wrap{width:min(42vw,185px);}.stick-lbl{font-size:.55rem;}
+    .stick-readout{font-size:.6rem;}.thumb{width:30px;height:30px;}
+    .sw-pyramid{gap:4px;}.sw-pair{gap:4px;}.sw-card{width:62px;padding:6px 4px;}
+    .ts-col{width:100%;}
+    .slider-widget{flex-direction:column;align-items:center;padding:6px 8px;width:100%;}
+    .slider-wrap{width:100%;height:28px;}.slider-inp{width:90%;transform:none;transform-origin:unset;}
+    .lua-grid{grid-template-columns:repeat(4,1fr);gap:5px;}.lua-btn{padding:10px 4px;font-size:.7rem;}
+    .trim-bank{gap:4px;}.trim-widget{padding:5px 6px;}.trim-btn{width:34px;height:24px;}
+    .pot-row{gap:8px;}.pot-widget{min-width:0;flex:1;}.pot-inp{width:100%;}
+    .cfg-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  }
+  @media(max-width:820px) and (orientation:landscape){
+    body{padding:4px;gap:4px;}.stick-wrap{width:min(28vw,155px);}.stick-card{padding:8px;}
+    .thumb{width:30px;height:30px;}.sw-card{width:60px;padding:5px 4px;}
+    .lua-grid{grid-template-columns:repeat(6,1fr);}.lua-btn{padding:8px 4px;font-size:.65rem;}
+    .trim-btn{width:32px;height:22px;font-size:.7rem;}
   }
 </style>
 </head>
@@ -2555,7 +2565,7 @@ void setup() {
   server.addHandler(&ws);
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* req){
     Serial.printf("[SBUS] HTTP GET /  from %s\n", req->client()->remoteIP().toString().c_str());
-    req->send(200, "text/html", HTML);  // send() preferred over send_P() in ESP32Async v3.x
+    req->send_P(200, "text/html", (const uint8_t*)HTML, sizeof(HTML) - 1);  // explicit length avoids uint16 overflow on large pages
   });
   // Lightweight health-check
   server.on("/ping", HTTP_GET, [](AsyncWebServerRequest* req){
