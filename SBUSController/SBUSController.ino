@@ -89,7 +89,8 @@ inline int sbusFrameLen() { return g_sbus24 ? SBUS_FRAME_LEN_24 : SBUS_FRAME_LEN
 #define SBUS_DEBUG_INTERVAL_MS  50    // serial dump rate (ms) — 50ms = 20 Hz
 
 #ifdef SBUS_DEBUG
-bool g_sbusDebug = false;
+bool g_sbusDebug   = false;   // live channel monitor (WebSocket)
+bool g_serialDebug = false;   // verbose serial dump — off by default; toggle with 'd' command
 #endif
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -655,7 +656,7 @@ static void decodeSbusFrame(const uint8_t* frame, uint16_t* out, int chcnt) {
 }
 
 static void printSbusDebug(const uint8_t* frame, int flen, int chcnt) {
-  if (!g_sbusDebug) return;
+  if (!g_serialDebug) return;
   const uint32_t now = millis();
   if (now - s_lastSerialDbgMs < (uint32_t)SBUS_DEBUG_INTERVAL_MS) return;
   s_lastSerialDbgMs = now;
@@ -2569,9 +2570,8 @@ static void handleSerialCommands() {
 
     } else if (c == 'd') {
 #ifdef SBUS_DEBUG
-      g_sbusDebug = !g_sbusDebug;
-      Serial.printf("[SBUS] Debug %s\n", g_sbusDebug ? "ENABLED" : "DISABLED");
-      ws.textAll(buildCfgJson());
+      g_serialDebug = !g_serialDebug;
+      Serial.printf("[SBUS] Serial debug %s\n", g_serialDebug ? "ENABLED" : "DISABLED");
 #else
       Serial.println("[SBUS] Debug not compiled in — uncomment #define SBUS_DEBUG");
 #endif
@@ -2612,7 +2612,7 @@ static void handleSerialCommands() {
       Serial.printf("[SBUS] Mode: SBUS-%d  |  Frame: %d bytes  |  Channels: %d",
                     sbusChCount(), sbusFrameLen(), sbusChCount());
 #ifdef SBUS_DEBUG
-      Serial.printf("  |  Debug: %s", g_sbusDebug ? "ON" : "OFF");
+      Serial.printf("  |  Monitor: %s  |  SerialDbg: %s", g_sbusDebug ? "ON" : "OFF", g_serialDebug ? "ON" : "OFF");
 #endif
       Serial.println();
       Serial.println("[SBUS] Switch positions:");
