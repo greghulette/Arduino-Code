@@ -184,7 +184,7 @@ inline void _debugPrintln() { Serial.println(); sDebugSuppressNewClient = false;
 #define GREG_LIFTER_10_MINIMUM_POWER        60
 #define GREG_LIFTER_10_SEEKBOTTTOM_POWER    40
 #define GREG_LIFTER_10_ROTARY_MIN_POWER     40
-#define GREG_LIFTER_10_DISTANCE             680  // estimated — update after first calibration
+#define GREG_LIFTER_10_DISTANCE             570  // decel-corrected: physical top ~578-596 ticks
 
 // -----------------------------------------------------------------------
 // Active motor profile — change ACTIVE_MOTOR_PROFILE to match your motor:
@@ -641,6 +641,8 @@ struct LifterSettings
             bool fSafetyManeuver:1;      // (unused)
             bool fDisableRotary:1;       // Set true via config command to disable rotary
             bool fInvertLifterMotor:1;   // Set true when lifter motor wiring produces reversed direction
+            bool fInvertLifterEncoder:1; // Set true when encoder counts backward relative to motor direction
+                                         // (independent of fInvertLifterMotor — some motors need one, both, or neither)
         };
         uint8_t fFlags;
     };
@@ -1034,10 +1036,10 @@ public:
             float minSafePos = (float)ROTARY_MINIMUM_HEIGHT / (float)sSettings.getLifterDistance();
             pos = min(max(pos, minSafePos), 1.0f);
         }
-        // Force ALL seeks to run at exactly fMinimumPower. The lead screw self-locks
-        // so higher speeds just build momentum that pulsed braking can't arrest (causing
-        // violent limit switch impacts), and lower speeds stall the motor mid-travel.
-        speed = sSettings.fMinimumPower / 100.0f;
+        // Clamp speed to the calibrated range: minimum power (below this the motor stalls)
+        // up to 100%. The decel zone handles final approach regardless of speed.
+        float minSpeed = sSettings.fMinimumPower / 100.0f;
+        speed = max(min(speed, 1.0f), minSpeed);
 
         long maxlen = sSettings.getLifterDistance();
         long current = getLifterPositionClamped();
@@ -1052,10 +1054,10 @@ public:
             return true;  // already there
         }
         // Pulsed drive (3ms on / 1ms off) the entire travel for mechanical braking.
-        // Power ramp only in the last 20% of distance-to-target: from fMinimumPower
-        // down to approach power (~40%). Full power for the first 80% so the heavy
-        // periscope can still climb against gravity.
-        float approachPower = LIFTER_SEEKBOTTTOM_POWER / 100.0f;  // ~0.40
+        // Power ramp in the last 25% of distance-to-target, down to approach power.
+        // Use LIFTER_SEEKBOTTTOM_POWER — the per-profile downward crawl speed.
+        // Gravity assists downward motion so this is well below the upward fMinimumPower.
+        float approachPower = LIFTER_SEEKBOTTTOM_POWER / 100.0f;
         TargetSteering steering(target_ticks);
         steering.setSampleTime(1);
         float minpower = (1.0f - ((float)distance / (float)maxlen)) + 0.1;
@@ -1085,6 +1087,9 @@ public:
             long seekPrevPos = getLifterPosition();
             uint32_t seekPosChangeMs = millis();
             uint32_t seekLogMs = millis();
+            // Decel zone: in the last 15% before the target, cap drive to minimum+15%.
+            long upDecelStart = (long)(target_ticks * 0.85f);
+            float upDecelCap  = sSettings.fMinimumPower / 100.0f + 0.15f;
             for (;;)
             {
                 long encoder_ticks = getLifterPosition();
@@ -1117,27 +1122,15 @@ public:
                     Serial.print("SEEK UP ABORT: stall at pos="); Serial.println(encoder_ticks);
                     break;
                 }
-                float throttle = 1.0f;
-                if (limit > 0)
-                {
-                    steering.setCurrentDistance(encoder_ticks);
-                    throttle = steering.getThrottle();
-                    // Clamp so motor power never drops below fMinimumPower — the lead screw
-                    // is self-locking, so any throttle below minimum just stalls the motor.
-                    float minThrottle = sSettings.fMinimumPower / (100.0f * speed);
-                    throttle = max(throttle, minThrottle);
-                }
-                // Pulsed drive (3ms on / 1ms off) for the ENTIRE ascent at
-                // constant speed. No ramp needed: gravity is the brake on UP.
-                // Each 3ms pulse moves ~1 encoder tick. Between pulses the motor
-                // is stopped and the self-locking lead screw + gravity hold position.
-                // Overshoot when target is reached = ~1 tick (one pulse of coast).
-                {
-                    lifterMotorMove(speed);
-                    delay(3);
-                    lifterMotorStop();
-                    delay(1);
-                }
+                // Pulsed drive (3ms on / 1ms off). In the decel zone, cap to min+15%
+                // so the motor is crawling when it touches the top limit switch.
+                float drive = (encoder_ticks >= upDecelStart)
+                    ? min(speed, upDecelCap)
+                    : speed;
+                lifterMotorMove(drive);
+                delay(3);
+                lifterMotorStop();
+                delay(1);
             }
             lifterMotorStop();
             if (topLimit)
@@ -1213,7 +1206,7 @@ public:
                 // in the last 20% of distance-to-target.
                 {
                     long distToTarget = encoder_ticks - target_ticks;
-                    long rampZone = max(30L, (current - target_ticks) / 5);  // last 20%
+                    long rampZone = max(30L, (current - target_ticks) / 4);  // last 25%
                     float power = speed;
                     if (distToTarget <= rampZone)
                     {
@@ -2310,10 +2303,77 @@ public:
         sSettings.fUpLimitsCalibrated = false;
         sSettings.fDownLimitsCalibrated = false;
         sSettings.fMinimumPower = 0;
-        // NOTE: do NOT reset fLifterDistance here. safetyManeuver() already resets it
-        // to 0 internally (before its own seekToBottom) so it always remeasures fresh.
-        // Resetting it again here would erase the correct measurement and corrupt
-        // targetDistance for the calibration sweep.
+
+        // ---------------------------------------------------------------
+        // PRE-SCAN: slow bottom-to-top run at 50% to measure actual tick
+        // count before the main calibration sweep begins.  This gives a
+        // reliable targetDistance that is independent of the profile-default
+        // estimate and is taken at a speed low enough to minimise EMI
+        // overcounting.  The measured value replaces fLifterDistance so all
+        // decel-zone calculations in the sweep use the real stroke length.
+        // ---------------------------------------------------------------
+        // Pre-scan power: use the profile-default minimum + 15% margin so the motor
+        // reliably moves regardless of what sSettings.fMinimumPower currently holds
+        // (it is cleared to 0 at the start of calibration).  Never go below 70%.
+        float preScanPower = max(0.70f, (float)DEFAULT_LIFTER_MINIMUM_POWER / 100.0f + 0.15f);
+        Serial.print("PRE-SCAN: slow run to measure stroke (power=");
+        Serial.print((int)(preScanPower * 100));
+        Serial.println("%)");
+        seekToBottom(false);
+        delay(500);
+        {
+            bool  psTopLimit   = false;
+            long  psPrevPos    = getLifterPosition();
+            uint32_t psPosMs   = millis();
+            // Hard stop at 150% of profile default — safety net only.
+            long psHardStop = (long)(DEFAULT_LIFTER_DISTANCE * 1.50f);
+            for (;;)
+            {
+                long cur = getLifterPosition();
+                psTopLimit = lifterTopLimit();
+                if (psTopLimit || serialAbort()) break;
+                if (cur >= psHardStop)
+                {
+                    Serial.println("PRE-SCAN ABORT: hard stop reached without top limit");
+                    break;
+                }
+                if (cur != psPrevPos) { psPrevPos = cur; psPosMs = millis(); }
+                if (millis() - psPosMs > 2000) { Serial.println("PRE-SCAN ABORT: stalled"); break; }
+                lifterMotorMove(preScanPower);
+                delay(3);
+                lifterMotorStop();
+                delay(1);
+            }
+            lifterMotorStop();
+            if (psTopLimit)
+            {
+                long measured = getLifterPosition();
+                Serial.print("PRE-SCAN measured stroke: "); Serial.println(measured);
+                if (measured > 50)
+                {
+                    sSettings.fLifterDistance  = (unsigned)measured;
+                    sLifterParameters.fLifterDistance = (unsigned)measured;
+                    sLifterParameters.save();
+                    Serial.print("Stroke set to "); Serial.print(measured);
+                    Serial.println(" ticks — proceeding with calibration");
+                }
+                else
+                {
+                    Serial.println("PRE-SCAN: measured stroke too small, check encoder wiring");
+                    sCalibrating = false;
+                    return false;
+                }
+                resetLifterPositionTop();
+            }
+            else
+            {
+                Serial.println("PRE-SCAN FAILED — aborting calibration");
+                sCalibrating = false;
+                return false;
+            }
+        }
+        seekToBottom(false);
+        delay(500);
 
         long homePosition = getLifterPosition();
         int topSpeed = LIFTER_MINIMUM_POWER;
@@ -2324,8 +2384,6 @@ public:
             delay(ENCODER_STATUS_RATE*2);
             lifterMotorStop();
             // Stop as soon as the top limit fires — do not strain the motor against it.
-            // Driving into the top limit generates sustained stall current that corrupts
-            // the encoder via EMI, making targetDistance wrong for the whole sweep.
             if (lifterTopLimit())
                 break;
             if (lifterStatus.isMoving())
@@ -2376,8 +2434,8 @@ public:
                 // calHardStop: if we reach this position the limit switch has
                 //   definitively failed — abort the entire calibration.
                 long calBase     = max((long)targetDistance, (long)DEFAULT_LIFTER_DISTANCE);
-                long calDecelStart = (long)(calBase * 0.85f);  // top 15% → minimum power
-                long calHardStop   = (long)(calBase * 1.08f);  // 8% past top → abort
+                long calDecelStart = (long)(targetDistance * 0.85f);  // top 15% of actual target → minimum power
+                long calHardStop   = (long)(calBase * 1.08f);         // 8% past max expected → abort
                 bool calHardStopFired = false;
                 for (;;)
                 {
@@ -2416,7 +2474,7 @@ public:
                     // In the decel zone, cap drive to minimum power so the motor is
                     // crawling near the top — safe even if the limit switch fails.
                     if (encoder_ticks >= calDecelStart)
-                        drive = min(drive, sSettings.fMinimumPower / 100.0f + 0.05f);
+                        drive = min(drive, sSettings.fMinimumPower / 100.0f + 0.15f);
                     lifterMotorMove(drive);
                 }
                 lifterMotorStop();
@@ -3093,8 +3151,8 @@ public:
             // decelStart: above this position cap drive to minimum power (motor crawls near top).
             // hardStopTicks: if reached without limit switch, stop immediately.
             long seekBase      = max((long)sSettings.getLifterDistance(), (long)DEFAULT_LIFTER_DISTANCE);
-            long seekDecelStart = (long)(seekBase * 0.85f);  // top 15% → minimum power
-            long hardStopTicks  = (long)(seekBase * 1.08f);  // 8% past top → hard stop
+            long seekDecelStart = (long)(sSettings.getLifterDistance() * 0.85f);  // top 15% of stored distance → minimum power
+            long hardStopTicks  = (long)(seekBase * 1.08f);                       // 8% past max expected → hard stop
             for (;;)
             {
                 long cur = getLifterPosition();
@@ -3116,7 +3174,7 @@ public:
                 }
                 // In the decel zone, cap drive to minimum power.
                 float drive = (cur >= seekDecelStart)
-                    ? min(mpower, sSettings.fMinimumPower / 100.0f + 0.05f)
+                    ? min(mpower, sSettings.fMinimumPower / 100.0f + 0.15f)
                     : mpower;
                 lifterMotorMove(drive);
                 delay(3);
@@ -3139,12 +3197,13 @@ public:
                     Serial.println(upCount);
                     Serial.println("Keeping stored distance. Check top limit switch wiring.");
                 }
-                else if (stored >= 100 && abs(upCount - (long)stored) > (long)stored / 5)
+                else if (stored >= 100 && abs(upCount - (long)stored) > (long)stored / (sCalibrating ? 2 : 5))
                 {
-                    // New measurement is >20% different from stored calibration.
-                    // Dome EMI causes encoder undercounting; don't corrupt the
-                    // good calibrated value.  Use the stored value instead.
-                    Serial.print("LIFTER DISTANCE REJECTED (>20% from stored): measured=");
+                    // Measurement differs too much from stored value.
+                    // During normal operation: 20% threshold guards against EMI corruption.
+                    // During calibration: 50% threshold — speed-induced EMI causes wider
+                    // variation across the sweep and the pre-scan already set a good baseline.
+                    Serial.print("LIFTER DISTANCE REJECTED (out of range) measured=");
                     Serial.print(upCount);
                     Serial.print(" stored=");
                     Serial.println(stored);
@@ -3185,8 +3244,8 @@ public:
         uint32_t seekPosChangeMs2 = millis();
         // Safety limits for upward travel.
         long pidBase       = max((long)sSettings.getLifterDistance(), (long)DEFAULT_LIFTER_DISTANCE);
-        long pidDecelStart  = (long)(pidBase * 0.85f);  // top 15% → minimum power
-        long hardStopTicks2 = (long)(pidBase * 1.08f);  // 8% past top → hard stop
+        long pidDecelStart  = (long)(sSettings.getLifterDistance() * 0.85f);  // top 15% of stored distance → minimum power
+        long hardStopTicks2 = (long)(pidBase * 1.08f);                        // 8% past max expected → hard stop
         for (;;)
         {
             long encoder_ticks = getLifterPosition();
@@ -3210,7 +3269,7 @@ public:
             float drive = steering.getThrottle() * speed;
             // In the decel zone, cap drive to minimum power.
             if (encoder_ticks >= pidDecelStart)
-                drive = min(drive, sSettings.fMinimumPower / 100.0f + 0.05f);
+                drive = min(drive, sSettings.fMinimumPower / 100.0f + 0.15f);
             lifterMotorMove(drive);
         }
         lifterMotorStop();
@@ -3257,8 +3316,8 @@ public:
             uint32_t seekPosChangeMs = millis();
             // Safety limits for upward travel.
             long slowBase          = max((long)sSettings.getLifterDistance(), (long)DEFAULT_LIFTER_DISTANCE);
-            long slowDecelStart    = (long)(slowBase * 0.85f);  // top 15% → minimum power
-            long hardStopTicksSlow = (long)(slowBase * 1.08f);  // 8% past top → hard stop
+            long slowDecelStart    = (long)(sSettings.getLifterDistance() * 0.85f);  // top 15% of stored distance → minimum power
+            long hardStopTicksSlow = (long)(slowBase * 1.08f);                       // 8% past max expected → hard stop
             for (;;)
             {
                 long encoder_ticks = getLifterPosition();
@@ -3285,7 +3344,7 @@ public:
                 }
                 // In the decel zone, cap drive to minimum power.
                 float driveSlow = (encoder_ticks >= slowDecelStart)
-                    ? min(mpower, sSettings.fMinimumPower / 100.0f + 0.05f)
+                    ? min(mpower, sSettings.fMinimumPower / 100.0f + 0.15f)
                     : mpower;
                 lifterMotorMove(driveSlow);
                 delay(3);
@@ -3303,6 +3362,11 @@ public:
             // which requires 20 ticks/200ms and falsely trips on slow/pulsed motors.
             long seekPrevPos = getLifterPosition();
             uint32_t seekPosChangeMs = millis();
+            // Bottom decel zone: in the last 25% of downward travel cap to the
+            // per-profile downward crawl speed. Gravity assists so this is much
+            // lower than the upward fMinimumPower.
+            long slowDownDecelEnd = (long)(maxlen * 0.25f);
+            float slowDownCap = LIFTER_SEEKBOTTTOM_POWER / 100.0f;
             for (;;)
             {
                 long encoder_ticks = getLifterPosition();
@@ -3320,7 +3384,10 @@ public:
                     DEBUG_PRINTLN("ABORT");
                     break;
                 }
-                lifterMotorMove(-mpower);
+                float downDrive = (encoder_ticks < slowDownDecelEnd)
+                    ? min(mpower, slowDownCap)
+                    : mpower;
+                lifterMotorMove(-downDrive);
                 delay(3);
                 lifterMotorStop();
                 delay(1);
@@ -3438,7 +3505,7 @@ PeriscopeLifter::measureLifterEncoder()
         // to physical position.  Flip the direction here to keep position tracking
         // consistent: positive ticks = lifter up, negative ticks = lifter down.
         bool countUp = (digitalRead(PIN_LIFTER_ENCODER_B) != LOW);
-        if (sSettings.fInvertLifterMotor) countUp = !countUp;
+        if (sSettings.fInvertLifterEncoder) countUp = !countUp;
         if (countUp)
             encoder_lifter_ticks++;
         else
@@ -4203,6 +4270,9 @@ void processConfigureCommand(const char* cmd)
         Serial.print(F("Rotary Min Power:   ")); Serial.println(sLifterParameters.fRotaryMinPower);
         Serial.print(F("Lifter Distance:    ")); Serial.println(sLifterParameters.fLifterDistance);
         Serial.print(F("Rotary Min Height:  ")); Serial.println(sLifterParameters.fRotaryMinHeight);
+        Serial.print(F("Rotary Enc Count:   ")); Serial.println(sLifterParameters.fRotaryEncoderCount);
+        Serial.print(F("Invert Motor:       ")); Serial.println(sSettings.fInvertLifterMotor);
+        Serial.print(F("Invert Encoder:     ")); Serial.println(sSettings.fInvertLifterEncoder);
         Serial.print(F("Safety Maneuver:    ")); Serial.println(sSafetyManeuver);
         if (sSafetyManeuverFailed)
             Serial.print(F("Safety Maneuver FAILED"));
@@ -4237,14 +4307,23 @@ void processConfigureCommand(const char* cmd)
     else if (startswith(cmd, "ILM"))
     {
         // #PILM — toggle lifter motor direction inversion.
-        // Use when the motor is wired in reverse (e.g. different gear-ratio version
-        // of the same motor reverses the output shaft direction).
-        // Inverts both the drive signal AND the encoder tick direction so position
-        // tracking stays consistent.  Saved to flash; takes effect immediately.
+        // Use when the motor physically moves the wrong direction.
+        // Does NOT affect encoder counting — use #PILE to fix that separately.
         sSettings.fInvertLifterMotor = !sSettings.fInvertLifterMotor;
         sSettings.write();
         Serial.print("Lifter motor invert: ");
         Serial.println(sSettings.fInvertLifterMotor ? "ON" : "OFF");
+    }
+    else if (startswith(cmd, "ILE"))
+    {
+        // #PILE — toggle lifter encoder direction inversion.
+        // Use when the encoder counts backward (reads negative at the top after
+        // seeking up from 0).  Independent of #PILM — some motors need one,
+        // both, or neither.  Saved to flash; takes effect immediately.
+        sSettings.fInvertLifterEncoder = !sSettings.fInvertLifterEncoder;
+        sSettings.write();
+        Serial.print("Lifter encoder invert: ");
+        Serial.println(sSettings.fInvertLifterEncoder ? "ON" : "OFF");
     }
     else if (startswith(cmd, "CLRD"))
     {
@@ -4260,6 +4339,14 @@ void processConfigureCommand(const char* cmd)
         sLifterParameters.fLifterDistance = 0;
         sLifterParameters.save();
         Serial.println("Lifter distance cleared — run #PSC to recalibrate");
+    }
+    else if (startswith(cmd, "RRC"))
+    {
+        // #PRRC — Reset Rotary encoder Count.
+        // Clears the cached ticks-per-revolution so it is re-measured on the next
+        // safety maneuver.  Use when the rotary HOME is not found (cached count stale
+        // after motor swap or flash erase).
+        lifter.clearRotaryEncoderCount();
     }
     else if (startswith(cmd, "R"))
     {
@@ -5345,7 +5432,6 @@ void loop()
         if (sPos != 0 || (ch == ':' || ch == '#'))
         {
             // Reduce serial noise by ignoring anything that doesn't start with : or #
-            printf("ch: %c [%d]\n", ch, ch);
             if (ch == 0x0A || ch == 0x0D)
             {
                 runSerialCommand();
