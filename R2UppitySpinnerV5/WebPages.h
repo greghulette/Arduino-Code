@@ -22,199 +22,235 @@ static void printPageHead(Print& out, const char* title)
 {
     out.print("<!DOCTYPE html><html lang='en'><head>");
     out.print("<meta charset='utf-8'>");
-    // Allow user scaling on tablet/desktop; phone keeps no-scale for control precision
     out.print("<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>");
     out.print("<title>"); out.print(title); out.print("</title><style>");
 
-    // ── Reset & base ──────────────────────────────────────────────────────
+    // CSS Variables — dark theme (default)
+    out.print(":root{"
+              "--bg:#0f1117;--panel:#1a1d28;--border:#2a2d3a;--border2:#353c47;"
+              "--text:#e0e4f0;--muted:#6b7280;"
+              "--accent:#4fc3f7;--green:#4ade80;--red:#ef5350;--yellow:#ffa726;"
+              "}");
+    // Light theme override
+    out.print("body.light{"
+              "--bg:#f0f2f7;--panel:#ffffff;--border:#d1d5e0;--border2:#b0b8c8;"
+              "--text:#1a1d2e;--muted:#6b7280;"
+              "--accent:#0284c7;--green:#16a34a;--red:#dc2626;--yellow:#d97706;"
+              "}");
+
+    // Reset & base
     out.print("*{box-sizing:border-box;margin:0;padding:0}");
     out.print("html{height:100%}");
-    out.print("body{min-height:100%;background:#f0f2f5;color:#1a1a1a;"
-              "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
-              "font-size:17px;-webkit-tap-highlight-color:transparent}");
+    out.print("body{min-height:100%;background:var(--bg);color:var(--text);"
+              "font-family:'Trebuchet MS',Arial,sans-serif;"
+              "font-size:15px;-webkit-tap-highlight-color:transparent}");
 
-    // ── Shell: phone = simple stack, desktop = sidebar + content ─────────
-    // #shell wraps everything below the status bar
-    out.print("#shell{display:flex;min-height:calc(100vh - 60px)}");
-    // #page: the scrollable content area
-    out.print("#page{flex:1;padding:12px 14px 90px;min-width:0}");
-    out.print("@supports(padding:env(safe-area-inset-bottom)){"
-              "#page{padding-bottom:calc(80px + env(safe-area-inset-bottom))}}");
+    // Top nav bar
+    out.print("#topnav{display:flex;align-items:stretch;"
+              "background:var(--panel);border-bottom:1px solid var(--border);"
+              "position:sticky;top:0;z-index:200;"
+              "box-shadow:0 2px 8px rgba(0,0,0,.2)}");
+    out.print(".tn-title{font-size:11px;font-weight:700;color:var(--muted);"
+              "padding:0 14px;display:flex;align-items:center;"
+              "border-right:1px solid var(--border);white-space:nowrap;"
+              "letter-spacing:.08em;text-transform:uppercase}");
+    out.print("#topnav a{color:var(--muted);text-decoration:none;"
+              "padding:12px 13px;font-size:13px;font-weight:600;"
+              "white-space:nowrap;display:flex;align-items:center;"
+              "letter-spacing:.03em;transition:color .15s,background .15s}");
+    out.print("#topnav a:hover{color:var(--text);background:var(--panel)}");
+    out.print("#topnav a.active{color:var(--accent);"
+              "border-bottom:2px solid var(--accent)}");
 
-    // ── Status bar ────────────────────────────────────────────────────────
+    // Content area
+    out.print("#page{padding:12px 14px 24px;max-width:680px;margin:0 auto;width:100%}");
+
+    // Status bar
     out.print("#sbar{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;"
-              "padding:9px 10px 7px;background:#fff;"
-              "border-bottom:1px solid #dde1e7;"
-              "position:sticky;top:0;z-index:100;"
-              "box-shadow:0 1px 4px rgba(0,0,0,.08)}");
-    out.print(".ss{background:#f7f8fa;border:1px solid #e4e6ea;"
-              "border-radius:9px;padding:6px 4px;text-align:center}");
-    out.print(".sv{font-size:14px;font-weight:700;line-height:1.2}");
-    out.print(".sl{font-size:9px;color:#888;margin-top:2px;"
+              "padding:8px 10px;background:var(--panel);"
+              "border-bottom:1px solid var(--border);"
+              "position:sticky;top:46px;z-index:100}");
+    out.print(".ss{background:var(--bg);border:1px solid var(--border);"
+              "border-radius:8px;padding:6px 4px;text-align:center}");
+    out.print(".sv{font-size:13px;font-weight:700;line-height:1.2}");
+    out.print(".sl{font-size:9px;color:var(--muted);margin-top:2px;"
               "text-transform:uppercase;letter-spacing:.05em}");
-    out.print(".c-g{color:#16a34a}.c-y{color:#d97706}"
-              ".c-r{color:#dc2626}.c-b{color:#2563eb}.c-m{color:#888;font-size:10px}");
+    out.print(".c-g{color:var(--green)}.c-y{color:var(--yellow)}"
+              ".c-r{color:var(--red)}.c-b{color:var(--accent)}"
+              ".c-m{color:var(--muted);font-size:10px}");
 
-    // ── Section labels ────────────────────────────────────────────────────
-    out.print(".sec{font-size:12px;color:#888;font-weight:600;"
-              "letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px}");
+    // Section labels
+    out.print(".sec{font-size:11px;color:var(--muted);font-weight:700;"
+              "letter-spacing:.1em;text-transform:uppercase;"
+              "margin:16px 0 8px;padding-bottom:4px;"
+              "border-bottom:1px solid var(--border)}");
     out.print(".sec:first-child{margin-top:6px}");
 
-    // ── Buttons ───────────────────────────────────────────────────────────
+    // Buttons
     out.print("button{appearance:none;-webkit-appearance:none;"
-              "border:1px solid #cdd1d9;background:#fff;color:#333;"
-              "border-radius:10px;padding:14px 8px;font-size:16px;"
+              "border:1px solid var(--border2);background:var(--panel);color:var(--text);"
+              "border-radius:8px;padding:12px 8px;font-size:14px;"
               "font-family:inherit;cursor:pointer;text-align:center;"
-              "width:100%;font-weight:500;transition:background .1s}");
-    out.print("button:hover{background:#f4f6f8}");
-    out.print("button:active{background:#e8eaf0;opacity:.85}");
-    out.print("button.danger{border-color:#fca5a5;background:#fef2f2;color:#dc2626}");
-    out.print("button.danger:hover{background:#fee2e2}");
-    out.print("button.primary{border-color:#93c5fd;background:#eff6ff;color:#2563eb}");
-    out.print("button.primary:hover{background:#dbeafe}");
-    out.print("button.estop{border-color:#dc2626;background:#dc2626;"
-              "color:#fff;font-size:18px;font-weight:700;"
-              "padding:18px;width:100%;border-radius:12px;"
-              "margin-top:12px}");
-    out.print("button.estop:hover{background:#b91c1c}");
+              "width:100%;font-weight:600;transition:all .15s;letter-spacing:.02em}");
+    out.print("button:hover{background:var(--border2);color:var(--text)}");
+    out.print("button:active{opacity:.75}");
+    out.print("button.danger{border-color:rgba(239,83,80,.35);"
+              "color:var(--red);background:rgba(239,83,80,.07)}");
+    out.print("button.danger:hover{background:rgba(239,83,80,.16)}");
+    out.print("button.primary{border-color:rgba(79,195,247,.35);"
+              "color:var(--accent);background:rgba(79,195,247,.07)}");
+    out.print("button.primary:hover{background:rgba(79,195,247,.16)}");
+    out.print("button.success{border-color:rgba(74,222,128,.35);"
+              "color:var(--green);background:rgba(74,222,128,.07)}");
+    out.print("button.success:hover{background:rgba(74,222,128,.16)}");
+    out.print("button.estop{border-color:var(--red);background:var(--red);"
+              "color:#fff;font-size:17px;font-weight:700;"
+              "padding:16px;width:100%;border-radius:10px;margin-top:10px}");
+    out.print("button.estop:hover{filter:brightness(1.15)}");
 
-    // ── Grids ─────────────────────────────────────────────────────────────
+    // Grids
     out.print(".g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}");
     out.print(".g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}");
     out.print(".g5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}");
 
-    // ── Light-kit pills ───────────────────────────────────────────────────
-    out.print(".lk{display:flex;gap:7px;flex-wrap:wrap;padding-bottom:2px}");
-    out.print(".lp{font-size:14px;padding:8px 14px;"
-              "border-radius:20px;border:1px solid #cdd1d9;"
-              "color:#555;background:#fff;cursor:pointer;"
-              "white-space:nowrap;font-weight:500}");
-    out.print(".lp:hover{background:#f4f6f8}");
-    out.print(".lp.on{background:#2563eb;border-color:#2563eb;color:#fff}");
+    // Light-kit pills
+    out.print(".lk{display:flex;gap:6px;flex-wrap:wrap;padding-bottom:2px}");
+    out.print(".lp{font-size:13px;padding:7px 13px;"
+              "border-radius:20px;border:1px solid var(--border2);"
+              "color:var(--muted);background:var(--panel);cursor:pointer;"
+              "white-space:nowrap;font-weight:600;transition:all .15s}");
+    out.print(".lp:hover{border-color:var(--accent);color:var(--text)}");
+    out.print(".lp.on{background:rgba(79,195,247,.12);"
+              "border-color:var(--accent);color:var(--accent)}");
 
-    // ── Sequence buttons ──────────────────────────────────────────────────
-    out.print(".sq{background:#fff;border:1px solid #cdd1d9;"
-              "border-radius:10px;color:#555;font-size:16px;"
-              "padding:12px 0;cursor:pointer;text-align:center;font-weight:600}");
-    out.print(".sq:hover{background:#f4f6f8}");
-    out.print(".sq.on{background:#2563eb;border-color:#2563eb;color:#fff}");
+    // Sequence buttons
+    out.print(".sq{background:var(--panel);border:1px solid var(--border2);"
+              "border-radius:8px;color:var(--muted);font-size:15px;"
+              "padding:11px 0;cursor:pointer;text-align:center;"
+              "font-weight:700;transition:all .15s}");
+    out.print(".sq:hover{border-color:var(--accent);color:var(--text)}");
+    out.print(".sq.on{background:rgba(79,195,247,.12);"
+              "border-color:var(--accent);color:var(--accent)}");
 
-    // ── Position row (phone default) ──────────────────────────────────────
+    // Position row
     out.print(".pos-row{display:flex;gap:12px;align-items:stretch;height:190px}");
     out.print(".lift-col{display:flex;flex-direction:column;"
               "align-items:center;gap:6px;width:70px}");
-    out.print(".lift-lbl{font-size:12px;color:#888;"
-              "text-transform:uppercase;letter-spacing:.05em;font-weight:600}");
-    out.print(".lift-val{font-size:17px;font-weight:700;color:#2563eb}");
+    out.print(".lift-lbl{font-size:11px;color:var(--muted);"
+              "text-transform:uppercase;letter-spacing:.05em;font-weight:700}");
+    out.print(".lift-val{font-size:16px;font-weight:700;color:var(--accent)}");
     out.print("canvas{display:block;touch-action:none;cursor:grab}");
     out.print("canvas:active{cursor:grabbing}");
     out.print(".dial-col{flex:1;display:flex;flex-direction:column;"
               "align-items:center;justify-content:center;gap:5px}");
-    out.print(".dial-val{font-size:17px;font-weight:700;color:#2563eb}");
-    out.print(".dial-hint{font-size:12px;color:#888;text-align:center}");
+    out.print(".dial-val{font-size:16px;font-weight:700;color:var(--accent)}");
+    out.print(".dial-hint{font-size:11px;color:var(--muted);text-align:center}");
 
-    // ── Speed sliders ─────────────────────────────────────────────────────
+    // Speed sliders
     out.print(".spd-row{display:flex;gap:10px;margin-top:10px}");
-    out.print(".spd-item{flex:1;background:#fff;border:1px solid #dde1e7;"
-              "border-radius:10px;padding:10px 12px}");
-    out.print(".spd-lbl{font-size:12px;color:#888;text-transform:uppercase;"
-              "letter-spacing:.05em;margin-bottom:8px;font-weight:600}");
-    out.print(".spd-val{font-size:13px;color:#2563eb;text-align:right;margin-top:5px}");
+    out.print(".spd-item{flex:1;background:var(--panel);border:1px solid var(--border);"
+              "border-radius:8px;padding:10px 12px}");
+    out.print(".spd-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;"
+              "letter-spacing:.05em;margin-bottom:8px;font-weight:700}");
+    out.print(".spd-val{font-size:12px;color:var(--accent);text-align:right;margin-top:5px}");
     out.print("input[type=range]{-webkit-appearance:none;appearance:none;"
-              "width:100%;height:5px;background:#dde1e7;"
-              "border-radius:3px;outline:none;cursor:pointer}");
+              "width:100%;height:4px;background:var(--border2);"
+              "border-radius:2px;outline:none;cursor:pointer}");
     out.print("input[type=range]::-webkit-slider-thumb{"
-              "-webkit-appearance:none;width:22px;height:22px;"
-              "background:#2563eb;border-radius:50%;border:none}");
+              "-webkit-appearance:none;width:20px;height:20px;"
+              "background:var(--accent);border-radius:50%;border:none}");
     out.print("input[type=range]::-moz-range-thumb{"
-              "width:22px;height:22px;background:#2563eb;"
+              "width:20px;height:20px;background:var(--accent);"
               "border-radius:50%;border:none}");
 
-    // ── Status chips ──────────────────────────────────────────────────────
+    // Status chips
     out.print(".chip-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}");
-    out.print(".chip{background:#fff;border:1px solid #dde1e7;"
-              "border-radius:10px;padding:8px 10px}");
-    out.print(".chip .sv{font-size:15px;font-weight:700}");
-    out.print(".chip .sl{font-size:10px;color:#888;margin-top:2px;"
+    out.print(".chip{background:var(--panel);border:1px solid var(--border);"
+              "border-radius:8px;padding:8px 10px}");
+    out.print(".chip .sv{font-size:14px;font-weight:700}");
+    out.print(".chip .sl{font-size:10px;color:var(--muted);margin-top:2px;"
               "text-transform:uppercase;letter-spacing:.04em}");
 
-    // ── Card ──────────────────────────────────────────────────────────────
-    out.print(".card{background:#fff;border:1px solid #dde1e7;"
-              "border-radius:12px;padding:14px}");
+    // Card
+    out.print(".card{background:var(--panel);border:1px solid var(--border);"
+              "border-radius:10px;padding:14px}");
 
-    // ── Settings list ─────────────────────────────────────────────────────
-    out.print(".set-row{display:flex;align-items:center;padding:14px 0;"
-              "border-bottom:1px solid #e8eaed;"
+    // Settings list
+    out.print(".set-row{display:flex;align-items:center;padding:13px 0;"
+              "border-bottom:1px solid var(--border);"
               "cursor:pointer;text-decoration:none;color:inherit}");
-    out.print(".set-row:hover{background:#fafbfc}");
+    out.print(".set-row:hover .set-name{color:var(--accent)}");
     out.print(".set-row:last-child{border-bottom:none}");
-    out.print(".set-icon{width:36px;height:36px;border-radius:10px;"
+    out.print(".set-icon{width:34px;height:34px;border-radius:8px;"
               "display:flex;align-items:center;justify-content:center;"
               "margin-right:14px;flex-shrink:0}");
     out.print(".set-main{flex:1;min-width:0}");
-    out.print(".set-name{font-size:16px;color:#1a1a1a;font-weight:500}");
-    out.print(".set-val{font-size:13px;color:#888;margin-top:3px;"
+    out.print(".set-name{font-size:15px;color:var(--text);font-weight:600;"
+              "transition:color .15s}");
+    out.print(".set-val{font-size:12px;color:var(--muted);margin-top:3px;"
               "white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
-    out.print(".set-arr{color:#bbb;font-size:20px;flex-shrink:0;margin-left:6px}");
-    out.print(".danger-zone{margin-top:20px;border-top:1px solid #e8eaed;padding-top:14px}");
-    out.print(".dz-lbl{font-size:12px;color:#888;text-transform:uppercase;"
-              "letter-spacing:.07em;margin-bottom:10px;font-weight:600}");
+    out.print(".set-arr{color:var(--border2);font-size:18px;"
+              "flex-shrink:0;margin-left:6px}");
+    out.print(".danger-zone{margin-top:20px;border-top:1px solid var(--border);"
+              "padding-top:14px}");
+    out.print(".dz-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;"
+              "letter-spacing:.07em;margin-bottom:10px;font-weight:700}");
 
-    // ── Form inputs ───────────────────────────────────────────────────────
+    // Form inputs
     out.print("input[type=text],input[type=password],input[type=number]{"
-              "width:100%;padding:11px 14px;font-size:16px;"
-              "border:1px solid #cdd1d9;border-radius:10px;"
-              "background:#fff;color:#1a1a1a;font-family:inherit;"
-              "appearance:none;-webkit-appearance:none}");
+              "width:100%;padding:10px 12px;font-size:14px;"
+              "border:1px solid var(--border2);border-radius:8px;"
+              "background:var(--bg);color:var(--text);font-family:inherit;"
+              "appearance:none;-webkit-appearance:none;transition:border-color .15s}");
     out.print("input[type=text]:focus,input[type=password]:focus,"
-              "input[type=number]:focus{outline:none;border-color:#2563eb}");
-    out.print("select{width:100%;padding:11px 14px;font-size:16px;"
-              "border:1px solid #cdd1d9;border-radius:10px;"
-              "background:#fff;color:#1a1a1a;font-family:inherit;"
+              "input[type=number]:focus{outline:none;border-color:var(--accent);"
+              "box-shadow:0 0 0 2px rgba(79,195,247,.1)}");
+    out.print("select{width:100%;padding:10px 12px;font-size:14px;"
+              "border:1px solid var(--border2);border-radius:8px;"
+              "background:var(--bg);color:var(--text);font-family:inherit;"
               "appearance:none;-webkit-appearance:none}");
-    out.print(".form-actions{display:flex;gap:8px;margin-top:6px}");
+    out.print("select:focus{outline:none;border-color:var(--accent)}");
+    out.print("label.fl{display:block;font-size:11px;color:var(--muted);"
+              "font-weight:700;letter-spacing:.07em;text-transform:uppercase;"
+              "margin-bottom:6px}");
+    out.print(".fg{margin-bottom:14px}");
+    out.print(".form-actions{display:flex;gap:8px;margin-top:16px}");
     out.print(".form-actions button{flex:1}");
     out.print(".back-link{display:inline-flex;align-items:center;gap:6px;"
-              "font-size:15px;color:#2563eb;text-decoration:none;"
-              "font-weight:500;padding:14px 0}");
+              "font-size:13px;color:var(--accent);text-decoration:none;"
+              "font-weight:600;padding:12px 0}");
+    out.print(".pg-title{font-size:15px;font-weight:700;color:var(--text);"
+              "padding:10px 0 14px;border-bottom:1px solid var(--border);"
+              "margin-bottom:14px;letter-spacing:.02em}");
+    out.print(".hint{font-size:12px;color:var(--muted);margin-top:5px}");
+    out.print(".cb-row{display:flex;align-items:center;gap:10px;padding:10px 0;"
+              "border-bottom:1px solid var(--border);cursor:pointer}");
+    out.print(".cb-row:last-child{border-bottom:none}");
+    out.print(".cb-row input[type=checkbox]{width:18px;height:18px;"
+              "accent-color:var(--accent);cursor:pointer;flex-shrink:0}");
+    out.print(".cb-lbl{font-size:14px;color:var(--text);font-weight:500}");
+    out.print(".cb-hint{font-size:12px;color:var(--muted);margin-top:2px}");
+    out.print(".msg{font-size:13px;padding:10px 14px;border-radius:8px;"
+              "margin-top:10px;text-align:center}");
+    out.print(".msg.ok{background:rgba(74,222,128,.1);color:var(--green);"
+              "border:1px solid rgba(74,222,128,.3)}");
+    out.print(".msg.err{background:rgba(239,83,80,.1);color:var(--red);"
+              "border:1px solid rgba(239,83,80,.3)}");
 
-    // ── Misc ──────────────────────────────────────────────────────────────
+    // Misc
     out.print(".jog{touch-action:none;user-select:none;-webkit-user-select:none}");
-    out.print("hr{border:none;border-top:1px solid #e8eaed;margin:12px 0}");
+    out.print("hr{border:none;border-top:1px solid var(--border);margin:12px 0}");
+    out.print("a{color:var(--accent)}");
 
-    // ── Log viewer ────────────────────────────────────────────────────────
-    out.print("#lb{background:#1a1a2e;color:#4ade80;font-family:monospace;"
-              "font-size:13px;height:calc(100vh - 200px);overflow-y:auto;"
-              "padding:12px;border-radius:10px;border:1px solid #dde1e7}");
+    // Log viewer
+    out.print("#lb{background:#050709;color:#4ade80;font-family:monospace;"
+              "font-size:12px;height:calc(100vh - 200px);overflow-y:auto;"
+              "padding:12px;border-radius:8px;border:1px solid var(--border)}");
 
-    // ── PHONE: bottom tab bar (default, < 640 px) ─────────────────────────
-    out.print("#tabs{display:flex;background:#fff;"
-              "border-top:1px solid #dde1e7;"
-              "padding:10px 0 16px;"
-              "position:fixed;bottom:0;left:0;right:0;"
-              "z-index:200;box-shadow:0 -1px 6px rgba(0,0,0,.07)}");
-    // On modern iPhones with notch/island, pad the tab bar extra via @supports
-    out.print("@supports(padding:env(safe-area-inset-bottom)){"
-              "#tabs{padding-bottom:calc(10px + env(safe-area-inset-bottom))}}");
-    out.print(".tab{flex:1;display:flex;flex-direction:column;"
-              "align-items:center;gap:4px;text-decoration:none;cursor:pointer}");
-    out.print(".tab-ic{width:28px;height:28px;border-radius:8px;"
-              "display:flex;align-items:center;justify-content:center}");
-    out.print(".tab-lbl{font-size:10px;color:#aaa;"
-              "text-transform:uppercase;letter-spacing:.05em;font-weight:600}");
-    out.print(".tab.active .tab-ic{background:#dbeafe}");
-    out.print(".tab.active .tab-lbl{color:#2563eb}");
-    out.print(".tab .tab-ic svg{stroke:#aaa}");
-    out.print(".tab.active .tab-ic svg{stroke:#2563eb}");
-    // Sidebar nav hidden on phone
-    out.print("#sidenav{display:none}");
-
-    // ── TABLET: >= 640 px ─────────────────────────────────────────────────
-    // Light kit wraps instead of scrolls; position row taller; chip grid 6-wide
+    // Tablet >= 640px
     out.print("@media(min-width:640px){");
-    out.print("#page{padding:16px 20px 90px}");
-    out.print(".sv{font-size:16px}");
-    out.print(".sl{font-size:10px}");
+    out.print("#page{padding:16px 24px 24px;max-width:720px}");
+    out.print(".sv{font-size:15px}");
     out.print(".ss{padding:8px 6px}");
     out.print(".pos-row{height:240px}");
     out.print(".lift-col{width:80px}");
@@ -223,74 +259,79 @@ static void printPageHead(Print& out, const char* title)
     out.print("#lb{height:calc(100vh - 220px)}");
     out.print("}");
 
-    // ── DESKTOP: >= 1024 px ───────────────────────────────────────────────
-    // Left sidebar replaces bottom tab bar; content centered; canvas bigger
+    // Desktop >= 1024px
     out.print("@media(min-width:1024px){");
-    // Body layout
-    out.print("body{font-size:16px}");
-    // Status bar
-    out.print("#sbar{padding:12px 24px 10px;gap:8px;position:sticky;top:0}");
-    out.print(".ss{padding:10px 8px;border-radius:10px}");
-    out.print(".sv{font-size:18px}");
-    out.print(".sl{font-size:10px;margin-top:4px}");
-    // Shell: sidebar + scrollable content
-    out.print("#shell{display:flex;align-items:flex-start}");
-    // Sidebar nav
-    out.print("#sidenav{display:flex;flex-direction:column;gap:2px;"
-              "width:180px;flex-shrink:0;"
-              "padding:16px 12px;"
-              "position:sticky;top:60px;"
-              "height:calc(100vh - 60px);"
-              "background:#fff;border-right:1px solid #dde1e7;"
-              "overflow-y:auto}");
-    out.print(".snav-title{font-size:10px;font-weight:700;color:#aaa;"
-              "text-transform:uppercase;letter-spacing:.1em;"
-              "padding:8px 12px 6px;margin-top:8px}");
-    out.print(".snav-title:first-child{margin-top:0}");
-    out.print(".snav-a{display:flex;align-items:center;gap:10px;"
-              "padding:10px 12px;border-radius:10px;"
-              "text-decoration:none;color:#555;font-size:15px;font-weight:500;"
-              "cursor:pointer;transition:background .1s}");
-    out.print(".snav-a:hover{background:#f0f2f5;color:#1a1a1a}");
-    out.print(".snav-a.active{background:#dbeafe;color:#2563eb}");
-    out.print(".snav-a svg{flex-shrink:0}");
-    // Hide phone tab bar on desktop
-    out.print("#tabs{display:none}");
-    // Content area
-    out.print("#page{padding:20px 32px 40px;max-width:860px}");
-    // Larger position row
+    out.print("body{font-size:14px}");
+    out.print("#sbar{padding:10px 24px;gap:8px}");
+    out.print(".ss{padding:8px 6px;border-radius:8px}");
+    out.print(".sv{font-size:16px}");
+    out.print("#page{padding:20px 32px 32px;max-width:860px;margin:0 auto}");
     out.print(".pos-row{height:280px}");
     out.print(".lift-col{width:90px}");
-    // Chip grid: 6 columns on desktop
     out.print(".chip-grid{grid-template-columns:repeat(6,1fr);gap:8px}");
-    // All 9 sequences in one row
     out.print(".g5{grid-template-columns:repeat(9,1fr)}");
-    // Log
-    out.print("#lb{height:calc(100vh - 240px)}");
+    out.print("#lb{height:calc(100vh - 200px)}");
     out.print("}");
 
-    out.print("</style></head><body>");
+    // Theme toggle button styling (sits flush right in the nav bar)
+    out.print("#themetoggle{margin-left:auto;border:none;background:transparent;"
+              "color:var(--muted);cursor:pointer;padding:0 14px;"
+              "font-size:18px;display:flex;align-items:center;"
+              "transition:color .15s;width:auto}");
+    out.print("#themetoggle:hover{color:var(--text);background:var(--panel)}");
+
+    out.print("</style>");
+    // Apply saved theme before first paint (avoids flash)
+    out.print("<script>"
+              "if(localStorage.getItem('theme')==='light'){"
+              "document.documentElement.classList.add('light-pending');}"
+              "</script>");
+    out.print("<style>.light-pending body,.light-pending #topnav{"
+              "transition:none!important}</style>");
+    out.print("</head><body>");
+    // Apply to body immediately
+    out.print("<script>"
+              "(function(){"
+              "if(localStorage.getItem('theme')==='light')"
+              "document.body.classList.add('light');"
+              "})();"
+              "</script>");
 }
 
-#define TAB_ICON_PERISCOPE \
-    "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' stroke-width='1.6' stroke-linecap='round'>" \
-    "<rect x='2' y='10' width='14' height='6' rx='2'/><rect x='6' y='2' width='6' height='9' rx='2'/></svg>"
-
-#define TAB_ICON_RESCUE \
-    "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' stroke-width='1.7' stroke-linecap='round'>" \
-    "<circle cx='9' cy='9' r='6.5'/><line x1='9' y1='5' x2='9' y2='9.5'/>" \
-    "<line x1='9' y1='12' x2='9' y2='13'/></svg>"
-
-#define TAB_ICON_LOG \
-    "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' stroke-width='1.6' stroke-linecap='round'>" \
-    "<rect x='2' y='2' width='14' height='14' rx='3'/><line x1='5' y1='6.5' x2='13' y2='6.5'/>" \
-    "<line x1='5' y1='9.5' x2='10' y2='9.5'/><line x1='5' y1='12.5' x2='8' y2='12.5'/></svg>"
-
-#define TAB_ICON_SETUP \
-    "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' stroke-width='1.6' stroke-linecap='round'>" \
-    "<circle cx='9' cy='9' r='2.5'/>" \
-    "<path d='M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3" \
-    "M3.9 3.9l2.12 2.12M12 12l2.1 2.1M3.9 14.1l2.12-2.12M12 6l2.1-2.1'/></svg>"
+// Top navigation bar — always visible on all screen sizes
+static void printTopNav(Print& out, const char* active)
+{
+    struct { const char* href; const char* id; const char* label; } tabs[] = {
+        { "/periscope", "periscope", "periscope" },
+        { "/rescue",    "rescue",    "rescue"    },
+        { "/log",       "log",       "log"       },
+        { "/setup",     "setup",     "setup"     },
+    };
+    out.print("<nav id='topnav'>");
+    out.print("<div class='tn-title'>R2 Uppity</div>");
+    for (auto& t : tabs) {
+        bool on = (strcmp(t.id, active) == 0);
+        out.print("<a href='"); out.print(t.href); out.print("'");
+        if (on) out.print(" class='active'");
+        out.print(">"); out.print(t.label); out.print("</a>");
+    }
+    // Theme toggle — right-aligned in the nav bar
+    out.print("<button id='themetoggle' onclick='_toggleTheme()' title='Toggle light/dark'>"
+              "<span id='theme_icon'>&#9790;</span>"   // crescent moon = dark mode indicator
+              "</button>");
+    out.print("<script>"
+              "function _toggleTheme(){"
+              "var b=document.body,isLight=b.classList.toggle('light');"
+              "localStorage.setItem('theme',isLight?'light':'dark');"
+              "document.getElementById('theme_icon').textContent=isLight?'\\u2600':'\\u263E';}"
+              // Set correct icon on load
+              "(function(){"
+              "if(localStorage.getItem('theme')==='light')"
+              "document.getElementById('theme_icon').textContent='\\u2600';"
+              "})();"
+              "</script>");
+    out.print("</nav>");
+}
 
 // Writes the 5-cell status bar
 static void printStatusBar(Print& out)
@@ -308,63 +349,12 @@ static void printStatusBar(Print& out)
               "style='overflow:hidden;white-space:nowrap;text-overflow:ellipsis'>--</div>"
               "<div class='sl'>cmd</div></div>");
     out.print("</div>");
-    // Shell opens here — on desktop it becomes the flex container for sidebar + content
-    out.print("<div id='shell'><div id='sidenav'></div>");
 }
 
+// printTabBar kept for call-site compatibility — nav is now in printTopNav
 static void printTabBar(Print& out, const char* active)
 {
-    struct { const char* href; const char* id; const char* icon; const char* label; } tabs[] = {
-        { "/periscope", "periscope", TAB_ICON_PERISCOPE, "periscope" },
-        { "/rescue",    "rescue",    TAB_ICON_RESCUE,    "rescue"    },
-        { "/log",       "log",       TAB_ICON_LOG,       "log"       },
-        { "/setup",     "setup",     TAB_ICON_SETUP,     "setup"     },
-    };
-    // Close #shell (each page function closes its own #page before calling us)
-    out.print("</div>"); // close #shell
-
-    // ── Phone: bottom tab bar ─────────────────────────────────────────────
-    out.print("<nav id='tabs'>");
-    for (auto& t : tabs) {
-        bool on = (strcmp(t.id, active) == 0);
-        out.print("<a class='tab"); if (on) out.print(" active");
-        out.print("' href='"); out.print(t.href); out.print("'>");
-        out.print("<div class='tab-ic'>"); out.print(t.icon); out.print("</div>");
-        out.print("<div class='tab-lbl'>"); out.print(t.label); out.print("</div>");
-        out.print("</a>");
-    }
-    out.print("</nav>");
-
-    // ── Desktop: sidebar nav (injected into #sidenav via JS on large screens) ─
-    // We emit a hidden template and the JS moves it into the sidebar at load time.
-    out.print("<script>");
-    out.print("(function(){");
-    out.print("var w=window.innerWidth;");
-    out.print("if(w<1024)return;");
-    // Build the sidebar
-    out.print("var sn=document.getElementById('sidenav');");
-    out.print("if(!sn)return;");
-    out.print("var links=[");
-    for (int i = 0; i < 4; i++) {
-        if (i) out.print(",");
-        out.print("{href:'"); out.print(tabs[i].href);
-        out.print("',icon:'"); out.print(tabs[i].icon);
-        out.print("',label:'"); out.print(tabs[i].label);
-        out.print("',active:"); out.print(strcmp(tabs[i].id, active) == 0 ? "true" : "false");
-        out.print("}");
-    }
-    out.print("];");
-    out.print("var title=document.createElement('div');");
-    out.print("title.className='snav-title';title.textContent='R2 Uppity';");
-    out.print("sn.appendChild(title);");
-    out.print("links.forEach(function(l){");
-    out.print("var a=document.createElement('a');");
-    out.print("a.className='snav-a'+(l.active?' active':'');");
-    out.print("a.href=l.href;");
-    out.print("a.innerHTML=l.icon+'<span>'+l.label+'</span>';");
-    out.print("sn.appendChild(a);});");
-    out.print("})();");
-    out.print("</script>");
+    (void)out; (void)active; // nav bar is rendered by printTopNav at page top
 }
 
 // Shared status-bar poll JS block (used by setup + calibrate pages that have no other poll)
@@ -393,15 +383,15 @@ static void printStatusPollJS(Print& out)
 // prefix = unique ID prefix to avoid conflicts when both pages share the DOM
 static void printDefinitionsBox(Print& out)
 {
-    out.print("<div style='font-size:12px;color:#888;line-height:1.6;"
-              "background:#fff;border:1px solid #dde1e7;border-radius:10px;"
+    out.print("<div style='font-size:12px;color:var(--muted);line-height:1.6;"
+              "background:var(--panel);border:1px solid var(--border);border-radius:10px;"
               "padding:10px 12px;margin-bottom:8px'>");
-    out.print("<b style='color:#555'>Safety</b> — the startup maneuver: "
+    out.print("<b style='color:var(--text)'>Safety</b> — the startup maneuver: "
               "the board lowers the periscope and finds the rotary home position "
-              "before allowing any movement. Shows <b style='color:#16a34a'>Ready</b> "
-              "once complete, <b style='color:#d97706'>WAIT</b> while running, "
-              "<b style='color:#dc2626'>FAULT</b> if it failed.<br>"
-              "<b style='color:#555'>Fault</b> — a motor driver fault: "
+              "before allowing any movement. Shows <b style='color:var(--green)'>Ready</b> "
+              "once complete, <b style='color:var(--yellow)'>WAIT</b> while running, "
+              "<b style='color:var(--red)'>FAULT</b> if it failed.<br>"
+              "<b style='color:var(--text)'>Fault</b> — a motor driver fault: "
               "the motor controller detected an overcurrent or hardware error. "
               "Usually cleared by the E-STOP button on the Rescue tab.");
     out.print("</div>");
@@ -484,6 +474,7 @@ static void printUpdateChipsJS(Print& out)
 static void printPeriscopePage(Print& out)
 {
     printPageHead(out, "R2 Periscope");
+    printTopNav(out, "periscope");
     printStatusBar(out);
     out.print("<div id='page'>");
 
@@ -611,28 +602,28 @@ static void printPeriscopePage(Print& out)
 
     out.print("function drawLift(py){");
     out.print("_lctx.clearRect(0,0,_lcW,_lcH);");
-    out.print("_lctx.fillStyle='#f0f2f5';"
+    out.print("_lctx.fillStyle='#0f1117';"
               "_lctx.beginPath();_lctx.roundRect(0,0,_lcW,_lcH,14);"
               "_lctx.fill();");
-    out.print("_lctx.strokeStyle='#dde1e7';_lctx.lineWidth=1;"
+    out.print("_lctx.strokeStyle='#2a2d3a';_lctx.lineWidth=1;"
               "_lctx.beginPath();_lctx.moveTo(8,_lcH/2);"
               "_lctx.lineTo(_lcW-8,_lcH/2);_lctx.stroke();");
-    out.print("_lctx.fillStyle='rgba(37,99,235,0.07)';"
+    out.print("_lctx.fillStyle='rgba(79,195,247,0.07)';"
               "_lctx.beginPath();"
               "_lctx.roundRect(1,1,_lcW-2,_lcH/2-1,"
               "{upperLeft:13,upperRight:13});_lctx.fill();");
-    out.print("_lctx.fillStyle='rgba(220,38,38,0.07)';"
+    out.print("_lctx.fillStyle='rgba(239,83,80,0.07)';"
               "_lctx.beginPath();"
               "_lctx.roundRect(1,_lcH/2,_lcW-2,_lcH/2-1,"
               "{lowerLeft:13,lowerRight:13});_lctx.fill();");
     out.print("_lctx.font='bold 20px sans-serif';_lctx.textAlign='center';"
-              "_lctx.fillStyle='#93c5fd';"
+              "_lctx.fillStyle='#4fc3f7';"
               "_lctx.fillText('\\u25B2',_lcW/2,26);"
-              "_lctx.fillStyle='#fca5a5';"
+              "_lctx.fillStyle='#ef5350';"
               "_lctx.fillText('\\u25BC',_lcW/2,_lcH-8);");
     out.print("if(_lcActive&&py!==null){"
               "_lctx.beginPath();_lctx.arc(_lcW/2,py,16,0,6.283);"
-              "_lctx.fillStyle=_lcDir>0?'#2563eb':'#dc2626';"
+              "_lctx.fillStyle=_lcDir>0?'#4fc3f7':'#ef5350';"
               "_lctx.fill();}");
     out.print("}");
     out.print("drawLift(null);");
@@ -677,31 +668,31 @@ static void printPeriscopePage(Print& out)
     out.print("function drawDial(){");
     out.print("_dctx.clearRect(0,0,_dsz,_dsz);");
     out.print("_dctx.beginPath();_dctx.arc(_dcx,_dcy,_dcr,0,6.283);"
-              "_dctx.fillStyle='#f7f8fa';_dctx.fill();"
-              "_dctx.strokeStyle='#dde1e7';_dctx.lineWidth=2;_dctx.stroke();");
+              "_dctx.fillStyle='#1a1d28';_dctx.fill();"
+              "_dctx.strokeStyle='#2a2d3a';_dctx.lineWidth=2;_dctx.stroke();");
     out.print("for(var i=0;i<12;i++){"
               "var a=i*Math.PI/6,r1=_dcr-5,r2=_dcr-13;"
               "_dctx.beginPath();"
               "_dctx.moveTo(_dcx+r1*Math.sin(a),_dcy-r1*Math.cos(a));"
               "_dctx.lineTo(_dcx+r2*Math.sin(a),_dcy-r2*Math.cos(a));"
-              "_dctx.strokeStyle='#cdd1d9';_dctx.lineWidth=1.5;"
+              "_dctx.strokeStyle='#353c47';_dctx.lineWidth=1.5;"
               "_dctx.stroke();}");
     // Home tick (top, 0°) highlighted green
     out.print("_dctx.beginPath();"
               "_dctx.moveTo(_dcx,_dcy-(_dcr-5));"
               "_dctx.lineTo(_dcx,_dcy-(_dcr-14));"
-              "_dctx.strokeStyle='#16a34a';_dctx.lineWidth=2.5;"
+              "_dctx.strokeStyle='#4ade80';_dctx.lineWidth=2.5;"
               "_dctx.stroke();");
     out.print("var na=_dang*Math.PI/180;"
               "_dctx.beginPath();_dctx.moveTo(_dcx,_dcy);"
               "_dctx.lineTo(_dcx+(_dcr-10)*Math.sin(na),"
               "_dcy-(_dcr-10)*Math.cos(na));"
-              "_dctx.strokeStyle='#2563eb';_dctx.lineWidth=3;"
+              "_dctx.strokeStyle='#4fc3f7';_dctx.lineWidth=3;"
               "_dctx.lineCap='round';_dctx.stroke();");
     out.print("_dctx.beginPath();_dctx.arc(_dcx,_dcy,6,0,6.283);"
-              "_dctx.fillStyle='#2563eb';_dctx.fill();");
+              "_dctx.fillStyle='#4fc3f7';_dctx.fill();");
     // "home" label at top
-    out.print("_dctx.fillStyle='#16a34a';_dctx.font='bold 10px sans-serif';"
+    out.print("_dctx.fillStyle='#4ade80';_dctx.font='bold 10px sans-serif';"
               "_dctx.textAlign='center';"
               "_dctx.fillText('home',_dcx,_dcy-_dcr+26);");
     out.print("}");
@@ -790,6 +781,7 @@ static void printPeriscopePage(Print& out)
 static void printRescuePage(Print& out)
 {
     printPageHead(out, "R2 Rescue");
+    printTopNav(out, "rescue");
     printStatusBar(out);
     out.print("<div id='page'>");
 
@@ -800,11 +792,11 @@ static void printRescuePage(Print& out)
     out.print("<div class='card' style='margin-bottom:10px'>");
     out.print("<div style='display:flex;align-items:center;"
               "gap:10px;margin-bottom:10px'>");
-    out.print("<span style='font-size:13px;color:#888;"
+    out.print("<span style='font-size:13px;color:var(--muted);"
               "white-space:nowrap;font-weight:600'>jog speed</span>");
     out.print("<input type='range' id='jspd' min='0' max='100' "
               "value='80' step='1' style='flex:1'>");
-    out.print("<span style='font-size:15px;color:#2563eb;"
+    out.print("<span style='font-size:15px;color:var(--accent);"
               "min-width:38px;text-align:right;font-weight:700'>"
               "<span id='jsv'>80</span>%</span>");
     out.print("</div>");
@@ -825,9 +817,9 @@ static void printRescuePage(Print& out)
               "align-items:center;gap:6px'>");
     out.print("<canvas id='rd' width='180' height='180' "
               "style='border-radius:50%'></canvas>");
-    out.print("<div style='font-size:13px;color:#888'>"
+    out.print("<div style='font-size:13px;color:var(--muted)'>"
               "drag left/right &bull; release to stop</div>");
-    out.print("<div style='font-size:16px;color:#2563eb;font-weight:700'>"
+    out.print("<div style='font-size:16px;color:var(--accent);font-weight:700'>"
               "<span id='rv'>0</span>% &nbsp;"
               "<span id='rd2'>&#9632; stopped</span></div>");
     out.print("</div>");
@@ -859,7 +851,7 @@ static void printRescuePage(Print& out)
     // ── Safe Spin Height ─────────────────────────────────────────────────
     out.print("<div class='sec'>safe spin height</div>");
     out.print("<div class='card' style='margin-bottom:10px'>");
-    out.print("<p style='font-size:13px;color:#555;line-height:1.6;margin-bottom:12px'>"
+    out.print("<p style='font-size:13px;color:var(--text);line-height:1.6;margin-bottom:12px'>"
               "Raise the periscope to a height where the head safely clears the dome, "
               "then press the button to save that position as the minimum allowed spin height. "
               "The rotary motor will not be permitted to run below this point.</p>");
@@ -932,29 +924,29 @@ static void printRescuePage(Print& out)
     out.print("function drawRd(){");
     out.print("_rx.clearRect(0,0,_rdsz,_rdsz);");
     out.print("_rx.beginPath();_rx.arc(_rcx,_rcy,_rcr,0,6.283);"
-              "_rx.fillStyle='#f7f8fa';_rx.fill();"
-              "_rx.strokeStyle='#dde1e7';_rx.lineWidth=2;_rx.stroke();");
+              "_rx.fillStyle='#1a1d28';_rx.fill();"
+              "_rx.strokeStyle='#2a2d3a';_rx.lineWidth=2;_rx.stroke();");
     out.print("_rx.save();_rx.beginPath();_rx.moveTo(_rcx,_rcy);"
               "_rx.arc(_rcx,_rcy,_rcr,1.571,4.712);_rx.closePath();"
-              "_rx.fillStyle='rgba(37,99,235,0.08)';_rx.fill();_rx.restore();");
+              "_rx.fillStyle='rgba(79,195,247,0.08)';_rx.fill();_rx.restore();");
     out.print("_rx.save();_rx.beginPath();_rx.moveTo(_rcx,_rcy);"
               "_rx.arc(_rcx,_rcy,_rcr,-1.571,1.571);_rx.closePath();"
-              "_rx.fillStyle='rgba(220,38,38,0.08)';_rx.fill();_rx.restore();");
-    out.print("_rx.strokeStyle='#dde1e7';_rx.lineWidth=1;"
+              "_rx.fillStyle='rgba(239,83,80,0.08)';_rx.fill();_rx.restore();");
+    out.print("_rx.strokeStyle='#2a2d3a';_rx.lineWidth=1;"
               "_rx.beginPath();"
               "_rx.moveTo(_rcx-_rcr,_rcy);_rx.lineTo(_rcx+_rcr,_rcy);"
               "_rx.stroke();");
-    out.print("_rx.fillStyle='#aaa';_rx.font='bold 15px sans-serif';"
+    out.print("_rx.fillStyle='#6b7280';_rx.font='bold 15px sans-serif';"
               "_rx.textAlign='center';"
               "_rx.fillText('\\u21b6 L',_rcx-Math.round(_rcr*0.54),_rcy+5);"
               "_rx.fillText('R \\u21b7',_rcx+Math.round(_rcr*0.54),_rcy+5);");
     out.print("_rx.beginPath();_rx.arc(_rcx,_rcy,14,0,6.283);"
-              "_rx.fillStyle='#e8eaed';_rx.fill();"
-              "_rx.strokeStyle='#cdd1d9';_rx.lineWidth=1;_rx.stroke();");
+              "_rx.fillStyle='#2a2d3a';_rx.fill();"
+              "_rx.strokeStyle='#353c47';_rx.lineWidth=1;_rx.stroke();");
     out.print("if(_rda){"
               "_rx.beginPath();"
               "_rx.arc(_rcx+_rds*_rcr,_rcy,14,0,6.283);"
-              "_rx.fillStyle=_rds<0?'#2563eb':(_rds>0?'#dc2626':'#aaa');"
+              "_rx.fillStyle=_rds<0?'#4fc3f7':(_rds>0?'#ef5350':'#6b7280');"
               "_rx.fill();}");
     out.print("}");
     out.print("drawRd();");
@@ -1036,13 +1028,13 @@ static void printRescuePage(Print& out)
               ".then(function(){return fetch('/api/status');})"
               ".then(function(r){return r.json();})"
               ".then(function(d){"
-              "msg.style.color='#16a34a';"
+              "msg.style.color='#4ade80';"
               "msg.textContent='\\u2713 Saved! Min spin height set to '+(d.minHeightPct||0)+'%';"
               "btn.disabled=false;"
               "btn.textContent='\\u{1F4CC} set safe spin height to current';"
               "setTimeout(function(){msg.textContent='';},5000);"
               "}).catch(function(){"
-              "msg.style.color='#dc2626';"
+              "msg.style.color='#ef5350';"
               "msg.textContent='Error saving. Try again.';"
               "btn.disabled=false;"
               "btn.textContent='\\u{1F4CC} set safe spin height to current';"
@@ -1062,8 +1054,9 @@ static void printRescuePage(Print& out)
 static void printLogPage(Print& out)
 {
     printPageHead(out, "R2 Log");
+    printTopNav(out, "log");
     printStatusBar(out);
-    out.print("<div id='page' style='padding-bottom:90px'>");
+    out.print("<div id='page'>");
     out.print("<div style='display:flex;gap:10px;margin-bottom:10px'>");
     out.print("<button onclick=\"document.getElementById('lb').innerHTML=''\""
               " style='flex:0 0 auto;width:auto;padding:10px 20px'>clear</button>");
@@ -1119,30 +1112,31 @@ static void printLogPage(Print& out)
 static void printSetupPage(Print& out)
 {
     printPageHead(out, "R2 Setup");
+    printTopNav(out, "setup");
     printStatusBar(out);
     out.print("<div id='page'>");
-    out.print("<div style='font-size:13px;color:#888;font-weight:600;"
-              "padding:10px 0 12px;border-bottom:1px solid #e8eaed;"
+    out.print("<div style='font-size:11px;color:var(--muted);font-weight:700;"
+              "padding:10px 0 12px;border-bottom:1px solid var(--border);"
               "margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em'>"
               "configuration</div>");
 
     // Calibrate
     out.print("<a class='set-row' href='/calibrate'>");
-    out.print("<div class='set-icon' style='background:#dbeafe'>"
+    out.print("<div class='set-icon' style='background:rgba(79,195,247,.12)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#2563eb' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#4fc3f7' stroke-width='1.6' stroke-linecap='round'>"
               "<circle cx='9' cy='9' r='6'/>"
               "<path d='M9 5.5v3.5l2.5 1.5'/></svg></div>");
     out.print("<div class='set-main'>"
-              "<div class='set-name'>calibrate</div>"
-              "<div class='set-val'>run calibration routine</div>"
+              "<div class='set-name'>calibration</div>"
+              "<div class='set-val'>clear distance, reset rotary, run calibration</div>"
               "</div><div class='set-arr'>&#8250;</div></a>");
 
     // Marcduino
     out.print("<a class='set-row' href='/marcduino'>");
-    out.print("<div class='set-icon' style='background:#dcfce7'>"
+    out.print("<div class='set-icon' style='background:rgba(74,222,128,.12)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#16a34a' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#4ade80' stroke-width='1.6' stroke-linecap='round'>"
               "<rect x='2' y='5' width='14' height='9' rx='2'/>"
               "<path d='M6 5V4a3 3 0 016 0v1'/></svg></div>");
     out.print("<div class='set-main'>"
@@ -1154,9 +1148,9 @@ static void printSetupPage(Print& out)
 
     // WiFi
     out.print("<a class='set-row' href='/wifi'>");
-    out.print("<div class='set-icon' style='background:#f3e8ff'>"
+    out.print("<div class='set-icon' style='background:rgba(167,139,250,.12)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#9333ea' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#a78bfa' stroke-width='1.6' stroke-linecap='round'>"
               "<path d='M2 7a9 9 0 0114 0'/>"
               "<path d='M5 10a5 5 0 018 0'/>"
               "<path d='M8 13a2 2 0 014 0'/></svg></div>");
@@ -1174,9 +1168,9 @@ static void printSetupPage(Print& out)
 
     // Remote
     out.print("<a class='set-row' href='/remote'>");
-    out.print("<div class='set-icon' style='background:#fef9c3'>"
+    out.print("<div class='set-icon' style='background:rgba(255,167,38,.12)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#ca8a04' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#ffa726' stroke-width='1.6' stroke-linecap='round'>"
               "<rect x='5' y='2' width='8' height='14' rx='3'/>"
               "<line x1='9' y1='12' x2='9' y2='13' stroke-width='2'/>"
               "</svg></div>");
@@ -1192,9 +1186,9 @@ static void printSetupPage(Print& out)
 
     // Parameters
     out.print("<a class='set-row' href='/parameters'>");
-    out.print("<div class='set-icon' style='background:#e0e7ff'>"
+    out.print("<div class='set-icon' style='background:rgba(79,195,247,.08)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#4f46e5' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#818cf8' stroke-width='1.6' stroke-linecap='round'>"
               "<path d='M3 9h3l2-6 2.5 12L13 9h3'/></svg></div>");
     out.print("<div class='set-main'><div class='set-name'>parameters</div>"
               "<div class='set-val'>min lift: ");
@@ -1208,15 +1202,15 @@ static void printSetupPage(Print& out)
 
     // Firmware
     out.print("<a class='set-row' href='/firmware'>");
-    out.print("<div class='set-icon' style='background:#dcfce7'>"
+    out.print("<div class='set-icon' style='background:rgba(74,222,128,.12)'>"
               "<svg width='18' height='18' viewBox='0 0 18 18' fill='none' "
-              "stroke='#16a34a' stroke-width='1.6' stroke-linecap='round'>"
+              "stroke='#4ade80' stroke-width='1.6' stroke-linecap='round'>"
               "<path d='M2 14h14M5 14V9l4-6 4 6v5'/></svg></div>");
     out.print("<div class='set-main'><div class='set-name'>firmware</div>"
               "<div class='set-val'>"); out.print(__DATE__);
 #ifdef BUILD_VERSION
     out.print(" &bull; <a href='"); out.print(BUILD_VERSION);
-    out.print("' style='color:#2563eb'>sources</a>");
+    out.print("' style='color:var(--accent)'>sources</a>");
 #endif
     out.print("</div></div><div class='set-arr'>&#8250;</div></a>");
 
@@ -1245,231 +1239,591 @@ static void printSetupPage(Print& out)
 
 static void printCalibratePage(Print& out)
 {
-    printPageHead(out, "R2 Calibrate");
+    printPageHead(out, "R2 Calibration");
+    printTopNav(out, "setup");
     printStatusBar(out);
     out.print("<div id='page'>");
+    out.print("<div class='pg-title'>Calibration</div>");
+
+    // ── Calibration ───────────────────────────────────────────────────────
     out.print("<div class='sec'>calibration</div>");
     out.print("<div class='card' style='margin-bottom:14px'>");
-    out.print("<p style='font-size:15px;color:#555;margin-bottom:12px;line-height:1.6'>"
-              "Runs the automatic calibration routine. The lifter will move up and "
-              "down at increasing speeds to measure the minimum power and full travel "
-              "distance. Results are saved to flash.</p>");
-    out.print("<p style='font-size:15px;color:#dc2626;margin-bottom:16px;line-height:1.6'>"
+    out.print("<p style='font-size:14px;color:var(--text);margin-bottom:10px;line-height:1.6'>"
+              "Runs the automatic calibration routine. The lifter moves up and down at "
+              "increasing speeds to measure minimum power and full travel distance. "
+              "Results are saved to flash.</p>");
+    out.print("<p style='font-size:13px;color:var(--red);margin-bottom:14px'>"
               "&#9888; Keep clear of the periscope during calibration.</p>");
-    out.print("<button class='primary' style='font-size:17px;padding:16px' "
-              "onclick='doCalibrate()'>start calibration</button>");
-    out.print("<div id='calmsg' style='margin-top:14px;font-size:15px;"
-              "color:#888'></div>");
-    out.print("</div></div>");
+    out.print("<div class='g2' style='margin-bottom:10px'>");
+    out.print("<button class='danger' onclick='sendCmd(\"#PCLRD\")'>"
+              "clear distance</button>");
+    out.print("<button onclick='sendCmd(\"#PRRC\")'>"
+              "reset rotary count</button>");
+    out.print("</div>");
+    out.print("<p class='hint' style='margin-bottom:14px'>"
+              "Clear distance before recalibrating after a motor swap. "
+              "Reset rotary count if the rotary home is not found.</p>");
+    out.print("<button class='primary' style='font-size:16px;padding:15px;width:100%' "
+              "onclick='sendCmd(\"#PSC\")'>&#9654; start calibration</button>");
+    out.print("<div id='hwmsg' style='margin-top:10px'></div>");
+    out.print("</div>");
+
+    out.print("<div style='text-align:center;padding-bottom:8px'>"
+              "<a href='/setup' class='back-link'>&#8592; back to setup</a></div>");
+
+    out.print("</div>"); // #page
     printTabBar(out, "setup");
+
     out.print("<script>");
-    out.print("function doCalibrate(){"
-              "document.getElementById('calmsg').textContent="
-              "'Calibration started — watch the log page for progress.';"
-              "fetch('/api/cmd?c='+encodeURIComponent('#PSC')).catch(function(){});}");
+    // Status bar updater
     out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
               "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
     out.print("function _poll(){fetch('/api/status')"
               ".then(function(r){return r.json();})"
-              ".then(function(d){");
-    out.print("_sc('st_h','c-b',d.height+'%');");
-    out.print("var rd=Math.round(d.rotDeg||0);"
-              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');");
-    out.print("_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
-              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));");
-    out.print("_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');");
-    out.print("var e=document.getElementById('st_c');"
-              "if(e&&d.lastCmd)e.textContent=d.lastCmd;");
-    out.print("}).catch(function(){});}");
+              ".then(function(d){"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "}).catch(function(){});}");
     out.print("setInterval(_poll,1000);_poll();");
+    // Command sender
+    out.print("function sendCmd(c){"
+              "fetch('/api/cmd?c='+encodeURIComponent(c))"
+              ".then(function(){setTimeout(_poll,400);})"
+              ".catch(function(){});"
+              "if(c==='#PSC'){"
+              "var m=document.getElementById('hwmsg');"
+              "m.className='msg ok';"
+              "m.textContent='Calibration started \u2014 watch the log page for progress.';}"
+              "else if(c==='#PCLRD'){"
+              "var m=document.getElementById('hwmsg');"
+              "m.className='msg ok';"
+              "m.textContent='Distance cleared. Now run Start Calibration.';}"
+              "else if(c==='#PRRC'){"
+              "var m=document.getElementById('hwmsg');"
+              "m.className='msg ok';"
+              "m.textContent='Rotary count reset.';}"
+              "}");
     out.print("</script></body></html>");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// SETUP SUB-PAGES — restyled with new .form-* CSS classes
-// These use WElement framework for form widgets but we supply custom CSS above.
+// SETUP SUB-PAGES — custom WAPI pages with dark-theme CSS
 ///////////////////////////////////////////////////////////////////////////////
 
-int paramLifterMinPower;
-int paramLifterSeekBotPower;
-int paramRotaryMinPower;
-int paramLifterDistance;
-int paramMinHeight;
-int paramDriftPct;
-bool paramRotDisabled;
-String wifiSSID;
-String wifiPass;
-bool wifiAP;
-bool marcWifiEnabled;
-int marcID;
-int marcBaudRate;
-String remoteHostName;
-String remoteSecret;
-String swBaudRates[] = { "2400", "9600" };
+///////////////////////////////////////////////////////////////////////////////
+// MARCDUINO PAGE
+///////////////////////////////////////////////////////////////////////////////
+static void printMarcduinoPage(Print& out)
+{
+    printPageHead(out, "R2 Marcduino");
+    printTopNav(out, "setup");
+    printStatusBar(out);
+    out.print("<div id='page'>");
+    out.print("<div class='pg-title'>Marcduino</div>");
+    out.print("<div class='fg'><label class='fl'>ID #</label>"
+              "<input type='number' id='mid' min='1' max='255' value='");
+    out.print(sSettings.fID);
+    out.print("'></div>");
+    out.print("<div class='fg'><label class='fl'>Serial baud rate</label>"
+              "<select id='mbaud'>"
+              "<option value='2400'");
+    if (sSettings.fBaudRate == 2400) out.print(" selected");
+    out.print(">2400</option><option value='9600'");
+    if (sSettings.fBaudRate == 9600) out.print(" selected");
+    out.print(">9600</option></select></div>");
+    out.print("<div class='cb-row'>"
+              "<input type='checkbox' id='mwifi'");
+    if (preferences.getBool(PREFERENCE_MARCWIFI_ENABLED, MARC_WIFI_ENABLED)) out.print(" checked");
+    out.print("><div><div class='cb-lbl'>Marcduino on WiFi (port 2000)</div>"
+              "<div class='cb-hint'>Accept Marcduino commands over WiFi TCP connection</div>"
+              "</div></div>");
+    out.print("<div class='fg' style='margin-top:14px'>"
+              "<label class='fl'>Last command received</label>"
+              "<input type='text' id='mrcv' readonly value='' "
+              "style='color:var(--muted)'></div>");
+    out.print("<div class='form-actions'>"
+              "<button class='primary' onclick='save()'>save</button>"
+              "<button onclick=\"location.href='/setup'\">back</button>"
+              "</div>");
+    out.print("<div id='msg'></div>");
+    out.print("</div>");
+    printTabBar(out, "setup");
+    out.print("<script>");
+    // Poll last command
+    out.print("function _poll(){fetch('/api/status').then(r=>r.json()).then(d=>{"
+              "var e=document.getElementById('mrcv');"
+              "if(e&&d.lastCmd)e.value=d.lastCmd;}).catch(()=>{})}");
+    out.print("setInterval(_poll,2000);_poll();");
+    // Save
+    out.print("function save(){"
+              "var id=document.getElementById('mid').value;"
+              "var baud=document.getElementById('mbaud').value;"
+              "var wifi=document.getElementById('mwifi').checked?1:0;"
+              "fetch('/api/save/marcduino?id='+id+'&baud='+baud+'&wifi='+wifi)"
+              ".then(r=>r.json()).then(d=>{"
+              "var m=document.getElementById('msg');"
+              "m.className='msg '+(d.ok?'ok':'err');"
+              "m.textContent=d.ok?'Saved.':('Error: '+d.err);"
+              "}).catch(()=>{"
+              "document.getElementById('msg').className='msg err';"
+              "document.getElementById('msg').textContent='Network error';});}");
+    // Status bar poll
+    out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
+              "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
+    out.print("function _sb(){fetch('/api/status').then(r=>r.json()).then(d=>{"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "}).catch(()=>{})}");
+    out.print("setInterval(_sb,1000);_sb();");
+    out.print("</script></body></html>");
+}
 
-WElement marcduinoContents[] = {
-    WTextFieldInteger("ID #", "marcID",
-        []()->String { return String(marcID = sSettings.fID); },
-        [](String val) { marcID = val.toInt(); }),
-    WSelect("Serial baud rate", "serialbaud",
-        swBaudRates, SizeOfArray(swBaudRates),
-        []() { return ((marcBaudRate = sSettings.fBaudRate) == 2400) ? 0 : 1; },
-        [](int val) { marcBaudRate = (val == 0) ? 2400 : 9600; }),
-    WCheckbox("Marcduino on WiFi (port 2000)", "wifienabled",
-        []() { return (marcWifiEnabled =
-                   preferences.getBool(PREFERENCE_MARCWIFI_ENABLED, MARC_WIFI_ENABLED)); },
-        [](bool val) { marcWifiEnabled = val; }),
-    WLabel("Last command:", "cmd"),
-    WTextFieldReadonly("", "received",
-        []()->String { return sCopyBuffer; },
-        []()->bool { return true; }),
-    WButton("Save", "save", []() {
-        preferences.putBool(PREFERENCE_MARCWIFI_ENABLED, marcWifiEnabled);
-        if (marcID != (int)sSettings.fID)
-            { sSettings.fID = marcID; sUpdateSettings = true; }
-        if (marcBaudRate != (int)sSettings.fBaudRate)
-            { sSettings.fBaudRate = marcBaudRate; sUpdateSettings = true; }
-    }),
-    WHorizontalAlign(),
-    WButton("Back", "back", "/setup"),
-    WVerticalAlign(),
-};
+///////////////////////////////////////////////////////////////////////////////
+// PARAMETERS PAGE
+///////////////////////////////////////////////////////////////////////////////
+static void printParametersPage(Print& out)
+{
+    printPageHead(out, "R2 Parameters");
+    printTopNav(out, "setup");
+    printStatusBar(out);
+    out.print("<div id='page'>");
+    out.print("<div class='pg-title'>Parameters</div>");
 
-WElement parametersContents[] = {
-    WTextFieldInteger("Min lifter power", "lftminpwr",
-        []()->String { return String(paramLifterMinPower = LIFTER_MINIMUM_POWER); },
-        [](String val) { paramLifterMinPower = val.toInt(); }),
-    WTextFieldInteger("Min seek-bottom power", "lftseekbotpwr",
-        []()->String { return String(paramLifterSeekBotPower = LIFTER_SEEKBOTTTOM_POWER); },
-        [](String val) { paramLifterSeekBotPower = val.toInt(); }),
-    WTextFieldInteger("Min rotary power", "rotminpwr",
-        []()->String { return String(paramRotaryMinPower = ROTARY_MINIMUM_POWER); },
-        [](String val) { paramRotaryMinPower = val.toInt(); }),
-    WTextFieldInteger("Lifter distance (ticks)", "lftdist",
-        []()->String { return String(paramLifterDistance = LIFTER_DISTANCE); },
-        [](String val) { paramLifterDistance = val.toInt(); }),
-    WSlider("Safe spin height (% of travel)", "minsafeheight", 0, 100,
-        []()->int {
-            paramMinHeight = ROTARY_MINIMUM_HEIGHT;
-            int dist = max(1, LIFTER_DISTANCE);
-            return paramMinHeight * 100 / dist;
-        },
-        [](int pct) { paramMinHeight = pct * max(1, LIFTER_DISTANCE) / 100; }),
-    WButton("Set to current height", "setsafeheight", []() {
-        lifter.setSafeSpinHeightToCurrent();
-        paramMinHeight = ROTARY_MINIMUM_HEIGHT;
-    }),
-    WHorizontalAlign(),
-    WSlider("Drift correction (% threshold, 0=off)", "driftpct", 0, 20,
-        []()->int {
-            return paramDriftPct = sLifterParameters.fDriftCorrectionPct;
-        },
-        [](int val) { paramDriftPct = val; }),
-    WVerticalAlign(),
-    WCheckbox("Disable rotary unit", "rotdisabled",
-        []() { return paramRotDisabled = sSettings.fDisableRotary; },
-        [](bool val) { paramRotDisabled = val; }),
-    WVerticalAlign(),
-    WLabel("Load defaults:", "dflbl"),
-    WButtonReload("Greg", "greg", []() {
-        LIFTER_MINIMUM_POWER     = GREG_LIFTER_MINIMUM_POWER;
-        LIFTER_SEEKBOTTTOM_POWER = GREG_LIFTER_SEEKBOTTTOM_POWER;
-        ROTARY_MINIMUM_POWER     = GREG_ROTARY_MINIMUM_POWER;
-        LIFTER_DISTANCE          = GREG_LIFTER_DISTANCE;
-        ROTARY_MINIMUM_HEIGHT    = LIFTER_DISTANCE / 2;
-        sLifterParameters.fDriftCorrectionPct = DEFAULT_DRIFT_CORRECTION_PCT;
-    }),
-    WHorizontalAlign(),
-    WButtonReload("IA-Parts", "iaparts", []() {
-        LIFTER_MINIMUM_POWER     = IAPARTS_LIFTER_MINIMUM_POWER;
-        LIFTER_SEEKBOTTTOM_POWER = IAPARTS_LIFTER_SEEKBOTTTOM_POWER;
-        ROTARY_MINIMUM_POWER     = IAPARTS_ROTARY_MINIMUM_POWER;
-        LIFTER_DISTANCE          = IAPARTS_LIFTER_DISTANCE;
-        ROTARY_MINIMUM_HEIGHT    = LIFTER_DISTANCE / 2;
-        sLifterParameters.fDriftCorrectionPct = DEFAULT_DRIFT_CORRECTION_PCT;
-    }),
-    WVerticalAlign(),
-    WButton("Save", "save", []() {
-        LIFTER_MINIMUM_POWER     = min(max(paramLifterMinPower, 0), 100);
-        LIFTER_SEEKBOTTTOM_POWER = min(max(paramLifterSeekBotPower, 0), 100);
-        ROTARY_MINIMUM_POWER     = min(max(paramRotaryMinPower, 0), 100);
-        LIFTER_DISTANCE          = max(paramLifterDistance, 0);
-        ROTARY_MINIMUM_HEIGHT    = min(max(paramMinHeight, 0), LIFTER_DISTANCE);
-        sLifterParameters.fDriftCorrectionPct = min(max(paramDriftPct, 0), 20);
-        sLifterParameters.save();
-        if (paramRotDisabled != sSettings.fDisableRotary)
-            { sSettings.fDisableRotary = paramRotDisabled; sUpdateSettings = true; }
-    }),
-    WHorizontalAlign(),
-    WButton("Back", "back", "/setup"),
-    WVerticalAlign(),
-};
+    out.print("<div class='fg'><label class='fl'>Min lifter power (%)</label>"
+              "<input type='number' id='lmp' min='0' max='100' value='");
+    out.print(LIFTER_MINIMUM_POWER); out.print("'></div>");
 
-WElement wifiContents[] = {
-    W1("WiFi setup"),
-    WCheckbox("WiFi enabled", "enabled",
-        []() { return (wifiEnabled =
-                   preferences.getBool(PREFERENCE_WIFI_ENABLED, WIFI_ENABLED)); },
-        [](bool val) { wifiEnabled = val; }),
-    WCheckbox("Access point mode", "apmode",
-        []() { return (wifiAP =
-                   preferences.getBool(PREFERENCE_WIFI_AP, WIFI_ACCESS_POINT)); },
-        [](bool val) { wifiAP = val; }),
-    WTextField("Network name:", "wifi",
-        []()->String { return (wifiSSID =
-                   preferences.getString(PREFERENCE_WIFI_SSID, WIFI_AP_NAME)); },
-        [](String val) { wifiSSID = val; }),
-    WPassword("Password:", "password",
-        []()->String { return (wifiPass =
-                   preferences.getString(PREFERENCE_WIFI_PASS, WIFI_AP_PASSPHRASE)); },
-        [](String val) { wifiPass = val; }),
-    WButton("Save & reboot", "save", []() {
-        preferences.putBool(PREFERENCE_WIFI_ENABLED, wifiEnabled);
-        preferences.putBool(PREFERENCE_WIFI_AP, wifiAP);
-        preferences.putString(PREFERENCE_WIFI_SSID, wifiSSID);
-        preferences.putString(PREFERENCE_WIFI_PASS, wifiPass);
-        reboot();
-    }),
-    WHorizontalAlign(),
-    WButton("Back", "back", "/setup"),
-    WVerticalAlign(),
-};
+    out.print("<div class='fg'><label class='fl'>Min seek-bottom power (%)</label>"
+              "<input type='number' id='sbp' min='0' max='100' value='");
+    out.print(LIFTER_SEEKBOTTTOM_POWER); out.print("'></div>");
 
-WElement remoteContents[] = {
-    W1("Droid remote setup"),
-    WCheckbox("Droid remote enabled", "remoteenabled",
-        []() { return remoteEnabled; },
-        [](bool val) { remoteEnabled = val; }),
-    WHR(),
-    WTextField("Device name:", "hostname",
-        []()->String { return (remoteHostName =
-                   preferences.getString(PREFERENCE_REMOTE_HOSTNAME, SMQ_HOSTNAME)); },
-        [](String val) { remoteHostName = val; }),
-    WPassword("Secret:", "secret",
-        []()->String { return (remoteSecret =
-                   preferences.getString(PREFERENCE_REMOTE_SECRET, SMQ_SECRET)); },
-        [](String val) { remoteSecret = val; }),
-    WButton("Save & reboot", "save", []() {
-        preferences.putBool(PREFERENCE_REMOTE_ENABLED, remoteEnabled);
-        preferences.putString(PREFERENCE_REMOTE_HOSTNAME, remoteHostName);
-        preferences.putString(PREFERENCE_REMOTE_SECRET, remoteSecret);
-        reboot();
-    }),
-    WHorizontalAlign(),
-    WButton("Back", "back", "/setup"),
-    WVerticalAlign(),
-};
+    out.print("<div class='fg'><label class='fl'>Min rotary power (%)</label>"
+              "<input type='number' id='rmp' min='0' max='100' value='");
+    out.print(ROTARY_MINIMUM_POWER); out.print("'></div>");
 
+    out.print("<div class='fg'><label class='fl'>Lifter distance (encoder ticks)</label>"
+              "<input type='number' id='ld' min='0' value='");
+    out.print(LIFTER_DISTANCE); out.print("'></div>");
+
+    {
+        int dist = max(1, LIFTER_DISTANCE);
+        int pct  = ROTARY_MINIMUM_HEIGHT * 100 / dist;
+        out.print("<div class='fg'><label class='fl'>Safe spin height (% of travel)</label>"
+                  "<input type='range' id='ssh' min='0' max='100' value='");
+        out.print(pct);
+        out.print("' oninput=\"document.getElementById('sshv').textContent=this.value\">"
+                  "<div class='spd-val'><span id='sshv'>");
+        out.print(pct);
+        out.print("</span>%</div></div>");
+    }
+
+    out.print("<div class='fg'><label class='fl'>Drift correction threshold (0=off)</label>"
+              "<input type='range' id='dc' min='0' max='20' value='");
+    out.print(sLifterParameters.fDriftCorrectionPct);
+    out.print("' oninput=\"document.getElementById('dcv').textContent=this.value\">"
+              "<div class='spd-val'><span id='dcv'>");
+    out.print(sLifterParameters.fDriftCorrectionPct);
+    out.print("</span>%</div></div>");
+
+    out.print("<div class='cb-row'>"
+              "<input type='checkbox' id='rotd'");
+    if (sSettings.fDisableRotary) out.print(" checked");
+    out.print("><div><div class='cb-lbl'>Disable rotary unit</div>"
+              "<div class='cb-hint'>Ignore rotary motor entirely</div></div></div>");
+
+    // ── Motor direction ───────────────────────────────────────────────────
+    out.print("<div class='sec' style='margin-top:16px'>motor direction</div>");
+    out.print("<div class='card' style='margin-bottom:4px'>");
+    // Invert lifter motor
+    out.print("<div style='display:flex;align-items:center;justify-content:space-between;"
+              "padding:10px 0;border-bottom:1px solid var(--border)'>");
+    out.print("<div><div style='font-size:14px;font-weight:600;color:var(--text)'>"
+              "Invert lifter motor</div>"
+              "<div class='hint'>Toggle if lifter moves the wrong direction</div></div>");
+    out.print("<span id='pilm_b' style='font-size:12px;font-weight:700;"
+              "padding:3px 10px;border-radius:12px;margin-right:8px'></span>");
+    out.print("<button style='width:auto;padding:8px 16px;font-size:13px' "
+              "onclick='sendCmd(\"#PILM\")'>toggle</button>");
+    out.print("</div>");
+    // Invert lifter encoder
+    out.print("<div style='display:flex;align-items:center;justify-content:space-between;"
+              "padding:10px 0;border-bottom:1px solid var(--border)'>");
+    out.print("<div><div style='font-size:14px;font-weight:600;color:var(--text)'>"
+              "Invert lifter encoder</div>"
+              "<div class='hint'>Toggle if encoder counts backward (independent of motor)</div></div>");
+    out.print("<span id='pile_b' style='font-size:12px;font-weight:700;"
+              "padding:3px 10px;border-radius:12px;margin-right:8px'></span>");
+    out.print("<button style='width:auto;padding:8px 16px;font-size:13px' "
+              "onclick='sendCmd(\"#PILE\")'>toggle</button>");
+    out.print("</div>");
+    // Lifter limit switch polarity
+    out.print("<div style='display:flex;align-items:center;gap:8px;"
+              "padding:10px 0;border-bottom:1px solid var(--border)'>");
+    out.print("<div style='flex:1'><div style='font-size:14px;font-weight:600;color:var(--text)'>"
+              "Lifter limit switch</div>"
+              "<div class='hint'>NC = closed at rest, NO = open at rest</div></div>");
+    out.print("<button id='btn_lnc' style='width:auto;padding:8px 14px;font-size:13px' "
+              "onclick='sendCmd(\"#PNCL\")'>NC</button>");
+    out.print("<button id='btn_lno' style='width:auto;padding:8px 14px;font-size:13px' "
+              "onclick='sendCmd(\"#PNOL\")'>NO</button>");
+    out.print("</div>");
+    // Rotary home switch polarity
+    out.print("<div style='display:flex;align-items:center;gap:8px;padding:10px 0'>");
+    out.print("<div style='flex:1'><div style='font-size:14px;font-weight:600;color:var(--text)'>"
+              "Rotary home switch</div>"
+              "<div class='hint'>NC = closed at rest, NO = open at rest</div></div>");
+    out.print("<button id='btn_rnc' style='width:auto;padding:8px 14px;font-size:13px' "
+              "onclick='sendCmd(\"#PNCR\")'>NC</button>");
+    out.print("<button id='btn_rno' style='width:auto;padding:8px 14px;font-size:13px' "
+              "onclick='sendCmd(\"#PNOR\")'>NO</button>");
+    out.print("</div>");
+    out.print("</div>"); // card
+
+    // Motor preset selector
+    out.print("<div class='sec' style='margin-top:16px'>motor preset</div>");
+    out.print("<div class='card' style='margin-bottom:4px'>");
+    out.print("<div style='font-size:13px;color:var(--muted);margin-bottom:10px'>"
+              "Select your motor to load recommended starting values. "
+              "Run calibration afterwards to refine them.</div>");
+    out.print("<div class='g2' style='margin-bottom:8px'>");
+    out.print("<button class='primary' onclick='loadDef(\"greg\")'>6.25:1 (Pololu 4757)</button>");
+    out.print("<button class='primary' onclick='loadDef(\"10\")'>10:1 (Pololu 4758)</button>");
+    out.print("</div>");
+    out.print("<div class='g2'>");
+    out.print("<button class='primary' onclick='loadDef(\"1875\")'>18.75:1 (Pololu 4751)</button>");
+    out.print("<button class='primary' onclick='loadDef(\"iaparts\")'>IA-Parts</button>");
+    out.print("</div>");
+    out.print("</div>");
+
+    out.print("<div class='form-actions'>"
+              "<button class='success' onclick='save()'>save</button>"
+              "<button onclick=\"location.href='/setup'\">back</button>"
+              "</div>");
+    out.print("<div id='msg'></div>");
+    out.print("</div>");
+    printTabBar(out, "setup");
+    out.print("<script>");
+    out.print("function loadDef(p){"
+              "fetch('/api/param/loaddefaults?preset='+p)"
+              ".then(r=>r.json()).then(d=>{"
+              "if(!d.ok)return;"
+              "document.getElementById('lmp').value=d.lmp;"
+              "document.getElementById('sbp').value=d.sbp;"
+              "document.getElementById('rmp').value=d.rmp;"
+              "document.getElementById('ld').value=d.ld;"
+              "var pct=d.ld>0?Math.round(d.ssh*100/d.ld):0;"
+              "document.getElementById('ssh').value=pct;"
+              "document.getElementById('sshv').textContent=pct;"
+              "document.getElementById('dc').value=d.dc;"
+              "document.getElementById('dcv').textContent=d.dc;"
+              "}).catch(()=>{})}");
+    out.print("function save(){"
+              "var p='lmp='+document.getElementById('lmp').value"
+              "+'&sbp='+document.getElementById('sbp').value"
+              "+'&rmp='+document.getElementById('rmp').value"
+              "+'&ld='+document.getElementById('ld').value"
+              "+'&ssh='+document.getElementById('ssh').value"
+              "+'&dc='+document.getElementById('dc').value"
+              "+'&rotd='+(document.getElementById('rotd').checked?1:0);"
+              "fetch('/api/save/parameters?'+p)"
+              ".then(r=>r.json()).then(d=>{"
+              "var m=document.getElementById('msg');"
+              "m.className='msg '+(d.ok?'ok':'err');"
+              "m.textContent=d.ok?'Saved.':('Error: '+d.err);"
+              "}).catch(()=>{"
+              "document.getElementById('msg').className='msg err';"
+              "document.getElementById('msg').textContent='Network error';});}");
+    out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
+              "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
+    out.print("function _badge(id,on){"
+              "var e=document.getElementById(id);if(!e)return;"
+              "e.textContent=on?'ON':'OFF';"
+              "e.style.background=on?'rgba(74,222,128,.15)':'rgba(107,114,128,.15)';"
+              "e.style.color=on?'var(--green)':'var(--muted)';}");
+    out.print("function _limBtn(ncId,noId,isNC){"
+              "var nc=document.getElementById(ncId);"
+              "var no=document.getElementById(noId);"
+              "if(!nc||!no)return;"
+              "nc.style.borderColor=isNC?'rgba(79,195,247,.6)':'rgba(42,45,58,1)';"
+              "nc.style.color=isNC?'var(--accent)':'var(--muted)';"
+              "no.style.borderColor=isNC?'rgba(42,45,58,1)':'rgba(79,195,247,.6)';"
+              "no.style.color=isNC?'var(--muted)':'var(--accent)';}");
+    out.print("function sendCmd(c){"
+              "fetch('/api/cmd?c='+encodeURIComponent(c))"
+              ".then(function(){setTimeout(_sb,400);})"
+              ".catch(function(){});}");
+    out.print("function _sb(){fetch('/api/status').then(r=>r.json()).then(d=>{"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "_badge('pilm_b',d.invertMotor);"
+              "_badge('pile_b',d.invertEncoder);"
+              "_limBtn('btn_lnc','btn_lno',d.lifterLimitNC);"
+              "_limBtn('btn_rnc','btn_rno',d.rotaryLimitNC);"
+              "}).catch(()=>{})}");
+    out.print("setInterval(_sb,1000);_sb();");
+    out.print("</script></body></html>");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// WIFI PAGE
+///////////////////////////////////////////////////////////////////////////////
+static void printWifiPage(Print& out)
+{
+    printPageHead(out, "R2 WiFi");
+    printTopNav(out, "setup");
+    printStatusBar(out);
+    out.print("<div id='page'>");
+    out.print("<div class='pg-title'>WiFi</div>");
+    bool en  = preferences.getBool(PREFERENCE_WIFI_ENABLED, WIFI_ENABLED);
+    bool ap  = preferences.getBool(PREFERENCE_WIFI_AP, WIFI_ACCESS_POINT);
+    String ss = preferences.getString(PREFERENCE_WIFI_SSID, WIFI_AP_NAME);
+    String pw = preferences.getString(PREFERENCE_WIFI_PASS, WIFI_AP_PASSPHRASE);
+    out.print("<div class='cb-row'>"
+              "<input type='checkbox' id='wen'");
+    if (en) out.print(" checked");
+    out.print("><div><div class='cb-lbl'>WiFi enabled</div></div></div>");
+    out.print("<div class='cb-row'>"
+              "<input type='checkbox' id='wap'");
+    if (ap) out.print(" checked");
+    out.print("><div><div class='cb-lbl'>Access point mode</div>"
+              "<div class='cb-hint'>Unchecked = join an existing network</div>"
+              "</div></div>");
+    out.print("<div class='fg' style='margin-top:14px'>"
+              "<label class='fl'>Network name (SSID)</label>"
+              "<input type='text' id='wssid' value='");
+    out.print(ss.c_str());
+    out.print("'></div>");
+    out.print("<div class='fg'><label class='fl'>Password</label>"
+              "<input type='password' id='wpwd' value='");
+    out.print(pw.c_str());
+    out.print("'></div>");
+    out.print("<p class='hint' style='margin-bottom:14px'>"
+              "Changes require a reboot to take effect.</p>");
+    out.print("<div class='form-actions'>"
+              "<button class='success' onclick='save()'>save &amp; reboot</button>"
+              "<button onclick=\"location.href='/setup'\">back</button>"
+              "</div>");
+    out.print("<div id='msg'></div>");
+    out.print("</div>");
+    printTabBar(out, "setup");
+    out.print("<script>");
+    out.print("function save(){"
+              "var p='en='+(document.getElementById('wen').checked?1:0)"
+              "+'&ap='+(document.getElementById('wap').checked?1:0)"
+              "+'&ssid='+encodeURIComponent(document.getElementById('wssid').value)"
+              "+'&pwd='+encodeURIComponent(document.getElementById('wpwd').value);"
+              "fetch('/api/save/wifi?'+p)"
+              ".then(r=>r.json()).then(d=>{"
+              "var m=document.getElementById('msg');"
+              "m.className='msg '+(d.ok?'ok':'err');"
+              "m.textContent=d.ok?'Saved \u2014 rebooting\u2026':('Error: '+d.err);"
+              "}).catch(()=>{"
+              "document.getElementById('msg').className='msg err';"
+              "document.getElementById('msg').textContent='Network error';});}");
+    out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
+              "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
+    out.print("function _sb(){fetch('/api/status').then(r=>r.json()).then(d=>{"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "}).catch(()=>{})}");
+    out.print("setInterval(_sb,1000);_sb();");
+    out.print("</script></body></html>");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// REMOTE PAGE
+///////////////////////////////////////////////////////////////////////////////
+static void printRemotePage(Print& out)
+{
+    printPageHead(out, "R2 Remote");
+    printTopNav(out, "setup");
+    printStatusBar(out);
+    out.print("<div id='page'>");
+    out.print("<div class='pg-title'>Droid Remote</div>");
+    String rhost = preferences.getString(PREFERENCE_REMOTE_HOSTNAME, SMQ_HOSTNAME);
+    String rsec  = preferences.getString(PREFERENCE_REMOTE_SECRET, SMQ_SECRET);
+    out.print("<div class='cb-row'>"
+              "<input type='checkbox' id='ren'");
+    if (remoteEnabled) out.print(" checked");
+    out.print("><div><div class='cb-lbl'>Droid remote enabled</div></div></div>");
+    out.print("<div class='fg' style='margin-top:14px'>"
+              "<label class='fl'>Device name</label>"
+              "<input type='text' id='rhost' value='");
+    out.print(rhost.c_str());
+    out.print("'></div>");
+    out.print("<div class='fg'><label class='fl'>Secret</label>"
+              "<input type='password' id='rsec' value='");
+    out.print(rsec.c_str());
+    out.print("'></div>");
+    out.print("<p class='hint' style='margin-bottom:14px'>"
+              "Changes require a reboot to take effect.</p>");
+    out.print("<div class='form-actions'>"
+              "<button class='success' onclick='save()'>save &amp; reboot</button>"
+              "<button onclick=\"location.href='/setup'\">back</button>"
+              "</div>");
+    out.print("<div id='msg'></div>");
+    out.print("</div>");
+    printTabBar(out, "setup");
+    out.print("<script>");
+    out.print("function save(){"
+              "var p='en='+(document.getElementById('ren').checked?1:0)"
+              "+'&host='+encodeURIComponent(document.getElementById('rhost').value)"
+              "+'&sec='+encodeURIComponent(document.getElementById('rsec').value);"
+              "fetch('/api/save/remote?'+p)"
+              ".then(r=>r.json()).then(d=>{"
+              "var m=document.getElementById('msg');"
+              "m.className='msg '+(d.ok?'ok':'err');"
+              "m.textContent=d.ok?'Saved \u2014 rebooting\u2026':('Error: '+d.err);"
+              "}).catch(()=>{"
+              "document.getElementById('msg').className='msg err';"
+              "document.getElementById('msg').textContent='Network error';});}");
+    out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
+              "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
+    out.print("function _sb(){fetch('/api/status').then(r=>r.json()).then(d=>{"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "}).catch(()=>{})}");
+    out.print("setInterval(_sb,1000);_sb();");
+    out.print("</script></body></html>");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// FIRMWARE PAGE — custom dark-theme wrapper around the OTA upload form
+///////////////////////////////////////////////////////////////////////////////
+
+static void printFirmwarePage(Print& out)
+{
+    printPageHead(out, "R2 Firmware Update");
+    printTopNav(out, "setup");
+    printStatusBar(out);
+    out.print("<div id='page'>");
+    out.print("<div class='pg-title'>Firmware Update</div>");
+
+    out.print("<div class='sec'>current build</div>");
+    out.print("<div class='card' style='margin-bottom:14px'>");
+    out.print("<div style='display:flex;justify-content:space-between;padding:8px 0;"
+              "border-bottom:1px solid var(--border)'>");
+    out.print("<div style='font-size:14px;color:var(--muted)'>Version</div>");
+    out.print("<div style='font-size:14px;font-weight:700;color:var(--accent)'>"
+              FIRMWARE_VERSION "</div></div>");
+    out.print("<div style='display:flex;justify-content:space-between;padding:8px 0;"
+              "border-bottom:1px solid var(--border)'>");
+    out.print("<div style='font-size:14px;color:var(--muted)'>Build date</div>");
+    out.print("<div style='font-size:14px;color:var(--text)'>"); out.print(__DATE__); out.print("</div></div>");
+#ifdef BUILD_VERSION
+    out.print("<div style='display:flex;justify-content:space-between;padding:8px 0'>");
+    out.print("<div style='font-size:14px;color:var(--muted)'>Sources</div>");
+    out.print("<a href='" BUILD_VERSION "' style='font-size:14px;color:var(--accent)'>GitHub</a></div>");
+#endif
+    out.print("</div>");
+
+    out.print("<div class='sec'>upload new firmware</div>");
+    out.print("<div class='card' style='margin-bottom:14px'>");
+    out.print("<p style='font-size:14px;color:var(--text);margin-bottom:12px;line-height:1.6'>"
+              "Select a <code style='color:var(--accent)'>.bin</code> file compiled for this board, "
+              "then press <b>Flash</b>. The board will reboot automatically when done.</p>");
+    out.print("<p style='font-size:13px;color:var(--red);margin-bottom:14px'>"
+              "&#9888; Do not power off during flashing.</p>");
+    // The actual OTA upload form — must use action /update, enctype multipart, name=firmware
+    out.print("<form method='POST' action='/update' enctype='multipart/form-data' id='otaform'>");
+    out.print("<div style='margin-bottom:12px'>");
+    out.print("<input type='file' name='firmware' accept='.bin' id='fw_file' "
+              "style='display:none' onchange='_fwSel(this)'>");
+    out.print("<div style='display:flex;gap:8px;align-items:center'>");
+    out.print("<button type='button' class='primary' style='width:auto;padding:10px 20px' "
+              "onclick='document.getElementById(\"fw_file\").click()'>Choose file</button>");
+    out.print("<span id='fw_name' style='font-size:13px;color:var(--muted)'>No file chosen</span>");
+    out.print("</div></div>");
+    out.print("<div id='fw_prog' style='display:none;margin-bottom:12px'>");
+    out.print("<div style='background:var(--border);border-radius:4px;height:8px;overflow:hidden'>");
+    out.print("<div id='fw_bar' style='background:var(--accent);height:8px;width:0;transition:width .2s'></div>");
+    out.print("</div>");
+    out.print("<div id='fw_pct' style='font-size:12px;color:var(--muted);margin-top:4px;text-align:center'>0%</div>");
+    out.print("</div>");
+    out.print("<button type='button' id='fw_btn' class='danger' "
+              "style='font-size:16px;padding:15px;width:100%;display:none' "
+              "onclick='_fwFlash()'>&#9889; Flash firmware</button>");
+    out.print("</form>");
+    out.print("<div id='fw_msg' style='margin-top:10px'></div>");
+    out.print("</div>");
+
+    out.print("<div style='text-align:center;padding-bottom:8px'>"
+              "<a href='/setup' class='back-link'>&#8592; back to setup</a></div>");
+    out.print("</div>"); // #page
+    printTabBar(out, "setup");
+
+    out.print("<script>");
+    out.print("function _sc(id,cls,txt){var e=document.getElementById(id);"
+              "if(!e)return;e.textContent=txt;e.className='sv '+cls;}");
+    out.print("function _poll(){fetch('/api/status')"
+              ".then(function(r){return r.json();})"
+              ".then(function(d){"
+              "_sc('st_h','c-b',d.height+'%');"
+              "var rd=Math.round(d.rotDeg||0);"
+              "_sc('st_r','c-b',rd<5||rd>355?'home':rd+'\\u00b0');"
+              "_sc('st_s',d.fault?'c-r':(d.safety?'c-g':'c-y'),"
+              "d.fault?'FAULT':(d.safety?'Ready':'WAIT'));"
+              "_sc('st_m',d.motors?'c-g':'c-r',d.motors?'ON':'off');"
+              "}).catch(function(){});}");
+    out.print("setInterval(_poll,1000);_poll();");
+    out.print("function _fwSel(inp){"
+              "var n=inp.files[0]?inp.files[0].name:'No file chosen';"
+              "document.getElementById('fw_name').textContent=n;"
+              "document.getElementById('fw_btn').style.display=inp.files[0]?'block':'none';}");
+    out.print("function _fwFlash(){"
+              "var f=document.getElementById('fw_file').files[0];"
+              "if(!f)return;"
+              "var fd=new FormData();"
+              "fd.append('firmware',f);"
+              "var xhr=new XMLHttpRequest();"
+              "xhr.open('POST','/update',true);"
+              "document.getElementById('fw_prog').style.display='block';"
+              "document.getElementById('fw_btn').disabled=true;"
+              "xhr.upload.onprogress=function(e){"
+              "if(e.lengthComputable){"
+              "var pct=Math.round(e.loaded*100/e.total);"
+              "document.getElementById('fw_bar').style.width=pct+'%';"
+              "document.getElementById('fw_pct').textContent=pct+'%';}};"
+              "xhr.onload=function(){"
+              "var m=document.getElementById('fw_msg');"
+              "if(xhr.status===200){"
+              "m.className='msg ok';"
+              "m.textContent='Flash complete — rebooting\u2026';}"
+              "else{"
+              "m.className='msg err';"
+              "m.textContent='Flash failed ('+xhr.status+')';}"
+              "document.getElementById('fw_btn').disabled=false;};"
+              "xhr.onerror=function(){"
+              "document.getElementById('fw_msg').className='msg err';"
+              "document.getElementById('fw_msg').textContent='Network error';};"
+              "xhr.send(fd);}");
+    out.print("</script></body></html>");
+}
+
+// Keep WElement array for the /update POST handler (OTA engine still registered by ReelTwo)
 WElement firmwareContents[] = {
-    W1("Firmware update"),
     WFirmwareFile("Firmware file:", "firmware"),
     WFirmwareUpload("Flash firmware", "firmware"),
-    WLabel("Current build date:", "label"),
-    WLabel(__DATE__, "date"),
-#ifdef BUILD_VERSION
-    WHRef(BUILD_VERSION, "Sources"),
-#endif
-    WButton("Back", "back", "/setup"),
     WVerticalAlign(),
 };
 
@@ -1525,11 +1879,238 @@ WPage pages[] = {
             out.println();
             printCalibratePage(out);
         }),
-    WPage("/marcduino",  marcduinoContents,  SizeOfArray(marcduinoContents)),
-    WPage("/parameters", parametersContents, SizeOfArray(parametersContents)),
-    WPage("/wifi",       wifiContents,       SizeOfArray(wifiContents)),
-    WPage("/remote",     remoteContents,     SizeOfArray(remoteContents)),
-    WPage("/firmware",   firmwareContents,   SizeOfArray(firmwareContents)),
+    WAPI("/marcduino",
+        [](Print& out, String qs) {
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:text/html");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            printMarcduinoPage(out);
+        }),
+    WAPI("/parameters",
+        [](Print& out, String qs) {
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:text/html");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            printParametersPage(out);
+        }),
+    WAPI("/wifi",
+        [](Print& out, String qs) {
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:text/html");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            printWifiPage(out);
+        }),
+    WAPI("/remote",
+        [](Print& out, String qs) {
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:text/html");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            printRemotePage(out);
+        }),
+    WAPI("/firmware",
+        [](Print& out, String qs) {
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:text/html");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            printFirmwarePage(out);
+        }),
+    // Hidden path — registers the /update POST OTA handler from ReelTwo's WFirmwareUpload.
+    // Our custom /firmware page POSTs directly to /update; this page is never shown to users.
+    WPage("/__fw",   firmwareContents,   SizeOfArray(firmwareContents)),
+
+    // /api/save/marcduino
+    WAPI("/api/save/marcduino",
+        [](Print& out, String qs) {
+            auto gp = [&](const char* key, String def) -> String {
+                int i = qs.indexOf(String(key)+"=");
+                if (i < 0) return def;
+                int s = i + strlen(key) + 1;
+                int e = qs.indexOf('&', s);
+                return e < 0 ? qs.substring(s) : qs.substring(s, e);
+            };
+            int id   = gp("id",   String(sSettings.fID)).toInt();
+            int baud = gp("baud", String(sSettings.fBaudRate)).toInt();
+            bool mwifi = gp("wifi", "0") == "1";
+            preferences.putBool(PREFERENCE_MARCWIFI_ENABLED, mwifi);
+            if (id != (int)sSettings.fID)
+                { sSettings.fID = id; sUpdateSettings = true; }
+            if (baud != (int)sSettings.fBaudRate)
+                { sSettings.fBaudRate = baud; sUpdateSettings = true; }
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:application/json");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            out.print("{\"ok\":true}");
+        }),
+
+    // /api/save/parameters
+    WAPI("/api/save/parameters",
+        [](Print& out, String qs) {
+            auto gp = [&](const char* key, int def) -> int {
+                int i = qs.indexOf(String(key)+"=");
+                if (i < 0) return def;
+                int s = i + strlen(key) + 1;
+                int e = qs.indexOf('&', s);
+                String v = e < 0 ? qs.substring(s) : qs.substring(s, e);
+                return v.toInt();
+            };
+            int lmp  = gp("lmp",  LIFTER_MINIMUM_POWER);
+            int sbp  = gp("sbp",  LIFTER_SEEKBOTTTOM_POWER);
+            int rmp  = gp("rmp",  ROTARY_MINIMUM_POWER);
+            int ld   = gp("ld",   LIFTER_DISTANCE);
+            int sshPct = gp("ssh", 0);
+            int dc   = gp("dc",   sLifterParameters.fDriftCorrectionPct);
+            bool rotd = gp("rotd", 0) == 1;
+            LIFTER_MINIMUM_POWER     = constrain(lmp, 0, 100);
+            LIFTER_SEEKBOTTTOM_POWER = constrain(sbp, 0, 100);
+            ROTARY_MINIMUM_POWER     = constrain(rmp, 0, 100);
+            LIFTER_DISTANCE          = max(ld, 0);
+            ROTARY_MINIMUM_HEIGHT    = constrain(sshPct * max(ld, 1) / 100, 0, max(ld, 0));
+            sLifterParameters.fDriftCorrectionPct = constrain(dc, 0, 20);
+            if (rotd != sSettings.fDisableRotary)
+                { sSettings.fDisableRotary = rotd; sUpdateSettings = true; }
+            sLifterParameters.save();
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:application/json");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            out.print("{\"ok\":true}");
+        }),
+
+    // /api/param/loaddefaults — returns preset values as JSON
+    WAPI("/api/param/loaddefaults",
+        [](Print& out, String qs) {
+            int i = qs.indexOf("preset=");
+            String preset = (i >= 0) ? qs.substring(i + 7) : "";
+            int lmp, sbp, rmp, ld, ssh, dc;
+            if (preset == "greg" || preset == "6.25") {
+                // Pololu 4757 — 6.25:1 gear ratio (fastest, fewest ticks)
+                lmp = GREG_LIFTER_MINIMUM_POWER;
+                sbp = GREG_LIFTER_SEEKBOTTTOM_POWER;
+                rmp = GREG_ROTARY_MINIMUM_POWER;
+                ld  = GREG_LIFTER_DISTANCE;
+                ssh = ld / 2;
+                dc  = DEFAULT_DRIFT_CORRECTION_PCT;
+            } else if (preset == "10:1" || preset == "10") {
+                // Pololu 4758 — 10:1 gear ratio
+                lmp = GREG_LIFTER_10_MINIMUM_POWER;
+                sbp = GREG_LIFTER_10_SEEKBOTTTOM_POWER;
+                rmp = GREG_LIFTER_10_ROTARY_MIN_POWER;
+                ld  = GREG_LIFTER_10_DISTANCE;
+                ssh = ld / 2;
+                dc  = DEFAULT_DRIFT_CORRECTION_PCT;
+            } else if (preset == "18.75" || preset == "1875") {
+                // Pololu 4751 — 18.75:1 gear ratio (most torque, most ticks)
+                lmp = GREG_LIFTER_1875_MINIMUM_POWER;
+                sbp = GREG_LIFTER_1875_SEEKBOTTTOM_POWER;
+                rmp = GREG_LIFTER_1875_ROTARY_MIN_POWER;
+                ld  = GREG_LIFTER_1875_DISTANCE;
+                ssh = ld / 2;
+                dc  = DEFAULT_DRIFT_CORRECTION_PCT;
+            } else if (preset == "iaparts") {
+                lmp = IAPARTS_LIFTER_MINIMUM_POWER;
+                sbp = IAPARTS_LIFTER_SEEKBOTTTOM_POWER;
+                rmp = IAPARTS_ROTARY_MINIMUM_POWER;
+                ld  = IAPARTS_LIFTER_DISTANCE;
+                ssh = ld / 2;
+                dc  = DEFAULT_DRIFT_CORRECTION_PCT;
+            } else {
+                out.println("HTTP/1.0 400 Bad Request");
+                out.println("Content-type:application/json");
+                out.println();
+                out.print("{\"ok\":false,\"err\":\"unknown preset\"}");
+                return;
+            }
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:application/json");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            out.print("{\"ok\":true,\"lmp\":"); out.print(lmp);
+            out.print(",\"sbp\":"); out.print(sbp);
+            out.print(",\"rmp\":"); out.print(rmp);
+            out.print(",\"ld\":"); out.print(ld);
+            out.print(",\"ssh\":"); out.print(ssh);
+            out.print(",\"dc\":"); out.print(dc);
+            out.print("}");
+        }),
+
+    // /api/save/wifi
+    WAPI("/api/save/wifi",
+        [](Print& out, String qs) {
+            auto gp = [&](const char* key, String def) -> String {
+                int i = qs.indexOf(String(key)+"=");
+                if (i < 0) return def;
+                int s = i + strlen(key) + 1;
+                int e = qs.indexOf('&', s);
+                String enc = e < 0 ? qs.substring(s) : qs.substring(s, e);
+                String dec = "";
+                for (int j = 0; j < (int)enc.length(); j++) {
+                    char ch = enc[j];
+                    if (ch == '+') { dec += ' '; }
+                    else if (ch == '%' && j+2 < (int)enc.length()) {
+                        char hi = enc[++j], lo = enc[++j];
+                        auto hx=[](char c)->int{return(c>='0'&&c<='9')?c-'0':(c>='A'&&c<='F')?c-'A'+10:(c>='a'&&c<='f')?c-'a'+10:0;};
+                        dec += (char)((hx(hi)<<4)|hx(lo));
+                    } else { dec += ch; }
+                }
+                return dec;
+            };
+            bool en  = gp("en",  "0") == "1";
+            bool ap  = gp("ap",  "0") == "1";
+            String ss = gp("ssid", WIFI_AP_NAME);
+            String pw = gp("pwd",  WIFI_AP_PASSPHRASE);
+            preferences.putBool(PREFERENCE_WIFI_ENABLED, en);
+            preferences.putBool(PREFERENCE_WIFI_AP, ap);
+            preferences.putString(PREFERENCE_WIFI_SSID, ss);
+            preferences.putString(PREFERENCE_WIFI_PASS, pw);
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:application/json");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            out.print("{\"ok\":true}");
+            reboot();
+        }),
+
+    // /api/save/remote
+    WAPI("/api/save/remote",
+        [](Print& out, String qs) {
+            auto gp = [&](const char* key, String def) -> String {
+                int i = qs.indexOf(String(key)+"=");
+                if (i < 0) return def;
+                int s = i + strlen(key) + 1;
+                int e = qs.indexOf('&', s);
+                String enc = e < 0 ? qs.substring(s) : qs.substring(s, e);
+                String dec = "";
+                for (int j = 0; j < (int)enc.length(); j++) {
+                    char ch = enc[j];
+                    if (ch == '+') { dec += ' '; }
+                    else if (ch == '%' && j+2 < (int)enc.length()) {
+                        char hi = enc[++j], lo = enc[++j];
+                        auto hx=[](char c)->int{return(c>='0'&&c<='9')?c-'0':(c>='A'&&c<='F')?c-'A'+10:(c>='a'&&c<='f')?c-'a'+10:0;};
+                        dec += (char)((hx(hi)<<4)|hx(lo));
+                    } else { dec += ch; }
+                }
+                return dec;
+            };
+            bool en  = gp("en",   "0") == "1";
+            String host = gp("host", SMQ_HOSTNAME);
+            String sec  = gp("sec",  SMQ_SECRET);
+            preferences.putBool(PREFERENCE_REMOTE_ENABLED, en);
+            preferences.putString(PREFERENCE_REMOTE_HOSTNAME, host);
+            preferences.putString(PREFERENCE_REMOTE_SECRET, sec);
+            remoteEnabled = en;
+            out.println("HTTP/1.0 200 OK");
+            out.println("Content-type:application/json");
+            out.println("Cache-Control:no-cache");
+            out.println();
+            out.print("{\"ok\":true}");
+            reboot();
+        }),
 
     // /api/cmd — URL-decoded command string → executeCommand
     WAPI("/api/cmd",
@@ -1708,6 +2289,10 @@ WPage pages[] = {
                 int minHPct = (dist > 0) ? (int)(sLifterParameters.fRotaryMinHeight * 100L / dist) : 0;
                 out.print(",\"minHeightPct\":"); out.print(minHPct);
             }
+            out.print(",\"invertMotor\":"); out.print(sSettings.fInvertLifterMotor?"true":"false");
+            out.print(",\"invertEncoder\":"); out.print(sSettings.fInvertLifterEncoder?"true":"false");
+            out.print(",\"lifterLimitNC\":"); out.print(!sSettings.fLifterLimitSetting?"true":"false");
+            out.print(",\"rotaryLimitNC\":"); out.print(!sSettings.fRotaryLimitSetting?"true":"false");
             out.print(",\"rssi\":"); out.print(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0);
             out.print(",\"apClients\":"); out.print(WiFi.softAPgetStationNum());
             out.print(",\"override\":");
