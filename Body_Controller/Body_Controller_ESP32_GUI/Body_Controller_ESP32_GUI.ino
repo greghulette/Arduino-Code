@@ -757,6 +757,23 @@ void rcExecuteAction(const RcAction& a) {
 #endif
       callAnimation(a.animFn);
       break;
+    case RA_SERIAL: {
+#ifdef BENCH_TEST
+      Serial.printf("[DISPATCH] SERIAL  port=%s  cmd=%s\n", a.target, a.cmd);
+#endif
+      // Dispatch the command string to the named local serial port.
+      // Keep this in sync with RA_SERIAL_PORTS_LIST in rc_config.h.
+      String s(a.cmd);
+      if      (!strcmp(a.target, "BL")) writeBlSerial(s);
+      else if (!strcmp(a.target, "RD")) writeRdSerial(s);
+      else if (!strcmp(a.target, "MP")) writeMpSerial(s);
+      else if (!strcmp(a.target, "ST")) writeStSerial(s);
+      else if (!strcmp(a.target, "S1")) writeS1Serial(s);
+      else if (!strcmp(a.target, "S2")) writeS2Serial(s);
+      // Unknown ports are silently dropped — GUI restricts the dropdown so this
+      // shouldn't happen unless config was hand-edited.
+      break;
+    }
     default: break;
   }
 }
@@ -797,17 +814,11 @@ void checkPendingActions() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 int newValue = 0;
-// Last-seen values per logical role (not per fixed channel) for change detection.
+// Last-seen values per logical role for change detection.
 int oldValueMatrix   = 100;
 int oldValueMode     = 100;
-int oldValueRADH     = 100;
-int oldValueMaint    = 100;
-int oldValueLights   = 100;
-int oldValueMuse     = 100;
-bool Channel7Bool;       // kept for RC_RADH_Auto() compat (it sets these)
-int  Channel7State=0, lastChannel7State=0;
-bool lostFrameOld = false;
-int  sbusValues[24] = {0};   // Sized for SBUS-24 max; SBUS-16 leaves CH17-24 at 0.
+bool lostFrameOld    = false;
+int  sbusValues[24]  = {0};  // Sized for SBUS-24 max; SBUS-16 leaves CH17-24 at 0.
 
 // Read the live SBUS value of the switch at the given switch-table index
 // (0-7 = SA-SH).  Returns -1 if the index is out of range or its channel
@@ -951,29 +962,11 @@ void RCRadio_HCRVolChange(int chan, int sbusPos) {
   HCR.SetVolume(chan, vol);
 }
 
-void updateMuse(int PWMvalue) {
-  if (PWMvalue >= 100 && PWMvalue <= 799) HCR.SetMuse(1);
-  else if (PWMvalue >= 800)               HCR.SetMuse(0);
-}
-
-void lightsMode(int PWMvalue) {
-  if      (PWMvalue >= 1500)                        writeBlSerial("E98");
-  else if (PWMvalue >= 800 && PWMvalue <= 1200)     { writeBlSerial("E98"); DelayCall::schedule([]{writeBlSerial("K99");},50); }
-  else if (PWMvalue <= 799)                         { writeBlSerial("E98"); DelayCall::schedule([]{writeBlSerial("X99");},50); }
-}
-
-void maintLights(int PWMvalue) {
-  if (PWMvalue >= 1500) writeBlSerial("M1518"); else writeBlSerial("M98");
-}
-
-void RC_RADH_Auto(int PWMvalue) {
-  Channel7Bool  = (PWMvalue <= 300);
-  Channel7State = Channel7Bool;
-  if (Channel7State != lastChannel7State) {
-    if (Channel7State) writeRdSerial("#DPAUTO0"); else writeRdSerial("#DPAUTO1");
-  }
-  lastChannel7State = Channel7State;
-}
+// NOTE: The old hardcoded helpers — updateMuse(), lightsMode(), maintLights(),
+// RC_RADH_Auto() — have been REMOVED.  Their behaviors are now configurable
+// per-switch-position via RA_SERIAL and RA_HCR actions.  Defaults in
+// rcConfigLoadDefaults() pre-populate switches SB/SC/SD/SF with exactly the
+// same commands they used to send, so out-of-box behavior is unchanged.
 
 // Per-switch last-known position cache (-1 = unread).
 // Index matches rcConfig.switches[] (SA, SB, SC, SD, SE, SF, SG, SH).
@@ -1077,22 +1070,11 @@ void processSbus() {
       }
     }
 
-    // Legacy hardcoded helpers — now read the SBUS value of whichever
-    // switch is bound to them, so they follow the switch when its
-    // channel assignment moves.
-    int v;
-    v = readBoundSwitchSbus(rcConfig.funcBindings.radhAutoSwitch);
-    if (v >= 0 && abs(v - oldValueRADH)   >= 5) { oldValueRADH   = v; RC_RADH_Auto(v); }
-    v = readBoundSwitchSbus(rcConfig.funcBindings.maintLightsSwitch);
-    if (v >= 0 && abs(v - oldValueMaint)  >= 5) { oldValueMaint  = v; maintLights(v);  }
-    v = readBoundSwitchSbus(rcConfig.funcBindings.lightsModeSwitch);
-    if (v >= 0 && abs(v - oldValueLights) >= 5) { oldValueLights = v; lightsMode(v);   }
-    v = readBoundSwitchSbus(rcConfig.funcBindings.museModeSwitch);
-    if (v >= 0 && abs(v - oldValueMuse)   >= 5) { oldValueMuse   = v; updateMuse(v);   }
-
-    // User-configurable switch dispatch (SA-SH per-position actions).
-    // Runs IN ADDITION to the bound helpers above so any extra actions
-    // wired through the GUI also fire on position changes.
+    // All switch behavior is now driven entirely by per-position actions
+    // configured in the GUI (RA_ESPNOW / RA_HCR / RA_ANIM / RA_SERIAL).
+    // No more hardcoded RADH/Maint/Lights/Muse handlers — those behaviors
+    // are now Serial-command actions on the corresponding switch positions
+    // (set up in rcConfigLoadDefaults() to preserve original out-of-box behavior).
     processSwitches();
   }
 }

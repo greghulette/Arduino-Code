@@ -277,38 +277,17 @@
         <div style="display:grid; grid-template-columns:auto auto; gap:4px 10px; max-width:380px">
           <label>Mode/Function switch:</label>
           <select id="bind-mode" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.mode = +this.value;">
+            <option value="-1">— disabled (always Mode 1) —</option>
             <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3">SD</option>
             <option value="4" selected>SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
           </select>
-          <label>RADH Auto toggle:</label>
-          <select id="bind-radh" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.radhAuto = +this.value;">
-            <option value="-1">— disabled —</option>
-            <option value="0">SA</option><option value="1" selected>SB</option><option value="2">SC</option><option value="3">SD</option>
-            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
-          </select>
-          <label>Maintenance lights:</label>
-          <select id="bind-maint" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.maintLights = +this.value;">
-            <option value="-1">— disabled —</option>
-            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3">SD</option>
-            <option value="4">SE</option><option value="5" selected>SF</option><option value="6">SG</option><option value="7">SH</option>
-          </select>
-          <label>Lights mode:</label>
-          <select id="bind-lights" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.lightsMode = +this.value;">
-            <option value="-1">— disabled —</option>
-            <option value="0">SA</option><option value="1">SB</option><option value="2" selected>SC</option><option value="3">SD</option>
-            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
-          </select>
-          <label>HCR Muse mode:</label>
-          <select id="bind-muse" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.museMode = +this.value;">
-            <option value="-1">— disabled —</option>
-            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3" selected>SD</option>
-            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
-          </select>
         </div>
         <div style="margin-top:6px; color:var(--muted); font-size:11px">
-          Each function reads the SBUS channel of whichever switch is bound to it.
-          Move a switch to a different channel in the SBUS controller and the
-          binding follows automatically.
+          The mode selector reads a switch's position and toggles between
+          matrix Mode 1 / 2 / 3.  All other switch behaviors (RADH Auto,
+          maintenance lights, lights mode, HCR muse, etc.) are now configured
+          per-position on each switch — open a switch on the SVG to edit
+          its actions.
         </div>
       </div>
 
@@ -887,7 +866,7 @@ const switchDefaults = {
 let config = {
   tapWindowMs:   500,
   matrixChannel: 7,                                    // Kyber-aligned matrix on CH7
-  funcBindings: { mode:4, radhAuto:1, maintLights:5, lightsMode:2, museMode:3 },  // SE,SB,SF,SC,SD
+  funcBindings: { mode: 4 },     // SE drives mode selector — other bindings removed (use switch actions)
   thresholds:    defaultThresholds(),
   mappings:      {},
 };
@@ -905,7 +884,18 @@ const actionTypeLabels = {
   'espnow': 'ESP-NOW command',
   'hcr':    'HCR Vocalizer',
   'anim':   'Local animation',
+  'serial': 'Serial command',     // write a string to a local serial port (BL/RD/MP/ST/S1/S2)
 };
+
+// Local serial port targets for "serial" action type — matches firmware dispatch.
+const serialPorts = [
+  { v: 'BL', n: 'BL — Body LED Controller' },
+  { v: 'RD', n: 'RD — Roam-A-Dome' },
+  { v: 'MP', n: 'MP — HCR / MP3' },
+  { v: 'ST', n: 'ST — Stealth controller' },
+  { v: 'S1', n: 'S1 — Aux serial 1' },
+  { v: 'S2', n: 'S2 — Aux serial 2' },
+];
 
 const hcrFnLabels = {
   2:  'SetEmotion',
@@ -1139,23 +1129,15 @@ function applyConfig(data) {
   renderKnobHighlights();
 }
 
-// Sync the binding dropdowns to current config.funcBindings (called by applyConfig
-// and when the user changes a binding).  Stub-safe if elements aren't present.
+// Sync the mode-binding dropdown to current config.funcBindings (called by
+// applyConfig).  Other legacy bindings were removed — their behaviors are now
+// per-switch position actions edited in the switch modal.
 function applyBindingsUI() {
   if (!config.funcBindings) return;
-  const map = [
-    ['bind-mode',        'mode'],
-    ['bind-radh',        'radhAuto'],
-    ['bind-maint',       'maintLights'],
-    ['bind-lights',      'lightsMode'],
-    ['bind-muse',        'museMode'],
-  ];
-  map.forEach(([elId, key]) => {
-    const el = document.getElementById(elId);
-    if (el && typeof config.funcBindings[key] === 'number') {
-      el.value = String(config.funcBindings[key]);
-    }
-  });
+  const el = document.getElementById('bind-mode');
+  if (el && typeof config.funcBindings.mode === 'number') {
+    el.value = String(config.funcBindings.mode);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1313,7 +1295,8 @@ function actionSummary(a) {
     else                                         chanLbl = `c${a.chan}`;
     core = `HCR.${fnLbl}(${chanLbl}, ${a.track})`;
   }
-  else if (a.type === 'anim') core = animFnLabels[a.fn] || `anim${a.fn}`;
+  else if (a.type === 'anim')   core = animFnLabels[a.fn] || `anim${a.fn}`;
+  else if (a.type === 'serial') core = `Serial→${a.port}: ${escH(a.cmd)}`;
   else core = a.type;
   if (a.note && a.note.length)
     core += ` <span style="color:#888;font-style:italic">"${escH(a.note)}"</span>`;
@@ -1622,6 +1605,24 @@ function appendActionFields(container, action) {
       fnSel.appendChild(o);
     });
     container.appendChild(makeFieldGroup('Function', fnSel));
+  } else if (type === 'serial') {
+    // Local serial-port write: pick destination port + the string to send.
+    const portSel = document.createElement('select');
+    portSel.id = container.id + '-port';
+    serialPorts.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.v; o.textContent = p.n;
+      if (p.v === action.port) o.selected = true;
+      portSel.appendChild(o);
+    });
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = container.id + '-cmd';
+    cmdInput.placeholder = 'M1518';
+    cmdInput.style.width = '150px';
+    cmdInput.maxLength = 31;        // firmware cmd[] holds 31 visible chars
+    cmdInput.value = action.cmd || '';
+    container.appendChild(makeFieldGroup('Port',    portSel));
+    container.appendChild(makeFieldGroup('Command', cmdInput));
   }
 }
 
@@ -1657,6 +1658,12 @@ function readActionFromUI(tier, ai) {
   if (type === 'anim') {
     const fn = +(document.getElementById(fid + '-fn')?.value || 1);
     return { type, fn, ...extras };
+  }
+  if (type === 'serial') {
+    const port = document.getElementById(fid + '-port')?.value || 'BL';
+    const cmd  = document.getElementById(fid + '-cmd')?.value  || '';
+    if (!cmd.trim()) return null;
+    return { type, port, cmd, ...extras };
   }
   return null;
 }
@@ -1899,8 +1906,12 @@ function renderSwitchHighlights() {
   document.querySelectorAll('.switch-zone').forEach(el => {
     const sw = el.dataset.sw;
     const d  = config.switches && config.switches[sw];
-    const hasAny = d && ((d.p0 && d.p0.length) || (d.p1 && d.p1.length) || (d.p2 && d.p2.length));
-    el.classList.toggle('configured', !!hasAny);
+    // A switch is considered "configured" if it's assigned to a real channel
+    // (channel > 0) OR it has any per-position actions wired up.  Just
+    // having a channel set counts because that means BC will read it.
+    const hasChannel = d && d.channel && d.channel > 0;
+    const hasActions = d && ((d.p0 && d.p0.length) || (d.p1 && d.p1.length) || (d.p2 && d.p2.length));
+    el.classList.toggle('configured', !!(hasChannel || hasActions));
   });
 }
 

@@ -16,12 +16,22 @@ enum RcActionType : uint8_t {
   RA_ESPNOW = 1,   // sendESPNOWCommand(target, cmd)
   RA_HCR    = 2,   // HCRFunction(fn, chan, track)
   RA_ANIM   = 3,   // callAnimation(fn)   — fn matches :A## animation table
+  RA_SERIAL = 4,   // write string to a local serial port (BL/RD/MP/ST/S1/S2)
 };
+
+// Local serial port targets for RA_SERIAL actions
+// Strings used here must match the runtime serial-port switch in
+// rcExecuteAction() in the .ino — keep these aligned with that dispatch.
+#define RA_SERIAL_PORTS_LIST  "BL,RD,MP,ST,S1,S2"
 
 struct RcAction {
   RcActionType type;
-  char         target[6];    // RA_ESPNOW: board ID (BS/DC/DP/HP/DG)
-  char         cmd[32];      // RA_ESPNOW: command string (longest default is 22 chars)
+  // target[]: RA_ESPNOW = board ID (BS/DC/DP/HP/DG)
+  //          RA_SERIAL = local serial port (BL/RD/MP/ST/S1/S2)
+  char         target[6];
+  // cmd[]: RA_ESPNOW or RA_SERIAL command string
+  //        (longest default ~22 chars; cap is 31 visible)
+  char         cmd[32];
   int8_t       hcrFn;        // RA_HCR: HCRFunction() case number
   int8_t       hcrChan;      // RA_HCR: channel (= emotion for Stimulate/Trigger/SetEmotion)
   int16_t      hcrTrack;     // RA_HCR: track/value
@@ -111,22 +121,14 @@ static const int   RC_KNOB_DEFAULT_CH[RC_NUM_KNOBS] = {  5,   6 };
 static const uint8_t RC_KNOB_DEFAULT_FN[RC_NUM_KNOBS] = {KF_HCR_VOC_VOL, KF_HCR_WAV_VOL};
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Legacy function bindings — which SWITCH (by index) drives each hardcoded
-//  helper.  This lets switches move channels freely without breaking the
-//  function calls.  Set to -1 to disable a function.
-//  Defaults preserve the original X18 wiring:
-//     SE → mode/function selector
-//     SB → RADH Auto toggle
-//     SF → Maintenance lights
-//     SC → Lights mode
-//     SD → HCR Muse mode
+//  Function bindings — only the MODE selector remains here as a special case.
+//
+//  Every other "what does this switch do" behavior is now expressed as per-
+//  position actions on the switch itself (configured via the GUI).  Set
+//  modeSwitch to -1 to disable the 1/2/3 mode system entirely.
 // ─────────────────────────────────────────────────────────────────────────────
 struct RcFuncBindings {
   int8_t modeSwitch;        // which switch drives the 1/2/3 mode selector
-  int8_t radhAutoSwitch;    // which switch drives RC_RADH_Auto()
-  int8_t maintLightsSwitch; // which switch drives maintLights()
-  int8_t lightsModeSwitch;  // which switch drives lightsMode()
-  int8_t museModeSwitch;    // which switch drives updateMuse()
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +186,18 @@ static inline RcAction makeAnim(uint8_t fn, uint16_t delayMs = 0, const char* no
   strlcpy(a.note, note, sizeof(a.note));
   return a;
 }
+// makeSerial: emit a string to a local serial port.  Port labels match the
+// firmware dispatch in rcExecuteAction() (BL/RD/MP/ST/S1/S2).
+static inline RcAction makeSerial(const char* port, const char* cmd,
+                                  uint16_t delayMs = 0, const char* note = "") {
+  RcAction a = {};
+  a.type = RA_SERIAL;
+  strlcpy(a.target, port, sizeof(a.target));
+  strlcpy(a.cmd,    cmd,  sizeof(a.cmd));
+  strlcpy(a.note,   note, sizeof(a.note));
+  a.delayMs = delayMs;
+  return a;
+}
 static inline void setTier1(RcTier& tier, RcAction a0) {
   tier.count = 1;  tier.a[0] = a0;
 }
@@ -198,13 +212,9 @@ void rcConfigLoadDefaults() {
   rcConfig.tapWindowMs   = 500;
   rcConfig.matrixChannel = 7;   // Kyber-aligned: button matrix lives on CH7
 
-  // Default function-to-switch bindings (preserves original X18 semantics
-  // regardless of which channels the switches are actually wired to).
-  rcConfig.funcBindings.modeSwitch        = SW_SE;
-  rcConfig.funcBindings.radhAutoSwitch    = SW_SB;
-  rcConfig.funcBindings.maintLightsSwitch = SW_SF;
-  rcConfig.funcBindings.lightsModeSwitch  = SW_SC;
-  rcConfig.funcBindings.museModeSwitch    = SW_SD;
+  // Mode/function selector — drives the 1/2/3 mode that gates which matrix
+  // button action set fires.  Configurable via GUI.  -1 disables modes.
+  rcConfig.funcBindings.modeSwitch = SW_SE;
 
   // Default PWM threshold bands (button 1 = highest PWM, button 19 = lowest)
   // Order matches the FrSky X18 model: function buttons B1-B6 first, then
@@ -312,12 +322,49 @@ void rcConfigLoadDefaults() {
            makeESPNOW("BS",":D10204", 7050, "Stow saber finish"));                          // T1 Left
   setTier1(rcConfig.mappings[rcMapIndex(3,18)].t[0], makeESPNOW("DP",":A60",    0,"Launch saber")); // T1 Right
 
-  // ── Default switch channel / position assignments (all actions empty) ──
+  // ── Default switch channel / position assignments ──
   memset(rcConfig.switches, 0, sizeof(rcConfig.switches));
   for (int i = 0; i < RC_NUM_SWITCHES; i++) {
     rcConfig.switches[i].channel   = RC_SWITCH_DEFAULT_CH[i];
     rcConfig.switches[i].positions = RC_SWITCH_DEFAULT_POS[i];
   }
+
+  // ── Default switch ACTIONS — replicates the old hardcoded RADH/Maint/Lights/Muse
+  //    behaviors as configurable per-position serial actions.  Users can edit
+  //    these in the GUI just like any other switch action.  Position indices:
+  //      t[0] = DOWN (~SBUS 172, PWM ~988µs)
+  //      t[1] = MID  (~SBUS 992, PWM ~1500µs) — only on 3-pos switches
+  //      t[2] = UP   (~SBUS 1811, PWM ~2012µs)
+
+  // SB (3-pos) — RADH Auto toggle (old RC_RADH_Auto: PWM≤300 → #DPAUTO0, else #DPAUTO1).
+  setTier1(rcConfig.switches[SW_SB].t[0], makeSerial("RD","#DPAUTO0", 0,"RADH auto off"));
+  setTier1(rcConfig.switches[SW_SB].t[1], makeSerial("RD","#DPAUTO1", 0,"RADH auto on"));
+  setTier1(rcConfig.switches[SW_SB].t[2], makeSerial("RD","#DPAUTO1", 0,"RADH auto on"));
+
+  // SC (3-pos) — Lights mode (old lightsMode):
+  //   PWM≤799 (down)         → E98 + X99 (50ms delay)
+  //   PWM 800-1200 (mid)     → E98 + K99 (50ms delay)
+  //   PWM≥1500 (up)          → just E98
+  setTier2(rcConfig.switches[SW_SC].t[0],
+           makeSerial("BL","E98", 0,  "All lights off"),
+           makeSerial("BL","X99", 50, "Mode X"));
+  setTier2(rcConfig.switches[SW_SC].t[1],
+           makeSerial("BL","E98", 0,  "All lights off"),
+           makeSerial("BL","K99", 50, "Mode K"));
+  setTier1(rcConfig.switches[SW_SC].t[2], makeSerial("BL","E98", 0,"All lights off"));
+
+  // SD (3-pos) — HCR Muse mode (old updateMuse):
+  //   PWM 100-799 (down) → Muse(1)
+  //   PWM ≥800 (mid/up)  → Muse(0)
+  setTier1(rcConfig.switches[SW_SD].t[0], makeHCR(13, 0, 1, 0, "Muse on"));
+  setTier1(rcConfig.switches[SW_SD].t[1], makeHCR(13, 0, 0, 0, "Muse off"));
+  setTier1(rcConfig.switches[SW_SD].t[2], makeHCR(13, 0, 0, 0, "Muse off"));
+
+  // SF (2-pos) — Maintenance lights (old maintLights):
+  //   PWM<1500 → M98 (dim/off)
+  //   PWM≥1500 → M1518 (full brightness)
+  setTier1(rcConfig.switches[SW_SF].t[0], makeSerial("BL","M98",   0,"Maint dim"));
+  setTier1(rcConfig.switches[SW_SF].t[2], makeSerial("BL","M1518", 0,"Maint bright"));
 
   // ── Default knob assignments  (S1→CH4 HCR Voc Vol, S2→CH5 HCR WAV Vol) ──
   for (int i = 0; i < RC_NUM_KNOBS; i++) {
@@ -349,6 +396,12 @@ static void actionToJson(const RcAction& a, JsonObject obj) {
       obj["fn"]   = a.animFn;
       if (a.delayMs) obj["delay"] = a.delayMs;
       break;
+    case RA_SERIAL:
+      obj["type"]   = "serial";
+      obj["port"]   = a.target;     // BL/RD/MP/ST/S1/S2
+      obj["cmd"]    = a.cmd;
+      if (a.delayMs) obj["delay"] = a.delayMs;
+      break;
     default: break;
   }
   // Note is shared across all action types — only emit if non-empty to keep
@@ -378,6 +431,12 @@ static bool actionFromJson(const JsonObject& obj, RcAction& a) {
     a.animFn  = obj["fn"] | 0;
     a.delayMs = obj["delay"] | 0;
     ok = true;
+  } else if (strcmp(type, "serial") == 0) {
+    a.type = RA_SERIAL;
+    strlcpy(a.target, obj["port"] | "", sizeof(a.target));
+    strlcpy(a.cmd,    obj["cmd"]  | "", sizeof(a.cmd));
+    a.delayMs = obj["delay"] | 0;
+    ok = true;
   }
   if (ok) strlcpy(a.note, obj["note"] | "", sizeof(a.note));
   return ok;
@@ -395,13 +454,9 @@ String rcConfigToJSON() {
   doc["tapWindowMs"]   = rcConfig.tapWindowMs;
   doc["matrixChannel"] = rcConfig.matrixChannel;
 
-  // Function-to-switch bindings
+  // Function-to-switch bindings — only mode selector remains.
   JsonObject fb = doc.createNestedObject("funcBindings");
-  fb["mode"]       = rcConfig.funcBindings.modeSwitch;
-  fb["radhAuto"]   = rcConfig.funcBindings.radhAutoSwitch;
-  fb["maintLights"]= rcConfig.funcBindings.maintLightsSwitch;
-  fb["lightsMode"] = rcConfig.funcBindings.lightsModeSwitch;
-  fb["museMode"]   = rcConfig.funcBindings.museModeSwitch;
+  fb["mode"] = rcConfig.funcBindings.modeSwitch;
 
   JsonArray thArr = doc.createNestedArray("thresholds");
   for (int i = 0; i < RC_NUM_THRESHOLDS; i++) {
@@ -484,11 +539,9 @@ bool rcConfigFromJSON(const String& json) {
 
   if (doc.containsKey("funcBindings")) {
     JsonObject fb = doc["funcBindings"];
-    rcConfig.funcBindings.modeSwitch        = fb["mode"]        | rcConfig.funcBindings.modeSwitch;
-    rcConfig.funcBindings.radhAutoSwitch    = fb["radhAuto"]    | rcConfig.funcBindings.radhAutoSwitch;
-    rcConfig.funcBindings.maintLightsSwitch = fb["maintLights"] | rcConfig.funcBindings.maintLightsSwitch;
-    rcConfig.funcBindings.lightsModeSwitch  = fb["lightsMode"]  | rcConfig.funcBindings.lightsModeSwitch;
-    rcConfig.funcBindings.museModeSwitch    = fb["museMode"]    | rcConfig.funcBindings.museModeSwitch;
+    rcConfig.funcBindings.modeSwitch = fb["mode"] | rcConfig.funcBindings.modeSwitch;
+    // Older configs may have radhAuto/maintLights/lightsMode/museMode fields —
+    // those are silently ignored now; behavior moves to switch position actions.
   }
 
   if (doc.containsKey("thresholds")) {
@@ -583,14 +636,16 @@ void rcConfigSaveNVS() {
   Preferences prefs;
   prefs.begin("rcfg", false);
 
-  // tap window + matrix channel + function bindings (compact small fields)
+  // tap window + matrix channel + mode-selector binding
   prefs.putInt("cfg",      rcConfig.tapWindowMs);
   prefs.putInt("matrixCh", rcConfig.matrixChannel);
   prefs.putChar("fbMode",  rcConfig.funcBindings.modeSwitch);
-  prefs.putChar("fbRADH",  rcConfig.funcBindings.radhAutoSwitch);
-  prefs.putChar("fbMaint", rcConfig.funcBindings.maintLightsSwitch);
-  prefs.putChar("fbLight", rcConfig.funcBindings.lightsModeSwitch);
-  prefs.putChar("fbMuse",  rcConfig.funcBindings.museModeSwitch);
+  // Clear any legacy keys from older firmware so they don't masquerade
+  // as set values on a reboot.
+  prefs.remove("fbRADH");
+  prefs.remove("fbMaint");
+  prefs.remove("fbLight");
+  prefs.remove("fbMuse");
 
   // thresholds
   {
@@ -678,14 +733,10 @@ void rcConfigLoadNVS() {
   Preferences prefs;
   prefs.begin("rcfg", true);  // read-only
 
-  // tap window + matrix channel + function bindings
+  // tap window + matrix channel + mode-selector binding
   if (prefs.isKey("cfg"))      rcConfig.tapWindowMs   = prefs.getInt("cfg",      rcConfig.tapWindowMs);
   if (prefs.isKey("matrixCh")) rcConfig.matrixChannel = prefs.getInt("matrixCh", rcConfig.matrixChannel);
-  if (prefs.isKey("fbMode"))   rcConfig.funcBindings.modeSwitch        = prefs.getChar("fbMode",  rcConfig.funcBindings.modeSwitch);
-  if (prefs.isKey("fbRADH"))   rcConfig.funcBindings.radhAutoSwitch    = prefs.getChar("fbRADH",  rcConfig.funcBindings.radhAutoSwitch);
-  if (prefs.isKey("fbMaint"))  rcConfig.funcBindings.maintLightsSwitch = prefs.getChar("fbMaint", rcConfig.funcBindings.maintLightsSwitch);
-  if (prefs.isKey("fbLight"))  rcConfig.funcBindings.lightsModeSwitch  = prefs.getChar("fbLight", rcConfig.funcBindings.lightsModeSwitch);
-  if (prefs.isKey("fbMuse"))   rcConfig.funcBindings.museModeSwitch    = prefs.getChar("fbMuse",  rcConfig.funcBindings.museModeSwitch);
+  if (prefs.isKey("fbMode"))   rcConfig.funcBindings.modeSwitch = prefs.getChar("fbMode", rcConfig.funcBindings.modeSwitch);
 
   // thresholds
   if (prefs.isKey("th")) {
