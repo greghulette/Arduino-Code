@@ -1022,10 +1022,16 @@ async function sendJSON(obj) {
 }
 
 // ── Read loop ──────────────────────────────────────────────────────────────
+// Survives transient UART framing/parity errors caused by the ESP32's reset
+// burst at port-open time — when BC reboots from the DTR toggle, garbage
+// bytes appear on the serial line for a few hundred ms.  Without this
+// recovery loop, the very first FramingError would tear down the reader
+// and PING would never see PONG.  Now we just drop the current buffer and
+// reopen the reader, repeating until BC settles into valid output.
 async function startReading() {
   const decoder = new TextDecoder();
-  try {
-    while (port && port.readable) {
+  while (port && port.readable) {
+    try {
       reader = port.readable.getReader();
       try {
         while (true) {
@@ -1039,9 +1045,22 @@ async function startReading() {
             if (line.length > 0) handleBoardMessage(line);
           }
         }
-      } finally { reader.releaseLock(); reader = null; }
+      } finally {
+        try { reader.releaseLock(); } catch(_) {}
+        reader = null;
+      }
+    } catch (e) {
+      // Most common: FramingError during BC's boot-from-reset garbage burst.
+      // Discard whatever was in the buffer (likely partial garbage) and re-
+      // acquire the reader so subsequent valid bytes can come through.
+      if (!port) break;
+      console.warn('Read recovered after:', e.name || 'error', '— continuing');
+      readBuffer = '';
+      // Tiny pause to let any in-flight garbage finish before reopening
+      await new Promise(r => setTimeout(r, 50));
+      // Loop continues — try acquiring reader again
     }
-  } catch(e) { if (port) console.error('Read error:', e); }
+  }
 }
 
 function handleBoardMessage(line) {
