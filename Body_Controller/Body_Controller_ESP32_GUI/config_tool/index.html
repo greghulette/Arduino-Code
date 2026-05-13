@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R2D2 Body Controller — RC Config Tool</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #1a1a2e;
+    --surface:  #16213e;
+    --card:     #0f3460;
+    --accent:   #e94560;
+    --accent2:  #0f7a9d;
+    --text:     #e0e0e0;
+    --muted:    #888;
+    --border:   #2a3a5a;
+    --green:    #4caf50;
+    --yellow:   #ffc107;
+    --red:      #f44336;
+    --mode1:    #e94560;
+    --mode2:    #0f7a9d;
+    --mode3:    #4caf50;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar { background: var(--surface); padding: 10px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .topbar h1 { font-size: 18px; color: var(--accent); flex: 1; }
+  .btn { padding: 7px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .2s; }
+  .btn:hover { opacity: .8; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent);  color: #fff; }
+  .btn-blue     { background: var(--accent2); color: #fff; }
+  .btn-success  { background: var(--green);   color: #fff; }
+  .btn-warn     { background: var(--yellow);  color: #000; }
+  .btn-danger   { background: var(--red);     color: #fff; }
+  .btn-ghost    { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .status-dot   { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+  .status-dot.connected { background: var(--green); }
+  #status-text { font-size: 12px; color: var(--muted); }
+
+  /* ── Layout ── */
+  .main { display: flex; gap: 0; height: calc(100vh - 53px); }
+  .sidebar { width: 320px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+  /* ── Sidebar sections ── */
+  .sb-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sb-section h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; margin-bottom: 10px; }
+  .pwm-row   { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pwm-label { font-size: 12px; color: var(--muted); width: 50px; }
+  .pwm-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .pwm-bar   { height: 100%; background: var(--accent2); border-radius: 4px; transition: width .05s; }
+  .pwm-value { font-size: 12px; width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .btn-row   { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* Live PWM indicator */
+  .live-pwm-box { background: var(--card); border-radius: 8px; padding: 12px; margin-top: 8px; }
+  .live-pwm-big { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .live-pwm-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .live-btn-indicator { margin-top: 8px; }
+  .live-btn-chip { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--accent); color: #fff; min-width: 80px; text-align: center; }
+
+  /* Mode tabs */
+  .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .mode-tab  { flex: 1; padding: 8px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 600; background: var(--surface); transition: background .2s; }
+  .mode-tab:hover { background: var(--card); }
+  .mode-tab.active-1 { background: var(--mode1); color: #fff; }
+  .mode-tab.active-2 { background: var(--mode2); color: #fff; }
+  .mode-tab.active-3 { background: var(--mode3); color: #000; }
+
+  /* ── Transmitter SVG area ── */
+  .tx-wrap { max-width: 850px; margin: 0 auto; }
+  .tx-wrap svg { width: 100%; height: auto; }
+
+  /* Clickable button zones */
+  .btn-zone { cursor: pointer; transition: opacity .15s; }
+  .btn-zone:hover rect, .btn-zone:hover circle, .btn-zone:hover path { opacity: .7; }
+  .btn-zone rect.configured  { fill: var(--accent2) !important; }
+  .btn-zone circle.configured { fill: var(--accent2) !important; }
+
+  /* Live-pressed highlight — fires from PWM_UPDATE stream */
+  .btn-zone.live-active > rect:first-of-type,
+  .btn-zone.live-active > circle:first-of-type {
+    fill: var(--accent) !important;
+    stroke: #fff !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 0 8px var(--accent));
+  }
+  .btn-zone.live-active > polygon { fill: #fff !important; }
+
+  /* Switch zones (configurable like buttons) */
+  .switch-zone { cursor: pointer; transition: opacity .15s; }
+  .switch-zone:hover { opacity: .75; }
+  .switch-zone.configured circle:first-of-type { stroke: var(--accent2); stroke-width: 2; }
+  .switch-zone.live-active circle:first-of-type {
+    stroke: var(--accent) !important; stroke-width: 3 !important;
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  /* Knob zones (S1, S2) */
+  .knob-zone { cursor: pointer; transition: opacity .15s; }
+  .knob-zone:hover { opacity: .82; }
+  .knob-zone.configured circle:first-of-type {
+    stroke: var(--accent2); stroke-width: 2;
+    filter: drop-shadow(0 0 3px var(--accent2));
+  }
+
+  /* ── Modal ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 600px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-title  { font-size: 16px; font-weight: 700; flex: 1; }
+  .modal-body   { padding: 20px; }
+  .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* Tap tier cards */
+  .tier-card  { background: var(--card); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .tier-title { font-size: 12px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; letter-spacing: 1px; }
+  .rows-container { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .action-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; padding: 6px; background: rgba(255,255,255,.03); border-radius: 6px; }
+  .action-row label { font-size: 12px; color: var(--muted); }
+  .btn-remove-action {
+    background: transparent; color: var(--red); border: 1px solid var(--red);
+    border-radius: 4px; width: 26px; height: 26px; padding: 0;
+    font-size: 16px; line-height: 1; cursor: pointer; align-self: center;
+    margin-left: auto;
+  }
+  .btn-remove-action:hover { background: var(--red); color: #fff; }
+  .btn-add-action {
+    width: 100%; padding: 8px; font-size: 12px;
+    border: 1px dashed var(--border); color: var(--muted);
+  }
+  .btn-add-action:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+  select, input[type=text], input[type=number] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 8px; border-radius: 5px; font-size: 13px; }
+  select { cursor: pointer; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+
+  /* Exclusive toggle */
+  .toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .toggle { position: relative; width: 40px; height: 22px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 22px; cursor: pointer; transition: .2s; }
+  .slider:before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(18px); }
+
+  /* Threshold table */
+  .thresh-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .thresh-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .thresh-table td { padding: 5px 8px; }
+  .thresh-table tr:nth-child(even) td { background: rgba(255,255,255,.03); }
+  .thresh-table input { width: 70px; }
+
+  /* Tap window input */
+  .tapwin-row { display: flex; align-items: center; gap: 10px; }
+  .tapwin-row input { width: 80px; }
+
+  /* Config mode indicator */
+  .mode-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .mode-badge.m1 { background: var(--mode1); color: #fff; }
+  .mode-badge.m2 { background: var(--mode2); color: #fff; }
+  .mode-badge.m3 { background: var(--mode3); color: #000; }
+
+  /* Small tooltip for unconnected */
+  .noconn { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* ── Tabs inside sidebar ── */
+  .sb-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .sb-tab  { flex: 1; padding: 8px; text-align: center; font-size: 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+  .sb-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .sb-panel { display: none; }
+  .sb-panel.active { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <h1>R2D2 Body Controller — RC Button Config</h1>
+  <div class="status-dot" id="conn-dot"></div>
+  <span id="status-text">Disconnected</span>
+  <button class="btn btn-primary" id="btn-connect">Connect</button>
+  <button class="btn btn-blue"    id="btn-refresh" disabled>Refresh</button>
+  <button class="btn btn-success" id="btn-save"    disabled>Save to Board</button>
+  <button class="btn btn-warn"    id="btn-defaults" disabled>Reset Defaults</button>
+</div>
+
+<div class="main">
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <!-- SBUS status -->
+    <div class="sb-section">
+      <h3>SBUS Receiver</h3>
+      <div class="live-pwm-box" id="sbus-box" style="display:flex; align-items:center; gap:12px">
+        <div id="sbus-dot" style="width:14px; height:14px; border-radius:50%; background:var(--red); flex-shrink:0; box-shadow:0 0 8px rgba(244,67,54,.6)"></div>
+        <div style="flex:1">
+          <div id="sbus-state" style="font-weight:700; font-size:14px">No signal</div>
+          <div id="sbus-detail" style="font-size:11px; color:var(--muted); font-variant-numeric: tabular-nums">— fps · 0 frames · age — ms</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live PWM -->
+    <div class="sb-section">
+      <h3 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <span>Live PWM Monitor</span>
+        <!-- Unit toggle: storage is always SBUS, display switches between SBUS (172-1811)
+             and PWM microseconds (988-2012).  Setting persists in localStorage. -->
+        <span style="font-size:11px;color:var(--muted);font-weight:400">
+          Display:
+          <label style="margin-left:4px"><input type="radio" name="unit-toggle" value="sbus" checked> SBUS</label>
+          <label style="margin-left:6px"><input type="radio" name="unit-toggle" value="us"> µs</label>
+        </span>
+      </h3>
+      <div class="live-pwm-box">
+        <div class="live-pwm-big" id="live-ch6">—</div>
+        <div class="live-pwm-sub" id="live-ch6-sub">Channel 6 (Button Matrix)</div>
+        <div class="live-btn-indicator" style="margin-top:8px">
+          <span class="live-btn-chip" id="live-btn-name">—</span>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div class="pwm-row">
+          <span class="pwm-label" id="lbl-matrix-ch" title="Matrix channel (configurable)">CH7</span>
+          <div class="pwm-bar-wrap"><div class="pwm-bar" id="bar-ch6" style="width:0%"></div></div>
+          <span class="pwm-value" id="val-ch6">0</span>
+        </div>
+        <div class="pwm-row">
+          <span class="pwm-label" id="lbl-mode-ch" title="Mode/function switch channel (follows bound switch)">CH12</span>
+          <div class="pwm-bar-wrap"><div class="pwm-bar" id="bar-ch16" style="width:0%"></div></div>
+          <span class="pwm-value" id="val-ch16">0</span>
+        </div>
+      </div>
+      <div class="noconn" id="monitor-note">Connect board to enable live monitor</div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-ghost" id="btn-mon-start" disabled>▶ Start</button>
+        <button class="btn btn-ghost" id="btn-mon-stop"  disabled>■ Stop</button>
+      </div>
+    </div>
+
+    <!-- Mode selector -->
+    <div class="sb-section">
+      <h3>Editing Mode</h3>
+      <div class="mode-tabs">
+        <div class="mode-tab active-1" data-mode="1">SW Down<br><small>Mode 1</small></div>
+        <div class="mode-tab"          data-mode="2">SW Mid<br><small>Mode 2</small></div>
+        <div class="mode-tab"          data-mode="3">SW Up<br><small>Mode 3</small></div>
+      </div>
+    </div>
+
+    <!-- Tap window -->
+    <div class="sb-section">
+      <h3>Tap Window</h3>
+      <div class="tapwin-row">
+        <input type="number" id="tapwin-input" min="100" max="2000" step="50" value="500">
+        <span style="color:var(--muted);font-size:12px">ms</span>
+      </div>
+      <div class="noconn" style="margin-top:4px">Time window for multi-tap detection</div>
+    </div>
+
+    <!-- Thresholds (collapsed by default) -->
+    <div class="sb-section">
+      <!-- Channel Assignments + Function Bindings (compact, collapsible) -->
+      <h3 style="cursor:pointer" id="chan-toggle">▶ Channel Assignments <small style="color:var(--muted)">(click to expand)</small></h3>
+      <div id="chan-panel" style="display:none; margin-top:8px; font-size:12px">
+        <div style="margin-bottom:6px">
+          <label>Button matrix channel:
+            <input type="number" id="cfg-matrix-ch" min="1" max="24" value="7" style="width:50px; margin-left:4px"
+                   onchange="config.matrixChannel = +this.value; document.getElementById('lbl-matrix-ch').textContent='CH'+this.value;">
+          </label>
+          <small style="color:var(--muted); margin-left:6px">(multiplexed buttons live here — Kyber default is 7)</small>
+        </div>
+        <div style="display:grid; grid-template-columns:auto auto; gap:4px 10px; max-width:380px">
+          <label>Mode/Function switch:</label>
+          <select id="bind-mode" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.mode = +this.value;">
+            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3">SD</option>
+            <option value="4" selected>SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+          <label>RADH Auto toggle:</label>
+          <select id="bind-radh" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.radhAuto = +this.value;">
+            <option value="-1">— disabled —</option>
+            <option value="0">SA</option><option value="1" selected>SB</option><option value="2">SC</option><option value="3">SD</option>
+            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+          <label>Maintenance lights:</label>
+          <select id="bind-maint" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.maintLights = +this.value;">
+            <option value="-1">— disabled —</option>
+            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3">SD</option>
+            <option value="4">SE</option><option value="5" selected>SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+          <label>Lights mode:</label>
+          <select id="bind-lights" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.lightsMode = +this.value;">
+            <option value="-1">— disabled —</option>
+            <option value="0">SA</option><option value="1">SB</option><option value="2" selected>SC</option><option value="3">SD</option>
+            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+          <label>HCR Muse mode:</label>
+          <select id="bind-muse" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.museMode = +this.value;">
+            <option value="-1">— disabled —</option>
+            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3" selected>SD</option>
+            <option value="4">SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+        </div>
+        <div style="margin-top:6px; color:var(--muted); font-size:11px">
+          Each function reads the SBUS channel of whichever switch is bound to it.
+          Move a switch to a different channel in the SBUS controller and the
+          binding follows automatically.
+        </div>
+      </div>
+
+      <h3 style="cursor:pointer" id="thresh-toggle">▶ Channel Thresholds <small style="color:var(--muted)">(click to expand)</small></h3>
+      <div id="thresh-panel" style="display:none; margin-top:10px; overflow-x:auto">
+        <table class="thresh-table" id="thresh-table">
+          <thead><tr><th>Btn</th><th>Label</th><th>Min <span class="unit-label">(SBUS)</span></th><th>Max <span class="unit-label">(SBUS)</span></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div style="margin-top:8px">
+          <button class="btn btn-ghost" id="btn-thresh-rebuild" style="font-size:11px">Rebuild defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main content: transmitter SVG ── -->
+  <div class="content">
+    <div class="tx-wrap">
+      <div style="text-align:center; margin-bottom:12px; font-size:12px; color:var(--muted)">
+        Click any button to configure · <b>Shift+Click</b> to fire a TRIGGER (single tap) · <b>Shift+Ctrl+Click</b> for double tap · <b>Shift+Alt+Click</b> for triple tap
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!--  FrSky TANDEM X18 — accurate face layout (matches reference photos)   -->
+      <!--                                                                       -->
+      <!--  Top:        Screen "pod" sticks up above the navy-blue body          -->
+      <!--  Switches:   SF / SB on top-edge LEFT, SC / SH on top-edge RIGHT      -->
+      <!--              SA top-left corner, SE on left face                      -->
+      <!--              SG top-right corner, SD on right face                    -->
+      <!--  Below scrn: Two big silver knobs S1, S2; power button centre         -->
+      <!--  Gimbals:    Square cutouts (left + right) with crosshair markings    -->
+      <!--  Trims:      T3 (V) right of L-gimbal — btn 10 (Up) / btn 12 (Down)   -->
+      <!--              T2 (V) left  of R-gimbal — btn 13 (Up) / btn 14 (Down)   -->
+      <!--              T4 (H) bottom-LEFT       — btn 7 (L)  / btn 11 (R)       -->
+      <!--              T5 (H) bottom-LEFT       — btn 8 (L)  / btn 9 (R)        -->
+      <!--              T6 (H) bottom-RIGHT      — btn 15 (L) / btn 16 (R)       -->
+      <!--              T1 (H) bottom-RIGHT      — btn 17 (L) / btn 18 (R)       -->
+      <!--  Buttons:    Left cluster 1/2/3 + right cluster 4/5/6  (Mute / Happy  -->
+      <!--              / Mad  /  Sad / Scared / Fart in default Mode 1).        -->
+      <!--  Below buttons: nav dials (SYS/MDL/DISP/RTN) flank centre logo.       -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <svg viewBox="0 0 1000 830" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Navy-blue body gradient (matches real X18 colour) -->
+          <linearGradient id="body-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#2e4a82"/>
+            <stop offset="45%"  stop-color="#1f3870"/>
+            <stop offset="100%" stop-color="#13234a"/>
+          </linearGradient>
+          <linearGradient id="body-highlight" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#3a5a92" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#3a5a92" stop-opacity="0"/>
+          </linearGradient>
+          <radialGradient id="screen-grad" cx="50%" cy="40%" r="70%">
+            <stop offset="0%"   stop-color="#0e2440"/>
+            <stop offset="100%" stop-color="#050d1c"/>
+          </radialGradient>
+          <radialGradient id="knob-grad" cx="50%" cy="30%" r="70%">
+            <stop offset="0%"   stop-color="#e0e0e0"/>
+            <stop offset="40%"  stop-color="#909090"/>
+            <stop offset="100%" stop-color="#202020"/>
+          </radialGradient>
+          <radialGradient id="bush-grad" cx="50%" cy="30%" r="65%">
+            <stop offset="0%"   stop-color="#e8e8e8"/>
+            <stop offset="50%"  stop-color="#9a9a9a"/>
+            <stop offset="100%" stop-color="#303030"/>
+          </radialGradient>
+          <linearGradient id="lever-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#d0d0d0"/>
+            <stop offset="100%" stop-color="#606060"/>
+          </linearGradient>
+          <radialGradient id="cap-grad" cx="50%" cy="25%" r="60%">
+            <stop offset="0%"   stop-color="#6a6a6a"/>
+            <stop offset="55%"  stop-color="#1a1a1a"/>
+            <stop offset="100%" stop-color="#000"/>
+          </radialGradient>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="10" flood-opacity=".55"/>
+          </filter>
+        </defs>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                       MAIN BODY (NAVY BLUE)                     -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                                                                  -->
+        <!--  Body shape: rounded rectangle with the screen pod sticking up  -->
+        <!--  above it.  The bottom edge has a subtle dip in the centre       -->
+        <!--  matching the real X18 chassis.                                  -->
+        <!--                                                                  -->
+        <path d="
+          M 70 320
+          Q 70 280 110 280
+          L 270 280
+          Q 290 280 295 270
+          Q 300 250 320 250
+          L 680 250
+          Q 700 250 705 270
+          Q 710 280 730 280
+          L 890 280
+          Q 930 280 930 320
+          L 930 640
+          Q 930 730 870 760
+          L 770 790
+          Q 750 798 720 800
+          L 580 808
+          Q 540 812 500 810
+          Q 460 812 420 808
+          L 280 800
+          Q 250 798 230 790
+          L 130 760
+          Q 70 730 70 640
+          Z"
+          fill="url(#body-grad)" stroke="#0a1428" stroke-width="2" filter="url(#shadow)"/>
+        <!-- Subtle top-edge highlight -->
+        <path d="
+          M 70 320
+          Q 70 280 110 280
+          L 270 280
+          Q 290 280 295 270
+          Q 300 250 320 250
+          L 680 250
+          Q 700 250 705 270
+          Q 710 280 730 280
+          L 890 280
+          Q 930 280 930 320
+          L 930 360
+          L 70 360 Z"
+          fill="url(#body-highlight)" opacity="0.5"/>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                          SCREEN POD                              -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <rect x="290" y="15" width="420" height="290" rx="22" fill="#0a0a0a" stroke="#1a2a4a" stroke-width="2" filter="url(#shadow)"/>
+        <rect x="305" y="32" width="390" height="258" rx="6" fill="url(#screen-grad)"/>
+        <!-- FrSky branding (top-right of screen pod, like real X18) -->
+        <text x="688" y="56" text-anchor="end" fill="#a8b2c8" font-size="16" font-weight="700" font-style="italic" font-family="serif">FrSky</text>
+
+        <!-- Faux on-screen UI -->
+        <rect x="320" y="72" width="360" height="28" rx="3" fill="#1a3a6a"/>
+        <text x="332" y="92" fill="#7acdf6" font-size="13" font-family="monospace" font-weight="700">R2D2 Body Controller</text>
+        <text x="668" y="92" fill="#7acdf6" font-size="11" font-family="monospace" text-anchor="end">100%</text>
+        <text x="332" y="128" fill="#5a9ac6" font-size="12" font-family="monospace">Model: TANDEM X18</text>
+        <text x="332" y="150" fill="#5a9ac6" font-size="12" font-family="monospace">Mode:  &lt;3-pos SW&gt;</text>
+        <text x="332" y="172" fill="#5a9ac6" font-size="12" font-family="monospace">RX:    Connected</text>
+        <text x="332" y="194" fill="#5a9ac6" font-size="12" font-family="monospace">CH6:   monitor</text>
+        <rect x="320" y="215" width="360" height="60" rx="4" fill="#0a1a2e" stroke="#1a3a6a"/>
+        <text x="500" y="248" text-anchor="middle" fill="#3a6a9a" font-size="18" font-family="monospace" font-weight="700">R2-D2</text>
+        <text x="500" y="265" text-anchor="middle" fill="#2a5a8a" font-size="10" font-family="monospace">Click any button below to configure</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                      TOGGLE SWITCHES SA-SH                       -->
+        <!--                                                                  -->
+        <!--  Each shoulder has a 4-switch cluster, arranged front-to-back:   -->
+        <!--    LEFT:  SA + SB  (front pair) → SE (middle) → SF (back, long) -->
+        <!--    RIGHT: SC + SD  (front pair) → SG (middle) → SH (back, long) -->
+        <!--                                                                  -->
+        <!--  "Front" = visible from front face (lower in SVG)                -->
+        <!--  "Back"  = sticks up from the top edge (higher in SVG)           -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- ── LEFT shoulder ──────────────────────────────────────────────  -->
+        <!--   Triangular cluster (X18 layout):                                 -->
+        <!--     SF (back-most)  ▲ tallest lever, top of cluster                -->
+        <!--     SE (middle)     ▲ medium lever, below+right of SF              -->
+        <!--     SA + SB (front pair) ▲ short levers, bottom of cluster         -->
+        <!--   All levers extend ABOVE body top so they read as proper toggles. -->
+
+        <g class="switch-zone" data-sw="SF" onclick="openSwitchModal('SF')">
+          <circle cx="135" cy="282" r="11" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="135" cy="282" r="6"  fill="#0a0a0a"/>
+          <rect x="132" y="195" width="6" height="87" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="128" y="187" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="155" y="287" text-anchor="start" fill="#cdd6e8" font-size="11" font-weight="700">SF</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SE" onclick="openSwitchModal('SE')">
+          <circle cx="180" cy="310" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="180" cy="310" r="5"  fill="#0a0a0a"/>
+          <rect x="177" y="240" width="6" height="70" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="173" y="234" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="200" y="315" text-anchor="start" fill="#cdd6e8" font-size="11" font-weight="700">SE</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SA" onclick="openSwitchModal('SA')">
+          <circle cx="95" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="95" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="92" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="88" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="95" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SA</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SB" onclick="openSwitchModal('SB')">
+          <circle cx="225" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="225" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="222" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="218" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="225" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SB</text>
+        </g>
+
+        <!-- ── RIGHT shoulder (mirrored triangular cluster) ──────────────── -->
+
+        <g class="switch-zone" data-sw="SH" onclick="openSwitchModal('SH')">
+          <circle cx="865" cy="282" r="11" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="865" cy="282" r="6"  fill="#0a0a0a"/>
+          <rect x="862" y="195" width="6" height="87" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="858" y="187" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="845" y="287" text-anchor="end" fill="#cdd6e8" font-size="11" font-weight="700">SH</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SG" onclick="openSwitchModal('SG')">
+          <circle cx="820" cy="310" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="820" cy="310" r="5"  fill="#0a0a0a"/>
+          <rect x="817" y="240" width="6" height="70" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="813" y="234" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="800" y="315" text-anchor="end" fill="#cdd6e8" font-size="11" font-weight="700">SG</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SD" onclick="openSwitchModal('SD')">
+          <circle cx="905" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="905" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="902" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="898" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="905" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SD</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SC" onclick="openSwitchModal('SC')">
+          <circle cx="775" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="775" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="772" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="768" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="775" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SC</text>
+        </g>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                    KNOBS  S1 + S2  (below screen)               -->
+        <!--   Clickable — channel + function configurable in the modal       -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <g class="knob-zone" data-knob="S1" onclick="openKnobModal('S1')">
+          <circle cx="430" cy="390" r="28" fill="#08101e" stroke="#1a2a4a"/>
+          <circle cx="430" cy="390" r="23" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <line x1="430" y1="370" x2="430" y2="378" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+          <text x="430" y="438" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">S1</text>
+        </g>
+
+        <g class="knob-zone" data-knob="S2" onclick="openKnobModal('S2')">
+          <circle cx="570" cy="390" r="28" fill="#08101e" stroke="#1a2a4a"/>
+          <circle cx="570" cy="390" r="23" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <line x1="570" y1="370" x2="570" y2="378" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+          <text x="570" y="438" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">S2</text>
+        </g>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                       POWER BUTTON  (centre)                     -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <circle cx="500" cy="475" r="24" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="500" cy="475" r="19" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <path d="M 500 465 L 500 479 M 491 470 A 13 13 0 1 0 509 470"
+              stroke="#888" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+        <!-- Small joystick / scroll wheel below power -->
+        <rect x="488" y="510" width="24" height="16" rx="4" fill="#0a0a0a" stroke="#1a1a1a"/>
+        <rect x="495" y="514" width="10" height="8"  rx="1" fill="#3a3a3a"/>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                          LEFT GIMBAL                             -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <rect x="150" y="395" width="180" height="180" rx="22" fill="#000" stroke="#1a1a1a" stroke-width="2"/>
+        <rect x="162" y="407" width="156" height="156" rx="14" fill="#0a0a0a"/>
+        <line x1="240" y1="410" x2="240" y2="424" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="240" y1="546" x2="240" y2="560" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="166" y1="485" x2="180" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="300" y1="485" x2="314" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <rect x="208" y="453" width="64" height="64" rx="8" fill="#000" stroke="#252525"/>
+        <circle cx="240" cy="485" r="15" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+        <circle cx="240" cy="485" r="6"  fill="#0a0a0a"/>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                          RIGHT GIMBAL                            -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <rect x="670" y="395" width="180" height="180" rx="22" fill="#000" stroke="#1a1a1a" stroke-width="2"/>
+        <rect x="682" y="407" width="156" height="156" rx="14" fill="#0a0a0a"/>
+        <line x1="760" y1="410" x2="760" y2="424" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="760" y1="546" x2="760" y2="560" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="686" y1="485" x2="700" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="820" y1="485" x2="834" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <rect x="728" y="453" width="64" height="64" rx="8" fill="#000" stroke="#252525"/>
+        <circle cx="760" cy="485" r="15" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+        <circle cx="760" cy="485" r="6"  fill="#0a0a0a"/>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--          TRIM SWITCHES T1-T6 (small black levered toggles)       -->
+        <!--                                                                  -->
+        <!--   Mapping (firmware → SVG):                                      -->
+        <!--     T3 = btn 10 (Up)  / btn 12 (Down)  [right of L-gimbal]       -->
+        <!--     T2 = btn 13 (Up)  / btn 14 (Down)  [left  of R-gimbal]       -->
+        <!--     T4 = btn 7  (L)   / btn 11 (R)     [bottom-LEFT  H]          -->
+        <!--     T5 = btn 8  (L)   / btn 9  (R)     [bottom-LEFT  H]          -->
+        <!--     T6 = btn 15 (L)   / btn 16 (R)     [bottom-RIGHT H]          -->
+        <!--     T1 = btn 17 (L)   / btn 18 (R)     [bottom-RIGHT H]          -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- T3 (vertical, RIGHT of left gimbal) — top click = T3 Left (btn 11), bottom click = T3 Right (btn 12) -->
+        <g class="btn-zone" data-btn="11" onclick="openModal(11)">
+          <rect x="358" y="435" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="367" y="438" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="371,430 366,436 376,436" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="12" onclick="openModal(12)">
+          <rect x="358" y="515" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="367" y="525" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="371,545 366,539 376,539" fill="#cdd6e8"/>
+        </g>
+        <text x="371" y="485" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T3</text>
+
+        <!-- T2 (vertical, LEFT of right gimbal) -->
+        <g class="btn-zone" data-btn="13" onclick="openModal(13)">
+          <rect x="616" y="435" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="625" y="438" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="629,430 624,436 634,436" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="14" onclick="openModal(14)">
+          <rect x="616" y="515" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="625" y="525" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="629,545 624,539 634,539" fill="#cdd6e8"/>
+        </g>
+        <text x="629" y="485" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T2</text>
+
+        <!-- T4 (horizontal, bottom-LEFT) — left click = T4 Left (btn 7), right click = T4 Right (btn 8) -->
+        <g class="btn-zone" data-btn="7" onclick="openModal(7)">
+          <rect x="160" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="163" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="156,610 162,606 162,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="8" onclick="openModal(8)">
+          <rect x="195" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="205" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="221,610 215,606 215,614" fill="#cdd6e8"/>
+        </g>
+        <text x="188" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T4</text>
+
+        <!-- T5 (horizontal, bottom-LEFT inner) — left click = T5 Left (btn 9), right click = T5 Right (btn 10) -->
+        <g class="btn-zone" data-btn="9" onclick="openModal(9)">
+          <rect x="295" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="298" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="291,610 297,606 297,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="10" onclick="openModal(10)">
+          <rect x="330" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="340" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="356,610 350,606 350,614" fill="#cdd6e8"/>
+        </g>
+        <text x="323" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T5</text>
+
+        <!-- T6 (horizontal, bottom-RIGHT inner) -->
+        <g class="btn-zone" data-btn="15" onclick="openModal(15)">
+          <rect x="648" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="651" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="644,610 650,606 650,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="16" onclick="openModal(16)">
+          <rect x="683" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="693" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="709,610 703,606 703,614" fill="#cdd6e8"/>
+        </g>
+        <text x="676" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T6</text>
+
+        <!-- T1 (horizontal, bottom-RIGHT) -->
+        <g class="btn-zone" data-btn="17" onclick="openModal(17)">
+          <rect x="783" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="786" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="779,610 785,606 785,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="18" onclick="openModal(18)">
+          <rect x="818" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="828" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="844,610 838,606 838,614" fill="#cdd6e8"/>
+        </g>
+        <text x="811" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T1</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                     CENTRE LOGO + SPEAKER                        -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <text x="500" y="640" text-anchor="middle" fill="#3a5a8a" font-size="24" font-family="sans-serif" font-weight="700" font-style="italic">X18</text>
+        <rect x="465" y="650" width="70" height="13" rx="6" fill="#08101e" stroke="#1a2a4a"/>
+        <g fill="#1a3a6a">
+          <circle cx="475" cy="656" r="1.4"/>
+          <circle cx="485" cy="656" r="1.4"/>
+          <circle cx="495" cy="656" r="1.4"/>
+          <circle cx="505" cy="656" r="1.4"/>
+          <circle cx="515" cy="656" r="1.4"/>
+          <circle cx="525" cy="656" r="1.4"/>
+        </g>
+        <text x="500" y="680" text-anchor="middle" fill="#5a7aa8" font-size="9" font-weight="700" letter-spacing="1">900M/2.4G DUAL BAND</text>
+
+        <!-- BTN 19 (PWM band 800-849) — not present on the physical X18,
+             so hidden in the SVG.  Firmware logic still recognises it. -->
+        <!--
+        <g class="btn-zone" data-btn="19" onclick="openModal(19)">
+          <rect x="468" y="694" width="64" height="18" rx="4" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <text x="500" y="707" text-anchor="middle" fill="#7a8aa0" font-size="10" font-weight="700">BTN 19</text>
+        </g>
+        -->
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--                  NAV DIALS (decorative, not clickable)          -->
+        <!--                                                                  -->
+        <!--  Moved further down + slightly smaller so they sit cleanly        -->
+        <!--  inside the body bottom and clear the trim row above.             -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- Left dial: SYS / MDL / DISP / RTN -->
+        <circle cx="185" cy="700" r="36" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="185" cy="700" r="31" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <circle cx="185" cy="700" r="15" fill="#1a1a1a" stroke="#0a0a0a"/>
+        <text x="185" y="675" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">MDL</text>
+        <text x="217" y="703" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">DISP</text>
+        <text x="185" y="732" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">RTN</text>
+        <text x="153" y="703" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">SYS</text>
+
+        <!-- Right dial (knurled scroll wheel look) -->
+        <circle cx="815" cy="700" r="36" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="815" cy="700" r="31" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <circle cx="815" cy="700" r="20" fill="#1a1a1a"/>
+        <g stroke="#0a0a0a" stroke-width="1.5">
+          <line x1="815" y1="680" x2="815" y2="686"/>
+          <line x1="835" y1="700" x2="829" y2="700"/>
+          <line x1="815" y1="720" x2="815" y2="714"/>
+          <line x1="795" y1="700" x2="801" y2="700"/>
+          <line x1="829" y1="686" x2="825" y2="690"/>
+          <line x1="829" y1="714" x2="825" y2="710"/>
+          <line x1="801" y1="686" x2="805" y2="690"/>
+          <line x1="801" y1="714" x2="805" y2="710"/>
+        </g>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--          SIX PROGRAMMABLE BUTTONS  (btn 1-6, clickable)         -->
+        <!--                                                                  -->
+        <!--  Two vertical clusters of 3 buttons, moved inward toward centre. -->
+        <!--  (default Mode-1 names: Mute HCR, Happy, Mad, Sad, Scared, Fart) -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <g class="btn-zone" data-btn="1" onclick="openModal(1)">
+          <circle cx="320" cy="668" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="320" cy="668" r="7"  fill="#1a1a1a"/>
+          <text x="320" y="671" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">1</text>
+        </g>
+        <g class="btn-zone" data-btn="2" onclick="openModal(2)">
+          <circle cx="350" cy="695" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="350" cy="695" r="7"  fill="#1a1a1a"/>
+          <text x="350" y="698" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">2</text>
+        </g>
+        <g class="btn-zone" data-btn="3" onclick="openModal(3)">
+          <circle cx="320" cy="722" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="320" cy="722" r="7"  fill="#1a1a1a"/>
+          <text x="320" y="725" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">3</text>
+        </g>
+
+        <g class="btn-zone" data-btn="4" onclick="openModal(4)">
+          <circle cx="680" cy="668" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="680" cy="668" r="7"  fill="#1a1a1a"/>
+          <text x="680" y="671" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">4</text>
+        </g>
+        <g class="btn-zone" data-btn="5" onclick="openModal(5)">
+          <circle cx="650" cy="695" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="650" cy="695" r="7"  fill="#1a1a1a"/>
+          <text x="650" y="698" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">5</text>
+        </g>
+        <g class="btn-zone" data-btn="6" onclick="openModal(6)">
+          <circle cx="680" cy="722" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="680" cy="722" r="7"  fill="#1a1a1a"/>
+          <text x="680" y="725" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">6</text>
+        </g>
+      </svg>
+
+      <!-- Per-button summary list -->
+      <div style="margin-top:20px">
+        <h3 style="margin-bottom:10px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:1px">
+          Current Assignments — <span id="mode-label" style="color:var(--accent)">Mode 1 (SW Down)</span>
+        </h3>
+        <div id="assignment-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Button Config Modal ── -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-title" class="modal-title"></span>
+      <div id="modal-mode-badges"></div>
+      <button class="btn btn-ghost" onclick="closeModal()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Exclusive toggle -->
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="modal-exclusive"><span class="slider"></span></label>
+        <span style="font-size:13px">Exclusive mode — tap 2 replaces tap 1 (waits for window before firing)</span>
+      </div>
+
+      <!-- Tap tiers -->
+      <div id="tiers-container"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost"   onclick="clearModalDispatch()">Clear All</button>
+      <button class="btn btn-ghost"   onclick="closeModal()">Cancel</button>
+      <button class="btn btn-success" onclick="saveModalDispatch()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+//  State
+// ════════════════════════════════════════════════════════════════════════════
+let port = null;
+let reader = null;
+let writer = null;
+let readBuffer = '';
+let isMonitoring = false;
+let currentMode  = 1;
+let editingBtn   = null;
+let editingSw    = null;   // when set, modal is configuring a switch
+let editingKnob  = null;   // when set, modal is configuring a knob
+
+// ────────────────────────────────────────────────────────────────────────────
+// Unit display — internal storage is always raw SBUS (172-1811 nominal range).
+// The toggle switches the DISPLAY between SBUS and PWM µs (988-2012 nominal).
+// Setting persists in localStorage so the user's preference survives reloads.
+// ────────────────────────────────────────────────────────────────────────────
+const SBUS_CENTER = 992;
+const US_CENTER   = 1500;
+const SBUS_TO_US  = 0.625;     // 1024 / 1639 → 1 SBUS unit ≈ 0.625 µs
+const US_TO_SBUS  = 1.6;       // 1639 / 1024 → 1 µs ≈ 1.6 SBUS units
+let displayUnit = localStorage.getItem('bcDisplayUnit') || 'sbus';
+
+const fmtVal   = (sbus) => displayUnit === 'us'
+                            ? Math.round(US_CENTER + (sbus - SBUS_CENTER) * SBUS_TO_US)
+                            : sbus;
+const parseVal = (raw)  => {
+  const n = parseInt(raw); if (isNaN(n)) return null;
+  return displayUnit === 'us'
+           ? Math.round(SBUS_CENTER + (n - US_CENTER) * US_TO_SBUS)
+           : n;
+};
+const unitLbl = () => displayUnit === 'us' ? 'µs' : 'SBUS';
+const altLbl  = (sbus) => displayUnit === 'us'
+                            ? `${sbus} SBUS`
+                            : `${Math.round(US_CENTER + (sbus - SBUS_CENTER) * SBUS_TO_US)} µs`;
+
+const knobFunctions = {
+  0: '— none —',
+  1: 'HCR Vocalizer Volume',
+  2: 'HCR WAV Volume',
+};
+
+const knobDefaults = {
+  S1: { channel: 4, function: 1 },
+  S2: { channel: 5, function: 2 },
+};
+
+const switchDefaults = {
+  SA: {channel: 15, positions: 3},
+  SB: {channel:  7, positions: 3},
+  SC: {channel:  9, positions: 3},
+  SD: {channel: 10, positions: 3},
+  SE: {channel: 16, positions: 3},
+  SF: {channel:  8, positions: 2},
+  SG: {channel: 17, positions: 3},
+  SH: {channel: 18, positions: 2},
+};
+
+// The in-memory config — mirrors what's on the board
+// config = { tapWindowMs, matrixChannel, funcBindings, thresholds, mappings, switches, knobs }
+let config = {
+  tapWindowMs:   500,
+  matrixChannel: 7,                                    // Kyber-aligned matrix on CH7
+  funcBindings: { mode:4, radhAuto:1, maintLights:5, lightsMode:2, museMode:3 },  // SE,SB,SF,SC,SD
+  thresholds:    defaultThresholds(),
+  mappings:      {},
+};
+
+const modeLabels = ['', 'SW Down (Mode 1)', 'SW Mid (Mode 2)', 'SW Up (Mode 3)'];
+// Button label order matches BC firmware's rc_config.h defaultThresholds() bands:
+// 6 function buttons B1-B6, then trim pairs T4/T5/T3/T2/T6/T1 each as Left/Right.
+const btnLabels  = ['', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
+                        'T4 Left', 'T4 Right', 'T5 Left', 'T5 Right',
+                        'T3 Left', 'T3 Right', 'T2 Left', 'T2 Right',
+                        'T6 Left', 'T6 Right', 'T1 Left', 'T1 Right', 'Unassigned'];
+
+const actionTypeLabels = {
+  '': '— none —',
+  'espnow': 'ESP-NOW command',
+  'hcr':    'HCR Vocalizer',
+  'anim':   'Local animation',
+};
+
+const hcrFnLabels = {
+  2:  'SetEmotion',
+  3:  'Trigger',
+  4:  'Stimulate',
+  5:  'Overload',
+  6:  'Muse',
+  8:  'Stop all',
+  9:  'StopEmote',
+  11: 'ResetEmotions',
+  14: 'PlayWAV',
+  16: 'StopWAV',
+  17: 'SetVolume',
+};
+
+// HCR named-constant lookup tables.  In the HCR library the "chan" parameter
+// of Stimulate/Trigger/SetEmotion/GetEmotion is actually an EMOTION enum
+// (HAPPY/SAD/MAD/SCARED/OVERLOAD), while for PlayWAV/StopWAV/SetVolume it is
+// an AUDIO CHANNEL enum (CH_V/CH_A/CH_B).  We dynamically swap the chan input
+// for the right dropdown based on the selected fn.
+const HCR_EMOTIONS = [
+  { v: 0, n: 'HAPPY' },
+  { v: 1, n: 'SAD' },
+  { v: 2, n: 'MAD' },
+  { v: 3, n: 'SCARED' },
+  { v: 4, n: 'OVERLOAD' },
+];
+const HCR_AUDIO_CHANS = [
+  { v: 0, n: 'V (vocalizer)' },
+  { v: 1, n: 'A' },
+  { v: 2, n: 'B' },
+];
+// Functions where "chan" means an emotion
+const HCR_FN_USES_EMOTION    = new Set([2, 3, 4, 12, 19]);
+// Functions where "chan" means an audio channel
+const HCR_FN_USES_AUDIO_CHAN = new Set([14, 15, 16, 17, 22, 24, 25, 26, 28]);
+// Lookup helpers
+function emotionName(v) { return (HCR_EMOTIONS.find(e=>e.v===+v)||{}).n || `chan ${v}`; }
+function audioChanName(v) { return (HCR_AUDIO_CHANS.find(e=>e.v===+v)||{}).n || `chan ${v}`; }
+
+// Animation labels — populated dynamically from the board via GET_ANIM_LIST.
+// The fallback below is only shown if the board doesn't respond (e.g. older
+// firmware without the GET_ANIM_LIST handler).
+let animFnLabels = {
+  1:  'Normal Operations', 2:  'Panel Wave',        3:  'Panel Wave Fast',
+  4:  'Dome Periscope',    5:  'All Open/Close',     6:  'Harlem Shake',
+};
+
+const espnowTargets = ['BS','DC','DP','HP','DG','BR'];
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WebSerial connection
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  if (port) { await disconnect(); return; }
+  try {
+    window._loggedMissingSbus = false;   // reset diagnostic flag for this session
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    startReading();
+    setConnected(true);
+    // port.open() toggles DTR which RESETS the ESP32.  BC's setup() now does
+    // more work (NVS load, ESP-NOW peer registration, SBUS reader init), so
+    // we wait longer than the original 2.5s to give it time to be ready.
+    document.getElementById('status-text').textContent = 'Waiting for board…';
+    await new Promise(r => setTimeout(r, 4000));
+
+    // PING with retry — keeps probing until PONG arrives or we give up.
+    // Avoids the "first connect attempt fails, second succeeds" pattern that
+    // happens when BC's boot takes longer than the fixed initial wait.
+    let pongOk = false;
+    for (let i = 0; i < 6 && !pongOk; i++) {
+      await sendJSON({ type: 'PING' });
+      await new Promise(r => setTimeout(r, 500));
+      if (document.getElementById('status-text').textContent.includes('Connected')) {
+        pongOk = true; break;
+      }
+    }
+    if (!pongOk) console.warn('PING never received PONG — proceeding anyway, you may need to disconnect/reconnect.');
+
+    await sendJSON({ type: 'GET_ANIM_LIST' });
+    await new Promise(r => setTimeout(r, 300));
+    await sendJSON({ type: 'GET_CONFIG' });
+    await new Promise(r => setTimeout(r, 400));
+    await sendJSON({ type: 'START_MONITOR' });
+    isMonitoring = true;
+    document.getElementById('btn-mon-start').disabled = true;
+    document.getElementById('btn-mon-stop').disabled  = false;
+  } catch(e) {
+    console.error(e);
+    alert('Could not open serial port:\n' + e.message);
+    port = null;
+  }
+});
+
+async function disconnect() {
+  if (isMonitoring) await stopMonitor();
+  try { if (reader) { await reader.cancel(); reader = null; } } catch(e) {}
+  try { if (writer) { writer.releaseLock(); writer = null; } } catch(e) {}
+  try { await port.close(); } catch(e) {}
+  port = null;
+  setConnected(false);
+}
+
+function setConnected(v) {
+  document.getElementById('conn-dot').className = 'status-dot' + (v ? ' connected' : '');
+  document.getElementById('status-text').textContent = v ? 'Connected' : 'Disconnected';
+  document.getElementById('btn-connect').textContent = v ? 'Disconnect' : 'Connect';
+  ['btn-refresh','btn-save','btn-defaults','btn-mon-start'].forEach(id => {
+    document.getElementById(id).disabled = !v;
+  });
+  document.getElementById('monitor-note').style.display = v ? 'none' : 'block';
+}
+
+async function sendLine(msg) {
+  if (!writer) return;
+  const encoded = new TextEncoder().encode(msg + '\n');
+  await writer.write(encoded);
+}
+
+async function sendJSON(obj) {
+  await sendLine(JSON.stringify(obj));
+}
+
+// ── Read loop ──────────────────────────────────────────────────────────────
+async function startReading() {
+  const decoder = new TextDecoder();
+  try {
+    while (port && port.readable) {
+      reader = port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          readBuffer += decoder.decode(value);
+          let idx;
+          while ((idx = readBuffer.indexOf('\n')) !== -1) {
+            const line = readBuffer.slice(0, idx).trim();
+            readBuffer  = readBuffer.slice(idx + 1);
+            if (line.length > 0) handleBoardMessage(line);
+          }
+        }
+      } finally { reader.releaseLock(); reader = null; }
+    }
+  } catch(e) { if (port) console.error('Read error:', e); }
+}
+
+function handleBoardMessage(line) {
+  let msg;
+  try { msg = JSON.parse(line); } catch(e) { console.log('Board>', line); return; }
+  if (msg.type !== 'PWM_UPDATE') console.log('Board RX:', msg.type, msg);
+
+  if (msg.type === 'PONG') {
+    document.getElementById('status-text').textContent = 'Connected ✓';
+    return;
+  }
+  if (msg.type === 'CONFIG') {
+    applyConfig(msg.data);
+    return;
+  }
+  if (msg.type === 'ANIM_LIST') {
+    animFnLabels = {};
+    for (const e of (msg.data || [])) animFnLabels[e.fn] = e.label;
+    console.log(`Loaded ${Object.keys(animFnLabels).length} animation labels from board`);
+    return;
+  }
+  if (msg.type === 'PWM_UPDATE') {
+    // Run SBUS-status update FIRST so a later error in updatePWMDisplay
+    // (e.g. missing DOM element) can't suppress the status panel update.
+    if (msg.sbus) {
+      try { updateSbusStatus(msg.sbus); }
+      catch (e) { console.error('updateSbusStatus threw:', e, msg.sbus); }
+    } else {
+      // Defensive: log when sbus is missing so we can see it in DevTools.
+      if (!window._loggedMissingSbus) {
+        console.warn('PWM_UPDATE missing sbus object:', msg);
+        window._loggedMissingSbus = true;
+      }
+    }
+    // Firmware now sends matrixVal / modeVal keyed by role rather than fixed channels.
+    // Fall back to legacy ch6 / ch16 if connected to an older firmware build.
+    const matrixVal = (msg.matrixVal !== undefined) ? msg.matrixVal : msg.ch6;
+    const modeVal   = (msg.modeVal   !== undefined) ? msg.modeVal   : msg.ch16;
+    if (msg.matrixCh) _liveMatrixCh = msg.matrixCh;
+    if (msg.modeCh)   _liveModeCh   = msg.modeCh;
+    try { updatePWMDisplay(matrixVal, modeVal, msg.btn, msg.mode); }
+    catch (e) { console.error('updatePWMDisplay threw:', e, msg); }
+    return;
+  }
+  if (msg.type === 'ACK') {
+    if (!msg.ok) console.warn('NACK:', msg.msg);
+    return;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Config apply / serialise
+// ════════════════════════════════════════════════════════════════════════════
+function applyConfig(data) {
+  if (!data) return;
+  if (data.tapWindowMs   !== undefined) config.tapWindowMs   = data.tapWindowMs;
+  if (data.matrixChannel !== undefined) config.matrixChannel = data.matrixChannel;
+  if (data.funcBindings)               config.funcBindings  = data.funcBindings;
+  if (data.thresholds)  config.thresholds = data.thresholds;
+  if (data.mappings)    config.mappings   = data.mappings;
+  if (data.switches)    config.switches   = data.switches;
+  if (data.knobs)       config.knobs      = data.knobs;
+  document.getElementById('tapwin-input').value = config.tapWindowMs;
+  // Channel-assignments panel reflects matrixChannel + funcBindings
+  const mcEl = document.getElementById('cfg-matrix-ch');
+  if (mcEl && config.matrixChannel) mcEl.value = config.matrixChannel;
+  applyBindingsUI();
+  // Update live monitor row labels to match newly loaded matrix/mode channels
+  _liveMatrixCh = config.matrixChannel || _liveMatrixCh;
+  const modeSwIdx = config.funcBindings && config.funcBindings.mode;
+  if (typeof modeSwIdx === 'number' && config.switches) {
+    const swKeys = ['SA','SB','SC','SD','SE','SF','SG','SH'];
+    const sw = config.switches[swKeys[modeSwIdx]];
+    if (sw && sw.channel) _liveModeCh = sw.channel;
+  }
+  const labMatrix = document.getElementById('lbl-matrix-ch');
+  if (labMatrix) labMatrix.textContent = `CH${_liveMatrixCh}`;
+  const labMode = document.getElementById('lbl-mode-ch');
+  if (labMode)   labMode.textContent   = `CH${_liveModeCh}`;
+  renderThresholds();
+  renderAssignmentList();
+  updateButtonHighlights();
+  updatePWMTooltips();
+  renderSwitchHighlights();
+  renderKnobHighlights();
+}
+
+// Sync the binding dropdowns to current config.funcBindings (called by applyConfig
+// and when the user changes a binding).  Stub-safe if elements aren't present.
+function applyBindingsUI() {
+  if (!config.funcBindings) return;
+  const map = [
+    ['bind-mode',        'mode'],
+    ['bind-radh',        'radhAuto'],
+    ['bind-maint',       'maintLights'],
+    ['bind-lights',      'lightsMode'],
+    ['bind-muse',        'museMode'],
+  ];
+  map.forEach(([elId, key]) => {
+    const el = document.getElementById(elId);
+    if (el && typeof config.funcBindings[key] === 'number') {
+      el.value = String(config.funcBindings[key]);
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  UI helpers
+// ════════════════════════════════════════════════════════════════════════════
+function updateSbusStatus(s) {
+  const dot    = document.getElementById('sbus-dot');
+  const state  = document.getElementById('sbus-state');
+  const detail = document.getElementById('sbus-detail');
+  if (!dot || !state || !detail) return;
+
+  let color, label;
+  if (s.failsafe) {
+    color = 'var(--red)';
+    label = 'FAILSAFE';
+  } else if (s.lost || !s.ok) {
+    color = 'var(--red)';
+    label = 'No signal';
+  } else {
+    color = 'var(--green)';
+    // Show detected SBUS variant inline when receiving good frames.
+    if (s.chCount === 24)      label = 'Receiving · SBUS-24';
+    else if (s.chCount === 16) label = 'Receiving · SBUS-16';
+    else                        label = 'Receiving';
+  }
+  dot.style.background = color;
+  dot.style.boxShadow  = `0 0 8px ${color === 'var(--green)' ? 'rgba(76,175,80,.7)' : 'rgba(244,67,54,.6)'}`;
+  state.textContent    = label;
+  state.style.color    = color;
+  // Detail line gets the frame-length and per-frame stats.
+  const variant = (s.chCount && s.frameLen)
+    ? `${s.chCount}ch (${s.frameLen}-byte frame) · `
+    : '';
+  detail.textContent   = `${variant}${s.fps} fps · ${s.frames} frames · age ${s.ageMs} ms`;
+}
+
+// Cache the most recent values so we can re-render when the unit toggle flips
+let _liveCh6 = 0, _liveCh16 = 0, _liveBtn = 0, _liveMode = 1;
+// Dynamic channel numbers reported by firmware (so labels follow the config)
+let _liveMatrixCh = 7;   // default until first PWM_UPDATE
+let _liveModeCh   = 12;
+
+function updatePWMDisplay(matrixVal, modeVal, btn, mode) {
+  _liveCh6 = matrixVal; _liveCh16 = modeVal; _liveBtn = btn; _liveMode = mode;
+  const pwmMin = 800, pwmMax = 1850;  // bar % is always based on SBUS range
+  document.getElementById('live-ch6').textContent    = fmtVal(matrixVal);
+  document.getElementById('val-ch6').textContent     = fmtVal(matrixVal);
+  document.getElementById('val-ch16').textContent    = fmtVal(modeVal);
+  document.getElementById('bar-ch6').style.width     = ((matrixVal-pwmMin)/(pwmMax-pwmMin)*100).toFixed(1) + '%';
+  document.getElementById('bar-ch16').style.width    = ((modeVal-pwmMin)/(pwmMax-pwmMin)*100).toFixed(1) + '%';
+  // Tooltips show the OTHER unit so you can sanity-check conversion
+  const ch6El  = document.getElementById('val-ch6');
+  const ch16El = document.getElementById('val-ch16');
+  if (ch6El)  ch6El.title  = `${altLbl(matrixVal)}`;
+  if (ch16El) ch16El.title = `${altLbl(modeVal)}`;
+  const bigCh6 = document.getElementById('live-ch6');
+  if (bigCh6) bigCh6.title = `${altLbl(matrixVal)}`;
+  // Row labels and subtitle reflect the active matrix/mode channels
+  const labMatrix = document.getElementById('lbl-matrix-ch');
+  if (labMatrix) labMatrix.textContent = `CH${_liveMatrixCh}`;
+  const labMode = document.getElementById('lbl-mode-ch');
+  if (labMode)   labMode.textContent   = `CH${_liveModeCh}`;
+  const sub    = document.getElementById('live-ch6-sub');
+  if (sub) sub.textContent = `Channel ${_liveMatrixCh} — Button Matrix (${unitLbl()})`;
+
+  // SBUS_CENTER is 992 — that's what most controllers (including ours) hold
+  // the matrix channel at when no button is pressed.  962-1022 = "released".
+  const isReleased = (matrixVal >= 962 && matrixVal <= 1022);
+  const effectiveBtn = isReleased ? 0 : btn;
+
+  const chip = document.getElementById('live-btn-name');
+  chip.textContent = effectiveBtn > 0
+    ? `Btn ${effectiveBtn}: ${btnLabels[effectiveBtn]} (Mode ${mode})`
+    : 'Neutral / Released';
+  chip.style.background = effectiveBtn > 0 ? 'var(--accent)' : 'var(--muted)';
+
+  // Live highlight on the SVG — clear previous, then mark current
+  document.querySelectorAll('.btn-zone.live-active').forEach(el => el.classList.remove('live-active'));
+  if (effectiveBtn > 0 && effectiveBtn <= 19) {
+    const el = document.querySelector(`.btn-zone[data-btn="${effectiveBtn}"]`);
+    if (el) el.classList.add('live-active');
+  }
+}
+
+// Build SVG <title> tooltips from current thresholds so each button hover
+// shows its band in BOTH units (for sanity-checking against the Ethos sim).
+function updatePWMTooltips() {
+  if (!config.thresholds) return;
+  config.thresholds.forEach(t => {
+    const el = document.querySelector(`.btn-zone[data-btn="${t.id}"]`);
+    if (!el) return;
+    let title = el.querySelector('title');
+    if (!title) {
+      title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      el.insertBefore(title, el.firstChild);
+    }
+    title.textContent = `btn ${t.id}: ${t.label}  ·  ${fmtVal(t.minPwm)}-${fmtVal(t.maxPwm)} ${unitLbl()}`;
+  });
+}
+
+function renderThresholds() {
+  const tbody = document.querySelector('#thresh-table tbody');
+  tbody.innerHTML = '';
+  config.thresholds.forEach((t, i) => {
+    const row = document.createElement('tr');
+    // Inputs show values in the currently-selected unit; parseVal converts
+    // back to SBUS on save so storage stays in raw SBUS.
+    row.innerHTML = `
+      <td>${t.id}</td>
+      <td><input type="text" value="${escH(t.label)}" style="width:90px" onchange="config.thresholds[${i}].label=this.value"></td>
+      <td><input type="number" value="${fmtVal(t.minPwm)}" style="width:65px" title="${altLbl(t.minPwm)}"
+                 onchange="config.thresholds[${i}].minPwm = parseVal(this.value); renderThresholds(); updatePWMTooltips();"></td>
+      <td><input type="number" value="${fmtVal(t.maxPwm)}" style="width:65px" title="${altLbl(t.maxPwm)}"
+                 onchange="config.thresholds[${i}].maxPwm = parseVal(this.value); renderThresholds(); updatePWMTooltips();"></td>`;
+    tbody.appendChild(row);
+  });
+}
+
+function renderAssignmentList() {
+  const list = document.getElementById('assignment-list');
+  list.innerHTML = '';
+  for (let btn = 1; btn <= 18; btn++) {   // btn 19 hidden — no physical X18 button maps to it
+    const key = String(currentMode * 100 + btn);
+    const m   = config.mappings[key];
+    const card = document.createElement('div');
+    card.style.cssText = `background:var(--card); border-radius:8px; padding:10px; cursor:pointer; border:1px solid var(--border)`;
+    card.onclick = () => openModal(btn);
+    const isConfig = m && (m.t1?.length || m.t2?.length || m.t3?.length || m.exclusive);
+    const excBadge = m?.exclusive ? ' <span style="color:var(--yellow);font-size:10px">⚡ excl</span>' : '';
+    card.innerHTML = `
+      <div style="font-weight:700;margin-bottom:4px;color:${isConfig?'var(--text)':'var(--muted)'}">${btnLabels[btn]}${excBadge}</div>
+      ${tierSummary(m, 1)}${tierSummary(m, 2)}${tierSummary(m, 3)}
+    `;
+    list.appendChild(card);
+  }
+}
+
+function tierSummary(m, tier) {
+  if (!m) return '';
+  const acts = m['t' + tier];
+  if (!acts || !acts.length) return '';
+  const desc = acts.map(actionSummary).join(' + ');
+  return `<div style="font-size:11px;color:var(--muted);margin-top:2px">${tier}×: ${desc}</div>`;
+}
+
+function actionSummary(a) {
+  if (!a || !a.type) return '—';
+  let core;
+  if (a.type === 'espnow') core = `→${a.target}: ${escH(a.cmd)}`;
+  else if (a.type === 'hcr') {
+    const fnLbl = hcrFnLabels[a.fn] || `fn${a.fn}`;
+    let chanLbl;
+    if (HCR_FN_USES_EMOTION.has(+a.fn))         chanLbl = emotionName(a.chan);
+    else if (HCR_FN_USES_AUDIO_CHAN.has(+a.fn)) chanLbl = audioChanName(a.chan);
+    else                                         chanLbl = `c${a.chan}`;
+    core = `HCR.${fnLbl}(${chanLbl}, ${a.track})`;
+  }
+  else if (a.type === 'anim') core = animFnLabels[a.fn] || `anim${a.fn}`;
+  else core = a.type;
+  if (a.note && a.note.length)
+    core += ` <span style="color:#888;font-style:italic">"${escH(a.note)}"</span>`;
+  return core;
+}
+
+function updateButtonHighlights() {
+  for (let btn = 1; btn <= 19; btn++) {
+    const key   = String(currentMode * 100 + btn);
+    const m     = config.mappings[key];
+    const group = document.querySelector(`.btn-zone[data-btn="${btn}"]`);
+    if (!group) continue;
+    const hasData = m && (m.t1?.length || m.t2?.length || m.t3?.length);
+    // Highlight only the OUTER shape with a colored stroke + subtle glow —
+    // leaves the trim/button visual intact instead of flooding it blue.
+    const outer = group.querySelector('rect, circle');
+    if (outer) {
+      outer.style.stroke      = hasData ? 'var(--accent2)' : '';
+      outer.style.strokeWidth = hasData ? '2.5' : '';
+      outer.style.filter      = hasData ? 'drop-shadow(0 0 3px var(--accent2))' : '';
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Modal
+// ════════════════════════════════════════════════════════════════════════════
+function openModal(btn) {
+  // ── Shift+Click → fire a TRIGGER instead of opening the modal ──
+  //   plain shift     → tap 1
+  //   shift + ctrl    → tap 2
+  //   shift + alt     → tap 3
+  const ev = window.event;
+  if (ev && ev.shiftKey) {
+    ev.preventDefault();
+    let tap = 1;
+    if (ev.ctrlKey || ev.metaKey) tap = 2;
+    else if (ev.altKey)            tap = 3;
+    if (!port) { alert('Connect to the board first.'); return; }
+    sendJSON({ type: 'TRIGGER', mode: currentMode, btn, tap });
+    console.log(`TRIGGER → mode=${currentMode} btn=${btn} tap=${tap}`);
+    return;
+  }
+
+  editingBtn = btn;
+  editingSw  = null;
+  const key  = String(currentMode * 100 + btn);
+  const m    = config.mappings[key] || { exclusive: false };
+
+  // Re-show the exclusive toggle (the switch modal hides it)
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = '';
+
+  document.getElementById('modal-title').textContent = `Button ${btn}: ${btnLabels[btn]}`;
+  const badges = document.getElementById('modal-mode-badges');
+  badges.innerHTML = `<span class="mode-badge m${currentMode}" style="margin-left:8px">${modeLabels[currentMode]}</span>`;
+
+  document.getElementById('modal-exclusive').checked = !!m.exclusive;
+
+  // Build tier cards
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = '';
+  for (let tier = 1; tier <= 3; tier++) {
+    const acts = m['t' + tier] || [];
+    container.appendChild(buildTierCard(tier, acts));
+  }
+
+  document.getElementById('modal').classList.add('open');
+}
+
+const MAX_ACTIONS_PER_TIER = 5;
+
+function buildTierCard(tier, actions) {
+  const card  = document.createElement('div');
+  card.className = 'tier-card';
+  card.id = `tier-card-${tier}`;
+
+  const titles = ['', 'Single tap (1×)', 'Double tap (2×)', 'Triple tap (3×)'];
+  card.innerHTML = `<div class="tier-title">${titles[tier]}</div>`;
+
+  // Action rows live in a dedicated container so the + Add button stays at the bottom
+  const rows = document.createElement('div');
+  rows.id = `rows-${tier}`;
+  rows.className = 'rows-container';
+  card.appendChild(rows);
+
+  // Start with at least one row; preload all existing actions
+  const startCount = Math.max(1, actions.length);
+  for (let ai = 0; ai < startCount; ai++) {
+    const a = actions[ai] || { type: '' };
+    rows.appendChild(buildActionRow(tier, ai, a));
+  }
+
+  // + Add another action button
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn btn-ghost btn-add-action';
+  addBtn.textContent = '+ Add action';
+  addBtn.onclick = () => addActionRow(tier);
+  card.appendChild(addBtn);
+
+  refreshTierState(tier);
+  return card;
+}
+
+// Add a new empty action row to the given tier.  Tier may be 1/2/3 (button)
+// or "p0"/"p1"/"p2" (switch).
+function addActionRow(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return;
+  const existing = rows.querySelectorAll('.action-row').length;
+  if (existing >= MAX_ACTIONS_PER_TIER) return;
+
+  // Find first unused ai (gap-safe)
+  const used = new Set([...rows.querySelectorAll('.action-row')]
+                       .map(r => +r.dataset.ai));
+  let ai = 0;
+  while (used.has(ai)) ai++;
+
+  rows.appendChild(buildActionRow(tier, ai, { type: '' }));
+  refreshTierState(tier);
+}
+
+function removeActionRow(tier, ai) {
+  const row = document.getElementById(`action-${tier}-${ai}`);
+  if (!row) return;
+  row.remove();
+  refreshTierState(tier);
+}
+
+// Hide × on the first/only row, show on rest.  Also disable + when at max.
+function refreshTierState(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return;
+  const rowEls = rows.querySelectorAll('.action-row');
+  rowEls.forEach((r, idx) => {
+    const x = r.querySelector('.btn-remove-action');
+    if (x) x.style.visibility = rowEls.length > 1 ? 'visible' : 'hidden';
+  });
+  const card = rows.parentElement;
+  const addBtn = card.querySelector('.btn-add-action');
+  if (addBtn) {
+    const atMax = rowEls.length >= MAX_ACTIONS_PER_TIER;
+    addBtn.disabled = atMax;
+    addBtn.textContent = atMax ? `Max ${MAX_ACTIONS_PER_TIER} actions` : '+ Add action';
+  }
+}
+
+function buildActionRow(tier, ai, action) {
+  const row = document.createElement('div');
+  row.className = 'action-row';
+  row.id = `action-${tier}-${ai}`;
+  row.dataset.ai = ai;
+
+  // Type selector
+  const typeSelect = document.createElement('select');
+  typeSelect.id = `type-${tier}-${ai}`;
+  typeSelect.style.minWidth = '150px';
+  Object.entries(actionTypeLabels).forEach(([v, label]) => {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = label;
+    if (v === (action.type || '')) opt.selected = true;
+    typeSelect.appendChild(opt);
+  });
+  typeSelect.onchange = () => updateActionFields(tier, ai);
+
+  row.appendChild(makeFieldGroup('Action', typeSelect));
+
+  // Type-specific fields
+  const fieldsDiv = document.createElement('div');
+  fieldsDiv.id = `fields-${tier}-${ai}`;
+  fieldsDiv.style.display = 'flex'; fieldsDiv.style.gap = '6px'; fieldsDiv.style.flexWrap = 'wrap';
+  fieldsDiv.style.alignItems = 'flex-end';
+  appendActionFields(fieldsDiv, action);
+  row.appendChild(fieldsDiv);
+
+  // Delay
+  const delayInput = document.createElement('input');
+  delayInput.type = 'number'; delayInput.id = `delay-${tier}-${ai}`;
+  delayInput.min = 0; delayInput.max = 10000; delayInput.step = 50;
+  delayInput.value = action.delay || action.delayMs || 0;
+  delayInput.style.width = '70px';
+  row.appendChild(makeFieldGroup('Delay(ms)', delayInput));
+
+  // Note — short human-readable comment shown next to the action in the list.
+  // Firmware stores up to 19 chars (note[20] minus null terminator).
+  const noteInput = document.createElement('input');
+  noteInput.type = 'text'; noteInput.id = `note-${tier}-${ai}`;
+  noteInput.maxLength = 19;
+  noteInput.placeholder = 'optional comment';
+  noteInput.value = action.note || '';
+  noteInput.style.width = '160px';
+  row.appendChild(makeFieldGroup('Note', noteInput));
+
+  // × Remove button
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'btn-remove-action';
+  rm.textContent = '×';
+  rm.title = 'Remove this action';
+  rm.onclick = () => removeActionRow(tier, ai);
+  row.appendChild(rm);
+
+  return row;
+}
+
+function makeFieldGroup(label, el) {
+  const g = document.createElement('div');
+  g.className = 'field-group';
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+  g.appendChild(lbl); g.appendChild(el);
+  return g;
+}
+
+// Build (or rebuild) the "Chan" field group for an HCR action.  The widget
+// changes shape depending on the function: emotion dropdown vs audio-channel
+// dropdown vs raw number.  Called from appendActionFields() at load time and
+// whenever the fn select changes.
+function renderHcrChanField(container, fn, curVal) {
+  const groupId = container.id + '-chan-group';
+  // Remove any prior chan field group so we don't double-render
+  const old = document.getElementById(groupId);
+  if (old) old.remove();
+
+  let widget;
+  if (HCR_FN_USES_EMOTION.has(+fn)) {
+    widget = document.createElement('select');
+    HCR_EMOTIONS.forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.v; o.textContent = e.n;
+      if (curVal !== undefined && +curVal === e.v) o.selected = true;
+      widget.appendChild(o);
+    });
+  } else if (HCR_FN_USES_AUDIO_CHAN.has(+fn)) {
+    widget = document.createElement('select');
+    HCR_AUDIO_CHANS.forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.v; o.textContent = e.n;
+      if (curVal !== undefined && +curVal === e.v) o.selected = true;
+      widget.appendChild(o);
+    });
+  } else {
+    widget = document.createElement('input');
+    widget.type = 'number'; widget.min = 0; widget.max = 99;
+    widget.value = curVal ?? 0; widget.style.width = '55px';
+  }
+  widget.id = container.id + '-chan';
+
+  const g = makeFieldGroup(HCR_FN_USES_EMOTION.has(+fn) ? 'Emotion'
+                         : HCR_FN_USES_AUDIO_CHAN.has(+fn) ? 'Audio chan'
+                         : 'Chan', widget);
+  g.id = groupId;
+  // Insert just after the Function selector (which is the first child).
+  const fnGroup = container.querySelector('.field-group');
+  if (fnGroup && fnGroup.nextSibling) container.insertBefore(g, fnGroup.nextSibling);
+  else container.appendChild(g);
+}
+
+function appendActionFields(container, action) {
+  container.innerHTML = '';
+  const type = action.type || '';
+  if (type === 'espnow') {
+    const targetSel = document.createElement('select');
+    targetSel.id = container.id + '-target';
+    espnowTargets.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === action.target) o.selected = true;
+      targetSel.appendChild(o);
+    });
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = container.id + '-cmd';
+    cmdInput.placeholder = ':D303'; cmdInput.style.width = '150px';
+    cmdInput.value = action.cmd || '';
+    container.appendChild(makeFieldGroup('Target', targetSel));
+    container.appendChild(makeFieldGroup('Command', cmdInput));
+  } else if (type === 'hcr') {
+    const fnSel = document.createElement('select');
+    fnSel.id = container.id + '-fn';
+    [[14,'PlayWAV'],[16,'StopWAV'],[9,'StopEmote'],[8,'Stop All'],[4,'Stimulate'],[3,'Trigger'],[2,'SetEmotion'],[17,'SetVolume'],[5,'Overload'],[6,'Muse'],[11,'ResetEmotions']].forEach(([v,lbl]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = lbl;
+      if (v === (action.fn || 14)) o.selected = true;
+      fnSel.appendChild(o);
+    });
+    // Re-render the chan widget whenever the function changes (because the
+    // meaning of "chan" flips between EMOTION and AUDIO CHANNEL).
+    fnSel.onchange = () => renderHcrChanField(container, +fnSel.value, undefined);
+
+    container.appendChild(makeFieldGroup('Function', fnSel));
+    // Initial chan/track widgets rendered for the current fn value.
+    renderHcrChanField(container, +(action.fn || 14), action.chan);
+
+    const trackIn = document.createElement('input');
+    trackIn.type = 'number'; trackIn.id = container.id + '-track';
+    trackIn.min = 0; trackIn.max = 999; trackIn.value = action.track ?? 0; trackIn.style.width = '65px';
+    container.appendChild(makeFieldGroup('Track/Val', trackIn));
+  } else if (type === 'anim') {
+    const fnSel = document.createElement('select');
+    fnSel.id = container.id + '-fn';
+    fnSel.style.minWidth = '180px';
+    Object.entries(animFnLabels).sort((a,b)=>+a[0]-+b[0]).forEach(([v, lbl]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = `${v}: ${lbl}`;
+      if (+v === (action.fn || 0)) o.selected = true;
+      fnSel.appendChild(o);
+    });
+    container.appendChild(makeFieldGroup('Function', fnSel));
+  }
+}
+
+function updateActionFields(tier, ai) {
+  const typeVal = document.getElementById(`type-${tier}-${ai}`).value;
+  const fieldsDiv = document.getElementById(`fields-${tier}-${ai}`);
+  appendActionFields(fieldsDiv, { type: typeVal });
+}
+
+function readActionFromUI(tier, ai) {
+  const type  = document.getElementById(`type-${tier}-${ai}`)?.value || '';
+  const delay = +(document.getElementById(`delay-${tier}-${ai}`)?.value || 0);
+  const note  = (document.getElementById(`note-${tier}-${ai}`)?.value || '').trim();
+  const fid   = `fields-${tier}-${ai}`;
+  // Spread the note in only when non-empty so JSON stays clean.
+  const extras = {
+    ...(delay ? { delay } : {}),
+    ...(note  ? { note  } : {}),
+  };
+  if (type === '') return null;
+  if (type === 'espnow') {
+    const target = document.getElementById(fid + '-target')?.value || 'BS';
+    const cmd    = document.getElementById(fid + '-cmd')?.value || '';
+    if (!cmd.trim()) return null;
+    return { type, target, cmd, ...extras };
+  }
+  if (type === 'hcr') {
+    const fn    = +(document.getElementById(fid + '-fn')?.value || 14);
+    const chan  = +(document.getElementById(fid + '-chan')?.value || 1);
+    const track = +(document.getElementById(fid + '-track')?.value || 0);
+    return { type, fn, chan, track, ...extras };
+  }
+  if (type === 'anim') {
+    const fn = +(document.getElementById(fid + '-fn')?.value || 1);
+    return { type, fn, ...extras };
+  }
+  return null;
+}
+
+// Collect all actions currently present in a tier's rows container (DOM order).
+function collectTierActions(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return [];
+  const out = [];
+  rows.querySelectorAll('.action-row').forEach(r => {
+    const ai = r.dataset.ai;
+    const a = readActionFromUI(tier, ai);
+    if (a) out.push(a);
+  });
+  return out;
+}
+
+function saveButton() {
+  const key = String(currentMode * 100 + editingBtn);
+  const exclusive = document.getElementById('modal-exclusive').checked;
+  const mapping = { exclusive };
+  for (let tier = 1; tier <= 3; tier++) {
+    const acts = collectTierActions(tier);
+    if (acts.length) mapping['t' + tier] = acts;
+  }
+  config.mappings[key] = mapping;
+  closeModal();
+  renderAssignmentList();
+  updateButtonHighlights();
+}
+
+function clearButton() {
+  const key = String(currentMode * 100 + editingBtn);
+  delete config.mappings[key];
+  closeModal();
+  renderAssignmentList();
+  updateButtonHighlights();
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  editingBtn  = null;
+  editingSw   = null;
+  editingKnob = null;
+}
+
+// ── Knob modal (S1 / S2) ─────────────────────────────────────────────────
+function openKnobModal(name) {
+  editingBtn  = null;
+  editingSw   = null;
+  editingKnob = name;
+  if (!config.knobs) config.knobs = {};
+  const d = config.knobs[name] || {};
+  const def = knobDefaults[name] || { channel: 0, function: 0 };
+  const k = {
+    channel:  d.channel  !== undefined ? d.channel  : def.channel,
+    function: d.function !== undefined ? d.function : def.function,
+  };
+
+  document.getElementById('modal-title').textContent = `Knob ${name}`;
+  document.getElementById('modal-mode-badges').innerHTML = '';
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = 'none';
+
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = `
+    <div class="tier-card">
+      <div class="tier-title">Knob assignment</div>
+      <div class="action-row">
+        <div class="field-group">
+          <label>SBUS channel</label>
+          <input type="number" id="kn-channel" min="1" max="24" value="${k.channel}" style="width:70px">
+        </div>
+        <div class="field-group">
+          <label>Function</label>
+          <select id="kn-function" style="min-width:200px">
+            ${Object.entries(knobFunctions).map(([v, lbl]) =>
+              `<option value="${v}" ${+v === k.function ? 'selected' : ''}>${lbl}</option>`
+            ).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px">
+        Knob value is read continuously from the channel and mapped to the
+        selected function. Default: S1 → CH4 HCR Vocalizer Volume,
+        S2 → CH5 HCR WAV Volume.
+      </div>
+    </div>
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+
+function saveKnobModal() {
+  if (!editingKnob) return;
+  if (!config.knobs) config.knobs = {};
+  config.knobs[editingKnob] = {
+    channel:  +document.getElementById('kn-channel').value,
+    function: +document.getElementById('kn-function').value,
+  };
+  closeModal();
+  renderKnobHighlights();
+}
+
+function clearKnobModal() {
+  if (!editingKnob) return;
+  delete config.knobs[editingKnob];
+  closeModal();
+  renderKnobHighlights();
+}
+
+function renderKnobHighlights() {
+  document.querySelectorAll('.knob-zone').forEach(el => {
+    const name = el.dataset.knob;
+    const k = config.knobs && config.knobs[name];
+    const hasFunc = k && k.function && k.function !== 0;
+    el.classList.toggle('configured', !!hasFunc);
+  });
+}
+
+// ── Switch modal ─────────────────────────────────────────────────────────
+function openSwitchModal(swName) {
+  editingBtn = null;
+  editingSw  = swName;
+  if (!config.switches) config.switches = {};
+  const d = config.switches[swName] || {};
+  const defaults = switchDefaults[swName] || { channel: 0, positions: 3 };
+  const sw = {
+    channel:   d.channel   || defaults.channel,
+    positions: d.positions || defaults.positions,
+    p0: d.p0 || [],
+    p1: d.p1 || [],
+    p2: d.p2 || [],
+  };
+
+  document.getElementById('modal-title').textContent = `Switch ${swName}`;
+  document.getElementById('modal-mode-badges').innerHTML = '';
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = 'none';
+
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = '';
+
+  // Hardware config card (channel + positions)
+  const hwCard = document.createElement('div');
+  hwCard.className = 'tier-card';
+  hwCard.innerHTML = `
+    <div class="tier-title">Switch hardware</div>
+    <div class="action-row">
+      <div class="field-group">
+        <label>SBUS channel</label>
+        <input type="number" id="sw-channel" min="1" max="24" value="${sw.channel}" style="width:70px">
+      </div>
+      <div class="field-group">
+        <label>Positions</label>
+        <select id="sw-positions" onchange="rebuildSwitchTiers()">
+          <option value="2" ${sw.positions==2?'selected':''}>2 (Down / Up)</option>
+          <option value="3" ${sw.positions==3?'selected':''}>3 (Down / Mid / Up)</option>
+        </select>
+      </div>
+    </div>
+  `;
+  container.appendChild(hwCard);
+
+  buildSwitchTiers(sw);
+  document.getElementById('modal').classList.add('open');
+}
+
+function buildSwitchTiers(sw) {
+  const container = document.getElementById('tiers-container');
+  // remove existing position cards, leave the hw card (always first)
+  while (container.children.length > 1) container.removeChild(container.lastChild);
+
+  const positions = +sw.positions || 3;
+  const slots = positions === 2 ? [{idx:0,label:'Position DOWN'},{idx:2,label:'Position UP'}]
+                                 : [{idx:0,label:'Position DOWN'},{idx:1,label:'Position MID'},{idx:2,label:'Position UP'}];
+  for (const slot of slots) {
+    const acts = sw['p' + slot.idx] || [];
+    const tierKey = 'p' + slot.idx;
+
+    const card = document.createElement('div');
+    card.className = 'tier-card';
+    card.id = `tier-card-${tierKey}`;
+    card.innerHTML = `<div class="tier-title">${slot.label}</div>`;
+
+    const rows = document.createElement('div');
+    rows.id = `rows-${tierKey}`;
+    rows.className = 'rows-container';
+    card.appendChild(rows);
+
+    const startCount = Math.max(1, acts.length);
+    for (let ai = 0; ai < startCount; ai++) {
+      const a = acts[ai] || { type: '' };
+      rows.appendChild(buildActionRow(tierKey, ai, a));
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-ghost btn-add-action';
+    addBtn.textContent = '+ Add action';
+    addBtn.onclick = () => addActionRow(tierKey);
+    card.appendChild(addBtn);
+
+    container.appendChild(card);
+    refreshTierState(tierKey);
+  }
+}
+
+function rebuildSwitchTiers() {
+  if (!editingSw) return;
+  const cur = config.switches[editingSw] || {};
+  cur.positions = +document.getElementById('sw-positions').value;
+  cur.channel   = +document.getElementById('sw-channel').value;
+  // Preserve any existing p0/p1/p2 data
+  buildSwitchTiers(cur);
+}
+
+function saveSwitchModal() {
+  if (!editingSw) return;
+  const out = {
+    channel:   +document.getElementById('sw-channel').value,
+    positions: +document.getElementById('sw-positions').value,
+  };
+  const indices = out.positions === 2 ? [0, 2] : [0, 1, 2];
+  for (const idx of indices) {
+    const acts = collectTierActions('p' + idx);
+    if (acts.length) out['p' + idx] = acts;
+  }
+  if (!config.switches) config.switches = {};
+  config.switches[editingSw] = out;
+  closeModal();
+  renderSwitchHighlights();
+}
+
+function clearSwitchModal() {
+  if (!editingSw) return;
+  delete config.switches[editingSw];
+  closeModal();
+  renderSwitchHighlights();
+}
+
+function renderSwitchHighlights() {
+  document.querySelectorAll('.switch-zone').forEach(el => {
+    const sw = el.dataset.sw;
+    const d  = config.switches && config.switches[sw];
+    const hasAny = d && ((d.p0 && d.p0.length) || (d.p1 && d.p1.length) || (d.p2 && d.p2.length));
+    el.classList.toggle('configured', !!hasAny);
+  });
+}
+
+// Dispatch Apply / Clear All to the right handler.
+function saveModalDispatch() {
+  if (editingKnob)     saveKnobModal();
+  else if (editingSw)  saveSwitchModal();
+  else                 saveButton();
+}
+function clearModalDispatch() {
+  if (editingKnob)     clearKnobModal();
+  else if (editingSw)  clearSwitchModal();
+  else                 clearButton();
+}
+
+// Close on overlay click
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Mode tabs
+// ════════════════════════════════════════════════════════════════════════════
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    currentMode = +tab.dataset.mode;
+    document.querySelectorAll('.mode-tab').forEach(t => t.className = 'mode-tab');
+    tab.className = `mode-tab active-${currentMode}`;
+    document.getElementById('mode-label').textContent = modeLabels[currentMode];
+    renderAssignmentList();
+    updateButtonHighlights();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Top bar buttons
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-refresh').addEventListener('click', () => sendJSON({ type: 'GET_CONFIG' }));
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  // Pull tapWindowMs from input
+  config.tapWindowMs = +(document.getElementById('tapwin-input').value) || 500;
+  // Pull threshold changes
+  // (already bound via onchange above)
+  await sendJSON({ type: 'SET_CONFIG', data: config });
+});
+
+document.getElementById('btn-defaults').addEventListener('click', async () => {
+  if (!confirm('Reset all button mappings to factory defaults?')) return;
+  await sendJSON({ type: 'RESET_DEFAULTS' });
+  await new Promise(r => setTimeout(r, 300));
+  await sendJSON({ type: 'GET_CONFIG' });
+});
+
+document.getElementById('btn-mon-start').addEventListener('click', async () => {
+  await sendJSON({ type: 'START_MONITOR' });
+  isMonitoring = true;
+  document.getElementById('btn-mon-start').disabled = true;
+  document.getElementById('btn-mon-stop').disabled  = false;
+});
+
+document.getElementById('btn-mon-stop').addEventListener('click', async () => {
+  await sendJSON({ type: 'STOP_MONITOR' });
+  isMonitoring = false;
+  document.getElementById('btn-mon-start').disabled = false;
+  document.getElementById('btn-mon-stop').disabled  = true;
+});
+
+async function stopMonitor() {
+  await sendJSON({ type: 'STOP_MONITOR' }).catch(() => {});
+  isMonitoring = false;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Threshold panel toggle
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('thresh-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('thresh-panel');
+  const open  = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  document.getElementById('thresh-toggle').innerHTML =
+    (open ? '▶' : '▼') + ' Channel Thresholds <small style="color:var(--muted)">(click to ' + (open ? 'expand' : 'collapse') + ')</small>';
+});
+
+document.getElementById('chan-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('chan-panel');
+  const open  = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  document.getElementById('chan-toggle').innerHTML =
+    (open ? '▶' : '▼') + ' Channel Assignments <small style="color:var(--muted)">(click to ' + (open ? 'expand' : 'collapse') + ')</small>';
+});
+
+document.getElementById('btn-thresh-rebuild').addEventListener('click', () => {
+  config.thresholds = defaultThresholds();
+  renderThresholds();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Helpers
+// ════════════════════════════════════════════════════════════════════════════
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function defaultThresholds() {
+  // Order matches BC firmware's rc_config.h defaultThresholds() bands.
+  const labels = ['B1','B2','B3','B4','B5','B6',
+                  'T4 Left','T4 Right','T5 Left','T5 Right',
+                  'T3 Left','T3 Right','T2 Left','T2 Right',
+                  'T6 Left','T6 Right',
+                  'T1 Left','T1 Right','Unassigned'];
+  return labels.map((label, i) => ({
+    id:     i + 1,
+    label,
+    minPwm: 1850 - (i + 1) * 50,
+    maxPwm: 1850 - i * 50 - 1,
+  })).map((t, i) => {
+    // Bands intentionally avoid 962-1022 so SBUS_CENTER (992 — what
+    // controllers send on button release) doesn't match any button.
+    if (i === 16) return { ...t, minPwm: 1023, maxPwm: 1049 };  // T1 Left
+    if (i === 17) return { ...t, minPwm: 850,  maxPwm: 960  };  // T1 Right
+    if (i === 18) return { ...t, minPwm: 800,  maxPwm: 849  };  // Unassigned
+    return t;
+  });
+}
+
+// ── WebSerial availability check ──────────────────────────────────────────
+if (!('serial' in navigator)) {
+  document.getElementById('btn-connect').disabled = true;
+  document.getElementById('status-text').textContent = 'WebSerial not available — use Chrome/Edge';
+}
+
+// ── Unit toggle wiring ───────────────────────────────────────────────────
+function applyUnitToggle() {
+  // Sync radio buttons to current displayUnit
+  document.querySelectorAll('input[name="unit-toggle"]').forEach(r => {
+    r.checked = (r.value === displayUnit);
+  });
+  // Update inline "(SBUS)" / "(µs)" badges next to column headers
+  document.querySelectorAll('.unit-label').forEach(el => {
+    el.textContent = `(${unitLbl()})`;
+  });
+  // Re-render everything that displays SBUS values
+  renderThresholds();
+  updatePWMTooltips();
+  // Re-render live monitor with last-known values
+  updatePWMDisplay(_liveCh6, _liveCh16, _liveBtn, _liveMode);
+}
+document.querySelectorAll('input[name="unit-toggle"]').forEach(r => {
+  r.addEventListener('change', () => {
+    displayUnit = r.value;
+    localStorage.setItem('bcDisplayUnit', displayUnit);
+    applyUnitToggle();
+  });
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+applyUnitToggle();   // populates renderThresholds() in the right unit
+renderAssignmentList();
+updateButtonHighlights();
+</script>
+</body>
+</html>

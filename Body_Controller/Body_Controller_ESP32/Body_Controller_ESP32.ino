@@ -1341,6 +1341,97 @@ bool Channel10Bool;
 int Channel10State = 0;
 int lastChannel10State = 0;
 int sbusValues[] = {};
+
+//////////////////////////////////////////////////////////////////////
+///*****        Multi-Tap RC Button Detection              *****///
+//////////////////////////////////////////////////////////////////////
+// Two tap modes:
+//   ADDITIVE  — each tap tier fires immediately as taps arrive
+//               (tap1 fires, then tap2 adds more, etc.)
+//   EXCLUSIVE — tap1 is held until the window expires; if tap2 arrives
+//               within the window, tap1 is cancelled and tap2 fires instead
+//               (costs ~500 ms of latency on single-tap for those buttons)
+
+#define RC_TAP_WINDOW_MS  500     // double-tap recognition window in ms
+
+// Tap tracker — shared across all buttons
+int           rcTapLastButtonId   = -1;
+unsigned long rcTapLastPressTime  = 0;
+uint8_t       rcTapCount          = 0;
+
+// Deferred state for EXCLUSIVE-mode buttons
+int           deferButtonId       = -1;
+uint8_t       deferTapCount       = 0;
+bool          deferPending        = false;
+unsigned long deferFireTime       = 0;
+
+// Convert raw SBUS PWM value to a logical button index (1–19), or 0 = neutral/no button.
+// Buttons are 50-unit bands from 800 up to 1850.
+int pwmToButton(int pwm) {
+  if      (pwm >= 1800) return 1;
+  else if (pwm >= 1750) return 2;
+  else if (pwm >= 1700) return 3;
+  else if (pwm >= 1650) return 4;
+  else if (pwm >= 1600) return 5;
+  else if (pwm >= 1550) return 6;
+  else if (pwm >= 1500) return 7;
+  else if (pwm >= 1450) return 8;
+  else if (pwm >= 1400) return 9;
+  else if (pwm >= 1350) return 10;
+  else if (pwm >= 1300) return 11;
+  else if (pwm >= 1250) return 12;
+  else if (pwm >= 1200) return 13;
+  else if (pwm >= 1150) return 14;
+  else if (pwm >= 1100) return 15;
+  else if (pwm >= 1050) return 16;
+  else if (pwm >= 1000) return 17;
+  else if (pwm >=  850) return 18;
+  else if (pwm >=  800) return 19;
+  return 0;
+}
+
+// Call on each button press (rising edge). Returns current tap count (1, 2, 3…).
+// buttonId encodes both switch mode and button: (switchMode * 100) + btnIndex
+uint8_t detectRCTap(int buttonId) {
+  unsigned long now = millis();
+  if (buttonId == rcTapLastButtonId && (now - rcTapLastPressTime) < RC_TAP_WINDOW_MS) {
+    rcTapCount++;
+  } else {
+    rcTapCount = 1;
+  }
+  rcTapLastButtonId  = buttonId;
+  rcTapLastPressTime = now;
+  return rcTapCount;
+}
+
+// Forward declaration — defined just before RCRadio_Matrix_Buttons
+void dispatchDeferredButton(int buttonId, uint8_t taps);
+
+// Queue an EXCLUSIVE-mode button press. The action is held until the tap
+// window expires; a second tap within the window bumps the count and resets
+// nothing fires until the window is up.
+void queueExclusiveTap(int buttonId) {
+  if (deferPending && deferButtonId != buttonId) {
+    // Different button pressed — fire the old pending action immediately
+    deferPending = false;
+    dispatchDeferredButton(deferButtonId, deferTapCount);
+  }
+  deferButtonId  = buttonId;
+  deferTapCount  = rcTapCount;           // always tracks latest count
+  if (!deferPending) {
+    deferPending  = true;
+    deferFireTime = millis() + RC_TAP_WINDOW_MS;  // window starts from first tap
+  }
+}
+
+// Call from loop() — fires deferred button when its window expires
+void checkDeferredTap() {
+  if (!deferPending) return;
+  if (millis() < deferFireTime) return;
+  deferPending = false;
+  dispatchDeferredButton(deferButtonId, deferTapCount);
+}
+
 void processSbus(){
     if (sbus_rx.Read()) {
     /* Grab the received data */
@@ -1450,480 +1541,6 @@ void updateMuse(int PWMvalue){
 }
 
 void lightsMode(int PWMvalue){
-if (PWMvalue >= 1500){
-    writeBlSerial("E98");
-} else if (PWMvalue >= 800 && PWMvalue <= 1200){
-  writeBlSerial("E98");
-
-  DelayCall::schedule([]{writeBlSerial("K99");}, 50);
-
-} else if (PWMvalue <= 799){
-    writeBlSerial("E98");
-      DelayCall::schedule([]{writeBlSerial("X99");}, 50);
-
-    // writeBlSerial("X99");
-}
-}
-
-
-
-void maintLights(int PWMvalue){
-if (PWMvalue >= 1500){
-writeBlSerial("M1518");
-} else {
-writeBlSerial("M98");
-  }
-
-}
-void RC_RADH_Auto(int PWMvalue){
-  if(PWMvalue <= 300){
-    Channel7Bool = true;
-    // Serial.println("True, less than 300");
-  } else { Channel7Bool = false;}
-  Channel7State = Channel7Bool;
-  if(Channel7State != lastChannel7State){
-    if(Channel7State == true){
-    Serial.println("RADH DISABLED");
-    writeRdSerial("#DPAUTO0");
-    }
-    if(Channel7State == false){
-    Serial.println("RADH Enabled");
-    writeRdSerial("#DPAUTO1");
-
-  }
-  } 
-
-      lastChannel7State = Channel7State;
-
-
-}
-
-
-void RCRadio_Matrix_Buttons(int PWMvalue){
-  if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 200){
-    if (PWMvalue >= 100){
-      Channel6Bool = true;
-    } else {Channel6Bool = false;}
-    if (PWMvalue >= 1800){
-    Channel6State = Channel6Bool;
-    if (Channel6State != lastChannel6State){
-      if (Channel6State = true){
-          Serial.println("Matrix Sw1: Mute Sounds");
-          HCR.StopWAV(1);
-          HCR.StopEmote();  
-        }
-      }
-      }
-    lastChannel6State = Channel6State;
-    // if (PWMvalue <= 1900 && PWMvalue >= 1800){
-    //   Serial.println("Matrix Sw2: Happy Sound");
-    //   HCR.StopWAV(1);
-    //   HCR.StopEmote();
-    // }
-    if (PWMvalue <= 1799 && PWMvalue >= 1750){
-      Serial.println("Matrix Sw2: Happy Sound");
-      HCR.Stimulate(0,1);    
-    }
-    if (PWMvalue <= 1749 && PWMvalue >= 1700){
-      Serial.println("Matrix Sw3: Sad Sound");
-      HCR.Stimulate(1,1);    
-    }
-  if (PWMvalue <= 1699 && PWMvalue >= 1650){
-      Serial.println("Matrix Sw4: Mad Sound");
-      HCR.Stimulate(2,1);
-    }
-    if (PWMvalue <= 1649 && PWMvalue >= 1600){
-      Serial.println("Matrix Sw5: Scared Sound");
-    HCR.Stimulate(3, 1);    
-    }
-    if (PWMvalue <= 1599 && PWMvalue >= 1550){
-    Serial.println("Matrix Sw6: Fart Sound");
-    HCR.PlayWAV(1, 4);    
-    }
-    if (PWMvalue <= 1549 && PWMvalue >= 1500){
-      Serial.println("T4 Left: All Open");
-      allOpen();  
-    }
-    if (PWMvalue <= 1499 && PWMvalue >= 1450){
-      Serial.println("T5 Left: Wave Utility Arm");
-      WaveUtilityArm();
-
-    }
-    if (PWMvalue <= 1449 && PWMvalue >= 1400){
-      Serial.println("T5 Right: Drawer Wave");
-      drawerWave();
-    }    
-    if (PWMvalue <= 1399 && PWMvalue >= 1350){
-      Serial.println("T3 Up: Function 10:  Harlem Shake");
-      HarlemShake();
-    }
-    if (PWMvalue <= 1349 && PWMvalue >= 1300){
-      Serial.println("T4 Right: Function 11:  Close all Doors(stop animation)");
-      allClose();
-      sendESPNOWCommand("DP", ":SUS:PH");
-    }
-    if (PWMvalue <= 1299 && PWMvalue >= 1250){
-      Serial.println("T3 Down: Function 12:  Panel Wave ");
-      panelWave();
-    }
-    if (PWMvalue <= 1249 && PWMvalue >= 1200){
-      Serial.println("T2 Up: Function 13:  Periscope Seq 4  ");
-      sendESPNOWCommand("DP", ":SUS:PS4");
-    }
-    if (PWMvalue <= 1199 && PWMvalue >= 1150){
-      Serial.println("T2 Down: Function 14: Short Circuit ");
-      CompleteshortCircuit();
-    }
-    if (PWMvalue <= 1149 && PWMvalue >= 1100){
-      Serial.println("T6 Left: Function 15: Door open with easing ");
-      OpenClosewithEasing();
-    }
-    if (PWMvalue <= 1099 && PWMvalue >= 1050){
-      Serial.println("T6 Right: Function 16: Fast Wave ");
-      panelWaveFast();
-    }
-    if (PWMvalue <= 1049 && PWMvalue >= 1000){
-      Serial.println("T1 Left: Function 17:  Display Mode ");
-      display();
-    }
-    if (PWMvalue <= 899 && PWMvalue >= 850){
-      Serial.println("T1 Right: Function 18: Open Close Wave ");
-      openCloseWave();
-    }
-    if (PWMvalue <= 849 && PWMvalue >= 800){
-      Serial.println("Function 19:  ");
-    }
-   } else if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 999 && sbusValues[CHANNEL_16_ARRAY_INDEX] >=201){ // switch in middle
-    if (PWMvalue >= 100){
-      Channel6Bool = true;
-    } else {Channel6Bool = false;}
-        
-    Channel6State = Channel6Bool;
-    if (Channel6State != lastChannel6State){
-      if (Channel6State = true){
-        if (PWMvalue >= 1800){
-          Serial.println("Matrix SW 1: Function 1: Stop Sounds ");
-          HCR.StopWAV(1);
-          HCR.StopEmote();  
-        }
-      if (PWMvalue <= 1799 && PWMvalue >= 1750){
-      Serial.println("Matrix SW 2: Function 2: Dance Star Wars Song");
-           HCR.PlayWAV(1, 204);
-
-    }
-    if (PWMvalue <= 1749 && PWMvalue >= 1700){
-      Serial.println("Matrix SW 3: Function 3: Leia Long");
-        HCR.PlayWAV(1, 3);
-
-    }
-  if (PWMvalue <= 1699 && PWMvalue >= 1650){
-      Serial.println("Matrix SW 4: Function 4: Star Wars Theme ");
-      HCR.PlayWAV(1, 1);
-    }
-    if (PWMvalue <= 1649 && PWMvalue >= 1600){
-      Serial.println("Matrix SW 5: Function 5:  Vader Theme");
-      HCR.PlayWAV(1, 2);
-    }
-    if (PWMvalue <= 1599 && PWMvalue >= 1550){
-      Serial.println("Matrix SW 6: Function 6: Cantina Song ");
-      HCR.PlayWAV(1, 203);
-    }
-    if (PWMvalue <= 1549 && PWMvalue >= 1500){
-      Serial.println("T4 Left: Flutter");
-      allFlutter();
-      }
-    if (PWMvalue <= 1499 && PWMvalue >= 1450){
-      Serial.println("T5 Left: ");
-      cpuSequence();
-    }
-    if (PWMvalue <= 1449 && PWMvalue >= 1400){
-      Serial.println("T5 Right: ");
-      }    
-    if (PWMvalue <= 1399 && PWMvalue >= 1350){
-      Serial.println("T3 Up: Function 10:  Periscope Up and Lights On");
-      sendESPNOWCommand("DP", ":SUS:PP100:L0");
-    }
-    if (PWMvalue <= 1349 && PWMvalue >= 1300){
-      Serial.println("T4 Right: Function 11:  smoke sequence");
-      SmokeSequence();
-    }
-    if (PWMvalue <= 1299 && PWMvalue >= 1250){
-      Serial.println("T3 Down: Function 12:  Periscope Home");
-      sendESPNOWCommand("DP", ":SUS:PH");
-    }
-    if (PWMvalue <= 1249 && PWMvalue >= 1200){
-      Serial.println("T2 Up: Function 13: Rotate Random Periscope ");
-      sendESPNOWCommand("DP", ":SUS:PAR,50");
-    }
-    if (PWMvalue <= 1199 && PWMvalue >= 1150){
-      Serial.println("T2 Down: Function 14: Periscope Sequence 10 ");
-      sendESPNOWCommand("DP", ":SUS:PS10");
-    }
-    if (PWMvalue <= 1149 && PWMvalue >= 1100){
-      Serial.println("T6 Left: Function 15:  Long Dance ");
-      longDance();
-    }
-    if (PWMvalue <= 1099 && PWMvalue >= 1050){
-      Serial.println("T6 Right: Function 16: ");
-    }
-    if (PWMvalue <= 1049 && PWMvalue >= 1000){
-      Serial.println("T1 Left: Function 17: ");
-      fireExinguisher();
-    }
-    if (PWMvalue <= 899 && PWMvalue >= 850){
-      Serial.println("T1 Right: Function 18: Launch Saber ");
-      ArmSaber();
-
-    }
-      
-        Serial.println("Switch selection in the middle");
-
-      
-      
-      }
-          lastChannel6State = Channel6State;
-
-      }
-
-    
-  }
-  else if (sbusValues[CHANNEL_16_ARRAY_INDEX] <= 1900 && sbusValues[CHANNEL_16_ARRAY_INDEX] >=1000){
-    Serial.println("Switch selection in the top");
- if (PWMvalue >= 1800){
-      Channel6Bool = true;
-    } else {Channel6Bool = false;}
-        if (PWMvalue >= 1800){
-    Channel6State = Channel6Bool;
-    if (Channel6State != lastChannel6State){
-      if (Channel6State = true){
-          Serial.println("Matrix SW 1: Function 1: Stop Sounds ");
-          HCR.StopWAV(1);
-          HCR.StopEmote();  
-        }
-        }
-      }
-      
-    lastChannel6State = Channel6State;
-
-    if (PWMvalue <= 1799 && PWMvalue >= 1750){
-      Serial.println("Matrix SW 2: Whistle ");
-      HCR.PlayWAV(1, 8);    
-      }
-    if (PWMvalue <= 1749 && PWMvalue >= 1700){
-      Serial.println("Matrix SW 3: Staying Alive Song ");
-      HCR.PlayWAV(1, 201);    
-    }
-  if (PWMvalue <= 1699 && PWMvalue >= 1650){
-      Serial.println("Matrix SW 4: Function 4:  ");
-      HCR.PlayWAV(1, 100);    
-
-    }
-    if (PWMvalue <= 1649 && PWMvalue >= 1600){
-      Serial.println("Matrix SW 5: Function 5:  ");
-      HCR.PlayWAV(1, 101);    
-
-    }
-    if (PWMvalue <= 1599 && PWMvalue >= 1550){
-      Serial.println("Matrix SW 6: Function 6:  ");
-      HCR.PlayWAV(1, 202);    
-
-
-      int trackCount = HCR.GetWAVCount();
-      Serial.println(trackCount);
-      Serial.println(HCR.GetMuse());
-    }
-    if (PWMvalue <= 1549 && PWMvalue >= 1500){
-      Serial.println("T4 Left: ");
-      cpuRaise();
-    }
-    if (PWMvalue <= 1499 && PWMvalue >= 1450){
-      Serial.println("T5 Left: ");
-      cpuExtend();
-    }
-    if (PWMvalue <= 1449 && PWMvalue >= 1400){
-      Serial.println("T5 Right: ");
-      cpuRetract();
-    }    
-    if (PWMvalue <= 1399 && PWMvalue >= 1350){
-      Serial.println("T3 Up: Function 10:  ");
-      cpuSequence();
-    }
-    if (PWMvalue <= 1349 && PWMvalue >= 1300){
-      Serial.println("T4 Right: Function 11:  ");
-      cpuLower();
-    }
-    if (PWMvalue <= 1299 && PWMvalue >= 1250){
-      Serial.println("T3 Down: Function 12:  ");
-      cpuRotate();
-    }
-    if (PWMvalue <= 1249 && PWMvalue >= 1200){
-      Serial.println("T2 Up: Function 13:  ");
-    }
-    if (PWMvalue <= 1199 && PWMvalue >= 1150){
-      Serial.println("T2 Down: Function 14:  ");
-    }
-    if (PWMvalue <= 1149 && PWMvalue >= 1100){
-      Serial.println("T6 Left: Function 15:  ");
-    }
-    if (PWMvalue <= 1099 && PWMvalue >= 1050){
-      Serial.println("T6 Right: Function 16: ");
-    }
-    if (PWMvalue <= 1049 && PWMvalue >= 1000){
-      Serial.println("T1 Left: Function 17: ");
-      StowSaber();
-    }
-    if (PWMvalue <= 899 && PWMvalue >= 850){
-      Serial.println("T1 Right: Function 18: ");
-      LaunchSaber();
-    }
-  Serial.println("Switch selection in the middle");
-  }
-
-  }
-
-
-
-void RCRadio_HCRVolChange(int chan, int sbusPos){
-  int RCVocalizerVolume = map( sbusValues[sbusPos], 170, 1820, 0, 100);
-  Serial.print("HVR Vocalizer Volume Mapped to : "); 
-  Serial.println(RCVocalizerVolume);
-  HCR.SetVolume(chan, RCVocalizerVolume);
-}
-
-#endif
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////                                                                                       /////////     
-/////////                             END OF FUNCTIONS                                          /////////
-/////////                                                                                       /////////     
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
- 
-void setup(){
-  //Initialize the Serial Ports
-  Serial.begin(115200);
-  rdSerial.begin(RD_BAUD_RATE,SERIAL_8N1,SERIAL_RX_RD_PIN,SERIAL_TX_RD_PIN);
-  blSerial.begin(BL_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_BL_PIN,SERIAL_TX_BL_PIN,false,95);
-  stSerial.begin(ST_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_ST_PIN,SERIAL_TX_ST_PIN,false,95);
-  mpSerial.begin(MP_BAUD_RATE,SWSERIAL_8N1,SERIAL_RX_MP_PIN,SERIAL_TX_MP_PIN,false,95);
-  s1Serial.begin(SERIAL1_BAUD_RATE,SWSERIAL_8N1,SERIAL1_RX_PIN,SERIAL1_TX_PIN,false,95);
-  s2Serial.begin(SERIAL2_BAUD_RATE,SWSERIAL_8N1,SERIAL2_RX_PIN,SERIAL2_TX_PIN,false,95);
-  
-  #ifdef SBUS
-  sbus_rx.Begin();
-  sbus_tx.Begin();
-  #endif
-  Serial.println("\n\n\n----------------------------------------");
-  Serial.println("Booting up the Body ESP Controller");
-  
-  //Configure the Reset Pins for the arduinoReset() function
-  pinMode(RST, OUTPUT);
-  digitalWrite(RST,HIGH);
-
-  //Initialize I2C for the Servo Expander Board
-//  Wire.begin();
-  
-  //Initialize the ReelTwo Library
-//  SetupEvent::ready();
-
-  ESP_LED.begin();
-  ESP_LED.show();
-  colorWipeStatus("ES",red,255);
-  Serial.println("LED Setup Complete");
-
-
-  //Reserve the inputStrings
-  inputString.reserve(200);                                                              // Reserve 100 bytes for the inputString:
-  autoInputString.reserve(200);
-
-  //Initialize the Soft Access Point
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, ETM_BOARD_MACS[ETM_MY_BOARD_INDEX]);
-  Serial.print("Local STA MAC address = ");
-  Serial.println(WiFi.macAddress());
-
- //Initialize ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-  return;
-  }
-
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);
-
-  // Register peer
-  peerInfo.channel = 0;
-  peerInfo.encrypt = false;
-
-  // Add all peers from ETM MAC table
-  memcpy(peerInfo.peer_addr, ETM_BROADCAST_MAC, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  }
-  for (int i = 0; i < ETM_NUM_BOARDS; i++) {
-    if (i == ETM_MY_BOARD_INDEX) continue;
-    memcpy(peerInfo.peer_addr, ETM_BOARD_MACS[i], 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.printf("Failed to add ESP-NOW peer %d\n", i);
-      return;
-    }
-  }
-
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
-  etmInit(ESPNOWPASSWORD.c_str(), ETM_MY_BOARD_INDEX);
-
- 
-  //Initialize the AsycWebServer
-  //  server.begin();
-
-  //Reset Arudino Mega
-  resetArduino(500);
-
-
-}  //end of Setup
-
-
-void loop(){
-  etmProcess();
-  keepAlive();
-  checkAgeofkeepAlive();
-#ifdef SBUS
- processSbus();
-#endif
-  if (millis() - MLMillis >= mainLoopDelayVar){
-    MLMillis = millis();
-    AnimatedEvent::process();
-    if(startUp) {
-      colorWipeStatus("ES",blue,10);
-
-      startUp = false;
-      Serial.println("Startup completed, now running loop");
-      // Play Startup Sound
-      // mp3Trigger("v",16);
-      // mp3Trigger("t",1);
-      // mp3Trigger("v",0);
-
-    }
-    if(Serial.available()){serialEvent();}
-    // if(rdSerial.available()){serialRdEvent();}
-    if(blSerial.available()){serialBlEvent();}
-    if(stSerial.available()){serialStEvent();}
-    if(mpSerial.available()){serialMpEvent();}
-    if(s1Serial.available()){serial1Event();}
-    if(s1Serial.available()){serial2Event();}
-
-    
-    if (stringComplete) {autoComplete=false;}
-    if (stringComplete || autoComplete) {
-      if(stringComplete) {inputString.toCharArray(inputBuffer, 200);inputString="";}
-      else if (autoComplete) {autoInputString.toCharArray(inputBuffer, 200);autoInputString="";}
-      if (inputBuffer[0] == '#'){
-        if (
             inputBuffer[1]=='D' ||          // Command for debugging
             inputBuffer[1]=='d' ||          // Command for debugging
             inputBuffer[1]=='L' ||          // Command designator for internal functions

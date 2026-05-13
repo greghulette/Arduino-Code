@@ -533,7 +533,7 @@ ServoSequencer servoSequencer(servoDispatch);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////                                                                                       /////////     
+/////////                                                                                       /////////
 /////////                             Start OF FUNCTIONS                                        /////////
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1193,6 +1193,26 @@ void display(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32
   }
   D_command[0] = '\0';
 }
+
+void stayingAlive(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  // Command: Dx27 — Staying Alive beat-sync sequence (103.4 BPM, 20s)
+  Debug.SERVO("Staying Alive\n");
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}
+  snprintf(stringToSend, sizeof(stringToSend),":D127E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: sendESPNOWCommand("BS", stringToSend); break;
+    case 2: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveDC, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax); break;
+    case 3: sendESPNOWCommand("BS", stringToSend);
+            DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveDC, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+    case 4: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveDC, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
+            DelayCall::schedule([]{sendESPNOWCommand("BS", stringToSend);}, delayCallDuration); break;
+  }
+  D_command[0] = '\0';
+}
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1867,6 +1887,7 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 16: longDisco(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                      break;
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 20: display(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
+          case 27: stayingAlive(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);          break;
           case 98: closeAllDoors(2,0,0,0,0);                                                              break;
           case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;

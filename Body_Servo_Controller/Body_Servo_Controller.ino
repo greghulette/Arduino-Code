@@ -547,10 +547,9 @@ const ServoSettings servoSettings[] PROGMEM = {
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////                                                                                       /////////     
+/////////                                                                                       /////////
 /////////                             Start OF FUNCTIONS                                        /////////
 /////////                                                                                       /////////     
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1407,14 +1406,36 @@ void CpuArmSequence(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin,
             // DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURetract, CPU_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);},13000);  break;
     case 2: sendESPNOWCommand("DC", stringToSend); break;
     case 3: turnOnCBIandDataPanel();
-            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax); 
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelCPURaiseTest, CPU_ARM_RAISE, varSpeedMin, varSpeedMax);
             DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
     case 4: turnOnCBIandDataPanel();
-            sendESPNOWCommand("DC", stringToSend); 
+            sendESPNOWCommand("DC", stringToSend);
             DelayCall::schedule([] {SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqPanelAllClose, CPU_ARM_RAISE, fVarSpeedMin, fVarSpeedMax);},delayCallDuration);  break;
   }
   // DelayCall::schedule([]{turnOffCBIandDataPanel();}, 40000);
-  D_command[0]   = '\0';                                             
+  D_command[0]   = '\0';
+};
+
+void stayingAlive(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  // Command: Dx27 — Staying Alive beat-sync sequence (103.4 BPM, 20s)
+  Debug.SERVO("Staying Alive\n");
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  if (delayCallDuration == 0){delayCallDuration = defaultESPNOWSendDuration;}
+  snprintf(stringToSend, sizeof(stringToSend),":D227E%02d%04d%04d", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch(servoBoard){
+    case 1: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveBS, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("DC", stringToSend); break;
+    case 3: turnOnCBIandDataPanel();
+            SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveBS, ALL_SERVOS_MASK, varSpeedMin, varSpeedMax);
+            DelayCall::schedule([]{sendESPNOWCommand("DC", stringToSend);}, delayCallDuration); break;
+    case 4: sendESPNOWCommand("DC", stringToSend);
+            DelayCall::schedule([] {turnOnCBIandDataPanel(); SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, SeqStayingAliveBS, ALL_SERVOS_MASK, fVarSpeedMin, fVarSpeedMax);}, delayCallDuration); break;
+  }
+  DelayCall::schedule([]{turnOffCBIandDataPanel();}, 21000);
+  D_command[0]   = '\0';
 };
 
 
@@ -2019,6 +2040,7 @@ case 1: openDoor(D_command[1],D_command[2],D_command[3],D_command[4],D_command[5
           case 24: CpuArmRetract(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
           case 25: CpuArmRotate(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
           case 26: CpuArmSequence(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);           break;
+          case 27: stayingAlive(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);            break;
           case 98: closeAllDoors(2,0,0,0,0);                                                                break;
           case 99: closeAllDoors(2,0,0,0,0);                                                                break;
           default: break;
