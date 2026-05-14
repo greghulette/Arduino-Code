@@ -447,9 +447,10 @@ static bool actionFromJson(const JsonObject& obj, RcAction& a) {
 //  Sparse — only non-empty mappings are included.
 // ─────────────────────────────────────────────────────────────────────────────
 String rcConfigToJSON() {
-  // Use DynamicJsonDocument — generous size for 57 possible mappings
-  // 10 KB is comfortable for a fully-populated default config
-  DynamicJsonDocument doc(20480);
+  // 32 KB — enough for a fully-populated config with switch action defaults.
+  // Sized to match the SET_CONFIG inbound buffer so what we send can also
+  // be parsed back without truncation.
+  DynamicJsonDocument doc(32768);
 
   doc["tapWindowMs"]   = rcConfig.tapWindowMs;
   doc["matrixChannel"] = rcConfig.matrixChannel;
@@ -526,9 +527,14 @@ String rcConfigToJSON() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Load config from JSON string (from SET_CONFIG WebSerial message)
+//
+//  Buffer sized at 32 KB to handle a fully-populated config: 3 modes × 19
+//  buttons × up to 5 actions/tier × 3 tiers, plus 8 switches × 3 positions ×
+//  up to 5 actions, plus thresholds + bindings + knobs.  Worst case is
+//  ~25 KB so 32 KB gives comfortable headroom.
 // ─────────────────────────────────────────────────────────────────────────────
 bool rcConfigFromJSON(const String& json) {
-  DynamicJsonDocument doc(16384);
+  DynamicJsonDocument doc(32768);
   if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
 
   if (doc.containsKey("tapWindowMs"))

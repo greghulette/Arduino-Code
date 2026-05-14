@@ -1112,8 +1112,10 @@ void handleWebSerialMessage(const String& line) {
 
   // ── SET_CONFIG ─────────────────────────────────────────────────────────────
   if (strcmp(type, "SET_CONFIG") == 0) {
-    // Re-parse with larger doc to handle the full config (~12 KB budget)
-    DynamicJsonDocument bigDoc(16384);
+    // Larger doc (~32 KB) to handle the full config envelope.  Worst case is
+    // 3 modes × 19 buttons × 5 actions plus 8 switches × 3 pos × 5 actions
+    // plus thresholds/bindings/knobs ≈ 25 KB.  32 KB gives safe headroom.
+    DynamicJsonDocument bigDoc(32768);
     if (deserializeJson(bigDoc, line) != DeserializationError::Ok) {
       Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"parse failed\"}");
       return;
