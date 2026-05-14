@@ -1112,17 +1112,22 @@ void handleWebSerialMessage(const String& line) {
 
   // ── SET_CONFIG ─────────────────────────────────────────────────────────────
   if (strcmp(type, "SET_CONFIG") == 0) {
-    // Larger doc (~32 KB) to handle the full config envelope.  Worst case is
+    // Larger doc (~96 KB) to handle the full config envelope.  Worst case is
     // 3 modes × 19 buttons × 5 actions plus 8 switches × 3 pos × 5 actions
-    // plus thresholds/bindings/knobs ≈ 25 KB.  32 KB gives safe headroom.
-    DynamicJsonDocument bigDoc(32768);
-    if (deserializeJson(bigDoc, line) != DeserializationError::Ok) {
-      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"parse failed\"}");
+    // plus thresholds/bindings/knobs ≈ 25 KB.  96 KB gives stronger headroom
+    // for bigger editor payloads and future config additions.
+    DynamicJsonDocument bigDoc(98304);
+    DeserializationError err = deserializeJson(bigDoc, line);
+    if (err != DeserializationError::Ok) {
+      Serial.printf("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"parse failed: %s\"}\n", err.c_str());
       return;
     }
-    String dataStr;
-    serializeJson(bigDoc["data"], dataStr);
-    bool ok = rcConfigFromJSON(dataStr);
+    if (!bigDoc.containsKey("data")) {
+      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"missing data\"}");
+      return;
+    }
+    JsonObject data = bigDoc["data"].as<JsonObject>();
+    bool ok = rcConfigFromJSON(data);
     if (ok) {
       rcConfigSaveNVS();
       Serial.println("{\"type\":\"ACK\",\"ok\":true}");

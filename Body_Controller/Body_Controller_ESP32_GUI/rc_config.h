@@ -526,17 +526,13 @@ String rcConfigToJSON() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Load config from JSON string (from SET_CONFIG WebSerial message)
+//  Load config from JSON object (from SET_CONFIG WebSerial message)
 //
-//  Buffer sized at 32 KB to handle a fully-populated config: 3 modes × 19
-//  buttons × up to 5 actions/tier × 3 tiers, plus 8 switches × 3 positions ×
-//  up to 5 actions, plus thresholds + bindings + knobs.  Worst case is
-//  ~25 KB so 32 KB gives comfortable headroom.
+//  The payload can be quite large when all mappings, switch positions, knob
+//  bindings, and notes are included.  The runtime parser below uses ~96 KB
+//  of JSON buffer space to give stronger headroom for large editor payloads.
 // ─────────────────────────────────────────────────────────────────────────────
-bool rcConfigFromJSON(const String& json) {
-  DynamicJsonDocument doc(32768);
-  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
-
+bool rcConfigFromJSON(const JsonObject& doc) {
   if (doc.containsKey("tapWindowMs"))
     rcConfig.tapWindowMs = doc["tapWindowMs"];
 
@@ -546,8 +542,6 @@ bool rcConfigFromJSON(const String& json) {
   if (doc.containsKey("funcBindings")) {
     JsonObject fb = doc["funcBindings"];
     rcConfig.funcBindings.modeSwitch = fb["mode"] | rcConfig.funcBindings.modeSwitch;
-    // Older configs may have radhAuto/maintLights/lightsMode/museMode fields —
-    // those are silently ignored now; behavior moves to switch position actions.
   }
 
   if (doc.containsKey("thresholds")) {
@@ -593,7 +587,6 @@ bool rcConfigFromJSON(const String& json) {
     }
   }
 
-  // ── Switches ──
   if (doc.containsKey("switches")) {
     JsonObject swObj = doc["switches"];
     for (int i = 0; i < RC_NUM_SWITCHES; i++) {
@@ -616,7 +609,6 @@ bool rcConfigFromJSON(const String& json) {
     }
   }
 
-  // ── Knobs ──
   if (doc.containsKey("knobs")) {
     JsonObject knObj = doc["knobs"];
     for (int i = 0; i < RC_NUM_KNOBS; i++) {
@@ -627,6 +619,16 @@ bool rcConfigFromJSON(const String& json) {
     }
   }
   return true;
+}
+
+bool rcConfigFromJSON(const String& json) {
+  DynamicJsonDocument doc(98304);
+  DeserializationError err = deserializeJson(doc, json);
+  if (err != DeserializationError::Ok) {
+    Serial.printf("rcConfigFromJSON parse failed: %s\n", err.c_str());
+    return false;
+  }
+  return rcConfigFromJSON(doc.as<JsonObject>());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
