@@ -447,6 +447,7 @@ void sendESPNOWCommand(String starget, String scomm) {
   outgoingMsg.structSequenceNumber = seqNum;
   esp_err_t result = esp_now_send(targetMAC, (uint8_t*)&outgoingMsg, sizeof(outgoingMsg));
   if (result == ESP_OK && !isBroadcast) etmAddToPending(scomm.c_str(), starget.c_str(), targetIdx, seqNum);
+  Debug.ESPNOW("Send to %s (idx %d, seq %d): %s — result: %s\n", starget.c_str(), targetIdx, seqNum, scomm.c_str(), esp_err_to_name(result));
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -1124,6 +1125,7 @@ void handleWebSerialMessage(const String& line) {
     }
     if (!bigDoc.containsKey("data")) {
       Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"missing data\"}");
+      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"missing data\"}");
       return;
     }
     JsonObject data = bigDoc["data"].as<JsonObject>();
@@ -1203,10 +1205,19 @@ void sendPWMUpdate() {
   // Send live channel values keyed by ROLE rather than fixed channel number
   // so the GUI labels stay correct even when matrixChannel/modeChannel change.
   // Includes detected SBUS channel count (16 or 24) so the GUI can show variant.
-  char buf[300];
+  char channelBuf[256] = "";
+  int chCount = sbus_rx.detectedChCount;
+  if (chCount > 24) chCount = 24;
+  for (int i = 0; i < chCount; i++) {
+    char tmp[16];
+    snprintf(tmp, sizeof(tmp), "%d%s", sbusValues[i], (i + 1 < chCount) ? "," : "");
+    strncat(channelBuf, tmp, sizeof(channelBuf) - strlen(channelBuf) - 1);
+  }
+
+  char buf[512];
   snprintf(buf, sizeof(buf),
     "{\"type\":\"PWM_UPDATE\",\"matrixCh\":%d,\"modeCh\":%d,\"matrixVal\":%d,\"modeVal\":%d,\"btn\":%d,\"mode\":%d,"
-    "\"sbus\":{\"ok\":%s,\"fps\":%d,\"frames\":%lu,\"ageMs\":%lu,\"lost\":%s,\"failsafe\":%s,\"chCount\":%d,\"frameLen\":%d}}",
+    "\"sbus\":{\"ok\":%s,\"fps\":%d,\"frames\":%lu,\"ageMs\":%lu,\"lost\":%s,\"failsafe\":%s,\"chCount\":%d,\"frameLen\":%d,\"channels\":[%s]}}",
     rcConfig.matrixChannel,
     (rcConfig.funcBindings.modeSwitch >= 0 && rcConfig.funcBindings.modeSwitch < RC_NUM_SWITCHES)
       ? rcConfig.switches[rcConfig.funcBindings.modeSwitch].channel : 0,
@@ -1221,7 +1232,8 @@ void sendPWMUpdate() {
     lostFrameOld ? "true" : "false",
     sbusFailsafe ? "true" : "false",
     sbus_rx.detectedChCount,
-    sbus_rx.detectedFrameLen);
+    sbus_rx.detectedFrameLen,
+    channelBuf);
   Serial.println(buf);
 #endif
 }
@@ -1352,7 +1364,7 @@ void loop() {
         commandLength = strlen(inputBuffer);
         if (inputBuffer[1]=='D' || inputBuffer[1]=='d') {
           debugInputIdentifier = "";
-          for (int i=2; i<=commandLength-2; i++) debugInputIdentifier += inputBuffer[i];
+          for (int i=2; i<commandLength; i++) debugInputIdentifier += inputBuffer[i];
           debugInputIdentifier.toUpperCase();
           if (debugInputIdentifier == "ETM") etmToggleDebug();
           else Debug.toggle(debugInputIdentifier);

@@ -41,8 +41,20 @@
   #status-text { font-size: 12px; color: var(--muted); }
 
   /* ── Layout ── */
-  .main { display: flex; gap: 0; height: calc(100vh - 53px); }
-  .sidebar { width: 320px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .main { display: flex; gap: 0; height: calc(100vh - 53px); padding-bottom: 260px; }
+  .sidebar { position: relative; width: 320px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .resizable-panel { resize: none; overflow: auto; }
+  .panel-header { position: relative; display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border); background: rgba(255,255,255,.02); }
+  .panel-actions { display:flex; align-items:center; gap:6px; }
+  .resize-handle { position: absolute; display:flex; align-items:center; justify-content:center; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; color: var(--muted); font-size: 12px; user-select: none; z-index: 5; }
+  .resize-handle:hover { background: rgba(255,255,255,.16); }
+  .sidebar-handle { right: -12px; top: 50%; transform: translateY(-50%); width: 22px; height: 56px; cursor: ew-resize; }
+  .terminal-handle { top: 12px; left: 50%; transform: translateX(-50%); width: 68px; height: 10px; cursor: ns-resize; }
+  .panel-actions { display:flex; align-items:center; gap:6px; }
+  .sidebar.collapsed { width: 42px; min-width: 42px; max-width: 42px; }
+  .sidebar.collapsed > :not(.panel-header) { display:none; }
+  .sidebar.collapsed .panel-header span { display:none; }
+  .sidebar.collapsed .panel-actions { width:100%; justify-content:flex-end; }
   .content { flex: 1; overflow-y: auto; padding: 20px; }
 
   /* ── Sidebar sections ── */
@@ -174,6 +186,100 @@
   .sb-tab.active { color: var(--text); border-bottom-color: var(--accent); }
   .sb-panel { display: none; }
   .sb-panel.active { display: block; }
+
+  .terminal-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 240px;
+    min-height: 120px;
+    max-height: 60vh;
+    background: #10121d;
+    border-top: 1px solid #233;
+    display: flex;
+    flex-direction: column;
+    z-index: 150;
+    overflow: hidden;
+  }
+  .terminal-panel.collapsed {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+  }
+  .terminal-panel.collapsed > :not(.terminal-header) {
+    display: none;
+  }
+  .terminal-collapsed .main { padding-bottom: 46px; }
+  .terminal-panel.collapsed {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+  }
+  .terminal-panel.collapsed > :not(.terminal-header) {
+    display: none;
+  }
+  .terminal-collapsed .main { padding-bottom: 46px; }
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid #233;
+    background: rgba(16,18,29,.95);
+    color: var(--text);
+    font-size: 13px;
+  }
+  .terminal-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #d8d8d8;
+    background: rgba(16,18,29,.95);
+  }
+  .terminal-line { white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
+  .terminal-line.tx { color: #7fdfff; }
+  .terminal-line.rx { color: #d9f99d; }
+  .terminal-line.info { color: #bbb; }
+  .terminal-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(16,18,29,.97);
+  }
+  .terminal-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #2a2f44;
+    background: #0f1321;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+  }
+  .terminal-input:focus { outline: 2px solid var(--accent2); }
+  .terminal-send { min-width: 100px; }
+  .calibration-highlight rect,
+  .calibration-highlight circle,
+  .calibration-highlight path {
+    stroke: var(--accent);
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 10px rgba(56,189,248,.65));
+  }
+  .calibration-indicator { margin-top: 12px; padding: 12px; border-radius: 8px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.16); color: var(--text); }
+
+  /* ── Wide calibration modal ── */
+  .calib-wide-modal { width: 92vw; max-width: 1300px; }
+  .calib-modal-body { display: flex; gap: 24px; align-items: flex-start; padding: 16px 20px; }
+  .calib-svg-panel  { flex: 1; min-width: 0; }
+  .calib-svg-panel svg { width: 100%; height: auto; pointer-events: none; cursor: default; }
+  .calib-info-panel { width: 290px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+  .calib-step-counter { font-size: 11px; color: var(--muted); text-align: right; }
+  .calib-instruction  { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -187,11 +293,22 @@
   <button class="btn btn-blue"    id="btn-refresh" disabled>Refresh</button>
   <button class="btn btn-success" id="btn-save"    disabled>Save to Board</button>
   <button class="btn btn-warn"    id="btn-defaults" disabled>Reset Defaults</button>
+  <button class="btn btn-ghost" id="btn-export-anim" type="button">Export Config CSV</button>
+  <button class="btn btn-ghost" id="btn-import-anim" type="button">Import Config CSV</button>
+  <button class="btn btn-ghost" id="btn-calibrate" type="button">Calibrate RC</button>
 </div>
+<input id="anim-import-file" type="file" accept=".csv,text/csv" style="display:none">
 
 <div class="main">
   <!-- ── Sidebar ── -->
-  <div class="sidebar">
+  <div class="sidebar resizable-panel" id="sidebar-panel">
+    <div class="panel-header">
+      <span>Sidebar</span>
+      <div class="panel-actions">
+        <button class="btn btn-ghost btn-sm" id="sidebar-toggle">▾</button>
+      </div>
+    </div>
+    <div class="resize-handle sidebar-handle" id="sidebar-handle" title="Drag to resize sidebar">⋮</div>
     <!-- SBUS status -->
     <div class="sb-section">
       <h3>SBUS Receiver</h3>
@@ -294,7 +411,7 @@
       <h3 style="cursor:pointer" id="thresh-toggle">▶ Channel Thresholds <small style="color:var(--muted)">(click to expand)</small></h3>
       <div id="thresh-panel" style="display:none; margin-top:10px; overflow-x:auto">
         <table class="thresh-table" id="thresh-table">
-          <thead><tr><th>Btn</th><th>Label</th><th>Min <span class="unit-label">(SBUS)</span></th><th>Max <span class="unit-label">(SBUS)</span></th></tr></thead>
+          <thead><tr><th>Btn</th><th>Label</th><th>Value <span class="unit-label">(SBUS)</span></th></tr></thead>
           <tbody></tbody>
         </table>
         <div style="margin-top:8px">
@@ -774,6 +891,24 @@
   </div>
 </div>
 
+<div class="terminal-panel resizable-panel" id="terminal-panel">
+  <div class="terminal-header">
+    <span>Board Terminal</span>
+    <div class="resize-handle terminal-handle" id="terminal-handle" title="Drag to resize terminal">≡</div>
+    <div class="terminal-controls">
+      <button class="btn btn-ghost btn-sm" id="terminal-collapse" type="button">▾</button>
+      <button class="btn btn-ghost terminal-toggle" id="terminal-autoscroll" type="button">Auto-scroll</button>
+      <button class="btn btn-ghost terminal-toggle" id="terminal-timestamps" type="button">Timestamps</button>
+      <button class="btn btn-ghost" id="terminal-clear" type="button">Clear</button>
+    </div>
+  </div>
+  <div class="terminal-output" id="terminal-output"></div>
+  <div class="terminal-input-row">
+    <input id="terminal-input" class="terminal-input" type="text" placeholder="Type CLI command and press Enter" autocomplete="off">
+    <button class="btn btn-blue terminal-send" id="terminal-send" type="button">Send</button>
+  </div>
+</div>
+
 <!-- ── Button Config Modal ── -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
@@ -800,6 +935,42 @@
   </div>
 </div>
 
+<!-- ── Calibration Modal ── -->
+<div class="modal-overlay" id="calibration-modal">
+  <div class="modal calib-wide-modal">
+    <div class="modal-header">
+      <span class="modal-title">Remote Calibration</span>
+      <div id="calib-step-counter" class="calib-step-counter" style="margin-left:auto; margin-right:16px"></div>
+      <button class="btn btn-ghost" onclick="closeCalibrationModal()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="calib-modal-body">
+      <!-- Left: transmitter SVG (cloned from main page, non-interactive) -->
+      <div id="calib-svg-wrap" class="calib-svg-panel"></div>
+      <!-- Right: instruction + status -->
+      <div class="calib-info-panel">
+        <div id="calibration-instruction" class="calib-instruction"></div>
+        <div id="calibration-live-value" class="calibration-indicator">Waiting for live SBUS data...</div>
+        <div id="calibration-summary" style="font-size:13px; color:var(--muted)"></div>
+        <div style="margin-top:auto; padding-top:16px; display:flex; flex-direction:column; gap:8px">
+          <!-- Auto-advance toggle -->
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; color:var(--muted)">
+            <input type="checkbox" id="calib-auto-advance"
+              onchange="if(calibrationState) calibrationState.autoAdvance=this.checked; localStorage.setItem('bcCalibAutoAdvance', this.checked?'1':'0')">
+            Auto-advance after capture
+          </label>
+          <!-- Nav row: Prev + Next side by side -->
+          <div style="display:flex; gap:8px">
+            <button class="btn btn-ghost" id="btn-calibration-prev" onclick="calibrationPrevStep()" style="flex:1">← Previous</button>
+            <button class="btn btn-success" id="btn-calibration-next" onclick="calibrationNextStep()" style="flex:1">Next →</button>
+          </div>
+          <button class="btn btn-ghost" id="btn-calibration-capture" onclick="captureCalibrationValue()">Force Capture</button>
+          <button class="btn btn-ghost" onclick="closeCalibrationModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════════════════════════
 //  State
@@ -813,6 +984,9 @@ let currentMode  = 1;
 let editingBtn   = null;
 let editingSw    = null;   // when set, modal is configuring a switch
 let editingKnob  = null;   // when set, modal is configuring a knob
+let calibrationState = null;
+let terminalAutoScroll = localStorage.getItem('bcTerminalAutoScroll') !== '0';
+let terminalShowTimestamps = localStorage.getItem('bcTerminalTimestamps') === '1';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Unit display — internal storage is always raw SBUS (172-1811 nominal range).
@@ -1008,11 +1182,13 @@ function setConnected(v) {
   ['btn-refresh','btn-save','btn-defaults','btn-mon-start'].forEach(id => {
     document.getElementById(id).disabled = !v;
   });
+  setTerminalEnabled(v);
   document.getElementById('monitor-note').style.display = v ? 'none' : 'block';
 }
 
 async function sendLine(msg) {
   if (!writer) return;
+  appendTerminalLine('> ' + msg, 'tx');
   const encoded = new TextEncoder().encode(msg + '\n');
   await writer.write(encoded);
 }
@@ -1020,6 +1196,147 @@ async function sendLine(msg) {
 async function sendJSON(obj) {
   await sendLine(JSON.stringify(obj));
 }
+
+function appendTerminalLine(text, type = 'info') {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  const line = document.createElement('div');
+  line.className = 'terminal-line ' + type;
+  line.textContent = (terminalShowTimestamps ? `[${new Date().toLocaleTimeString()}] ` : '') + text;
+  output.appendChild(line);
+  if (terminalAutoScroll) output.scrollTop = output.scrollHeight;
+}
+
+function setTerminalEnabled(enabled) {
+  document.getElementById('terminal-input').disabled = !enabled;
+  document.getElementById('terminal-send').disabled = !enabled;
+  document.getElementById('terminal-autoscroll').disabled = !enabled;
+  document.getElementById('terminal-timestamps').disabled = !enabled;
+}
+
+function initTerminal() {
+  const input = document.getElementById('terminal-input');
+  const send = document.getElementById('terminal-send');
+  const clear = document.getElementById('terminal-clear');
+  const autoScroll = document.getElementById('terminal-autoscroll');
+  const timestamps = document.getElementById('terminal-timestamps');
+
+  input.addEventListener('keydown', async ev => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    send.click();
+  });
+
+  send.addEventListener('click', async () => {
+    const value = input.value.trim();
+    if (!value || !writer) return;
+    await sendLine(value);
+    input.value = '';
+  });
+
+  clear.addEventListener('click', () => {
+    const output = document.getElementById('terminal-output');
+    if (output) output.textContent = '';
+  });
+
+  autoScroll.addEventListener('click', () => {
+    terminalAutoScroll = !terminalAutoScroll;
+    localStorage.setItem('bcTerminalAutoScroll', terminalAutoScroll ? '1' : '0');
+    updateTerminalToggleUI();
+  });
+
+  timestamps.addEventListener('click', () => {
+    terminalShowTimestamps = !terminalShowTimestamps;
+    localStorage.setItem('bcTerminalTimestamps', terminalShowTimestamps ? '1' : '0');
+    updateTerminalToggleUI();
+  });
+
+  function updateTerminalToggleUI() {
+    autoScroll.classList.toggle('active', terminalAutoScroll);
+    timestamps.classList.toggle('active', terminalShowTimestamps);
+  }
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const terminalCollapse = document.getElementById('terminal-collapse');
+  const sidebarHandle = document.getElementById('sidebar-handle');
+  const terminalHandle = document.getElementById('terminal-handle');
+  const sidebarPanel = document.getElementById('sidebar-panel');
+  const terminalPanel = document.getElementById('terminal-panel');
+
+  let sidebarDrag = null;
+  let terminalDrag = null;
+
+  function stopDrag() {
+    if (sidebarDrag || terminalDrag) {
+      sidebarDrag = null;
+      terminalDrag = null;
+      document.body.style.cursor = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopDrag);
+    }
+  }
+
+  function onPointerMove(ev) {
+    if (sidebarDrag) {
+      const deltaX = ev.clientX - sidebarDrag.startX;
+      const newWidth = Math.max(180, Math.min(520, sidebarDrag.startWidth + deltaX));
+      sidebarPanel.style.width = newWidth + 'px';
+      if (sidebarPanel.classList.contains('collapsed')) {
+        sidebarPanel.classList.remove('collapsed');
+        sidebarToggle.textContent = '▾';
+      }
+    }
+    if (terminalDrag) {
+      const deltaY = terminalDrag.startY - ev.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight * 0.7, terminalDrag.startHeight + deltaY));
+      terminalPanel.style.height = newHeight + 'px';
+      terminalPanel.classList.remove('collapsed');
+      terminalCollapse.textContent = '▾';
+      document.body.classList.remove('terminal-collapsed');
+    }
+  }
+
+  if (sidebarHandle) {
+    sidebarHandle.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      sidebarDrag = { startX: ev.clientX, startWidth: sidebarPanel.offsetWidth };
+      document.body.style.cursor = 'ew-resize';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', stopDrag);
+    });
+  }
+
+  if (terminalHandle) {
+    terminalHandle.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      terminalDrag = { startY: ev.clientY, startHeight: terminalPanel.offsetHeight };
+      document.body.style.cursor = 'ns-resize';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', stopDrag);
+    });
+  }
+
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      const panel = sidebarPanel;
+      panel.classList.toggle('collapsed');
+      sidebarToggle.textContent = panel.classList.contains('collapsed') ? '▸' : '▾';
+    });
+  }
+  if (terminalCollapse) {
+    terminalCollapse.addEventListener('click', () => {
+      const panel = terminalPanel;
+      const collapsed = panel.classList.toggle('collapsed');
+      terminalCollapse.textContent = collapsed ? '▴' : '▾';
+      document.body.classList.toggle('terminal-collapsed', collapsed);
+    });
+  }
+
+  updateTerminalToggleUI();
+  setTerminalEnabled(false);
+}
+
+initTerminal();
 
 // ── Read loop ──────────────────────────────────────────────────────────────
 // Survives transient UART framing/parity errors caused by the ESP32's reset
@@ -1065,7 +1382,32 @@ async function startReading() {
 
 function handleBoardMessage(line) {
   let msg;
-  try { msg = JSON.parse(line); } catch(e) { console.log('Board>', line); return; }
+  try { msg = JSON.parse(line); } catch(e) {
+    appendTerminalLine('< ' + line, 'rx');
+    console.log('Board>', line);
+    return;
+  }
+
+  if (msg.type === 'PWM_UPDATE') {
+    // Filter noisy live monitor updates from the terminal view.
+    try {
+      if (msg.sbus) updateSbusStatus(msg.sbus);
+      const matrixVal = (msg.matrixVal !== undefined) ? msg.matrixVal : msg.ch6;
+      const modeVal   = (msg.modeVal   !== undefined) ? msg.modeVal   : msg.ch16;
+      if (msg.matrixCh) _liveMatrixCh = msg.matrixCh;
+      if (msg.modeCh)   _liveModeCh   = msg.modeCh;
+      if (calibrationState) {
+        calibrationState.lastMsg = msg;
+        updateCalibrationLive(msg);
+      }
+      updatePWMDisplay(matrixVal, modeVal, msg.btn, msg.mode);
+    } catch (e) {
+      console.error('PWM_UPDATE handler threw:', e, msg);
+    }
+    return;
+  }
+
+  appendTerminalLine('< ' + line, 'rx');
   if (msg.type !== 'PWM_UPDATE') console.log('Board RX:', msg.type, msg);
 
   if (msg.type === 'PONG') {
@@ -1193,6 +1535,263 @@ function updateSbusStatus(s) {
   detail.textContent   = `${variant}${s.fps} fps · ${s.frames} frames · age ${s.ageMs} ms`;
 }
 
+function buildCalibrationSteps() {
+  const buttonSteps = Array.from({ length: 18 }, (_, i) => ({
+    type: 'button',
+    btn: i + 1,
+    label: btnLabels[i + 1]
+  }));
+
+  // One step per switch — just live verification (firmware thresholds are fixed)
+  const switchSteps = ['SA','SB','SC','SD','SE','SF','SG','SH'].map(swName => ({
+    type: 'switch', swName, label: swName
+  }));
+
+  // One step per knob — verify the knob channel responds
+  const knobSteps = ['S1','S2'].map(knobName => ({
+    type: 'knob', knobName, label: knobName
+  }));
+
+  return [...buttonSteps, ...switchSteps, ...knobSteps];
+}
+
+function openCalibrationModal() {
+  if (!port) {
+    alert('Connect to the board first.');
+    return;
+  }
+  const autoAdvance = localStorage.getItem('bcCalibAutoAdvance') !== '0';  // default on
+  document.getElementById('calib-auto-advance').checked = autoAdvance;
+  calibrationState = {
+    steps: buildCalibrationSteps(),
+    index: 0,
+    lastMsg: null,
+    captured: 0,
+    stepCaptured: false,      // true once auto-capture has fired for the current step
+    autoAdvance,              // whether to advance automatically after capture
+    autoAdvanceTimer: null    // setTimeout handle so we can cancel on Prev / manual Next
+  };
+  document.getElementById('calibration-modal').classList.add('open');
+  const nextBtn = document.getElementById('btn-calibration-next');
+  nextBtn.textContent = 'Next →';
+  nextBtn.onclick = calibrationNextStep;
+  document.getElementById('btn-calibration-capture').disabled = false;
+
+  // Clone the main transmitter SVG into the calibration panel (non-interactive)
+  const mainSvg = document.querySelector('.tx-wrap svg');
+  const svgWrap = document.getElementById('calib-svg-wrap');
+  svgWrap.innerHTML = '';
+  if (mainSvg) {
+    const clone = mainSvg.cloneNode(true);
+    // Strip all onclick handlers — clicks on the clone should do nothing
+    clone.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+    svgWrap.appendChild(clone);
+  }
+
+  renderCalibrationStep();
+  if (!isMonitoring) document.getElementById('btn-mon-start').click();
+}
+
+function closeCalibrationModal() {
+  if (calibrationState && calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+  }
+  calibrationState = null;
+  document.getElementById('calibration-modal').classList.remove('open');
+  clearCalibrationHighlights();
+}
+
+function setCalibrationStatus(text, warning = false) {
+  const summary = document.getElementById('calibration-summary');
+  if (!summary) return;
+  summary.textContent = text;
+  summary.style.color = warning ? 'var(--red)' : 'var(--muted)';
+}
+
+function renderCalibrationStep() {
+  if (!calibrationState) return;
+  calibrationState.stepCaptured = false;
+  const step = calibrationState.steps[calibrationState.index];
+  let instruction = '';
+  if (step.type === 'button') {
+    instruction = `Press ${step.label} on the transmitter and hold until captured.`;
+  } else if (step.type === 'switch') {
+    const sw = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
+    const ch  = sw.channel || switchDefaults[step.swName].channel;
+    instruction = `Toggle ${step.label} (ch${ch}) through all positions — verify the position name updates below, then click Next.`;
+  } else if (step.type === 'knob') {
+    const kn = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
+    const ch = kn.channel || knobDefaults[step.knobName].channel;
+    instruction = `Rotate ${step.label} (ch${ch}) from min to max — verify the value changes below, then click Next.`;
+  }
+  document.getElementById('calibration-instruction').textContent = instruction;
+  document.getElementById('calibration-live-value').textContent = 'Waiting for live SBUS data...';
+  setCalibrationStatus('');
+  // Force Capture is only meaningful for button steps
+  document.getElementById('btn-calibration-capture').style.display =
+    step.type === 'button' ? '' : 'none';
+  // Previous: disabled on step 0
+  const prevBtn = document.getElementById('btn-calibration-prev');
+  if (prevBtn) prevBtn.disabled = calibrationState.index === 0;
+  highlightCalibrationTarget(step);
+}
+
+function updateCalibrationLive(msg) {
+  if (!calibrationState) return;
+  const step = calibrationState.steps[calibrationState.index];
+  let liveText = '';
+
+  if (step.type === 'button') {
+    liveText = `Detected: ${msg.btn ? btnLabels[msg.btn] : 'none'} — raw ${fmtVal(msg.matrixVal)}`;
+  } else if (step.type === 'switch') {
+    const sw      = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
+    const channel = sw.channel || switchDefaults[step.swName].channel;
+    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
+    if (Number.isFinite(value)) {
+      const pos = value < 400 ? 'Down ▼' : value > 1500 ? 'Up ▲' : 'Mid ●';
+      liveText = `${step.swName}  ch${channel}: ${fmtVal(value)}  →  Position: ${pos}`;
+    } else {
+      liveText = `${step.swName} ch${channel}: awaiting SBUS data`;
+    }
+  } else if (step.type === 'knob') {
+    const kn      = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
+    const channel = kn.channel || knobDefaults[step.knobName].channel;
+    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
+    if (Number.isFinite(value)) {
+      const pct = Math.max(0, Math.min(100, Math.round((value - 172) / (1811 - 172) * 100)));
+      liveText = `${step.knobName}  ch${channel}: ${fmtVal(value)}  (${pct}%)`;
+    } else {
+      liveText = `${step.knobName} ch${channel}: awaiting SBUS data`;
+    }
+  }
+  document.getElementById('calibration-live-value').textContent = liveText;
+
+  // ── Auto-capture — buttons only ───────────────────────────────────────────
+  if (step.type !== 'button' || calibrationState.stepCaptured) return;
+  const value = msg.matrixVal;
+  if (Number.isFinite(value) && (value < 962 || value > 1022)) {
+    calibrationState.stepCaptured = true;
+    captureCalibrationValue();
+  }
+}
+
+function highlightCalibrationTarget(step) {
+  clearCalibrationHighlights();
+  // Scope to the cloned SVG inside the calibration modal
+  const scope = document.querySelector('#calib-svg-wrap svg') || document;
+  let target = null;
+  if (step.type === 'button') {
+    target = scope.querySelector(`.btn-zone[data-btn="${step.btn}"]`);
+  } else if (step.type === 'switch') {
+    target = scope.querySelector(`.switch-zone[data-sw="${step.swName}"]`);
+  } else if (step.type === 'knob') {
+    target = scope.querySelector(`.knob-zone[data-knob="${step.knobName}"]`);
+  }
+  if (target) target.classList.add('calibration-highlight');
+  // Also update step counter in the modal header
+  if (calibrationState) {
+    const counter = document.getElementById('calib-step-counter');
+    if (counter) counter.textContent = `Step ${calibrationState.index + 1} of ${calibrationState.steps.length}`;
+  }
+}
+
+function clearCalibrationHighlights() {
+  const scope = document.querySelector('#calib-svg-wrap svg') || document;
+  scope.querySelectorAll('.calibration-highlight').forEach(el => el.classList.remove('calibration-highlight'));
+}
+
+function captureCalibrationValue() {
+  if (!calibrationState) return;
+  const step = calibrationState.steps[calibrationState.index];
+  const msg = calibrationState.lastMsg;
+  if (!msg) {
+    setCalibrationStatus('No live SBUS message yet. Move a control to capture.', true);
+    return;
+  }
+
+  if (step.type === 'button') {
+    const value = msg.matrixVal;
+    if (!Number.isFinite(value)) {
+      setCalibrationStatus('Matrix value unavailable. Try again.', true);
+      return;
+    }
+    // Reject neutral — the button must actually be pressed
+    if (value >= 962 && value <= 1022) {
+      setCalibrationStatus(`No button pressed (matrix at ${fmtVal(value)}). Press ${step.label} and hold while clicking Capture.`, true);
+      return;
+    }
+    // Note if firmware decoded a different button (means existing thresholds are off).
+    // We still capture the raw value — that's the whole point of calibration.
+    const detectedLabel = msg.btn ? btnLabels[msg.btn] : 'none';
+    const mismatch = msg.btn && msg.btn !== step.btn;
+    const current = config.thresholds[step.btn - 1] || { label: step.label, minPwm: 0, maxPwm: 0 };
+    config.thresholds[step.btn - 1] = {
+      ...current,
+      label: step.label,
+      minPwm: value - 10,
+      maxPwm: value + 10
+    };
+    renderThresholds();
+    updatePWMTooltips();
+    calibrationState.captured += 1;
+    const note = mismatch ? ` (FW saw ${detectedLabel} — corrected)` : '';
+    const advNote = calibrationState.autoAdvance ? ' Auto-advancing…' : ' Click Next → to continue.';
+    setCalibrationStatus(`${step.label} captured at ${fmtVal(value)}.${advNote}${note}`, false);
+    if (calibrationState.autoAdvance) {
+      calibrationState.autoAdvanceTimer = setTimeout(() => {
+        if (calibrationState) calibrationNextStep();
+      }, 900);
+    }
+  }
+  // switch/knob steps are verification-only — Force Capture is hidden for them
+}
+
+function calibrationNextStep() {
+  if (!calibrationState) return;
+  // Cancel any pending auto-advance timer (user clicked manually)
+  if (calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+    calibrationState.autoAdvanceTimer = null;
+  }
+  // Guard: if already past the end (e.g. double-click), do nothing
+  if (calibrationState.index >= calibrationState.steps.length) return;
+  calibrationState.index += 1;
+  if (calibrationState.index >= calibrationState.steps.length) {
+    setCalibrationStatus(`Calibration complete! ${calibrationState.captured} values captured.`);
+    document.getElementById('btn-calibration-capture').disabled = true;
+    const nextBtn = document.getElementById('btn-calibration-next');
+    nextBtn.textContent = 'Save & Close';
+    nextBtn.onclick = finishCalibration;
+    document.getElementById('calibration-instruction').textContent =
+      'All done! Click "Save & Close" to push the updated thresholds to the board.';
+    clearCalibrationHighlights();
+    return;
+  }
+  renderCalibrationStep();
+}
+
+function calibrationPrevStep() {
+  if (!calibrationState) return;
+  if (calibrationState.index <= 0) return;
+  // Cancel any pending auto-advance timer
+  if (calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+    calibrationState.autoAdvanceTimer = null;
+  }
+  calibrationState.index -= 1;
+  // Re-enable capture so the previous step can be re-captured
+  document.getElementById('btn-calibration-capture').disabled = false;
+  renderCalibrationStep();
+}
+
+function finishCalibration() {
+  closeCalibrationModal();
+  if (port) {
+    config.tapWindowMs = +(document.getElementById('tapwin-input').value) || 500;
+    sendJSON({ type: 'SET_CONFIG', data: config });
+  }
+}
+
 // Cache the most recent values so we can re-render when the unit toggle flips
 let _liveCh6 = 0, _liveCh16 = 0, _liveBtn = 0, _liveMode = 1;
 // Dynamic channel numbers reported by firmware (so labels follow the config)
@@ -1264,13 +1863,12 @@ function renderThresholds() {
     const row = document.createElement('tr');
     // Inputs show values in the currently-selected unit; parseVal converts
     // back to SBUS on save so storage stays in raw SBUS.
+    const center = Math.round((t.minPwm + t.maxPwm) / 2);
     row.innerHTML = `
       <td>${t.id}</td>
       <td><input type="text" value="${escH(t.label)}" style="width:90px" onchange="config.thresholds[${i}].label=this.value"></td>
-      <td><input type="number" value="${fmtVal(t.minPwm)}" style="width:65px" title="${altLbl(t.minPwm)}"
-                 onchange="config.thresholds[${i}].minPwm = parseVal(this.value); renderThresholds(); updatePWMTooltips();"></td>
-      <td><input type="number" value="${fmtVal(t.maxPwm)}" style="width:65px" title="${altLbl(t.maxPwm)}"
-                 onchange="config.thresholds[${i}].maxPwm = parseVal(this.value); renderThresholds(); updatePWMTooltips();"></td>`;
+      <td><input type="number" value="${fmtVal(center)}" style="width:65px" title="min ${fmtVal(t.minPwm)} / max ${fmtVal(t.maxPwm)}"
+                 onchange="(function(v){ config.thresholds[${i}].minPwm=v-10; config.thresholds[${i}].maxPwm=v+10; renderThresholds(); updatePWMTooltips(); })(parseVal(this.value))"></td>`;
     tbody.appendChild(row);
   });
 }
@@ -1985,6 +2583,11 @@ document.getElementById('btn-defaults').addEventListener('click', async () => {
   await sendJSON({ type: 'GET_CONFIG' });
 });
 
+document.getElementById('btn-export-anim').addEventListener('click', exportConfigCsv);
+document.getElementById('btn-import-anim').addEventListener('click', () => document.getElementById('anim-import-file').click());
+document.getElementById('btn-calibrate').addEventListener('click', openCalibrationModal);
+document.getElementById('anim-import-file').addEventListener('change', handleConfigImportFile);
+
 document.getElementById('btn-mon-start').addEventListener('click', async () => {
   await sendJSON({ type: 'START_MONITOR' });
   isMonitoring = true;
@@ -2002,6 +2605,380 @@ document.getElementById('btn-mon-stop').addEventListener('click', async () => {
 async function stopMonitor() {
   await sendJSON({ type: 'STOP_MONITOR' }).catch(() => {});
   isMonitoring = false;
+}
+
+function exportConfigCsv() {
+  const header = [
+    'type','control','buttonId','channel','positions','mode','tier','position',
+    'actionType','fn','target','chan','track','port','cmd','delay','note','pwmValue','exclusive','value'
+  ];
+  const rows = [csvRow(header)];
+
+  rows.push(csvRow(['config','matrixChannel','','' + (config.matrixChannel || ''),'','','','','','','','','','','','','','']));
+  rows.push(csvRow(['config','tapWindowMs','','' + (config.tapWindowMs || ''),'','','','','','','','','','','','','','']));
+  if (config.funcBindings && config.funcBindings.mode !== undefined) {
+    rows.push(csvRow(['config','funcBinding_mode','','' + config.funcBindings.mode,'','','','','','','','','','','','','','']));
+    const swKeys = ['SA','SB','SC','SD','SE','SF','SG','SH'];
+    const modeSwIdx = config.funcBindings.mode;
+    if (typeof modeSwIdx === 'number' && config.switches) {
+      const swName = swKeys[modeSwIdx];
+      const sw = config.switches[swName];
+      if (sw) {
+        rows.push(csvRow([
+          'config', swName, '', sw.channel !== undefined ? sw.channel : '', '', '', '', '', 'modeSelectorSwitch', '', '', '', '', '', '', '', '', String(modeSwIdx), '']));
+      }
+    }
+  }
+
+  const thresholds = config.thresholds || defaultThresholds();
+  for (let mode = 1; mode <= 3; mode++) {
+    for (let btn = 1; btn <= 18; btn++) {
+      const key = String(mode * 100 + btn);
+      const mapping = config.mappings[key] || {};
+      const threshold = thresholds[btn - 1] || {};
+      const pwmValue = (threshold.minPwm !== undefined && threshold.maxPwm !== undefined)
+        ? Math.round((threshold.minPwm + threshold.maxPwm) / 2) : '';
+      const isExclusive = mapping.exclusive ? '1' : '';
+      for (let tier = 1; tier <= 3; tier++) {
+        const actions = mapping['t' + tier] || [];
+        if (!actions.length) {
+          rows.push(csvRow(['button', btnLabels[btn], btn, config.matrixChannel || '', '', mode, tier, '', '', '', '', '', '', '', '', '', '', pwmValue, isExclusive, '']));
+        } else {
+          actions.forEach(a => {
+            rows.push(csvRow([
+              'button', btnLabels[btn], btn, config.matrixChannel || '', '', mode, tier, '',
+              a.type || '', a.fn !== undefined ? a.fn : '', a.target || '', a.chan !== undefined ? a.chan : '',
+              a.track !== undefined ? a.track : '', a.port || '', a.cmd || '', a.delay !== undefined ? a.delay : '',
+              a.note || '', pwmValue, isExclusive, a.value !== undefined ? a.value : ''
+            ]));
+          });
+        }
+      }
+    }
+  }
+
+  const switchNames = Object.keys(switchDefaults);
+  for (const swName of switchNames) {
+    const defaults = switchDefaults[swName];
+    const sw = (config.switches && config.switches[swName]) || {};
+    const positions = sw.positions || defaults.positions || 3;
+    rows.push(csvRow(['switch-hw', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', '', '', '', '', '', '', '', '', '', '', '', '']));
+    const posMap = positions === 2
+      ? [{ idx: 0, label: 'DOWN' }, { idx: 2, label: 'UP' }]
+      : [{ idx: 0, label: 'DOWN' }, { idx: 1, label: 'MID' }, { idx: 2, label: 'UP' }];
+    for (const pos of posMap) {
+      const actions = sw['p' + pos.idx] || [];
+      if (!actions.length) {
+        rows.push(csvRow(['switch', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', pos.label, '', '', '', '', '', '', '', '', '', '', '']));
+      } else {
+        actions.forEach(a => {
+          rows.push(csvRow([
+            'switch', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', pos.label,
+            a.type || '', a.fn !== undefined ? a.fn : '', a.target || '', a.chan !== undefined ? a.chan : '',
+            a.track !== undefined ? a.track : '', a.port || '', a.cmd || '', a.delay !== undefined ? a.delay : '',
+            a.note || '', '', a.value !== undefined ? a.value : ''
+          ]));
+        });
+      }
+    }
+  }
+
+  const knobNames = Object.keys(knobDefaults);
+  for (const knobName of knobNames) {
+    const def = knobDefaults[knobName] || { channel: 0, function: 0 };
+    const kn = (config.knobs && config.knobs[knobName]) || {};
+    rows.push(csvRow(['knob', knobName, '', kn.channel !== undefined ? kn.channel : def.channel || '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', kn.function !== undefined ? kn.function : '']));
+  }
+
+  const dtg = formatDTG(new Date());
+  downloadCsv(rows.join('\r\n'), `BC_config_${dtg}.csv`);
+}
+
+function handleConfigImportFile(event) {
+  const input = event.target;
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = reader.result;
+      const rows = parseCsv(text);
+      if (!rows.length) throw new Error('Empty CSV file.');
+      const header = rows[0].map(h => String(h || '').trim().toLowerCase());
+      const indexes = {
+        type: header.indexOf('type'),
+        control: header.indexOf('control'),
+        buttonId: header.indexOf('buttonid'),
+        channel: header.indexOf('channel'),
+        positions: header.indexOf('positions'),
+        mode: header.indexOf('mode'),
+        tier: header.indexOf('tier'),
+        position: header.indexOf('position'),
+        actionType: header.indexOf('actiontype'),
+        fn: header.indexOf('fn'),
+        target: header.indexOf('target'),
+        chan: header.indexOf('chan'),
+        track: header.indexOf('track'),
+        port: header.indexOf('port'),
+        cmd: header.indexOf('cmd'),
+        delay: header.indexOf('delay'),
+        note: header.indexOf('note'),
+        pwmValue: header.indexOf('pwmvalue'),
+        pwmMin: header.indexOf('pwmmin'),
+        pwmMax: header.indexOf('pwmmax'),
+        exclusive: header.indexOf('exclusive'),
+        value: header.indexOf('value'),
+      };
+      if (indexes.type < 0 || indexes.control < 0) {
+        throw new Error('CSV must contain at least type and control columns.');
+      }
+
+      const imported = {
+        ...config,
+        mappings: {},
+        thresholds: config.thresholds ? config.thresholds.map(t => ({ ...t })) : defaultThresholds(),
+      };
+      const newSwitches = {};
+      const newKnobs = {};
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row.some(cell => cell !== undefined && String(cell).trim() !== '')) continue;
+        const type = String(row[indexes.type] || '').trim().toLowerCase();
+        const control = String(row[indexes.control] || '').trim();
+        const buttonId = indexes.buttonId >= 0 ? Number(String(row[indexes.buttonId] || '').trim()) : NaN;
+        const channel = indexes.channel >= 0 ? Number(String(row[indexes.channel] || '').trim()) : NaN;
+        const positions = indexes.positions >= 0 ? Number(String(row[indexes.positions] || '').trim()) : NaN;
+        const mode = indexes.mode >= 0 ? Number(String(row[indexes.mode] || '').trim()) : NaN;
+        const tier = indexes.tier >= 0 ? Number(String(row[indexes.tier] || '').trim()) : NaN;
+        const positionLabel = String(row[indexes.position] || '').trim().toUpperCase();
+        const actionType = String(row[indexes.actionType] || '').trim();
+        const fn = indexes.fn >= 0 ? String(row[indexes.fn] || '').trim() : '';
+        const target = String(row[indexes.target] || '').trim();
+        const chan = indexes.chan >= 0 ? String(row[indexes.chan] || '').trim() : '';
+        const track = indexes.track >= 0 ? String(row[indexes.track] || '').trim() : '';
+        const port = String(row[indexes.port] || '').trim();
+        const cmd = String(row[indexes.cmd] || '').trim();
+        const delay = String(row[indexes.delay] || '').trim();
+        const note = String(row[indexes.note] || '').trim();
+        const exclusive = String(row[indexes.exclusive] || '').trim();
+        const value = String(row[indexes.value] || '').trim();
+
+        if (type === 'config') {
+          if (control === 'matrixchannel') {
+            imported.matrixChannel = Number(value || channel || imported.matrixChannel);
+          } else if (control === 'tapwindowms') {
+            imported.tapWindowMs = Number(value || channel || imported.tapWindowMs);
+          } else if (control === 'funcbinding_mode') {
+            imported.funcBindings = imported.funcBindings || {};
+            imported.funcBindings.mode = Number(value || channel || imported.funcBindings.mode || 0);
+          } else if (actionType === 'modeSelectorSwitch') {
+            imported.funcBindings = imported.funcBindings || {};
+            const swKeys = ['SA','SB','SC','SD','SE','SF','SG','SH'];
+            if (control && swKeys.includes(control)) {
+              imported.funcBindings.mode = swKeys.indexOf(control);
+            } else if (value !== '') {
+              imported.funcBindings.mode = Number(value);
+            }
+            if (control && Number.isFinite(channel)) {
+              newSwitches[control] = newSwitches[control] || {};
+              newSwitches[control].channel = Number(channel);
+            }
+          }
+          continue;
+        }
+
+        if (type === 'button') {
+          if (!Number.isFinite(buttonId) || buttonId < 1 || buttonId > 18) continue;
+          if (!Number.isFinite(mode) || mode < 1 || mode > 3) continue;
+          if (!Number.isFinite(tier) || tier < 1 || tier > 3) continue;
+          // New format: single pwmValue (center); old format: pwmMin + pwmMax
+          let center = null;
+          if (indexes.pwmValue >= 0) {
+            const v = Number(String(row[indexes.pwmValue] || '').trim());
+            if (Number.isFinite(v) && v > 0) center = v;
+          }
+          if (center === null && indexes.pwmMin >= 0 && indexes.pwmMax >= 0) {
+            const mn = Number(String(row[indexes.pwmMin] || '').trim());
+            const mx = Number(String(row[indexes.pwmMax] || '').trim());
+            if (Number.isFinite(mn) && Number.isFinite(mx)) center = Math.round((mn + mx) / 2);
+          }
+          if (center !== null) {
+            imported.thresholds[buttonId - 1] = {
+              id: buttonId,
+              label: btnLabels[buttonId],
+              minPwm: center - 10,
+              maxPwm: center + 10,
+            };
+          }
+          if (!actionType) {
+            if (!imported.mappings[String(mode * 100 + buttonId)]) {
+              continue;
+            }
+            if (exclusive === '1') {
+              imported.mappings[String(mode * 100 + buttonId)] = imported.mappings[String(mode * 100 + buttonId)] || {};
+              imported.mappings[String(mode * 100 + buttonId)].exclusive = true;
+            }
+            continue;
+          }
+          const key = String(mode * 100 + buttonId);
+          imported.mappings[key] = imported.mappings[key] || {};
+          if (exclusive === '1') imported.mappings[key].exclusive = true;
+          const tierKey = 't' + tier;
+          imported.mappings[key][tierKey] = imported.mappings[key][tierKey] || [];
+          const action = { type: actionType };
+          if (fn !== '') action.fn = Number(fn);
+          if (target) action.target = target;
+          if (chan !== '') action.chan = Number(chan);
+          if (track !== '') action.track = Number(track);
+          if (port) action.port = port;
+          if (cmd) action.cmd = cmd;
+          if (delay !== '') action.delay = Number(delay);
+          if (note) action.note = note;
+          if (value !== '') action.value = value;
+          imported.mappings[key][tierKey].push(action);
+          continue;
+        }
+
+        if (type === 'switch-hw' || type === 'switch') {
+          const swName = control;
+          if (!swName) continue;
+          const sw = newSwitches[swName] || {};
+          if (Number.isFinite(channel)) sw.channel = Number(channel);
+          if (Number.isFinite(positions)) sw.positions = Number(positions);
+          if (type === 'switch') {
+            const posIdx = positionNameToIndex(positionLabel);
+            if (posIdx === null || !actionType) {
+              newSwitches[swName] = sw;
+              continue;
+            }
+            const tierKey = 'p' + posIdx;
+            sw[tierKey] = sw[tierKey] || [];
+            const action = { type: actionType };
+            if (fn !== '') action.fn = Number(fn);
+            if (target) action.target = target;
+            if (chan !== '') action.chan = Number(chan);
+            if (track !== '') action.track = Number(track);
+            if (port) action.port = port;
+            if (cmd) action.cmd = cmd;
+            if (delay !== '') action.delay = Number(delay);
+            if (note) action.note = note;
+            if (value !== '') action.value = value;
+            sw[tierKey].push(action);
+          }
+          newSwitches[swName] = sw;
+          continue;
+        }
+
+        if (type === 'knob') {
+          const knobName = control;
+          if (!knobName) continue;
+          const kn = newKnobs[knobName] || {};
+          if (Number.isFinite(channel)) kn.channel = Number(channel);
+          if (value !== '') kn.function = Number(value);
+          newKnobs[knobName] = kn;
+          continue;
+        }
+      }
+
+      config = imported;
+      if (Object.keys(newSwitches).length) config.switches = newSwitches;
+      if (Object.keys(newKnobs).length) config.knobs = newKnobs;
+
+      alert('Config CSV imported successfully.');
+      renderAssignmentList();
+      updateButtonHighlights();
+      renderSwitchHighlights();
+      renderKnobHighlights();
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function positionNameToIndex(name) {
+  if (name === 'DOWN') return 0;
+  if (name === 'MID') return 1;
+  if (name === 'UP') return 2;
+  return null;
+}
+
+function csvRow(fields) {
+  return fields.map(f => escapeCsv(f === undefined || f === null ? '' : String(f))).join(',');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(field);
+        field = '';
+      } else if (ch === '\r') {
+        continue;
+      } else if (ch === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += ch;
+      }
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function escapeCsv(value) {
+  const text = String(value || '');
+  if (/[,"\r\n]/.test(text)) {
+    return '"' + text.replace(/"/g, '""') + '"';
+  }
+  return text;
+}
+
+function formatDTG(date) {
+  const p = n => String(n).padStart(2, '0');
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const tzMap = {
+    12:'M', 11:'L', 10:'K', 9:'I', 8:'H', 7:'G', 6:'F', 5:'E', 4:'D', 3:'C', 2:'B', 1:'A', 0:'Z',
+    '-1':'N', '-2':'O', '-3':'P', '-4':'Q', '-5':'R', '-6':'S', '-7':'T', '-8':'U', '-9':'V', '-10':'W', '-11':'X', '-12':'Y'
+  };
+  const offsetHours = -(date.getTimezoneOffset() / 60);
+  const tz = tzMap[String(offsetHours)] || 'J';
+  return `${p(date.getDate())}${p(date.getHours())}${p(date.getMinutes())}${tz}${months[date.getMonth()]}${date.getFullYear()}`;
+}
+
+function downloadCsv(text, filename) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
