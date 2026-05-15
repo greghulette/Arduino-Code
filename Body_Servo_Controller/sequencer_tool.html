@@ -85,7 +85,10 @@
   #analysisBar.visible ~ .app { height: calc(100vh - 44px - var(--analysisH, 0px)); }
 
   /* ── Sidebar ── */
-  .sidebar { width: 210px; min-width: 210px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .sidebar { width: 210px; min-width: 140px; max-width: 50vw; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; position: relative; }
+  /* Drag-handle on the right edge of the sidebar — resizes width */
+  .sidebar-resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: ew-resize; z-index: 30; background: transparent; }
+  .sidebar-resize:hover, .sidebar-resize.dragging { background: var(--accent2); opacity: .35; }
   .sb-sect { padding: 10px 12px; border-bottom: 1px solid var(--border); }
   .sb-sect h3 { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; margin-bottom: 8px; }
   .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
@@ -156,7 +159,12 @@
   .info-strip span b { color: var(--text); }
 
   /* Export panel */
-  .export-panel { background: #0d0f1c; border-top: 1px solid var(--border); height: 195px; min-height: 195px; display: flex; flex-direction: column; flex-shrink: 0; }
+  .export-panel { background: #0d0f1c; border-top: 1px solid var(--border); height: 260px; min-height: 60px; max-height: 80vh; display: flex; flex-direction: column; flex-shrink: 0; position: relative; }
+  /* Drag-handle on the top edge of the export panel — resizes height */
+  .export-resize { position: absolute; top: -3px; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 30; background: transparent; }
+  .export-resize:hover, .export-resize.dragging { background: var(--accent2); opacity: .35; }
+  .export-panel.collapsed { height: 32px !important; min-height: 32px !important; }
+  .export-panel.collapsed .export-body { display: none; }
   .export-hdr { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .export-hdr-title { font-size: 12px; font-weight: 700; flex: 1; }
   .export-tabs { display: flex; gap: 4px; }
@@ -193,6 +201,9 @@
     <input type="file" id="projectFile" accept=".json" style="display:none" onchange="loadProject(this)">
     <span class="btn btn-ghost btn-sm">Load</span>
   </label>
+  <div class="sep"></div>
+  <!-- Deploy status — shows whether the project folder has been picked. -->
+  <span id="deployStatus" class="lbl" style="font-size:11px;color:var(--muted)" title="Click 'Apply to Controllers' to set up the project folder.">📁 No project folder</span>
 </div>
 
 <!-- Analysis bar -->
@@ -203,7 +214,9 @@
 <!-- App -->
 <div class="app">
   <!-- Sidebar -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
+    <!-- Drag handle to resize sidebar width -->
+    <div class="sidebar-resize" id="sidebarResize" title="Drag to resize sidebar"></div>
 
     <div class="sb-sect">
       <h3>Board</h3>
@@ -278,8 +291,11 @@
     </div>
 
     <!-- Export panel -->
-    <div class="export-panel">
+    <div class="export-panel" id="exportPanel">
+      <!-- Drag handle to resize export panel height -->
+      <div class="export-resize" id="exportResize" title="Drag to resize generated-code panel"></div>
       <div class="export-hdr">
+        <button class="btn btn-ghost btn-sm" id="exportCollapseBtn" onclick="toggleExportPanel()" title="Show/hide generated code" style="padding:2px 7px;font-size:11px">▾</button>
         <span class="export-hdr-title">Generated Code</span>
         <div class="export-tabs">
           <div class="export-tab active" id="expTabBS"   onclick="setExportTab('BS')">BS</div>
@@ -287,7 +303,8 @@
           <div class="export-tab"        id="expTabBoth" onclick="setExportTab('Both')">Both</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="copyCode()">Copy</button>
-        <button class="btn btn-warn btn-sm"  onclick="modifyLibrary()" title="Open ServoSequencer.h and insert sequences directly">Modify ServoSequencer.h</button>
+        <button class="btn btn-warn btn-sm"  onclick="modifyLibrary()" title="Open ServoSequencer.h and insert sequences directly (legacy single-file path)">Modify ServoSequencer.h</button>
+        <button class="btn btn-green btn-sm" onclick="applyToControllers()" title="One-click: save project, update ServoSequencer.h, and inject wrappers + switch cases into both controller .ino files">🚀 Apply to Controllers</button>
       </div>
       <div class="export-body" id="exportBody"></div>
     </div>
@@ -296,6 +313,25 @@
 </div><!-- /app -->
 
 <div id="toast"></div>
+
+<!-- ──────────────────────────────────────────────────────────────────────
+     Deploy Status modal — surfaces the multi-step apply pipeline with a
+     persistent visible log so the user can see exactly where things stood
+     even when an early step silently fails.
+     ────────────────────────────────────────────────────────────────────── -->
+<div id="deployModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:640px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column">
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <span id="deployModalTitle" style="flex:1;font-weight:700;font-size:14px">Apply to Controllers</span>
+      <button class="btn btn-ghost btn-sm" onclick="deployModalClose()" style="padding:4px 10px">✕</button>
+    </div>
+    <div id="deployLog" style="flex:1;overflow-y:auto;padding:12px 18px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.55;color:var(--text)"></div>
+    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+      <button id="deployConfirmBtn" class="btn btn-green btn-sm" style="display:none" onclick="deployConfirm()">Write files</button>
+      <button id="deployCloseBtn" class="btn btn-ghost btn-sm" onclick="deployModalClose()">Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1329,6 +1365,758 @@ function autoGenerate(target) {
   const dcActive = grids.DC.filter(r => r && r.some(v => v)).length;
   toast(`Generated: BS ${bsActive}/${n} beats active, DC ${dcActive}/${n} beats active`);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTROLLER DEPLOYMENT
+//
+//  Picks a project-root directory once (cached in IndexedDB), then on every
+//  "🚀 Apply to Controllers" click does the full pipeline in one shot:
+//
+//    1. Save / overwrite sequences/<name>.json (full source-of-truth project)
+//    2. Update sequences/_manifest.json (function index ↔ sequence name registry)
+//    3. Patch libraries/Reeltwo/src/ServoSequencer.h with the SeqXxxBS+DC arrays
+//    4. Patch Body_Servo_Controller/Body_Servo_Controller.ino — inject the
+//       wrapper function inside the AUTO-INJECTED WRAPPERS marker region AND
+//       the switch case inside the AUTO-INJECTED CASES region.  First-run
+//       inserts both marker pairs at sensible anchors.
+//    5. Same for Dome_Controller/Dome_Controller.ino.
+//
+//  Function index allocation: the same sequence name keeps its index across
+//  re-saves (manifest tracks this).  New sequences are assigned the lowest
+//  free index ≥ AUTO_INDEX_START (100 — leaves the 0-99 range for hand-written
+//  cases like openAllDoors/closeAllDoors/stayingAlive).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DEPLOY = {
+  rootHandle: null,
+  IDB_DB:  'sequencer_tool',
+  IDB_STORE: 'handles',
+  IDB_KEY: 'projectRoot',
+
+  // Visible marker pairs the auto-injector splices between. Stable text — do
+  // not edit (the parser searches for these exact strings).
+  MARK: {
+    wrapStart: '// ==== SEQUENCER_TOOL: AUTO-INJECTED WRAPPERS START ====',
+    wrapEnd:   '// ==== SEQUENCER_TOOL: AUTO-INJECTED WRAPPERS END ====',
+    caseStart: '// ==== SEQUENCER_TOOL: AUTO-INJECTED CASES START ====',
+    caseEnd:   '// ==== SEQUENCER_TOOL: AUTO-INJECTED CASES END ====',
+  },
+
+  // Per-board injection target. relPath is relative to the project root.
+  // espnowPeer is the symbolic name the wrapper sends to over ESP-NOW for
+  // the cross-board cases.
+  CONTROLLERS: {
+    BS: { folder: 'Body_Servo_Controller', file: 'Body_Servo_Controller.ino', defaultMask: 'ALL_SERVOS_MASK', espnowPeer: 'DC', cmdPrefix: ':D2' },
+    DC: { folder: 'Dome_Controller',       file: 'Dome_Controller.ino',       defaultMask: 'ALL_SERVOS_MASK', espnowPeer: 'BC', cmdPrefix: ':D1' },
+  },
+  LIBRARY_PATH:    ['libraries', 'Reeltwo', 'src', 'ServoSequencer.h'],
+  SEQUENCES_DIR:   'sequences',
+  MANIFEST_NAME:   '_manifest.json',
+  // Auto-injected function indices live in the 28-97 range.
+  // Why 2-digit only: the controller's command parser reads inputBuffer[3]-[4]
+  // as the function index (exactly 2 characters at fixed positions). Indices
+  // ≥100 would shift every subsequent byte and break the parser entirely.
+  // Range chosen so 1-27 stays free for hand-written wrappers (already in use)
+  // and 98-99 stays free for special hand-written cases (case 98 = quick-close
+  // already exists). That leaves 70 auto-injection slots.
+  AUTO_INDEX_START: 28,
+  AUTO_INDEX_MAX:   97,
+};
+
+// ─── IndexedDB tiny helpers (for persisting the directory handle) ─────────
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DEPLOY.IDB_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(DEPLOY.IDB_STORE);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DEPLOY.IDB_STORE, 'readonly').objectStore(DEPLOY.IDB_STORE).get(key);
+    tx.onsuccess = () => res(tx.result);
+    tx.onerror   = () => rej(tx.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DEPLOY.IDB_STORE, 'readwrite').objectStore(DEPLOY.IDB_STORE).put(val, key);
+    tx.oncomplete = res;
+    tx.onerror    = () => rej(tx.error);
+  });
+}
+
+// ─── Project root directory handle management ─────────────────────────────
+async function deployVerifyPermission(handle) {
+  const opts = { mode: 'readwrite' };
+  if ((await handle.queryPermission(opts)) === 'granted') return true;
+  if ((await handle.requestPermission(opts)) === 'granted') return true;
+  return false;
+}
+
+async function deployGetRoot(forcePick = false) {
+  if (!('showDirectoryPicker' in window)) {
+    throw new Error('File System Access API unavailable. Use Chrome/Edge 86+ over http(s) or file:// with a flag.');
+  }
+
+  if (!forcePick && !DEPLOY.rootHandle) {
+    try { DEPLOY.rootHandle = await idbGet(DEPLOY.IDB_KEY) || null; } catch {}
+  }
+  if (DEPLOY.rootHandle) {
+    if (await deployVerifyPermission(DEPLOY.rootHandle)) return DEPLOY.rootHandle;
+    DEPLOY.rootHandle = null;
+  }
+  // Prompt
+  DEPLOY.rootHandle = await window.showDirectoryPicker({
+    id: 'arduino-code-root',
+    mode: 'readwrite',
+    startIn: 'documents',
+  });
+  try { await idbSet(DEPLOY.IDB_KEY, DEPLOY.rootHandle); } catch {}
+  return DEPLOY.rootHandle;
+}
+
+async function deployUpdateStatus() {
+  const el = $('deployStatus');
+  if (!el) return;
+  try {
+    if (!DEPLOY.rootHandle) DEPLOY.rootHandle = await idbGet(DEPLOY.IDB_KEY) || null;
+  } catch {}
+  if (DEPLOY.rootHandle && DEPLOY.rootHandle.name) {
+    el.textContent = `📁 ${DEPLOY.rootHandle.name}`;
+    el.style.color = 'var(--green)';
+    el.title = 'Project folder set. Click "🚀 Apply to Controllers" to deploy.';
+  } else {
+    el.textContent = '📁 No project folder';
+    el.style.color = 'var(--muted)';
+    el.title = 'Click "🚀 Apply to Controllers" to set the project folder.';
+  }
+}
+
+// ─── Generic file-handle helpers ──────────────────────────────────────────
+async function getFileHandlePath(root, parts, opts = {}) {
+  // Navigate root → subdir/subdir/.../file
+  let dir = root;
+  for (let i = 0; i < parts.length - 1; i++) {
+    dir = await dir.getDirectoryHandle(parts[i], { create: !!opts.create });
+  }
+  return dir.getFileHandle(parts[parts.length - 1], { create: !!opts.create });
+}
+async function readFileText(handle) { return (await handle.getFile()).text(); }
+async function writeFileText(handle, content) {
+  const w = await handle.createWritable();
+  try { await w.write(content); } finally { await w.close(); }
+}
+
+// ─── Manifest read/write ──────────────────────────────────────────────────
+async function readManifest(root) {
+  try {
+    const dir = await root.getDirectoryHandle(DEPLOY.SEQUENCES_DIR, { create: true });
+    const fh  = await dir.getFileHandle(DEPLOY.MANIFEST_NAME);
+    const txt = await readFileText(fh);
+    const m   = JSON.parse(txt);
+    if (!m.sequences) m.sequences = [];
+    return m;
+  } catch {
+    return { version: 1, sequences: [] };
+  }
+}
+async function writeManifest(root, manifest) {
+  const dir = await root.getDirectoryHandle(DEPLOY.SEQUENCES_DIR, { create: true });
+  const fh  = await dir.getFileHandle(DEPLOY.MANIFEST_NAME, { create: true });
+  await writeFileText(fh, JSON.stringify(manifest, null, 2));
+}
+async function writeSequenceJson(root, baseName, project) {
+  const dir = await root.getDirectoryHandle(DEPLOY.SEQUENCES_DIR, { create: true });
+  const fh  = await dir.getFileHandle(baseName + '.json', { create: true });
+  await writeFileText(fh, JSON.stringify(project, null, 2));
+}
+
+// ─── Marker region utilities ──────────────────────────────────────────────
+function findRegion(content, startMarker, endMarker) {
+  const s = content.indexOf(startMarker);
+  if (s === -1) return null;
+  const e = content.indexOf(endMarker, s + startMarker.length);
+  if (e === -1) return null;
+  // start = first char of start marker line; end = first char AFTER end marker line
+  const lineEndAfterEnd = content.indexOf('\n', e + endMarker.length);
+  const end = lineEndAfterEnd === -1 ? content.length : (lineEndAfterEnd + 1);
+  return {
+    start: s,
+    end,
+    body: content.slice(s + startMarker.length, e),  // between markers, excludes markers themselves
+  };
+}
+
+function replaceRegion(content, startMarker, endMarker, newBody, indent = '') {
+  const region = findRegion(content, startMarker, endMarker);
+  if (!region) return null;   // caller must insert markers first
+  // Reconstruct the region with markers preserved
+  const inserted = `${indent}${startMarker}\n${newBody.trimEnd()}\n${indent}${endMarker}\n`;
+  return content.slice(0, region.start) + inserted + content.slice(region.end);
+}
+
+// Insert empty wrapper + case marker pairs at sensible anchors when missing.
+// Returns the patched content (markers added if needed).
+function ensureMarkersExist(content, controllerName) {
+  let out = content;
+
+  // ── Cases markers ──
+  if (out.indexOf(DEPLOY.MARK.caseStart) === -1) {
+    // Insert AFTER the last `case NN: funcName(D_command[1]...` line in the
+    // dispatch switch. This works on the existing pattern in both .ino files.
+    const re = /^([ \t]*)case (\d+):\s*\w+\s*\(\s*D_command\[1\][^\n]*\n/gm;
+    let lastMatch = null, m;
+    while ((m = re.exec(out)) !== null) lastMatch = m;
+    if (!lastMatch) {
+      throw new Error(`[${controllerName}] Couldn't find the D_command dispatch switch — add the case marker pair manually.`);
+    }
+    const indent = lastMatch[1] || '          ';
+    const insertAt = lastMatch.index + lastMatch[0].length;
+    const block = `${indent}${DEPLOY.MARK.caseStart}\n${indent}${DEPLOY.MARK.caseEnd}\n`;
+    out = out.slice(0, insertAt) + block + out.slice(insertAt);
+  }
+
+  // ── Wrapper markers ──
+  if (out.indexOf(DEPLOY.MARK.wrapStart) === -1) {
+    // Try to insert just before void setup() so generated wrappers are
+    // grouped near the existing hand-written ones. If setup() can't be found,
+    // append to end of file.
+    const setupRe = /^void\s+setup\s*\(\s*\)\s*\{/m;
+    const sm = setupRe.exec(out);
+    const block = `\n${DEPLOY.MARK.wrapStart}\n${DEPLOY.MARK.wrapEnd}\n\n`;
+    if (sm) {
+      out = out.slice(0, sm.index) + block + out.slice(sm.index);
+    } else {
+      out = out.trimEnd() + '\n' + block;
+    }
+  }
+  return out;
+}
+
+// ─── Function-index allocator ─────────────────────────────────────────────
+// Scans both controllers + the manifest for cases already in use, picks the
+// lowest free index ≥ AUTO_INDEX_START.  Same sequence name across re-saves
+// reuses its previously-assigned index.
+function pickFunctionIndex(manifest, baseName, controllerContents) {
+  // Re-save: keep existing index
+  const existing = manifest.sequences.find(s => s.name === baseName);
+  if (existing && Number.isFinite(existing.functionIndex)) return existing.functionIndex;
+
+  // Collect used indices from manifest (across all sequences) and from the
+  // raw controller .ino files (in case the user hand-wrote cases >= 100).
+  const used = new Set();
+  manifest.sequences.forEach(s => {
+    if (Number.isFinite(s.functionIndex)) used.add(s.functionIndex);
+  });
+  Object.values(controllerContents).forEach(text => {
+    const re = /^[ \t]*case (\d+):/gm;
+    let m;
+    while ((m = re.exec(text)) !== null) used.add(parseInt(m[1], 10));
+  });
+  for (let i = DEPLOY.AUTO_INDEX_START; i <= DEPLOY.AUTO_INDEX_MAX; i++) {
+    if (!used.has(i)) return i;
+  }
+  // Every slot in the auto-injection range is in use.  The 2-digit (1-99)
+  // ceiling is imposed by the controller's command parser (inputBuffer[3]-[4]
+  // is read as the function index).  Lifting it requires patching the parser
+  // in BOTH .ino files to handle 3-digit indices.  Until then: delete an
+  // unused sequence from sequences/_manifest.json (Phase E will add a UI).
+  throw new Error(
+    `All function-index slots ${DEPLOY.AUTO_INDEX_START}-${DEPLOY.AUTO_INDEX_MAX} are in use ` +
+    `(${used.size} taken). The 2-digit ceiling is a controller parser limitation. ` +
+    `Free a slot by deleting an unused sequence from sequences/_manifest.json and ` +
+    `removing the matching wrapper + case from the .ino files, or extend the parser ` +
+    `to handle 3-digit indices.`);
+}
+
+// ─── Code generators (wrapper + case line) ────────────────────────────────
+// Function name from base: SeqStayingAlive → stayingAlive (lowercase first
+// letter, strip "Seq" prefix if present so the user can name with or without it).
+function functionNameFor(baseName) {
+  let n = baseName.replace(/^Seq/, '');
+  if (!n) n = baseName;   // user typed just "Seq" — keep as-is
+  return n.charAt(0).toLowerCase() + n.slice(1);
+}
+
+function generateWrapper(boardName, baseName, funcIndex, mask) {
+  const ctrl = DEPLOY.CONTROLLERS[boardName];
+  const fn   = functionNameFor(baseName);
+  const seq  = `Seq${baseName.replace(/^Seq/, '')}${boardName}`;
+  // Hard invariant: the controller's command parser reads exactly 2 chars at
+  // inputBuffer[3]-[4] as the function index. Embedding a 3-digit number in
+  // the snprintf format string here would silently corrupt every downstream
+  // command. Fail loudly if the allocator ever hands us an out-of-range index.
+  if (!Number.isInteger(funcIndex) || funcIndex < 1 || funcIndex > 99) {
+    throw new Error(`generateWrapper: function index ${funcIndex} is outside the 2-digit (1-99) range the parser supports.`);
+  }
+  const idx  = funcIndex.toString().padStart(2, '0');
+  const cmd  = `${ctrl.cmdPrefix}${idx}E%02d%04d%04d`;
+  return `
+// Auto-generated wrapper for ${seq} — function index ${funcIndex}
+void ${fn}(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, uint32_t varSpeedMax, uint32_t delayCallDuration) {
+  Debug.SERVO("Play ${fn}\\n");
+  fVarSpeedMin = varSpeedMin;
+  fVarSpeedMax = varSpeedMax;
+  if (delayCallDuration == 0) { delayCallDuration = defaultESPNOWSendDuration; }
+  snprintf(stringToSend, sizeof(stringToSend), "${cmd}", servoEasingMethod, varSpeedMin, varSpeedMax);
+  setServoEasingMethod(servoEasingMethod);
+  switch (servoBoard) {
+    case 1: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, ${seq}, ${mask}, fVarSpeedMin, fVarSpeedMax); break;
+    case 2: sendESPNOWCommand("${ctrl.espnowPeer}", stringToSend); break;
+    case 3: SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, ${seq}, ${mask}, varSpeedMin, varSpeedMax);
+            DelayCall::schedule([]{ sendESPNOWCommand("${ctrl.espnowPeer}", stringToSend); }, delayCallDuration); break;
+    case 4: sendESPNOWCommand("${ctrl.espnowPeer}", stringToSend);
+            DelayCall::schedule([]{ SEQUENCE_PLAY_ONCE_VARSPEED(servoSequencer, ${seq}, ${mask}, fVarSpeedMin, fVarSpeedMax); }, delayCallDuration); break;
+  }
+  D_command[0] = '\\0';
+}
+`.trimStart();
+}
+
+function generateCaseLine(baseName, funcIndex) {
+  const fn = functionNameFor(baseName);
+  return `          case ${funcIndex}: ${fn}(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]); break;`;
+}
+
+// ─── Patch one controller (.ino) file ─────────────────────────────────────
+// Reads, ensures markers, splices the wrapper + case into the right regions,
+// returns the new content. Multi-sequence: rebuilds the entire managed region
+// from the manifest so re-saves and deletes are consistent.
+function patchController(content, boardName, manifest, baseName, funcIndex, mask) {
+  content = ensureMarkersExist(content, boardName);
+
+  // Rebuild wrapper region: one wrapper per manifested sequence, plus the
+  // current (possibly new) sequence. Newer manifests track this fully.
+  const ourEntry = { name: baseName, functionIndex: funcIndex, masks: { BS: 'ALL_SERVOS_MASK', DC: 'ALL_SERVOS_MASK' } };
+  // Merge into manifest snapshot for code-gen (do NOT mutate the caller's manifest here)
+  const merged = manifest.sequences.filter(s => s.name !== baseName).concat([{
+    ...(manifest.sequences.find(s => s.name === baseName) || {}),
+    name: baseName,
+    functionIndex: funcIndex,
+    masks: { ...(manifest.sequences.find(s => s.name === baseName)?.masks || {}), [boardName]: mask },
+  }]);
+
+  // Wrapper region
+  const wrappers = merged
+    .sort((a, b) => a.functionIndex - b.functionIndex)
+    .map(s => generateWrapper(boardName, s.name, s.functionIndex, (s.masks && s.masks[boardName]) || DEPLOY.CONTROLLERS[boardName].defaultMask))
+    .join('\n');
+  content = replaceRegion(content, DEPLOY.MARK.wrapStart, DEPLOY.MARK.wrapEnd, wrappers);
+  if (content === null) throw new Error(`[${boardName}] wrapper region replace failed`);
+
+  // Case region
+  const cases = merged
+    .sort((a, b) => a.functionIndex - b.functionIndex)
+    .map(s => generateCaseLine(s.name, s.functionIndex))
+    .join('\n');
+  content = replaceRegion(content, DEPLOY.MARK.caseStart, DEPLOY.MARK.caseEnd, cases, '          ');
+  if (content === null) throw new Error(`[${boardName}] case region replace failed`);
+
+  return content;
+}
+
+// ─── Patch ServoSequencer.h (already supported by modifyLibrary, but we
+// don't want to re-open a picker; this version uses the cached root). ─────
+function patchServoSequencerH(content, baseName, codeBS, codeDC) {
+  // Remove existing blocks for this base name (replacement)
+  if (content.includes(`ServoSequence ${baseName}BS`)) content = removeSeqBlock(content, `${baseName}BS`);
+  if (content.includes(`ServoSequence ${baseName}DC`)) content = removeSeqBlock(content, `${baseName}DC`);
+
+  const newCode = '\n' + codeBS + '\n' + codeDC;
+  const endifIdx = content.lastIndexOf('#endif');
+  if (endifIdx !== -1) {
+    content = content.slice(0, endifIdx) + newCode + '\n' + content.slice(endifIdx);
+  } else {
+    content += newCode;
+  }
+  return content;
+}
+
+// ─── Top-level orchestrator ───────────────────────────────────────────────
+async function applyToControllers() {
+  const baseRaw = ($('seqName').value || '').trim();
+  if (!baseRaw) { alert('Set a sequence name first (top bar "Name" field).'); return; }
+  // Strip leading "Seq" so internally we deal with the base and add Seq/BS/DC
+  // suffixes ourselves when generating.
+  const baseName = baseRaw.replace(/^Seq/, '');
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(baseName)) {
+    alert(`Invalid sequence name "${baseRaw}". Use letters/digits/underscore only, starting with a letter (optionally prefixed with "Seq").`);
+    return;
+  }
+
+  toast('Picking project folder…');
+  let root;
+  try { root = await deployGetRoot(); }
+  catch (e) { alert(`Couldn't access project folder: ${e.message}`); return; }
+  deployUpdateStatus();
+
+  try {
+    // 1. Read everything we're going to touch
+    toast('Reading controller files…');
+    const libHandle  = await getFileHandlePath(root, DEPLOY.LIBRARY_PATH);
+    const libContent = await readFileText(libHandle);
+
+    const ctlData = {};
+    for (const [name, info] of Object.entries(DEPLOY.CONTROLLERS)) {
+      const fh   = await getFileHandlePath(root, [info.folder, info.file]);
+      const text = await readFileText(fh);
+      ctlData[name] = { handle: fh, content: text, mask: info.defaultMask };
+    }
+
+    const manifest = await readManifest(root);
+    const funcIndex = pickFunctionIndex(manifest, baseName,
+      Object.fromEntries(Object.entries(ctlData).map(([k, v]) => [k, v.content])));
+
+    // 2. Generate new ServoSequencer.h content
+    toast('Patching ServoSequencer.h…');
+    const codeBS = generateCode('BS');   // existing function — produces SeqXxxBS array
+    const codeDC = generateCode('DC');
+    const newLib = patchServoSequencerH(libContent, baseName, codeBS, codeDC);
+
+    // 3. Generate new .ino content for each controller
+    toast('Injecting wrappers + cases…');
+    for (const [name, d] of Object.entries(ctlData)) {
+      d.newContent = patchController(d.content, name, manifest, baseName, funcIndex, d.mask);
+    }
+
+    // 4. Update / append manifest entry (in-memory)
+    const idx = manifest.sequences.findIndex(s => s.name === baseName);
+    const entry = {
+      name:          baseName,
+      functionIndex: funcIndex,
+      bpm:           getBpm(),
+      beats:         getN(),
+      pulse:         getPulse(),
+      offset:        getOffset(),
+      masks:         { BS: ctlData.BS.mask, DC: ctlData.DC.mask },
+      updatedAt:     new Date().toISOString(),
+    };
+    if (idx === -1) { entry.createdAt = entry.updatedAt; manifest.sequences.push(entry); }
+    else            { entry.createdAt = manifest.sequences[idx].createdAt || entry.updatedAt; manifest.sequences[idx] = entry; }
+
+    // 5. Per-sequence project JSON (re-loadable later)
+    const project = {
+      version:    1,
+      name:       baseName,
+      bpm:        getBpm(),
+      numBeats:   getN(),
+      pulseWidth: getPulse(),
+      initOffset: getOffset(),
+      grids:      { BS: grids.BS, DC: grids.DC },
+      masks:      entry.masks,
+      updatedAt:  entry.updatedAt,
+    };
+
+    // 6. Write everything (manifest last so a partial failure is detectable)
+    toast('Writing files…');
+    await writeFileText(libHandle, newLib);
+    for (const d of Object.values(ctlData)) await writeFileText(d.handle, d.newContent);
+    await writeSequenceJson(root, baseName, project);
+    await writeManifest(root, manifest);
+
+    toast(`✓ Deployed Seq${baseName} (index ${funcIndex}) — recompile + upload to use.`);
+  } catch (err) {
+    console.error(err);
+    alert(`Apply failed:\n\n${err.message}\n\nCheck the JS console for details. No partial writes if this fired before "Writing files…" step.`);
+  }
+}
+
+// ─── Deploy status modal helpers ──────────────────────────────────────────
+// Persistent step-by-step log surface so the user can see exactly which step
+// succeeded or failed during apply. Replaces transient toasts that vanish
+// before the user can read them.
+let _deployPendingWrites = null;   // when set, "Write files" button is wired up
+function deployModalOpen(title) {
+  $('deployModalTitle').textContent = title || 'Apply to Controllers';
+  $('deployLog').innerHTML = '';
+  $('deployConfirmBtn').style.display = 'none';
+  _deployPendingWrites = null;
+  $('deployModal').style.display = 'flex';
+}
+function deployModalClose() {
+  $('deployModal').style.display = 'none';
+  _deployPendingWrites = null;
+}
+function deployLog(msg, kind = 'info') {
+  const colors = { info: 'var(--text)', ok: 'var(--green)', warn: 'var(--yellow)', err: '#ff6b6b', step: 'var(--accent2)' };
+  const icons  = { info: '·', ok: '✓', warn: '⚠', err: '✗', step: '▸' };
+  const line = document.createElement('div');
+  line.style.color = colors[kind] || 'var(--text)';
+  line.textContent = `${icons[kind] || '·'} ${msg}`;
+  $('deployLog').appendChild(line);
+  $('deployLog').scrollTop = $('deployLog').scrollHeight;
+}
+function deployLogPath(label, path) {
+  const line = document.createElement('div');
+  line.style.color = 'var(--muted)';
+  line.style.paddingLeft = '20px';
+  line.textContent = `${label}: ${path}`;
+  $('deployLog').appendChild(line);
+}
+
+// ─── Pre-flight check: confirms every expected file/folder exists before
+//     touching anything. Returns a structured plan the apply step can use.
+async function deployPreflight(root) {
+  const plan = {
+    libHandle:    null,
+    libPath:      DEPLOY.LIBRARY_PATH.join('/'),
+    controllers:  {},   // { BS: {handle, content, path}, DC: {...} }
+    missing:      [],   // human-readable list of paths that didn't resolve
+  };
+
+  // Library header
+  try {
+    plan.libHandle = await getFileHandlePath(root, DEPLOY.LIBRARY_PATH);
+    deployLog(`Found ${plan.libPath}`, 'ok');
+  } catch (e) {
+    plan.missing.push(plan.libPath);
+    deployLog(`Missing ${plan.libPath}`, 'err');
+  }
+
+  // Controller .ino files
+  for (const [name, info] of Object.entries(DEPLOY.CONTROLLERS)) {
+    const p = `${info.folder}/${info.file}`;
+    try {
+      const fh = await getFileHandlePath(root, [info.folder, info.file]);
+      plan.controllers[name] = { handle: fh, path: p, mask: info.defaultMask };
+      deployLog(`Found ${p}`, 'ok');
+    } catch (e) {
+      plan.missing.push(p);
+      deployLog(`Missing ${p}`, 'err');
+    }
+  }
+
+  return plan;
+}
+
+// ─── New applyToControllers — 2-phase: PREFLIGHT shows the user what will
+//     happen and waits for explicit confirmation, then WRITE actually does
+//     the file mutations.  This makes failures during folder selection
+//     obvious instead of silent. ─────────────────────────────────────────
+async function applyToControllers() {
+  const baseRaw = ($('seqName').value || '').trim();
+  if (!baseRaw) { alert('Set a sequence name first (top bar "Name" field).'); return; }
+  const baseName = baseRaw.replace(/^Seq/, '');
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(baseName)) {
+    alert(`Invalid sequence name "${baseRaw}". Use letters/digits/underscore only, starting with a letter (optionally prefixed with "Seq").`);
+    return;
+  }
+
+  deployModalOpen(`Apply "${baseName}" to Controllers`);
+  deployLog('Selecting project folder…', 'step');
+
+  let root;
+  try {
+    root = await deployGetRoot();
+    deployLog(`Project folder: ${root.name}`, 'ok');
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      deployLog('Folder picker cancelled — no changes made.', 'warn');
+    } else {
+      deployLog(`Couldn't access folder: ${e.message}`, 'err');
+    }
+    return;
+  }
+  deployUpdateStatus();
+
+  deployLog('Checking expected paths under the selected folder…', 'step');
+  let plan;
+  try {
+    plan = await deployPreflight(root);
+  } catch (e) {
+    deployLog(`Pre-flight failed: ${e.message}`, 'err');
+    console.error(e);
+    return;
+  }
+
+  if (plan.missing.length) {
+    deployLog('', 'info');
+    deployLog(`${plan.missing.length} required file(s) couldn't be found under "${root.name}".`, 'err');
+    deployLog('The folder you picked needs to contain ALL of:', 'info');
+    deployLogPath('  •', 'libraries/Reeltwo/src/ServoSequencer.h');
+    deployLogPath('  •', 'Body_Servo_Controller/Body_Servo_Controller.ino');
+    deployLogPath('  •', 'Dome_Controller/Dome_Controller.ino');
+    deployLog('Re-pick the project root if you selected a sub-folder by accident:', 'info');
+    deployLog('  In the browser console, run: indexedDB.deleteDatabase("sequencer_tool"); location.reload();', 'info');
+    return;
+  }
+
+  deployLog('All required files present.', 'ok');
+  deployLog('Reading file contents…', 'step');
+  let libContent;
+  try {
+    libContent = await readFileText(plan.libHandle);
+    for (const [name, c] of Object.entries(plan.controllers)) {
+      c.content = await readFileText(c.handle);
+      deployLog(`Read ${c.path} (${c.content.length} bytes)`, 'ok');
+    }
+  } catch (e) {
+    deployLog(`Read failed: ${e.message}`, 'err');
+    console.error(e);
+    return;
+  }
+
+  deployLog('Loading manifest + allocating function index…', 'step');
+  let manifest, funcIndex;
+  try {
+    manifest = await readManifest(root);
+    const ctlTexts = Object.fromEntries(Object.entries(plan.controllers).map(([k, v]) => [k, v.content]));
+    funcIndex = pickFunctionIndex(manifest, baseName, ctlTexts);
+    const reuse = manifest.sequences.some(s => s.name === baseName);
+    deployLog(`Function index → ${funcIndex} ${reuse ? '(reusing existing)' : '(newly assigned)'}`, 'ok');
+  } catch (e) {
+    deployLog(`Allocation failed: ${e.message}`, 'err');
+    console.error(e);
+    return;
+  }
+
+  deployLog('Generating injection payloads…', 'step');
+  let newLib, newControllerContents;
+  try {
+    const codeBS = generateCode('BS');
+    const codeDC = generateCode('DC');
+    newLib = patchServoSequencerH(libContent, baseName, codeBS, codeDC);
+    newControllerContents = {};
+    for (const [name, c] of Object.entries(plan.controllers)) {
+      newControllerContents[name] = patchController(c.content, name, manifest, baseName, funcIndex, c.mask);
+    }
+    deployLog('Payloads generated cleanly — nothing has been written yet.', 'ok');
+  } catch (e) {
+    deployLog(`Code generation failed: ${e.message}`, 'err');
+    console.error(e);
+    return;
+  }
+
+  // Build a confirmable plan
+  _deployPendingWrites = async () => {
+    deployLog('', 'info');
+    deployLog('Writing files…', 'step');
+    try {
+      await writeFileText(plan.libHandle, newLib);
+      deployLog(`Wrote ${plan.libPath}`, 'ok');
+      for (const [name, c] of Object.entries(plan.controllers)) {
+        await writeFileText(c.handle, newControllerContents[name]);
+        deployLog(`Wrote ${c.path}`, 'ok');
+      }
+
+      // Manifest entry
+      const now = new Date().toISOString();
+      const idx = manifest.sequences.findIndex(s => s.name === baseName);
+      const entry = {
+        name:          baseName,
+        functionIndex: funcIndex,
+        bpm:           getBpm(),
+        beats:         getN(),
+        pulse:         getPulse(),
+        offset:        getOffset(),
+        masks:         { BS: plan.controllers.BS.mask, DC: plan.controllers.DC.mask },
+        updatedAt:     now,
+      };
+      if (idx === -1) { entry.createdAt = now; manifest.sequences.push(entry); }
+      else            { entry.createdAt = manifest.sequences[idx].createdAt || now; manifest.sequences[idx] = entry; }
+
+      const project = {
+        version: 1, name: baseName, bpm: getBpm(), numBeats: getN(),
+        pulseWidth: getPulse(), initOffset: getOffset(),
+        grids: { BS: grids.BS, DC: grids.DC }, masks: entry.masks, updatedAt: now,
+      };
+      await writeSequenceJson(root, baseName, project);
+      deployLog(`Wrote sequences/${baseName}.json`, 'ok');
+      await writeManifest(root, manifest);
+      deployLog('Wrote sequences/_manifest.json', 'ok');
+
+      deployLog('', 'info');
+      deployLog(`Deployed Seq${baseName} (function index ${funcIndex}). Recompile + upload to use.`, 'ok');
+      $('deployConfirmBtn').style.display = 'none';
+    } catch (e) {
+      deployLog(`Write failed mid-pass: ${e.message}`, 'err');
+      console.error(e);
+    }
+  };
+
+  deployLog('', 'info');
+  deployLog('Ready. Click "Write files" to commit changes, or Close to cancel.', 'info');
+  $('deployConfirmBtn').style.display = 'inline-flex';
+}
+
+async function deployConfirm() {
+  if (!_deployPendingWrites) return;
+  $('deployConfirmBtn').disabled = true;
+  try { await _deployPendingWrites(); }
+  finally { $('deployConfirmBtn').disabled = false; _deployPendingWrites = null; }
+}
+
+// ─── Resize / collapse helpers ────────────────────────────────────────────
+// Sidebar resize: drag the right edge to change width.
+// Export panel resize: drag the top edge to change height.
+// Both persist via localStorage so the layout survives page reloads.
+function initPanelResize() {
+  const sidebar = $('sidebar'), sidebarH = $('sidebarResize');
+  const panel   = $('exportPanel'), panelH = $('exportResize');
+
+  // Restore persisted sizes
+  try {
+    const w = parseInt(localStorage.getItem('seq.sidebarW') || '', 10);
+    if (Number.isFinite(w) && w >= 140 && w <= window.innerWidth * 0.5) sidebar.style.width = w + 'px';
+    const h = parseInt(localStorage.getItem('seq.exportH') || '', 10);
+    if (Number.isFinite(h) && h >= 60 && h <= window.innerHeight * 0.8) panel.style.height = h + 'px';
+    if (localStorage.getItem('seq.exportCollapsed') === '1') panel.classList.add('collapsed');
+  } catch {}
+
+  function startDrag(handle, onMove) {
+    return ev => {
+      ev.preventDefault();
+      handle.classList.add('dragging');
+      const move = e => onMove(e);
+      const up = () => {
+        handle.classList.remove('dragging');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+  }
+
+  if (sidebarH) {
+    sidebarH.addEventListener('pointerdown', startDrag(sidebarH, e => {
+      const rect = sidebar.getBoundingClientRect();
+      const w = Math.max(140, Math.min(window.innerWidth * 0.5, e.clientX - rect.left));
+      sidebar.style.width = w + 'px';
+      localStorage.setItem('seq.sidebarW', String(Math.round(w)));
+    }));
+  }
+  if (panelH) {
+    panelH.addEventListener('pointerdown', startDrag(panelH, e => {
+      const rect = panel.getBoundingClientRect();
+      const h = Math.max(60, Math.min(window.innerHeight * 0.8, rect.bottom - e.clientY));
+      panel.style.height = h + 'px';
+      panel.classList.remove('collapsed');
+      localStorage.setItem('seq.exportH', String(Math.round(h)));
+      localStorage.setItem('seq.exportCollapsed', '0');
+    }));
+  }
+}
+
+function toggleExportPanel() {
+  const panel = $('exportPanel');
+  const btn   = $('exportCollapseBtn');
+  panel.classList.toggle('collapsed');
+  const collapsed = panel.classList.contains('collapsed');
+  btn.textContent = collapsed ? '▴' : '▾';
+  localStorage.setItem('seq.exportCollapsed', collapsed ? '1' : '0');
+}
+
+// Initialize the deploy status badge on page load (and try to reuse any
+// previously-granted permission silently — the picker is only shown if not).
+window.addEventListener('load', () => {
+  deployUpdateStatus();
+  initPanelResize();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  INIT

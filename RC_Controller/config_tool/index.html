@@ -7,22 +7,31 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg:       #1a1a2e;
-    --surface:  #16213e;
-    --card:     #0f3460;
-    --accent:   #e94560;
-    --accent2:  #0f7a9d;
+    --bg:       #161616;
+    --surface:  #161616;
+    --card:     #152f49;
+    --accent:   #0b91eb;
+    --accent2:  #1495c0;
     --text:     #e0e0e0;
     --muted:    #888;
     --border:   #2a3a5a;
     --green:    #4caf50;
     --yellow:   #ffc107;
     --red:      #f44336;
-    --mode1:    #e94560;
+    --mode1:    #9e6106;
     --mode2:    #0f7a9d;
     --mode3:    #4caf50;
   }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Themed scrollbars ── */
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,.02); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+  ::-webkit-scrollbar-thumb:active { background: var(--accent); }
+  ::-webkit-scrollbar-corner { background: var(--bg); }
 
   /* ── Top bar ── */
   .topbar { background: var(--surface); padding: 10px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
@@ -46,10 +55,34 @@
   .resizable-panel { resize: none; overflow: auto; }
   .panel-header { position: relative; display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border); background: rgba(255,255,255,.02); }
   .panel-actions { display:flex; align-items:center; gap:6px; }
-  .resize-handle { position: absolute; display:flex; align-items:center; justify-content:center; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; color: var(--muted); font-size: 12px; user-select: none; z-index: 5; }
-  .resize-handle:hover { background: rgba(255,255,255,.16); }
-  .sidebar-handle { right: -12px; top: 50%; transform: translateY(-50%); width: 22px; height: 56px; cursor: ew-resize; }
-  .terminal-handle { top: 12px; left: 50%; transform: translateX(-50%); width: 68px; height: 10px; cursor: ns-resize; }
+  .resize-handle { position: absolute; user-select: none; z-index: 5; background: transparent; border: none; border-radius: 0; }
+  .resize-handle::after { content: ''; position: absolute; background: var(--border); border-radius: 2px; transition: background .15s, box-shadow .15s; }
+  .resize-handle:hover::after { background: var(--accent); box-shadow: 0 0 8px rgba(11,145,235,.5); }
+  .resize-handle:active::after { background: var(--accent2); }
+  .sidebar-handle { right: -3px; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+  .sidebar-handle::after { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 44px; }
+  .terminal-handle { top: 0; left: 0; right: 0; height: 8px; cursor: ns-resize; }
+  .terminal-handle::after { top: 3px; left: 50%; transform: translateX(-50%); width: 44px; height: 2px; }
+
+  /* ── Icon buttons (minimize / expand) ── */
+  .btn-icon {
+    width: 26px; height: 26px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 11px; font-weight: 700; line-height: 1;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+  }
+  .btn-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(11,145,235,.1);
+    box-shadow: 0 0 8px rgba(11,145,235,.25);
+  }
+  .btn-icon:active { background: rgba(11,145,235,.2); }
   .sidebar.collapsed { width: 42px; min-width: 42px; max-width: 42px; }
   .sidebar.collapsed > :not(.panel-header) { display:none; }
   .sidebar.collapsed .panel-header span { display:none; }
@@ -308,10 +341,10 @@
     <div class="panel-header">
       <span>Sidebar</span>
       <div class="panel-actions">
-        <button class="btn btn-ghost btn-sm" id="sidebar-toggle">▾</button>
+        <button class="btn-icon" id="sidebar-toggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">▾</button>
       </div>
     </div>
-    <div class="resize-handle sidebar-handle" id="sidebar-handle" title="Drag to resize sidebar">⋮</div>
+    <div class="resize-handle sidebar-handle" id="sidebar-handle" title="Drag to resize sidebar"></div>
 
     <!-- SBUS status -->
     <div class="sb-section">
@@ -890,9 +923,9 @@
 <div class="terminal-panel resizable-panel" id="terminal-panel">
   <div class="terminal-header">
     <span>Board Terminal</span>
-    <div class="resize-handle terminal-handle" id="terminal-handle" title="Drag to resize terminal">≡</div>
+    <div class="resize-handle terminal-handle" id="terminal-handle" title="Drag to resize terminal"></div>
     <div class="terminal-controls">
-      <button class="btn btn-ghost btn-sm" id="terminal-collapse" type="button">▾</button>
+      <button class="btn-icon" id="terminal-collapse" type="button" title="Collapse terminal" aria-label="Collapse terminal">▾</button>
       <button class="btn btn-ghost terminal-toggle" id="terminal-autoscroll" type="button">Auto-scroll</button>
       <button class="btn btn-ghost terminal-toggle" id="terminal-timestamps" type="button">Timestamps</button>
       <button class="btn btn-ghost" id="terminal-clear" type="button">Clear</button>
