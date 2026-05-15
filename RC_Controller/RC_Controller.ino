@@ -187,7 +187,8 @@ unsigned long wsMonitorLastSent = 0;
 //  Tap detection state
 // =============================================================================
 struct TapState {
-  int           lastBtn         = 0;
+  int           lastBtn         = 0;   // most recent button that was tapped (sticky across release)
+  int           prevPollBtn     = 0;   // btn seen on the previous poll — for press-edge detection
   uint8_t       tapCount        = 0;
   unsigned long lastTapMs       = 0;
   bool          deferredPending = false;
@@ -528,8 +529,19 @@ void rcDispatch(int buttonId, uint8_t tapCount) {
   int mode = buttonId / 100, btn = buttonId % 100;
   if (mode < 1 || mode > 3 || btn < 1 || btn > 19) return;
   if (tapCount < 1 || tapCount > 3) return;
-  RcTier& tier = rcConfig.mappings[rcMapIndex(mode, btn)].t[tapCount - 1];
-  for (int i = 0; i < tier.count; i++) rcExecuteAction(tier.a[i]);
+  const RcMapping& mapping = rcConfig.mappings[rcMapIndex(mode, btn)];
+  if (mapping.exclusive) {
+    // Exclusive: only the matched tier fires (e.g. double-tap fires t2 alone).
+    const RcTier& tier = mapping.t[tapCount - 1];
+    for (int i = 0; i < tier.count; i++) rcExecuteAction(tier.a[i]);
+  } else {
+    // Non-exclusive: cumulative — every tier up to and including the matched
+    // one fires (e.g. double-tap fires t1 then t2; triple-tap fires t1+t2+t3).
+    for (int ti = 0; ti < tapCount; ti++) {
+      const RcTier& tier = mapping.t[ti];
+      for (int i = 0; i < tier.count; i++) rcExecuteAction(tier.a[i]);
+    }
+  }
 }
 
 // =============================================================================
@@ -538,20 +550,19 @@ void rcDispatch(int buttonId, uint8_t tapCount) {
 void RCRadio_Matrix_Buttons(int val) {
   int btn = pwmToButton(val);
   unsigned long now = millis();
+  int prev = tapState.prevPollBtn;
+  tapState.prevPollBtn = btn;
 
-  if (btn == 0) {
-    // Released — arm deferred fire
-    if (tapState.tapCount > 0 && !tapState.deferredPending) {
-      tapState.deferredPending = true;
-      tapState.deferredFireAt  = now + rcConfig.tapWindowMs;
-      tapState.deferredBtn     = FunctionSwState * 100 + tapState.lastBtn;
-      tapState.deferredTaps    = tapState.tapCount;
-    }
-    return;
-  }
+  // Only act on transitions. A continuous hold (prev == btn) is not a new tap,
+  // and a release edge (btn == 0) is handled by checkDeferredTap() — we don't
+  // count "release" as a tap event.
+  if (btn == prev) return;
+  if (btn == 0)    return;
 
+  // Press edge: prev was 0 or a different button, now btn is non-zero.
   if (btn != tapState.lastBtn) {
-    // Different button — fire any pending immediately
+    // Different button — commit any pending fire for the previous button now
+    // before we start counting taps on the new one.
     if (tapState.deferredPending) {
       tapState.deferredPending = false;
       rcDispatch(tapState.deferredBtn, tapState.deferredTaps);
@@ -560,12 +571,8 @@ void RCRadio_Matrix_Buttons(int val) {
     tapState.tapCount  = 1;
     tapState.lastTapMs = now;
   } else {
-    // Same button — count tap if within window
+    // Same button as the last tap — within window counts as another tap.
     if ((now - tapState.lastTapMs) < (unsigned long)rcConfig.tapWindowMs) {
-      if (tapState.deferredPending &&
-          tapState.deferredBtn == (FunctionSwState * 100 + btn)) {
-        tapState.deferredPending = false;
-      }
       tapState.tapCount++;
       if (tapState.tapCount > 3) tapState.tapCount = 3;
     } else {
@@ -573,6 +580,13 @@ void RCRadio_Matrix_Buttons(int val) {
     }
     tapState.lastTapMs = now;
   }
+
+  // Arm (or refresh) the deferred fire — both exclusive and non-exclusive modes
+  // wait the tap window before dispatching so multi-taps have time to register.
+  tapState.deferredPending = true;
+  tapState.deferredFireAt  = now + rcConfig.tapWindowMs;
+  tapState.deferredBtn     = FunctionSwState * 100 + btn;
+  tapState.deferredTaps    = tapState.tapCount;
 }
 
 void checkDeferredTap() {
