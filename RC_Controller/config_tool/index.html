@@ -1,0 +1,3584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Controller — RC Button Config</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #1a1a2e;
+    --surface:  #16213e;
+    --card:     #0f3460;
+    --accent:   #e94560;
+    --accent2:  #0f7a9d;
+    --text:     #e0e0e0;
+    --muted:    #888;
+    --border:   #2a3a5a;
+    --green:    #4caf50;
+    --yellow:   #ffc107;
+    --red:      #f44336;
+    --mode1:    #e94560;
+    --mode2:    #0f7a9d;
+    --mode3:    #4caf50;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar { background: var(--surface); padding: 10px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .topbar h1 { font-size: 18px; color: var(--accent); flex: 1; }
+  .btn { padding: 7px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .2s; }
+  .btn:hover { opacity: .8; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent);  color: #fff; }
+  .btn-blue     { background: var(--accent2); color: #fff; }
+  .btn-success  { background: var(--green);   color: #fff; }
+  .btn-warn     { background: var(--yellow);  color: #000; }
+  .btn-danger   { background: var(--red);     color: #fff; }
+  .btn-ghost    { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .status-dot   { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+  .status-dot.connected { background: var(--green); }
+  #status-text { font-size: 12px; color: var(--muted); }
+
+  /* ── Layout ── */
+  .main { display: flex; gap: 0; height: calc(100vh - 53px); padding-bottom: 260px; }
+  .sidebar { position: relative; width: 320px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .resizable-panel { resize: none; overflow: auto; }
+  .panel-header { position: relative; display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border); background: rgba(255,255,255,.02); }
+  .panel-actions { display:flex; align-items:center; gap:6px; }
+  .resize-handle { position: absolute; display:flex; align-items:center; justify-content:center; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; color: var(--muted); font-size: 12px; user-select: none; z-index: 5; }
+  .resize-handle:hover { background: rgba(255,255,255,.16); }
+  .sidebar-handle { right: -12px; top: 50%; transform: translateY(-50%); width: 22px; height: 56px; cursor: ew-resize; }
+  .terminal-handle { top: 12px; left: 50%; transform: translateX(-50%); width: 68px; height: 10px; cursor: ns-resize; }
+  .sidebar.collapsed { width: 42px; min-width: 42px; max-width: 42px; }
+  .sidebar.collapsed > :not(.panel-header) { display:none; }
+  .sidebar.collapsed .panel-header span { display:none; }
+  .sidebar.collapsed .panel-actions { width:100%; justify-content:flex-end; }
+  .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+  /* ── Sidebar sections ── */
+  .sb-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sb-section h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; margin-bottom: 10px; }
+  .pwm-row   { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pwm-label { font-size: 12px; color: var(--muted); width: 50px; }
+  .pwm-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .pwm-bar   { height: 100%; background: var(--accent2); border-radius: 4px; transition: width .05s; }
+  .pwm-value { font-size: 12px; width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .btn-row   { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* Live PWM indicator */
+  .live-pwm-box { background: var(--card); border-radius: 8px; padding: 12px; margin-top: 8px; }
+  .live-pwm-big { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .live-pwm-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .live-btn-indicator { margin-top: 8px; }
+  .live-btn-chip { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--accent); color: #fff; min-width: 80px; text-align: center; }
+
+  /* Mode tabs */
+  .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .mode-tab  { flex: 1; padding: 8px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 600; background: var(--surface); transition: background .2s; }
+  .mode-tab:hover { background: var(--card); }
+  .mode-tab.active-1 { background: var(--mode1); color: #fff; }
+  .mode-tab.active-2 { background: var(--mode2); color: #fff; }
+  .mode-tab.active-3 { background: var(--mode3); color: #000; }
+
+  /* ── Transmitter SVG area ── */
+  .tx-wrap { max-width: 850px; margin: 0 auto; }
+  .tx-wrap svg { width: 100%; height: auto; }
+
+  /* Clickable button zones */
+  .btn-zone { cursor: pointer; transition: opacity .15s; }
+  .btn-zone:hover rect, .btn-zone:hover circle, .btn-zone:hover path { opacity: .7; }
+  .btn-zone rect.configured  { fill: var(--accent2) !important; }
+  .btn-zone circle.configured { fill: var(--accent2) !important; }
+
+  /* Live-pressed highlight — fires from PWM_UPDATE stream */
+  .btn-zone.live-active > rect:first-of-type,
+  .btn-zone.live-active > circle:first-of-type {
+    fill: var(--accent) !important;
+    stroke: #fff !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 0 8px var(--accent));
+  }
+  .btn-zone.live-active > polygon { fill: #fff !important; }
+
+  /* Switch zones (configurable like buttons) */
+  .switch-zone { cursor: pointer; transition: opacity .15s; }
+  .switch-zone:hover { opacity: .75; }
+  .switch-zone.configured circle:first-of-type { stroke: var(--accent2); stroke-width: 2; }
+  .switch-zone.live-active circle:first-of-type {
+    stroke: var(--accent) !important; stroke-width: 3 !important;
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  /* Knob zones (S1, S2) */
+  .knob-zone { cursor: pointer; transition: opacity .15s; }
+  .knob-zone:hover { opacity: .82; }
+  .knob-zone.configured circle:first-of-type {
+    stroke: var(--accent2); stroke-width: 2;
+    filter: drop-shadow(0 0 3px var(--accent2));
+  }
+
+  /* ── Modal ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 640px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-title  { font-size: 16px; font-weight: 700; flex: 1; }
+  .modal-body   { padding: 20px; }
+  .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* Tap tier cards */
+  .tier-card  { background: var(--card); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .tier-title { font-size: 12px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; letter-spacing: 1px; }
+  .rows-container { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .action-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; padding: 6px; background: rgba(255,255,255,.03); border-radius: 6px; }
+  .action-row label { font-size: 12px; color: var(--muted); }
+  .btn-remove-action {
+    background: transparent; color: var(--red); border: 1px solid var(--red);
+    border-radius: 4px; width: 26px; height: 26px; padding: 0;
+    font-size: 16px; line-height: 1; cursor: pointer; align-self: center;
+    margin-left: auto;
+  }
+  .btn-remove-action:hover { background: var(--red); color: #fff; }
+  .btn-add-action {
+    width: 100%; padding: 8px; font-size: 12px;
+    border: 1px dashed var(--border); color: var(--muted);
+  }
+  .btn-add-action:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+  select, input[type=text], input[type=number] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 8px; border-radius: 5px; font-size: 13px; }
+  select { cursor: pointer; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+
+  /* Exclusive toggle */
+  .toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .toggle { position: relative; width: 40px; height: 22px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 22px; cursor: pointer; transition: .2s; }
+  .slider:before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(18px); }
+
+  /* Threshold table */
+  .thresh-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .thresh-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .thresh-table td { padding: 5px 8px; }
+  .thresh-table tr:nth-child(even) td { background: rgba(255,255,255,.03); }
+  .thresh-table input { width: 70px; }
+
+  /* Tap window input */
+  .tapwin-row { display: flex; align-items: center; gap: 10px; }
+  .tapwin-row input { width: 80px; }
+
+  /* Config mode indicator */
+  .mode-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .mode-badge.m1 { background: var(--mode1); color: #fff; }
+  .mode-badge.m2 { background: var(--mode2); color: #fff; }
+  .mode-badge.m3 { background: var(--mode3); color: #000; }
+
+  /* Small tooltip for unconnected */
+  .noconn { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* WCB quick-send panel */
+  .wcb-send-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .wcb-send-row label { font-size: 11px; color: var(--muted); }
+  .wcb-send-row input, .wcb-send-row select { font-size: 12px; padding: 4px 6px; }
+  .wcb-send-row input[type=text] { flex: 1; min-width: 120px; }
+
+  /* Maestro command builder helper */
+  .maestro-helper {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(15,122,157,.12); border: 1px solid rgba(15,122,157,.35);
+    border-radius: 4px; padding: 3px 6px; font-size: 11px;
+    margin-top: 4px;
+  }
+  .maestro-helper select, .maestro-helper input { font-size: 11px; padding: 2px 4px; }
+  .maestro-helper input[type=number] { width: 60px; }
+  .maestro-helper button {
+    font-size: 11px; padding: 2px 8px; background: var(--accent2);
+    color: #fff; border: none; border-radius: 3px; cursor: pointer;
+  }
+
+  .terminal-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 240px;
+    min-height: 120px;
+    max-height: 60vh;
+    background: #10121d;
+    border-top: 1px solid #233;
+    display: flex;
+    flex-direction: column;
+    z-index: 150;
+    overflow: hidden;
+  }
+  .terminal-panel.collapsed {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+  }
+  .terminal-panel.collapsed > :not(.terminal-header) {
+    display: none;
+  }
+  .terminal-collapsed .main { padding-bottom: 46px; }
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid #233;
+    background: rgba(16,18,29,.95);
+    color: var(--text);
+    font-size: 13px;
+  }
+  .terminal-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #d8d8d8;
+    background: rgba(16,18,29,.95);
+  }
+  .terminal-line { white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
+  .terminal-line.tx { color: #7fdfff; }
+  .terminal-line.rx { color: #d9f99d; }
+  .terminal-line.info { color: #bbb; }
+  .terminal-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(16,18,29,.97);
+  }
+  .terminal-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #2a2f44;
+    background: #0f1321;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+  }
+  .terminal-input:focus { outline: 2px solid var(--accent2); }
+  .terminal-send { min-width: 100px; }
+
+  /* ── Calibration modal ── */
+  .calibration-highlight rect,
+  .calibration-highlight circle,
+  .calibration-highlight path {
+    stroke: var(--accent);
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 10px rgba(56,189,248,.65));
+  }
+  .calibration-indicator { margin-top: 12px; padding: 12px; border-radius: 8px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.16); color: var(--text); font-variant-numeric: tabular-nums; }
+  .calib-wide-modal { width: 92vw; max-width: 1300px; }
+  .calib-modal-body { display: flex; gap: 24px; align-items: flex-start; padding: 16px 20px; }
+  .calib-svg-panel  { flex: 1; min-width: 0; }
+  .calib-svg-panel svg { width: 100%; height: auto; pointer-events: none; cursor: default; }
+  .calib-info-panel { width: 290px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+  .calib-step-counter { font-size: 11px; color: var(--muted); text-align: right; }
+  .calib-instruction  { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <h1>RC Controller — RC Button Config</h1>
+  <div class="status-dot" id="conn-dot"></div>
+  <span id="status-text">Disconnected</span>
+  <button class="btn btn-primary" id="btn-connect">Connect</button>
+  <button class="btn btn-blue"    id="btn-refresh" disabled>Refresh</button>
+  <button class="btn btn-success" id="btn-save"    disabled>Save to Board</button>
+  <button class="btn btn-warn"    id="btn-defaults" disabled>Reset Defaults</button>
+  <button class="btn btn-ghost" id="btn-export-cfg" type="button">Export Config CSV</button>
+  <button class="btn btn-ghost" id="btn-import-cfg" type="button">Import Config CSV</button>
+  <button class="btn btn-ghost" id="btn-calibrate" type="button">Calibrate RC</button>
+</div>
+<input id="cfg-import-file" type="file" accept=".csv,text/csv" style="display:none">
+
+<div class="main">
+  <!-- ── Sidebar ── -->
+  <div class="sidebar resizable-panel" id="sidebar-panel">
+    <div class="panel-header">
+      <span>Sidebar</span>
+      <div class="panel-actions">
+        <button class="btn btn-ghost btn-sm" id="sidebar-toggle">▾</button>
+      </div>
+    </div>
+    <div class="resize-handle sidebar-handle" id="sidebar-handle" title="Drag to resize sidebar">⋮</div>
+
+    <!-- SBUS status -->
+    <div class="sb-section">
+      <h3>SBUS Receiver</h3>
+      <div class="live-pwm-box" id="sbus-box" style="display:flex; align-items:center; gap:12px">
+        <div id="sbus-dot" style="width:14px; height:14px; border-radius:50%; background:var(--red); flex-shrink:0; box-shadow:0 0 8px rgba(244,67,54,.6)"></div>
+        <div style="flex:1">
+          <div id="sbus-state" style="font-weight:700; font-size:14px">No signal</div>
+          <div id="sbus-detail" style="font-size:11px; color:var(--muted); font-variant-numeric: tabular-nums">— fps · 0 frames · age — ms</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live PWM -->
+    <div class="sb-section">
+      <h3 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <span>Live PWM Monitor</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">
+          Display:
+          <label style="margin-left:4px"><input type="radio" name="unit-toggle" value="sbus" checked> SBUS</label>
+          <label style="margin-left:6px"><input type="radio" name="unit-toggle" value="us"> µs</label>
+        </span>
+      </h3>
+      <div class="live-pwm-box">
+        <div class="live-pwm-big" id="live-ch6">—</div>
+        <div class="live-pwm-sub" id="live-ch6-sub">Channel 6 (Button Matrix)</div>
+        <div class="live-btn-indicator" style="margin-top:8px">
+          <span class="live-btn-chip" id="live-btn-name">—</span>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div class="pwm-row">
+          <span class="pwm-label" id="lbl-matrix-ch" title="Matrix channel (configurable)">CH7</span>
+          <div class="pwm-bar-wrap"><div class="pwm-bar" id="bar-ch6" style="width:0%"></div></div>
+          <span class="pwm-value" id="val-ch6">0</span>
+        </div>
+        <div class="pwm-row">
+          <span class="pwm-label" id="lbl-mode-ch" title="Mode/function switch channel (follows bound switch)">CH12</span>
+          <div class="pwm-bar-wrap"><div class="pwm-bar" id="bar-ch16" style="width:0%"></div></div>
+          <span class="pwm-value" id="val-ch16">0</span>
+        </div>
+      </div>
+      <div class="noconn" id="monitor-note">Connect board to enable live monitor</div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-ghost" id="btn-mon-start" disabled>▶ Start</button>
+        <button class="btn btn-ghost" id="btn-mon-stop"  disabled>■ Stop</button>
+      </div>
+    </div>
+
+    <!-- Mode selector -->
+    <div class="sb-section">
+      <h3>Editing Mode</h3>
+      <div class="mode-tabs">
+        <div class="mode-tab active-1" data-mode="1">SW Down<br><small>Mode 1</small></div>
+        <div class="mode-tab"          data-mode="2">SW Mid<br><small>Mode 2</small></div>
+        <div class="mode-tab"          data-mode="3">SW Up<br><small>Mode 3</small></div>
+      </div>
+    </div>
+
+    <!-- Tap window -->
+    <div class="sb-section">
+      <h3>Tap Window</h3>
+      <div class="tapwin-row">
+        <input type="number" id="tapwin-input" min="100" max="2000" step="50" value="500">
+        <span style="color:var(--muted);font-size:12px">ms</span>
+      </div>
+      <div class="noconn" style="margin-top:4px">Time window for multi-tap detection</div>
+    </div>
+
+    <!-- Global HCR destination — every HCR action shares this -->
+    <div class="sb-section">
+      <h3>HCR Destination</h3>
+      <div class="wcb-send-row">
+        <label>Via:</label>
+        <select id="hcr-transport" onchange="renderHcrDestFields()" style="font-size:12px">
+          <option value="serial">Serial</option>
+          <option value="wcb">WCB</option>
+        </select>
+      </div>
+      <div class="wcb-send-row" id="hcr-dest-fields"></div>
+      <div class="noconn" style="margin-top:4px">All HCR actions route through this destination. Set once, save to board.</div>
+    </div>
+
+    <!-- Maestro Locations — describes where each of the 8 logical Maestros is wired -->
+    <div class="sb-section">
+      <h3>Maestro Locations</h3>
+      <div id="maestro-locations" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div class="noconn" style="margin-top:6px">
+        Defines where each logical Maestro lives. Buttons/knobs only pick
+        "Maestro 1-8" and don't care about the wiring. Every physical Maestro
+        must have a unique Pololu device # (0-127) set in Maestro Control Center —
+        the value here must match it so only the addressed Maestro responds.
+      </div>
+    </div>
+
+    <!-- WCB quick-send (uses firmware's WCB_SEND handler) -->
+    <div class="sb-section">
+      <h3>WCB Send (Test)</h3>
+      <div class="wcb-send-row">
+        <label>WCB ID:</label>
+        <input type="number" id="qs-target" min="0" max="20" value="2" style="width:60px"
+               title="1-20 = unicast to specific WCB · 0 = broadcast to all WCBs">
+        <small style="color:var(--muted);font-size:10px">(0 = broadcast)</small>
+      </div>
+      <div class="wcb-send-row">
+        <label>Cmd:</label>
+        <input type="text" id="qs-cmd" placeholder=":BL55,1" maxlength="63">
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-blue" id="btn-qs-send" disabled style="font-size:11px;padding:5px 12px">Send</button>
+      </div>
+      <div class="noconn" style="margin-top:6px">Fires a one-off WCB command without saving. Maestro/Serial testing via terminal or Shift+Click on configured buttons.</div>
+    </div>
+
+    <!-- Thresholds (collapsed by default) -->
+    <div class="sb-section">
+      <h3 style="cursor:pointer" id="chan-toggle">▶ Channel Assignments <small style="color:var(--muted)">(click to expand)</small></h3>
+      <div id="chan-panel" style="display:none; margin-top:8px; font-size:12px">
+        <div style="margin-bottom:6px">
+          <label>Button matrix channel:
+            <input type="number" id="cfg-matrix-ch" min="1" max="24" value="7" style="width:50px; margin-left:4px"
+                   onchange="config.matrixChannel = +this.value; document.getElementById('lbl-matrix-ch').textContent='CH'+this.value;">
+          </label>
+          <small style="color:var(--muted); margin-left:6px">(multiplexed buttons live here — Kyber default is 7)</small>
+        </div>
+        <div style="display:grid; grid-template-columns:auto auto; gap:4px 10px; max-width:380px">
+          <label>Mode/Function switch:</label>
+          <select id="bind-mode" onchange="config.funcBindings = config.funcBindings || {}; config.funcBindings.mode = +this.value;">
+            <option value="-1">— disabled (always Mode 1) —</option>
+            <option value="0">SA</option><option value="1">SB</option><option value="2">SC</option><option value="3">SD</option>
+            <option value="4" selected>SE</option><option value="5">SF</option><option value="6">SG</option><option value="7">SH</option>
+          </select>
+        </div>
+        <div style="margin-top:6px; color:var(--muted); font-size:11px">
+          The mode selector reads a switch's position and toggles between
+          matrix Mode 1 / 2 / 3. Open a switch on the SVG to edit its
+          per-position actions.
+        </div>
+      </div>
+
+      <h3 style="cursor:pointer" id="thresh-toggle">▶ Channel Thresholds <small style="color:var(--muted)">(click to expand)</small></h3>
+      <div id="thresh-panel" style="display:none; margin-top:10px; overflow-x:auto">
+        <table class="thresh-table" id="thresh-table">
+          <thead><tr><th>Btn</th><th>Label</th><th>Value <span class="unit-label">(SBUS)</span></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div style="margin-top:8px">
+          <button class="btn btn-ghost" id="btn-thresh-rebuild" style="font-size:11px">Rebuild defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main content: transmitter SVG ── -->
+  <div class="content">
+    <div class="tx-wrap">
+      <div style="text-align:center; margin-bottom:12px; font-size:12px; color:var(--muted)">
+        Click any button to configure · <b>Shift+Click</b> to fire a TRIGGER (single tap) · <b>Shift+Ctrl+Click</b> for double tap · <b>Shift+Alt+Click</b> for triple tap
+      </div>
+
+      <!-- FrSky TANDEM X18 transmitter SVG -->
+      <svg viewBox="0 0 1000 830" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="body-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#2e4a82"/>
+            <stop offset="45%"  stop-color="#1f3870"/>
+            <stop offset="100%" stop-color="#13234a"/>
+          </linearGradient>
+          <linearGradient id="body-highlight" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#3a5a92" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#3a5a92" stop-opacity="0"/>
+          </linearGradient>
+          <radialGradient id="screen-grad" cx="50%" cy="40%" r="70%">
+            <stop offset="0%"   stop-color="#0e2440"/>
+            <stop offset="100%" stop-color="#050d1c"/>
+          </radialGradient>
+          <radialGradient id="knob-grad" cx="50%" cy="30%" r="70%">
+            <stop offset="0%"   stop-color="#e0e0e0"/>
+            <stop offset="40%"  stop-color="#909090"/>
+            <stop offset="100%" stop-color="#202020"/>
+          </radialGradient>
+          <radialGradient id="bush-grad" cx="50%" cy="30%" r="65%">
+            <stop offset="0%"   stop-color="#e8e8e8"/>
+            <stop offset="50%"  stop-color="#9a9a9a"/>
+            <stop offset="100%" stop-color="#303030"/>
+          </radialGradient>
+          <linearGradient id="lever-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#d0d0d0"/>
+            <stop offset="100%" stop-color="#606060"/>
+          </linearGradient>
+          <radialGradient id="cap-grad" cx="50%" cy="25%" r="60%">
+            <stop offset="0%"   stop-color="#6a6a6a"/>
+            <stop offset="55%"  stop-color="#1a1a1a"/>
+            <stop offset="100%" stop-color="#000"/>
+          </radialGradient>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="10" flood-opacity=".55"/>
+          </filter>
+        </defs>
+
+        <!-- Main body -->
+        <path d="
+          M 70 320
+          Q 70 280 110 280
+          L 270 280
+          Q 290 280 295 270
+          Q 300 250 320 250
+          L 680 250
+          Q 700 250 705 270
+          Q 710 280 730 280
+          L 890 280
+          Q 930 280 930 320
+          L 930 640
+          Q 930 730 870 760
+          L 770 790
+          Q 750 798 720 800
+          L 580 808
+          Q 540 812 500 810
+          Q 460 812 420 808
+          L 280 800
+          Q 250 798 230 790
+          L 130 760
+          Q 70 730 70 640
+          Z"
+          fill="url(#body-grad)" stroke="#0a1428" stroke-width="2" filter="url(#shadow)"/>
+        <path d="
+          M 70 320
+          Q 70 280 110 280
+          L 270 280
+          Q 290 280 295 270
+          Q 300 250 320 250
+          L 680 250
+          Q 700 250 705 270
+          Q 710 280 730 280
+          L 890 280
+          Q 930 280 930 320
+          L 930 360
+          L 70 360 Z"
+          fill="url(#body-highlight)" opacity="0.5"/>
+
+        <!-- Screen pod -->
+        <rect x="290" y="15" width="420" height="290" rx="22" fill="#0a0a0a" stroke="#1a2a4a" stroke-width="2" filter="url(#shadow)"/>
+        <rect x="305" y="32" width="390" height="258" rx="6" fill="url(#screen-grad)"/>
+        <text x="688" y="56" text-anchor="end" fill="#a8b2c8" font-size="16" font-weight="700" font-style="italic" font-family="serif">FrSky</text>
+
+        <rect x="320" y="72" width="360" height="28" rx="3" fill="#1a3a6a"/>
+        <text x="332" y="92" fill="#7acdf6" font-size="13" font-family="monospace" font-weight="700">RC Controller</text>
+        <text x="668" y="92" fill="#7acdf6" font-size="11" font-family="monospace" text-anchor="end">100%</text>
+        <text x="332" y="128" fill="#5a9ac6" font-size="12" font-family="monospace">Model: TANDEM X18</text>
+        <text x="332" y="150" fill="#5a9ac6" font-size="12" font-family="monospace">Mode:  &lt;3-pos SW&gt;</text>
+        <text x="332" y="172" fill="#5a9ac6" font-size="12" font-family="monospace">RX:    Connected</text>
+        <text x="332" y="194" fill="#5a9ac6" font-size="12" font-family="monospace">WCB:   ESP-NOW</text>
+        <rect x="320" y="215" width="360" height="60" rx="4" fill="#0a1a2e" stroke="#1a3a6a"/>
+        <text x="500" y="248" text-anchor="middle" fill="#3a6a9a" font-size="18" font-family="monospace" font-weight="700">WCB / Maestro</text>
+        <text x="500" y="265" text-anchor="middle" fill="#2a5a8a" font-size="10" font-family="monospace">Click any button below to configure</text>
+
+        <!-- ── Switches SA-SH ── -->
+        <g class="switch-zone" data-sw="SF" onclick="openSwitchModal('SF')">
+          <circle cx="135" cy="282" r="11" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="135" cy="282" r="6"  fill="#0a0a0a"/>
+          <rect x="132" y="195" width="6" height="87" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="128" y="187" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="155" y="287" text-anchor="start" fill="#cdd6e8" font-size="11" font-weight="700">SF</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SE" onclick="openSwitchModal('SE')">
+          <circle cx="180" cy="310" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="180" cy="310" r="5"  fill="#0a0a0a"/>
+          <rect x="177" y="240" width="6" height="70" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="173" y="234" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="200" y="315" text-anchor="start" fill="#cdd6e8" font-size="11" font-weight="700">SE</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SA" onclick="openSwitchModal('SA')">
+          <circle cx="95" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="95" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="92" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="88" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="95" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SA</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SB" onclick="openSwitchModal('SB')">
+          <circle cx="225" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="225" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="222" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="218" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="225" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SB</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SH" onclick="openSwitchModal('SH')">
+          <circle cx="865" cy="282" r="11" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="865" cy="282" r="6"  fill="#0a0a0a"/>
+          <rect x="862" y="195" width="6" height="87" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="858" y="187" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="845" y="287" text-anchor="end" fill="#cdd6e8" font-size="11" font-weight="700">SH</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SG" onclick="openSwitchModal('SG')">
+          <circle cx="820" cy="310" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="820" cy="310" r="5"  fill="#0a0a0a"/>
+          <rect x="817" y="240" width="6" height="70" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="813" y="234" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="800" y="315" text-anchor="end" fill="#cdd6e8" font-size="11" font-weight="700">SG</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SD" onclick="openSwitchModal('SD')">
+          <circle cx="905" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="905" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="902" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="898" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="905" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SD</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SC" onclick="openSwitchModal('SC')">
+          <circle cx="775" cy="335" r="10" fill="url(#bush-grad)" stroke="#0a0a0a"/>
+          <circle cx="775" cy="335" r="5"  fill="#0a0a0a"/>
+          <rect x="772" y="275" width="6" height="60" rx="2" fill="url(#lever-grad)" stroke="#0a0a0a" stroke-width="0.5"/>
+          <rect x="768" y="269" width="14" height="14" rx="3" fill="#e8e8e8" stroke="#0a0a0a"/>
+          <text x="775" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SC</text>
+        </g>
+
+        <!-- ── SI / SJ momentary buttons ── -->
+        <g class="switch-zone" data-sw="SI" onclick="openSwitchModal('SI')">
+          <rect x="254" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+          <circle cx="265" cy="359" r="7" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+          <text x="265" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SI</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SJ" onclick="openSwitchModal('SJ')">
+          <rect x="724" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+          <circle cx="735" cy="359" r="7" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+          <text x="735" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SJ</text>
+        </g>
+
+        <!-- ── LS / RL side sliders ── -->
+        <g class="knob-zone" data-knob="LS" onclick="openKnobModal('LS')">
+          <rect x="76" y="430" width="10" height="120" rx="5" fill="#0a0a0a" stroke="#1a2a4a"/>
+          <line x1="73" y1="490" x2="89" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+          <rect x="70" y="482" width="22" height="16" rx="4" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <text x="81" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">LS</text>
+        </g>
+
+        <g class="knob-zone" data-knob="RS" onclick="openKnobModal('RL')">
+          <rect x="914" y="430" width="10" height="120" rx="5" fill="#0a0a0a" stroke="#1a2a4a"/>
+          <line x1="911" y1="490" x2="927" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+          <rect x="908" y="482" width="22" height="16" rx="4" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <text x="919" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">RS</text>
+        </g>
+
+        <!-- ── Knobs S1 + S2 ── -->
+        <g class="knob-zone" data-knob="S1" onclick="openKnobModal('S1')">
+          <circle cx="430" cy="390" r="28" fill="#08101e" stroke="#1a2a4a"/>
+          <circle cx="430" cy="390" r="23" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <line x1="430" y1="370" x2="430" y2="378" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+          <text x="430" y="438" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">S1</text>
+        </g>
+
+        <g class="knob-zone" data-knob="S2" onclick="openKnobModal('S2')">
+          <circle cx="570" cy="390" r="28" fill="#08101e" stroke="#1a2a4a"/>
+          <circle cx="570" cy="390" r="23" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <line x1="570" y1="370" x2="570" y2="378" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+          <text x="570" y="438" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">S2</text>
+        </g>
+
+        <!-- Power button -->
+        <circle cx="500" cy="475" r="24" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="500" cy="475" r="19" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <path d="M 500 465 L 500 479 M 491 470 A 13 13 0 1 0 509 470"
+              stroke="#888" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+        <rect x="488" y="510" width="24" height="16" rx="4" fill="#0a0a0a" stroke="#1a1a1a"/>
+        <rect x="495" y="514" width="10" height="8"  rx="1" fill="#3a3a3a"/>
+
+        <!-- Left gimbal -->
+        <rect x="150" y="395" width="180" height="180" rx="22" fill="#000" stroke="#1a1a1a" stroke-width="2"/>
+        <rect x="162" y="407" width="156" height="156" rx="14" fill="#0a0a0a"/>
+        <line x1="240" y1="410" x2="240" y2="424" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="240" y1="546" x2="240" y2="560" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="166" y1="485" x2="180" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="300" y1="485" x2="314" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <rect x="208" y="453" width="64" height="64" rx="8" fill="#000" stroke="#252525"/>
+        <circle cx="240" cy="485" r="15" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+        <circle cx="240" cy="485" r="6"  fill="#0a0a0a"/>
+
+        <!-- Joystick axis pickers — left gimbal: J3 (Y/THR) above cap, J4 (X/RUD) left of cap -->
+        <g class="knob-zone" data-knob="J3" onclick="openKnobModal('J3')">
+          <circle cx="240" cy="425" r="10" fill="#08101e" stroke="#1a2a4a"/>
+          <text x="240" y="429" text-anchor="middle" fill="#7acdf6" font-size="10" font-weight="700">J3</text>
+        </g>
+        <g class="knob-zone" data-knob="J4" onclick="openKnobModal('J4')">
+          <circle cx="180" cy="485" r="10" fill="#08101e" stroke="#1a2a4a"/>
+          <text x="180" y="489" text-anchor="middle" fill="#7acdf6" font-size="10" font-weight="700">J4</text>
+        </g>
+
+        <!-- Right gimbal -->
+        <rect x="670" y="395" width="180" height="180" rx="22" fill="#000" stroke="#1a1a1a" stroke-width="2"/>
+        <rect x="682" y="407" width="156" height="156" rx="14" fill="#0a0a0a"/>
+        <line x1="760" y1="410" x2="760" y2="424" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="760" y1="546" x2="760" y2="560" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="686" y1="485" x2="700" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <line x1="820" y1="485" x2="834" y2="485" stroke="#5a5a5a" stroke-width="1.5"/>
+        <rect x="728" y="453" width="64" height="64" rx="8" fill="#000" stroke="#252525"/>
+        <circle cx="760" cy="485" r="15" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+        <circle cx="760" cy="485" r="6"  fill="#0a0a0a"/>
+
+        <!-- Joystick axis pickers — right gimbal: J2 (Y/ELE) above cap, J1 (X/AIL) right of cap -->
+        <g class="knob-zone" data-knob="J2" onclick="openKnobModal('J2')">
+          <circle cx="760" cy="425" r="10" fill="#08101e" stroke="#1a2a4a"/>
+          <text x="760" y="429" text-anchor="middle" fill="#7acdf6" font-size="10" font-weight="700">J2</text>
+        </g>
+        <g class="knob-zone" data-knob="J1" onclick="openKnobModal('J1')">
+          <circle cx="820" cy="485" r="10" fill="#08101e" stroke="#1a2a4a"/>
+          <text x="820" y="489" text-anchor="middle" fill="#7acdf6" font-size="10" font-weight="700">J1</text>
+        </g>
+
+        <!-- ── Trim switches T1-T6 ── -->
+        <!-- T3 (vertical right of L-gimbal) -->
+        <g class="btn-zone" data-btn="11" onclick="openModal(11)">
+          <rect x="358" y="435" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="367" y="438" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="371,430 366,436 376,436" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="12" onclick="openModal(12)">
+          <rect x="358" y="515" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="367" y="525" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="371,545 366,539 376,539" fill="#cdd6e8"/>
+        </g>
+        <text x="371" y="485" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T3</text>
+
+        <!-- T2 (vertical left of R-gimbal) -->
+        <g class="btn-zone" data-btn="13" onclick="openModal(13)">
+          <rect x="616" y="435" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="625" y="438" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="629,430 624,436 634,436" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="14" onclick="openModal(14)">
+          <rect x="616" y="515" width="26" height="22" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="625" y="525" width="8"  height="10" rx="2" fill="#aaa"/>
+          <polygon points="629,545 624,539 634,539" fill="#cdd6e8"/>
+        </g>
+        <text x="629" y="485" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T2</text>
+
+        <!-- T4 (horizontal, bottom-LEFT) -->
+        <g class="btn-zone" data-btn="7" onclick="openModal(7)">
+          <rect x="160" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="163" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="156,610 162,606 162,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="8" onclick="openModal(8)">
+          <rect x="195" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="205" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="221,610 215,606 215,614" fill="#cdd6e8"/>
+        </g>
+        <text x="188" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T4</text>
+
+        <!-- T5 (horizontal, bottom-LEFT inner) -->
+        <g class="btn-zone" data-btn="9" onclick="openModal(9)">
+          <rect x="295" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="298" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="291,610 297,606 297,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="10" onclick="openModal(10)">
+          <rect x="330" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="340" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="356,610 350,606 350,614" fill="#cdd6e8"/>
+        </g>
+        <text x="323" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T5</text>
+
+        <!-- T6 (horizontal, bottom-RIGHT inner) -->
+        <g class="btn-zone" data-btn="15" onclick="openModal(15)">
+          <rect x="648" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="651" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="644,610 650,606 650,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="16" onclick="openModal(16)">
+          <rect x="683" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="693" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="709,610 703,606 703,614" fill="#cdd6e8"/>
+        </g>
+        <text x="676" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T6</text>
+
+        <!-- T1 (horizontal, bottom-RIGHT) -->
+        <g class="btn-zone" data-btn="17" onclick="openModal(17)">
+          <rect x="783" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="786" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="779,610 785,606 785,614" fill="#cdd6e8"/>
+        </g>
+        <g class="btn-zone" data-btn="18" onclick="openModal(18)">
+          <rect x="818" y="600" width="22" height="20" rx="3" fill="#0a0a0a" stroke="#3a3a3a"/>
+          <rect x="828" y="606" width="9"  height="8"  rx="2" fill="#aaa"/>
+          <polygon points="844,610 838,606 838,614" fill="#cdd6e8"/>
+        </g>
+        <text x="811" y="640" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">T1</text>
+
+        <!-- Centre logo + speaker -->
+        <text x="500" y="640" text-anchor="middle" fill="#3a5a8a" font-size="24" font-family="sans-serif" font-weight="700" font-style="italic">X18</text>
+        <rect x="465" y="650" width="70" height="13" rx="6" fill="#08101e" stroke="#1a2a4a"/>
+        <g fill="#1a3a6a">
+          <circle cx="475" cy="656" r="1.4"/>
+          <circle cx="485" cy="656" r="1.4"/>
+          <circle cx="495" cy="656" r="1.4"/>
+          <circle cx="505" cy="656" r="1.4"/>
+          <circle cx="515" cy="656" r="1.4"/>
+          <circle cx="525" cy="656" r="1.4"/>
+        </g>
+        <text x="500" y="680" text-anchor="middle" fill="#5a7aa8" font-size="9" font-weight="700" letter-spacing="1">900M/2.4G DUAL BAND</text>
+
+        <!-- Nav dials (decorative) -->
+        <circle cx="185" cy="700" r="36" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="185" cy="700" r="31" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <circle cx="185" cy="700" r="15" fill="#1a1a1a" stroke="#0a0a0a"/>
+        <text x="185" y="675" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">MDL</text>
+        <text x="217" y="703" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">DISP</text>
+        <text x="185" y="732" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">RTN</text>
+        <text x="153" y="703" text-anchor="middle" fill="#a0a8b8" font-size="8" font-weight="700">SYS</text>
+
+        <circle cx="815" cy="700" r="36" fill="#08101e" stroke="#1a2a4a"/>
+        <circle cx="815" cy="700" r="31" fill="#0d0d0d" stroke="#2a2a2a"/>
+        <circle cx="815" cy="700" r="20" fill="#1a1a1a"/>
+        <g stroke="#0a0a0a" stroke-width="1.5">
+          <line x1="815" y1="680" x2="815" y2="686"/>
+          <line x1="835" y1="700" x2="829" y2="700"/>
+          <line x1="815" y1="720" x2="815" y2="714"/>
+          <line x1="795" y1="700" x2="801" y2="700"/>
+          <line x1="829" y1="686" x2="825" y2="690"/>
+          <line x1="829" y1="714" x2="825" y2="710"/>
+          <line x1="801" y1="686" x2="805" y2="690"/>
+          <line x1="801" y1="714" x2="805" y2="710"/>
+        </g>
+
+        <!-- Six programmable buttons B1-B6 -->
+        <g class="btn-zone" data-btn="1" onclick="openModal(1)">
+          <circle cx="320" cy="668" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="320" cy="668" r="7"  fill="#1a1a1a"/>
+          <text x="320" y="671" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">1</text>
+        </g>
+        <g class="btn-zone" data-btn="2" onclick="openModal(2)">
+          <circle cx="350" cy="695" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="350" cy="695" r="7"  fill="#1a1a1a"/>
+          <text x="350" y="698" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">2</text>
+        </g>
+        <g class="btn-zone" data-btn="3" onclick="openModal(3)">
+          <circle cx="320" cy="722" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="320" cy="722" r="7"  fill="#1a1a1a"/>
+          <text x="320" y="725" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">3</text>
+        </g>
+
+        <g class="btn-zone" data-btn="4" onclick="openModal(4)">
+          <circle cx="680" cy="668" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="680" cy="668" r="7"  fill="#1a1a1a"/>
+          <text x="680" y="671" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">4</text>
+        </g>
+        <g class="btn-zone" data-btn="5" onclick="openModal(5)">
+          <circle cx="650" cy="695" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="650" cy="695" r="7"  fill="#1a1a1a"/>
+          <text x="650" y="698" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">5</text>
+        </g>
+        <g class="btn-zone" data-btn="6" onclick="openModal(6)">
+          <circle cx="680" cy="722" r="12" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+          <circle cx="680" cy="722" r="7"  fill="#1a1a1a"/>
+          <text x="680" y="725" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">6</text>
+        </g>
+      </svg>
+
+      <!-- Per-button summary list -->
+      <div style="margin-top:20px">
+        <h3 style="margin-bottom:10px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:1px">
+          Current Assignments — <span id="mode-label" style="color:var(--accent)">Mode 1 (SW Down)</span>
+        </h3>
+        <div id="assignment-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="terminal-panel resizable-panel" id="terminal-panel">
+  <div class="terminal-header">
+    <span>Board Terminal</span>
+    <div class="resize-handle terminal-handle" id="terminal-handle" title="Drag to resize terminal">≡</div>
+    <div class="terminal-controls">
+      <button class="btn btn-ghost btn-sm" id="terminal-collapse" type="button">▾</button>
+      <button class="btn btn-ghost terminal-toggle" id="terminal-autoscroll" type="button">Auto-scroll</button>
+      <button class="btn btn-ghost terminal-toggle" id="terminal-timestamps" type="button">Timestamps</button>
+      <button class="btn btn-ghost" id="terminal-clear" type="button">Clear</button>
+    </div>
+  </div>
+  <div class="terminal-output" id="terminal-output"></div>
+  <div class="terminal-input-row">
+    <input id="terminal-input" class="terminal-input" type="text" placeholder="Type CLI command and press Enter" autocomplete="off">
+    <button class="btn btn-blue terminal-send" id="terminal-send" type="button">Send</button>
+  </div>
+</div>
+
+<!-- ── Calibration Modal ── -->
+<div class="modal-overlay" id="calibration-modal">
+  <div class="modal calib-wide-modal">
+    <div class="modal-header">
+      <span class="modal-title">Remote Calibration</span>
+      <div id="calib-step-counter" class="calib-step-counter" style="margin-left:auto; margin-right:16px"></div>
+      <button class="btn btn-ghost" onclick="closeCalibrationModal()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="calib-modal-body">
+      <div id="calib-svg-wrap" class="calib-svg-panel"></div>
+      <div class="calib-info-panel">
+        <div id="calibration-instruction" class="calib-instruction"></div>
+        <div id="calibration-live-value" class="calibration-indicator">Waiting for live SBUS data...</div>
+        <div id="calibration-summary" style="font-size:13px; color:var(--muted)"></div>
+        <div style="margin-top:auto; padding-top:16px; display:flex; flex-direction:column; gap:8px">
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; color:var(--muted)">
+            <input type="checkbox" id="calib-auto-advance"
+              onchange="if(calibrationState) calibrationState.autoAdvance=this.checked; localStorage.setItem('rcCalibAutoAdvance', this.checked?'1':'0')">
+            Auto-advance after capture
+          </label>
+          <div style="display:flex; gap:8px">
+            <button class="btn btn-ghost" id="btn-calibration-prev" onclick="calibrationPrevStep()" style="flex:1">← Previous</button>
+            <button class="btn btn-success" id="btn-calibration-next" onclick="calibrationNextStep()" style="flex:1">Next →</button>
+          </div>
+          <button class="btn btn-ghost" id="btn-calibration-capture" onclick="captureCalibrationValue()">Force Capture</button>
+          <button class="btn btn-ghost" onclick="closeCalibrationModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Button Config Modal ── -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-title" class="modal-title"></span>
+      <div id="modal-mode-badges"></div>
+      <button class="btn btn-ghost" onclick="closeModal()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="modal-exclusive"><span class="slider"></span></label>
+        <span style="font-size:13px">Exclusive mode — tap 2 replaces tap 1 (waits for window before firing)</span>
+      </div>
+      <div id="tiers-container"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost"   onclick="clearModalDispatch()">Clear All</button>
+      <button class="btn btn-ghost"   onclick="closeModal()">Cancel</button>
+      <button class="btn btn-success" onclick="saveModalDispatch()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+//  State
+// ════════════════════════════════════════════════════════════════════════════
+let port = null;
+let reader = null;
+let writer = null;
+let readBuffer = '';
+let isMonitoring = false;
+let currentMode  = 1;
+let editingBtn   = null;
+let editingSw    = null;   // when set, modal is configuring a switch
+let editingKnob  = null;   // when set, modal is configuring a knob
+let editingKnobDraft = null;  // mutable copy of the knob being edited (with outputs[])
+let calibrationState = null;
+let terminalAutoScroll = localStorage.getItem('rcTerminalAutoScroll') !== '0';
+let terminalShowTimestamps = localStorage.getItem('rcTerminalTimestamps') === '1';
+
+// ────────────────────────────────────────────────────────────────────────────
+// Unit display — internal storage is always raw SBUS (172-1811 nominal range).
+// The toggle switches the DISPLAY between SBUS and PWM µs (988-2012 nominal).
+// ────────────────────────────────────────────────────────────────────────────
+const SBUS_CENTER = 992;
+const US_CENTER   = 1500;
+const SBUS_TO_US  = 0.625;
+const US_TO_SBUS  = 1.6;
+let displayUnit = localStorage.getItem('rcDisplayUnit') || 'sbus';
+
+const fmtVal   = (sbus) => displayUnit === 'us'
+                            ? Math.round(US_CENTER + (sbus - SBUS_CENTER) * SBUS_TO_US)
+                            : sbus;
+const parseVal = (raw)  => {
+  const n = parseInt(raw); if (isNaN(n)) return null;
+  return displayUnit === 'us'
+           ? Math.round(SBUS_CENTER + (n - US_CENTER) * US_TO_SBUS)
+           : n;
+};
+const unitLbl = () => displayUnit === 'us' ? 'µs' : 'SBUS';
+const altLbl  = (sbus) => displayUnit === 'us'
+                            ? `${sbus} SBUS`
+                            : `${Math.round(US_CENTER + (sbus - SBUS_CENTER) * SBUS_TO_US)} µs`;
+
+// ── RC-specific lookup tables ────────────────────────────────────────────
+// Knob/joystick/slider functions — parallel choices. A given source does
+// ONE of these (not both). Outputs[] entries inherit the parent function.
+const KF_NONE                = 0;
+const KF_MAESTRO_PASSTHROUGH = 1;
+const KF_HCR_VOLUME          = 2;
+const knobFunctions = {
+  0: '— disabled —',
+  1: 'Maestro Pass-Through',
+  2: 'HCR Volume',
+};
+
+const KNOB_MAX_OUTPUTS  = 8;
+const NUM_MAESTRO_SLOTS = 8;
+
+// Source entries must match firmware RC_KNOB_LABELS in rc_config.h.
+// The "kind" field drives the modal title — "Knob" / "Slider" / "Joystick axis".
+//   S1, S2 → Knob
+//   LS, RS → Slider
+//   J1-J4  → Joystick axis (NOT a knob; user complained about the wording)
+const knobDefaults = {
+  S1: { channel: 5, function: 0, outputs: [], kind: 'knob',     friendly: 'S1 knob' },
+  S2: { channel: 6, function: 0, outputs: [], kind: 'knob',     friendly: 'S2 knob' },
+  LS: { channel: 0, function: 0, outputs: [], kind: 'slider',   friendly: 'LS slider' },
+  RS: { channel: 0, function: 0, outputs: [], kind: 'slider',   friendly: 'RS slider' },
+  J1: { channel: 1, function: 0, outputs: [], kind: 'joystick', friendly: 'J1 — R-stick X (AIL)' },
+  J2: { channel: 2, function: 0, outputs: [], kind: 'joystick', friendly: 'J2 — R-stick Y (ELE)' },
+  J3: { channel: 3, function: 0, outputs: [], kind: 'joystick', friendly: 'J3 — L-stick Y (THR)' },
+  J4: { channel: 4, function: 0, outputs: [], kind: 'joystick', friendly: 'J4 — L-stick X (RUD)' },
+};
+
+// Friendly title for the modal header — picks the right noun for the source.
+function sourceTitleFor(name) {
+  const def = knobDefaults[name] || {};
+  if (def.kind === 'joystick') return `Joystick axis ${def.friendly || name}`;
+  if (def.kind === 'slider')   return `Slider ${name}`;
+  return `Knob ${name}`;
+}
+
+// Build the Maestro target dropdown options for Maestro Pass-Through outputs.
+// Each option is one of the 8 logical Maestro IDs (1-8); the label includes
+// the wiring summary from config.maestros[] so users see at a glance which
+// slots are enabled and what Pololu device # each one addresses.
+function maestroIdOptions(selected) {
+  let html = '';
+  for (let id = 1; id <= NUM_MAESTRO_SLOTS; id++) {
+    const slot = (config.maestros && config.maestros[id - 1]) || { type: 0, device: id };
+    const where = slot.type === 1 ? 'Local'
+                : slot.type === 2 ? 'Remote'
+                : 'disabled';
+    const label = slot.type === 0
+      ? `Maestro ${id} — disabled`
+      : `Maestro ${id} — ${where} · dev ${slot.device}`;
+    html += `<option value="${id}"${+selected===id?' selected':''}>${label}</option>`;
+  }
+  return html;
+}
+
+// HCR audio channel dropdown for KF_HCR_VOLUME outputs
+function hcrAudioChanOptions(selected) {
+  return [
+    `<option value="0"${+selected===0?' selected':''}>V (vocalizer)</option>`,
+    `<option value="1"${+selected===1?' selected':''}>A</option>`,
+    `<option value="2"${+selected===2?' selected':''}>B</option>`,
+  ].join('');
+}
+
+const switchDefaults = {
+  SA: {channel:  8, positions: 3},
+  SB: {channel:  9, positions: 3},
+  SC: {channel: 10, positions: 3},
+  SD: {channel: 11, positions: 3},
+  SE: {channel: 12, positions: 3},
+  SF: {channel: 13, positions: 2},
+  SG: {channel: 14, positions: 3},
+  SH: {channel: 15, positions: 2},
+  SI: {channel:  0, positions: 2},
+  SJ: {channel:  0, positions: 2},
+};
+
+let config = {
+  tapWindowMs:   500,
+  matrixChannel: 7,
+  funcBindings: { mode: 4 },
+  thresholds:    defaultThresholds(),
+  mappings:      {},
+  hcrDest:       { transport: 'serial', port: 'S3' },
+  // 8 Maestro slots, all disabled by default. The GUI's Maestro Locations
+  // panel edits these in place; firmware reads them on every dispatch.
+  // Default device #s match the slot ID (slot 1 → device 1, etc.) so the
+  // labels stay easy to remember; the user can change them to match whatever
+  // is set in Maestro Control Center.
+  maestros:      Array.from({ length: NUM_MAESTRO_SLOTS },
+                            (_, i) => ({ type: 0, device: 1 + i })),
+};
+
+const modeLabels = ['', 'SW Down (Mode 1)', 'SW Mid (Mode 2)', 'SW Up (Mode 3)'];
+const btnLabels  = ['', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
+                        'T4 Left', 'T4 Right', 'T5 Left', 'T5 Right',
+                        'T3 Left', 'T3 Right', 'T2 Left', 'T2 Right',
+                        'T6 Left', 'T6 Right', 'T1 Left', 'T1 Right', 'Unassigned'];
+
+// RC Controller action types. Maestros are addressed by ID 1-8 regardless of
+// wiring — the location of each is configured in the Maestro Locations panel.
+// (maestro_local / maestro_remote are accepted on load for backward compat
+// but the GUI only emits "maestro".)
+const actionTypeLabels = {
+  '':              '— none —',
+  'wcb_unicast':   'WCB unicast',
+  'wcb_broadcast': 'WCB broadcast',
+  'maestro':       'Maestro',
+  'serial':        'Serial port',
+  'hcr':           'HCR Vocalizer',
+};
+
+// Serial port targets — RC firmware exposes S3 and S4 as aux SoftwareSerial.
+// Serial5 (GPIO9) is now reserved for SBUS OUT passthrough — not selectable
+// as a serial-write target.
+const serialPorts = [
+  { v: 'S3', n: 'S3 — Aux serial 3' },
+  { v: 'S4', n: 'S4 — Aux serial 4' },
+];
+
+// HCR lookup tables (mirrors BC config tool — same fn numbers + chan
+// semantics so the receiving HCR vocalizer protocol matches).
+const hcrFnLabels = {
+  2:  'SetEmotion',
+  3:  'Trigger',
+  4:  'Stimulate',
+  5:  'Overload',
+  6:  'Muse',
+  8:  'Stop all',
+  9:  'StopEmote',
+  11: 'ResetEmotions',
+  14: 'PlayWAV',
+  16: 'StopWAV',
+  17: 'SetVolume',
+};
+// For fn 2/3/4/12/19 the "chan" param is an EMOTION enum.
+// For fn 14/15/16/17/22/24/25/26/28 it's an AUDIO CHANNEL enum.
+const HCR_EMOTIONS = [
+  { v: 0, n: 'HAPPY' },
+  { v: 1, n: 'SAD' },
+  { v: 2, n: 'MAD' },
+  { v: 3, n: 'SCARED' },
+  { v: 4, n: 'OVERLOAD' },
+];
+const HCR_AUDIO_CHANS = [
+  { v: 0, n: 'V (vocalizer)' },
+  { v: 1, n: 'A' },
+  { v: 2, n: 'B' },
+];
+const HCR_FN_USES_EMOTION    = new Set([2, 3, 4, 12, 19]);
+const HCR_FN_USES_AUDIO_CHAN = new Set([14, 15, 16, 17, 22, 24, 25, 26, 28]);
+function emotionName(v) { return (HCR_EMOTIONS.find(e=>e.v===+v)||{}).n || `chan ${v}`; }
+function audioChanName(v) { return (HCR_AUDIO_CHANS.find(e=>e.v===+v)||{}).n || `chan ${v}`; }
+
+// Maestro commands (comma-delimited "cmd[]" format, fits in 32 chars).
+// label, arg fields ([{label, default, min, max}])
+const maestroCommands = {
+  'setTarget':    { args: [{l:'ch', d:0, min:0, max:31}, {l:'pos (qus)', d:6000, min:0, max:16383}] },
+  'goHome':       { args: [] },
+  'stopScript':   { args: [] },
+  'restartScript':{ args: [{l:'sub', d:0, min:0, max:127}] },
+  'setSpeed':     { args: [{l:'ch', d:0, min:0, max:31}, {l:'speed', d:0, min:0, max:16383}] },
+  'setAccel':     { args: [{l:'ch', d:0, min:0, max:31}, {l:'accel', d:0, min:0, max:255}] },
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WebSerial connection
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  if (port) { await disconnect(); return; }
+  try {
+    window._loggedMissingSbus = false;
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    startReading();
+    setConnected(true);
+    document.getElementById('status-text').textContent = 'Waiting for board…';
+    await new Promise(r => setTimeout(r, 4000));
+
+    let pongOk = false;
+    for (let i = 0; i < 6 && !pongOk; i++) {
+      await sendJSON({ type: 'PING' });
+      await new Promise(r => setTimeout(r, 500));
+      if (document.getElementById('status-text').textContent.includes('Connected')) {
+        pongOk = true; break;
+      }
+    }
+    if (!pongOk) console.warn('PING never received PONG — proceeding anyway.');
+
+    await sendJSON({ type: 'GET_CONFIG' });
+    await new Promise(r => setTimeout(r, 400));
+    await sendJSON({ type: 'START_MONITOR' });
+    isMonitoring = true;
+    document.getElementById('btn-mon-start').disabled = true;
+    document.getElementById('btn-mon-stop').disabled  = false;
+  } catch(e) {
+    console.error(e);
+    alert('Could not open serial port:\n' + e.message);
+    port = null;
+  }
+});
+
+async function disconnect() {
+  if (isMonitoring) await stopMonitor();
+  try { if (reader) { await reader.cancel(); reader = null; } } catch(e) {}
+  try { if (writer) { writer.releaseLock(); writer = null; } } catch(e) {}
+  try { await port.close(); } catch(e) {}
+  port = null;
+  setConnected(false);
+}
+
+function setConnected(v) {
+  document.getElementById('conn-dot').className = 'status-dot' + (v ? ' connected' : '');
+  document.getElementById('status-text').textContent = v ? 'Connected' : 'Disconnected';
+  document.getElementById('btn-connect').textContent = v ? 'Disconnect' : 'Connect';
+  ['btn-refresh','btn-save','btn-defaults','btn-mon-start','btn-qs-send'].forEach(id => {
+    document.getElementById(id).disabled = !v;
+  });
+  setTerminalEnabled(v);
+  document.getElementById('monitor-note').style.display = v ? 'none' : 'block';
+}
+
+async function sendLine(msg) {
+  if (!writer) return;
+  appendTerminalLine('> ' + msg, 'tx');
+  const encoded = new TextEncoder().encode(msg + '\n');
+  await writer.write(encoded);
+}
+
+async function sendJSON(obj) {
+  await sendLine(JSON.stringify(obj));
+}
+
+function appendTerminalLine(text, type = 'info') {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  const line = document.createElement('div');
+  line.className = 'terminal-line ' + type;
+  line.textContent = (terminalShowTimestamps ? `[${new Date().toLocaleTimeString()}] ` : '') + text;
+  output.appendChild(line);
+  if (terminalAutoScroll) output.scrollTop = output.scrollHeight;
+}
+
+function setTerminalEnabled(enabled) {
+  document.getElementById('terminal-input').disabled = !enabled;
+  document.getElementById('terminal-send').disabled = !enabled;
+  document.getElementById('terminal-autoscroll').disabled = !enabled;
+  document.getElementById('terminal-timestamps').disabled = !enabled;
+}
+
+function initTerminal() {
+  const input = document.getElementById('terminal-input');
+  const send = document.getElementById('terminal-send');
+  const clear = document.getElementById('terminal-clear');
+  const autoScroll = document.getElementById('terminal-autoscroll');
+  const timestamps = document.getElementById('terminal-timestamps');
+
+  input.addEventListener('keydown', async ev => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    send.click();
+  });
+
+  send.addEventListener('click', async () => {
+    const value = input.value.trim();
+    if (!value || !writer) return;
+    await sendLine(value);
+    input.value = '';
+  });
+
+  clear.addEventListener('click', () => {
+    const output = document.getElementById('terminal-output');
+    if (output) output.textContent = '';
+  });
+
+  autoScroll.addEventListener('click', () => {
+    terminalAutoScroll = !terminalAutoScroll;
+    localStorage.setItem('rcTerminalAutoScroll', terminalAutoScroll ? '1' : '0');
+    updateTerminalToggleUI();
+  });
+
+  timestamps.addEventListener('click', () => {
+    terminalShowTimestamps = !terminalShowTimestamps;
+    localStorage.setItem('rcTerminalTimestamps', terminalShowTimestamps ? '1' : '0');
+    updateTerminalToggleUI();
+  });
+
+  function updateTerminalToggleUI() {
+    autoScroll.classList.toggle('active', terminalAutoScroll);
+    timestamps.classList.toggle('active', terminalShowTimestamps);
+  }
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const terminalCollapse = document.getElementById('terminal-collapse');
+  const sidebarHandle = document.getElementById('sidebar-handle');
+  const terminalHandle = document.getElementById('terminal-handle');
+  const sidebarPanel = document.getElementById('sidebar-panel');
+  const terminalPanel = document.getElementById('terminal-panel');
+
+  let sidebarDrag = null;
+  let terminalDrag = null;
+
+  function stopDrag() {
+    if (sidebarDrag || terminalDrag) {
+      sidebarDrag = null;
+      terminalDrag = null;
+      document.body.style.cursor = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopDrag);
+    }
+  }
+
+  function onPointerMove(ev) {
+    if (sidebarDrag) {
+      const deltaX = ev.clientX - sidebarDrag.startX;
+      const newWidth = Math.max(180, Math.min(520, sidebarDrag.startWidth + deltaX));
+      sidebarPanel.style.width = newWidth + 'px';
+      if (sidebarPanel.classList.contains('collapsed')) {
+        sidebarPanel.classList.remove('collapsed');
+        sidebarToggle.textContent = '▾';
+      }
+    }
+    if (terminalDrag) {
+      const deltaY = terminalDrag.startY - ev.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight * 0.7, terminalDrag.startHeight + deltaY));
+      terminalPanel.style.height = newHeight + 'px';
+      terminalPanel.classList.remove('collapsed');
+      terminalCollapse.textContent = '▾';
+      document.body.classList.remove('terminal-collapsed');
+    }
+  }
+
+  if (sidebarHandle) {
+    sidebarHandle.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      sidebarDrag = { startX: ev.clientX, startWidth: sidebarPanel.offsetWidth };
+      document.body.style.cursor = 'ew-resize';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', stopDrag);
+    });
+  }
+
+  if (terminalHandle) {
+    terminalHandle.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      terminalDrag = { startY: ev.clientY, startHeight: terminalPanel.offsetHeight };
+      document.body.style.cursor = 'ns-resize';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', stopDrag);
+    });
+  }
+
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      const panel = sidebarPanel;
+      panel.classList.toggle('collapsed');
+      sidebarToggle.textContent = panel.classList.contains('collapsed') ? '▸' : '▾';
+    });
+  }
+  if (terminalCollapse) {
+    terminalCollapse.addEventListener('click', () => {
+      const panel = terminalPanel;
+      const collapsed = panel.classList.toggle('collapsed');
+      terminalCollapse.textContent = collapsed ? '▴' : '▾';
+      document.body.classList.toggle('terminal-collapsed', collapsed);
+    });
+  }
+
+  updateTerminalToggleUI();
+  setTerminalEnabled(false);
+}
+
+initTerminal();
+
+// ── Read loop ──────────────────────────────────────────────────────────────
+async function startReading() {
+  const decoder = new TextDecoder();
+  while (port && port.readable) {
+    try {
+      reader = port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          readBuffer += decoder.decode(value);
+          let idx;
+          while ((idx = readBuffer.indexOf('\n')) !== -1) {
+            const line = readBuffer.slice(0, idx).trim();
+            readBuffer  = readBuffer.slice(idx + 1);
+            if (line.length > 0) handleBoardMessage(line);
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch(_) {}
+        reader = null;
+      }
+    } catch (e) {
+      if (!port) break;
+      console.warn('Read recovered after:', e.name || 'error', '— continuing');
+      readBuffer = '';
+      await new Promise(r => setTimeout(r, 50));
+    }
+  }
+}
+
+function handleBoardMessage(line) {
+  let msg;
+  try { msg = JSON.parse(line); } catch(e) {
+    appendTerminalLine('< ' + line, 'rx');
+    console.log('Board>', line);
+    return;
+  }
+
+  if (msg.type === 'PWM_UPDATE') {
+    try {
+      if (msg.sbus) updateSbusStatus(msg.sbus);
+      const matrixVal = (msg.matrixVal !== undefined) ? msg.matrixVal : msg.ch6;
+      const modeVal   = (msg.modeVal   !== undefined) ? msg.modeVal   : msg.ch16;
+      if (msg.matrixCh) _liveMatrixCh = msg.matrixCh;
+      if (msg.modeCh)   _liveModeCh   = msg.modeCh;
+      if (calibrationState) {
+        calibrationState.lastMsg = msg;
+        updateCalibrationLive(msg);
+      }
+      updatePWMDisplay(matrixVal, modeVal, msg.btn, msg.mode);
+    } catch (e) {
+      console.error('PWM_UPDATE handler threw:', e, msg);
+    }
+    return;
+  }
+
+  appendTerminalLine('< ' + line, 'rx');
+  if (msg.type !== 'PWM_UPDATE') console.log('Board RX:', msg.type, msg);
+
+  if (msg.type === 'PONG') {
+    document.getElementById('status-text').textContent = 'Connected ✓';
+    return;
+  }
+  if (msg.type === 'CONFIG') {
+    applyConfig(msg.data);
+    return;
+  }
+  if (msg.type === 'ACK') {
+    if (!msg.ok) console.warn('NACK:', msg.msg);
+    return;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Config apply / serialise
+// ════════════════════════════════════════════════════════════════════════════
+function applyConfig(data) {
+  if (!data) return;
+  if (data.tapWindowMs   !== undefined) config.tapWindowMs   = data.tapWindowMs;
+  if (data.matrixChannel !== undefined) config.matrixChannel = data.matrixChannel;
+  if (data.funcBindings)               config.funcBindings  = data.funcBindings;
+  if (data.thresholds)  config.thresholds = data.thresholds;
+  if (data.mappings)    config.mappings   = data.mappings;
+  if (data.switches)    config.switches   = data.switches;
+  if (data.knobs)       config.knobs      = data.knobs;
+  if (data.hcrDest)     config.hcrDest    = data.hcrDest;
+  if (Array.isArray(data.maestros) && data.maestros.length) {
+    // Pad / truncate to NUM_MAESTRO_SLOTS so the array length is stable
+    config.maestros = data.maestros.slice(0, NUM_MAESTRO_SLOTS);
+    while (config.maestros.length < NUM_MAESTRO_SLOTS) {
+      config.maestros.push({ type: 0, device: 1 + config.maestros.length });
+    }
+  }
+  document.getElementById('tapwin-input').value = config.tapWindowMs;
+  applyHcrDestUI();
+  renderMaestroLocations();
+  const mcEl = document.getElementById('cfg-matrix-ch');
+  if (mcEl && config.matrixChannel) mcEl.value = config.matrixChannel;
+  applyBindingsUI();
+  _liveMatrixCh = config.matrixChannel || _liveMatrixCh;
+  const modeSwIdx = config.funcBindings && config.funcBindings.mode;
+  if (typeof modeSwIdx === 'number' && config.switches) {
+    const swKeys = ['SA','SB','SC','SD','SE','SF','SG','SH'];
+    const sw = config.switches[swKeys[modeSwIdx]];
+    if (sw && sw.channel) _liveModeCh = sw.channel;
+  }
+  const labMatrix = document.getElementById('lbl-matrix-ch');
+  if (labMatrix) labMatrix.textContent = `CH${_liveMatrixCh}`;
+  const labMode = document.getElementById('lbl-mode-ch');
+  if (labMode)   labMode.textContent   = `CH${_liveModeCh}`;
+  renderThresholds();
+  renderAssignmentList();
+  updateButtonHighlights();
+  updatePWMTooltips();
+  renderSwitchHighlights();
+  renderKnobHighlights();
+}
+
+function applyBindingsUI() {
+  if (!config.funcBindings) return;
+  const el = document.getElementById('bind-mode');
+  if (el && typeof config.funcBindings.mode === 'number') {
+    el.value = String(config.funcBindings.mode);
+  }
+}
+
+// ── Maestro Locations sidebar UI ──────────────────────────────────────────
+// Renders 8 rows describing where each logical Maestro is wired. Edits flow
+// directly into config.maestros[] on every input change. The displayed
+// label is the same string used by the Maestro target dropdowns in the knob
+// modal / actions, so the user immediately sees consistent naming.
+function renderMaestroLocations() {
+  const wrap = document.getElementById('maestro-locations');
+  if (!wrap) return;
+  if (!Array.isArray(config.maestros) || config.maestros.length !== NUM_MAESTRO_SLOTS) {
+    // Defensive: ensure the array exists and is sized right
+    config.maestros = Array.from({ length: NUM_MAESTRO_SLOTS },
+                                 (_, i) => ({ type: 0, device: 1 + i }));
+  }
+  wrap.innerHTML = '';
+  for (let i = 0; i < NUM_MAESTRO_SLOTS; i++) {
+    const slot = config.maestros[i];
+    const row = document.createElement('div');
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'auto auto 1fr auto';
+    row.style.alignItems = 'center';
+    row.style.gap = '6px';
+    row.style.fontSize = '12px';
+    row.innerHTML = `
+      <span style="color:var(--muted);min-width:40px">M${i+1}</span>
+      <select data-mae-idx="${i}" data-mae-field="type" style="font-size:11px;padding:2px 4px">
+        <option value="0" ${slot.type===0?'selected':''}>Disabled</option>
+        <option value="1" ${slot.type===1?'selected':''}>Local (Serial2)</option>
+        <option value="2" ${slot.type===2?'selected':''}>Remote (broadcast)</option>
+      </select>
+      <span style="color:var(--muted);font-size:10px;text-align:right">dev</span>
+      <input type="number" min="0" max="127" value="${slot.device}"
+             data-mae-idx="${i}" data-mae-field="device"
+             style="font-size:11px;padding:2px 4px;width:60px"
+             title="Pololu protocol device # (0-127). Must match the device number set on the physical Maestro in Maestro Control Center.">
+    `;
+    wrap.appendChild(row);
+  }
+  // Wire change handlers — mutate config.maestros[i] directly, then refresh
+  // any open knob modal's Maestro target dropdowns so labels stay in sync.
+  wrap.querySelectorAll('[data-mae-idx]').forEach(el => {
+    el.addEventListener('change', () => {
+      const idx = +el.dataset.maeIdx;
+      const fld = el.dataset.maeField;
+      const v = +el.value;
+      if (!config.maestros[idx]) config.maestros[idx] = { type: 0, device: 255 };
+      config.maestros[idx][fld] = v;
+      // If the knob modal is open showing Maestro Pass-Through outputs,
+      // re-render so the new label propagates.
+      if (editingKnob && editingKnobDraft && +editingKnobDraft.function === KF_MAESTRO_PASSTHROUGH) {
+        renderKnobOutputs();
+      }
+    });
+  });
+}
+
+// ── Global HCR destination UI ─────────────────────────────────────────────
+// The sidebar dropdown + dynamic fields edit config.hcrDest in place. Sync
+// happens lazily — UI changes mutate config.hcrDest immediately on input.
+function applyHcrDestUI() {
+  const d = config.hcrDest || (config.hcrDest = { transport: 'serial', port: 'S3' });
+  const tSel = document.getElementById('hcr-transport');
+  if (tSel) tSel.value = d.transport || 'serial';
+  renderHcrDestFields();
+}
+
+function renderHcrDestFields() {
+  const wrap = document.getElementById('hcr-dest-fields');
+  if (!wrap) return;
+  const d = config.hcrDest || (config.hcrDest = { transport: 'serial', port: 'S3' });
+  const t = document.getElementById('hcr-transport')?.value || d.transport || 'serial';
+  d.transport = t;
+  if (t === 'wcb') {
+    const tgt = (d.target !== undefined ? d.target : 2);
+    const port = (d.wcbPort !== undefined ? d.wcbPort : 1);
+    wrap.innerHTML = `
+      <label>WCB:</label>
+      <input type="number" id="hcr-target" min="0" max="20" value="${tgt}"
+             style="width:60px;font-size:12px"
+             title="0 = broadcast · 1-20 = unicast to that WCB"
+             oninput="config.hcrDest.target = this.value">
+      <label>Port:</label>
+      <input type="number" id="hcr-wcbPort" min="1" max="5" value="${port}"
+             style="width:50px;font-size:12px"
+             title="Serial port on destination WCB (1-5)"
+             oninput="config.hcrDest.wcbPort = +this.value">
+    `;
+    if (d.target === undefined)  d.target = String(tgt);
+    if (d.wcbPort === undefined) d.wcbPort = port;
+    delete d.port;
+  } else {
+    const port = d.port || 'S3';
+    wrap.innerHTML = `
+      <label>Port:</label>
+      <select id="hcr-port" style="font-size:12px"
+              onchange="config.hcrDest.port = this.value">
+        ${serialPorts.map(p => `<option value="${p.v}" ${p.v===port?'selected':''}>${p.v}</option>`).join('')}
+      </select>
+    `;
+    d.port = port;
+    delete d.target;
+    delete d.wcbPort;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  UI helpers
+// ════════════════════════════════════════════════════════════════════════════
+function updateSbusStatus(s) {
+  const dot    = document.getElementById('sbus-dot');
+  const state  = document.getElementById('sbus-state');
+  const detail = document.getElementById('sbus-detail');
+  if (!dot || !state || !detail) return;
+
+  let color, label;
+  if (s.failsafe) {
+    color = 'var(--red)';
+    label = 'FAILSAFE';
+  } else if (s.lost || !s.ok) {
+    color = 'var(--red)';
+    label = 'No signal';
+  } else {
+    color = 'var(--green)';
+    if (s.chCount === 24)      label = 'Receiving · SBUS-24';
+    else if (s.chCount === 16) label = 'Receiving · SBUS-16';
+    else                        label = 'Receiving';
+  }
+  dot.style.background = color;
+  dot.style.boxShadow  = `0 0 8px ${color === 'var(--green)' ? 'rgba(76,175,80,.7)' : 'rgba(244,67,54,.6)'}`;
+  state.textContent    = label;
+  state.style.color    = color;
+  const variant = (s.chCount && s.frameLen)
+    ? `${s.chCount}ch (${s.frameLen}-byte frame) · `
+    : '';
+  detail.textContent   = `${variant}${s.fps} fps · ${s.frames} frames · age ${s.ageMs} ms`;
+}
+
+let _liveCh6 = 0, _liveCh16 = 0, _liveBtn = 0, _liveMode = 1;
+let _liveMatrixCh = 7;
+let _liveModeCh   = 12;
+
+function updatePWMDisplay(matrixVal, modeVal, btn, mode) {
+  _liveCh6 = matrixVal; _liveCh16 = modeVal; _liveBtn = btn; _liveMode = mode;
+  const pwmMin = 800, pwmMax = 1850;
+  document.getElementById('live-ch6').textContent    = fmtVal(matrixVal);
+  document.getElementById('val-ch6').textContent     = fmtVal(matrixVal);
+  document.getElementById('val-ch16').textContent    = fmtVal(modeVal);
+  document.getElementById('bar-ch6').style.width     = ((matrixVal-pwmMin)/(pwmMax-pwmMin)*100).toFixed(1) + '%';
+  document.getElementById('bar-ch16').style.width    = ((modeVal-pwmMin)/(pwmMax-pwmMin)*100).toFixed(1) + '%';
+  const ch6El  = document.getElementById('val-ch6');
+  const ch16El = document.getElementById('val-ch16');
+  if (ch6El)  ch6El.title  = `${altLbl(matrixVal)}`;
+  if (ch16El) ch16El.title = `${altLbl(modeVal)}`;
+  const bigCh6 = document.getElementById('live-ch6');
+  if (bigCh6) bigCh6.title = `${altLbl(matrixVal)}`;
+  const labMatrix = document.getElementById('lbl-matrix-ch');
+  if (labMatrix) labMatrix.textContent = `CH${_liveMatrixCh}`;
+  const labMode = document.getElementById('lbl-mode-ch');
+  if (labMode)   labMode.textContent   = `CH${_liveModeCh}`;
+  const sub    = document.getElementById('live-ch6-sub');
+  if (sub) sub.textContent = `Channel ${_liveMatrixCh} — Button Matrix (${unitLbl()})`;
+
+  const isReleased = (matrixVal >= 962 && matrixVal <= 1022);
+  const effectiveBtn = isReleased ? 0 : btn;
+
+  const chip = document.getElementById('live-btn-name');
+  chip.textContent = effectiveBtn > 0
+    ? `Btn ${effectiveBtn}: ${btnLabels[effectiveBtn]} (Mode ${mode})`
+    : 'Neutral / Released';
+  chip.style.background = effectiveBtn > 0 ? 'var(--accent)' : 'var(--muted)';
+
+  document.querySelectorAll('.btn-zone.live-active').forEach(el => el.classList.remove('live-active'));
+  if (effectiveBtn > 0 && effectiveBtn <= 19) {
+    const el = document.querySelector(`.btn-zone[data-btn="${effectiveBtn}"]`);
+    if (el) el.classList.add('live-active');
+  }
+}
+
+function updatePWMTooltips() {
+  if (!config.thresholds) return;
+  config.thresholds.forEach(t => {
+    const el = document.querySelector(`.btn-zone[data-btn="${t.id}"]`);
+    if (!el) return;
+    let title = el.querySelector('title');
+    if (!title) {
+      title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      el.insertBefore(title, el.firstChild);
+    }
+    title.textContent = `btn ${t.id}: ${t.label}  ·  ${fmtVal(t.minPwm)}-${fmtVal(t.maxPwm)} ${unitLbl()}`;
+  });
+}
+
+function renderThresholds() {
+  const tbody = document.querySelector('#thresh-table tbody');
+  tbody.innerHTML = '';
+  config.thresholds.forEach((t, i) => {
+    const row = document.createElement('tr');
+    const center = Math.round((t.minPwm + t.maxPwm) / 2);
+    row.innerHTML = `
+      <td>${t.id}</td>
+      <td><input type="text" value="${escH(t.label)}" style="width:90px" onchange="config.thresholds[${i}].label=this.value"></td>
+      <td><input type="number" value="${fmtVal(center)}" style="width:65px" title="min ${fmtVal(t.minPwm)} / max ${fmtVal(t.maxPwm)}"
+                 onchange="(function(v){ config.thresholds[${i}].minPwm=v-10; config.thresholds[${i}].maxPwm=v+10; renderThresholds(); updatePWMTooltips(); })(parseVal(this.value))"></td>`;
+    tbody.appendChild(row);
+  });
+}
+
+function renderAssignmentList() {
+  const list = document.getElementById('assignment-list');
+  list.innerHTML = '';
+  for (let btn = 1; btn <= 18; btn++) {
+    const key = String(currentMode * 100 + btn);
+    const m   = config.mappings[key];
+    const card = document.createElement('div');
+    card.style.cssText = `background:var(--card); border-radius:8px; padding:10px; cursor:pointer; border:1px solid var(--border)`;
+    card.onclick = () => openModal(btn);
+    const isConfig = m && (m.t1?.length || m.t2?.length || m.t3?.length || m.exclusive);
+    const excBadge = m?.exclusive ? ' <span style="color:var(--yellow);font-size:10px">⚡ excl</span>' : '';
+    card.innerHTML = `
+      <div style="font-weight:700;margin-bottom:4px;color:${isConfig?'var(--text)':'var(--muted)'}">${btnLabels[btn]}${excBadge}</div>
+      ${tierSummary(m, 1)}${tierSummary(m, 2)}${tierSummary(m, 3)}
+    `;
+    list.appendChild(card);
+  }
+}
+
+function tierSummary(m, tier) {
+  if (!m) return '';
+  const acts = m['t' + tier];
+  if (!acts || !acts.length) return '';
+  const desc = acts.map(actionSummary).join(' + ');
+  return `<div style="font-size:11px;color:var(--muted);margin-top:2px">${tier}×: ${desc}</div>`;
+}
+
+function actionSummary(a) {
+  if (!a || !a.type) return '—';
+  let core;
+  if (a.type === 'wcb_unicast')        core = `WCB${a.target}: ${escH(a.cmd)}`;
+  else if (a.type === 'wcb_broadcast') core = `WCB*: ${escH(a.cmd)}`;
+  else if (a.type === 'maestro' || a.type === 'maestro_remote' || a.type === 'maestro_local') {
+    // "maestro_local" (legacy) implicitly targets Maestro 1
+    const id = (a.type === 'maestro_local') ? 1 : (a.target || '?');
+    core = `Maestro ${id}: ${escH(a.cmd)}`;
+  }
+  else if (a.type === 'serial')        core = `${a.port}: ${escH(a.cmd)}`;
+  else if (a.type === 'hcr') {
+    const fnLbl = hcrFnLabels[a.fn] || `fn${a.fn}`;
+    let chanLbl;
+    if (HCR_FN_USES_EMOTION.has(+a.fn))         chanLbl = emotionName(a.chan);
+    else if (HCR_FN_USES_AUDIO_CHAN.has(+a.fn)) chanLbl = audioChanName(a.chan);
+    else                                         chanLbl = `c${a.chan}`;
+    core = `HCR ${fnLbl}(${chanLbl}, ${a.track ?? 0})`;
+  }
+  else core = a.type;
+  if (a.note && a.note.length)
+    core += ` <span style="color:#888;font-style:italic">"${escH(a.note)}"</span>`;
+  return core;
+}
+
+function updateButtonHighlights() {
+  for (let btn = 1; btn <= 19; btn++) {
+    const key   = String(currentMode * 100 + btn);
+    const m     = config.mappings[key];
+    const group = document.querySelector(`.btn-zone[data-btn="${btn}"]`);
+    if (!group) continue;
+    const hasData = m && (m.t1?.length || m.t2?.length || m.t3?.length);
+    const outer = group.querySelector('rect, circle');
+    if (outer) {
+      outer.style.stroke      = hasData ? 'var(--accent2)' : '';
+      outer.style.strokeWidth = hasData ? '2.5' : '';
+      outer.style.filter      = hasData ? 'drop-shadow(0 0 3px var(--accent2))' : '';
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Modal — Button
+// ════════════════════════════════════════════════════════════════════════════
+function openModal(btn) {
+  const ev = window.event;
+  if (ev && ev.shiftKey) {
+    ev.preventDefault();
+    let tap = 1;
+    if (ev.ctrlKey || ev.metaKey) tap = 2;
+    else if (ev.altKey)            tap = 3;
+    if (!port) { alert('Connect to the board first.'); return; }
+    sendJSON({ type: 'TRIGGER', mode: currentMode, btn, tap });
+    console.log(`TRIGGER → mode=${currentMode} btn=${btn} tap=${tap}`);
+    return;
+  }
+
+  editingBtn = btn;
+  editingSw  = null;
+  editingKnob = null;
+  const key  = String(currentMode * 100 + btn);
+  const m    = config.mappings[key] || { exclusive: false };
+
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = '';
+
+  document.getElementById('modal-title').textContent = `Button ${btn}: ${btnLabels[btn]}`;
+  const badges = document.getElementById('modal-mode-badges');
+  badges.innerHTML = `<span class="mode-badge m${currentMode}" style="margin-left:8px">${modeLabels[currentMode]}</span>`;
+
+  document.getElementById('modal-exclusive').checked = !!m.exclusive;
+
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = '';
+  for (let tier = 1; tier <= 3; tier++) {
+    const acts = m['t' + tier] || [];
+    container.appendChild(buildTierCard(tier, acts));
+  }
+
+  document.getElementById('modal').classList.add('open');
+}
+
+const MAX_ACTIONS_PER_TIER = 5;
+
+function buildTierCard(tier, actions) {
+  const card  = document.createElement('div');
+  card.className = 'tier-card';
+  card.id = `tier-card-${tier}`;
+
+  const titles = ['', 'Single tap (1×)', 'Double tap (2×)', 'Triple tap (3×)'];
+  card.innerHTML = `<div class="tier-title">${titles[tier]}</div>`;
+
+  const rows = document.createElement('div');
+  rows.id = `rows-${tier}`;
+  rows.className = 'rows-container';
+  card.appendChild(rows);
+
+  const startCount = Math.max(1, actions.length);
+  for (let ai = 0; ai < startCount; ai++) {
+    const a = actions[ai] || { type: '' };
+    rows.appendChild(buildActionRow(tier, ai, a));
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn btn-ghost btn-add-action';
+  addBtn.textContent = '+ Add action';
+  addBtn.onclick = () => addActionRow(tier);
+  card.appendChild(addBtn);
+
+  refreshTierState(tier);
+  return card;
+}
+
+function addActionRow(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return;
+  const existing = rows.querySelectorAll('.action-row').length;
+  if (existing >= MAX_ACTIONS_PER_TIER) return;
+
+  const used = new Set([...rows.querySelectorAll('.action-row')]
+                       .map(r => +r.dataset.ai));
+  let ai = 0;
+  while (used.has(ai)) ai++;
+
+  rows.appendChild(buildActionRow(tier, ai, { type: '' }));
+  refreshTierState(tier);
+}
+
+function removeActionRow(tier, ai) {
+  const row = document.getElementById(`action-${tier}-${ai}`);
+  if (!row) return;
+  row.remove();
+  refreshTierState(tier);
+}
+
+function refreshTierState(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return;
+  const rowEls = rows.querySelectorAll('.action-row');
+  rowEls.forEach((r, idx) => {
+    const x = r.querySelector('.btn-remove-action');
+    if (x) x.style.visibility = rowEls.length > 1 ? 'visible' : 'hidden';
+  });
+  const card = rows.parentElement;
+  const addBtn = card.querySelector('.btn-add-action');
+  if (addBtn) {
+    const atMax = rowEls.length >= MAX_ACTIONS_PER_TIER;
+    addBtn.disabled = atMax;
+    addBtn.textContent = atMax ? `Max ${MAX_ACTIONS_PER_TIER} actions` : '+ Add action';
+  }
+}
+
+function buildActionRow(tier, ai, action) {
+  const row = document.createElement('div');
+  row.className = 'action-row';
+  row.id = `action-${tier}-${ai}`;
+  row.dataset.ai = ai;
+
+  // Type selector
+  const typeSelect = document.createElement('select');
+  typeSelect.id = `type-${tier}-${ai}`;
+  typeSelect.style.minWidth = '160px';
+  Object.entries(actionTypeLabels).forEach(([v, label]) => {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = label;
+    if (v === (action.type || '')) opt.selected = true;
+    typeSelect.appendChild(opt);
+  });
+  typeSelect.onchange = () => updateActionFields(tier, ai);
+
+  row.appendChild(makeFieldGroup('Action', typeSelect));
+
+  // Type-specific fields
+  const fieldsDiv = document.createElement('div');
+  fieldsDiv.id = `fields-${tier}-${ai}`;
+  fieldsDiv.style.display = 'flex'; fieldsDiv.style.gap = '6px'; fieldsDiv.style.flexWrap = 'wrap';
+  fieldsDiv.style.alignItems = 'flex-end';
+  appendActionFields(fieldsDiv, action);
+  row.appendChild(fieldsDiv);
+
+  // Delay
+  const delayInput = document.createElement('input');
+  delayInput.type = 'number'; delayInput.id = `delay-${tier}-${ai}`;
+  delayInput.min = 0; delayInput.max = 10000; delayInput.step = 50;
+  delayInput.value = action.delay || action.delayMs || 0;
+  delayInput.style.width = '70px';
+  row.appendChild(makeFieldGroup('Delay(ms)', delayInput));
+
+  // Note
+  const noteInput = document.createElement('input');
+  noteInput.type = 'text'; noteInput.id = `note-${tier}-${ai}`;
+  noteInput.maxLength = 19;
+  noteInput.placeholder = 'optional comment';
+  noteInput.value = action.note || '';
+  noteInput.style.width = '160px';
+  row.appendChild(makeFieldGroup('Note', noteInput));
+
+  // × Remove button
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'btn-remove-action';
+  rm.textContent = '×';
+  rm.title = 'Remove this action';
+  rm.onclick = () => removeActionRow(tier, ai);
+  row.appendChild(rm);
+
+  return row;
+}
+
+function makeFieldGroup(label, el) {
+  const g = document.createElement('div');
+  g.className = 'field-group';
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+  g.appendChild(lbl); g.appendChild(el);
+  return g;
+}
+
+// Build the Maestro command builder helper — a small inline UI that lets
+// the user pick a Maestro command from a dropdown and auto-fills the cmd
+// text field with the comma-delimited "setTarget,ch,pos" string the
+// firmware expects.
+function buildMaestroHelper(containerId, cmdInputId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'maestro-helper';
+  wrap.style.flex = '1 1 100%';
+
+  const label = document.createElement('span');
+  label.textContent = 'Builder:';
+  label.style.color = 'var(--muted)';
+  wrap.appendChild(label);
+
+  const cmdSel = document.createElement('select');
+  cmdSel.id = containerId + '-mcmd';
+  Object.keys(maestroCommands).forEach(name => {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name;
+    cmdSel.appendChild(o);
+  });
+  wrap.appendChild(cmdSel);
+
+  const argsWrap = document.createElement('span');
+  argsWrap.id = containerId + '-margs';
+  argsWrap.style.display = 'inline-flex';
+  argsWrap.style.gap = '4px';
+  wrap.appendChild(argsWrap);
+
+  const buildBtn = document.createElement('button');
+  buildBtn.type = 'button';
+  buildBtn.textContent = '→ cmd';
+  buildBtn.title = 'Write formatted command into the cmd field';
+  wrap.appendChild(buildBtn);
+
+  function renderArgs() {
+    argsWrap.innerHTML = '';
+    const spec = maestroCommands[cmdSel.value];
+    spec.args.forEach((arg, i) => {
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.placeholder = arg.l;
+      inp.title = `${arg.l} (${arg.min}-${arg.max})`;
+      inp.min = arg.min; inp.max = arg.max;
+      inp.value = arg.d;
+      inp.id = `${containerId}-marg${i}`;
+      inp.style.width = '70px';
+      argsWrap.appendChild(inp);
+    });
+  }
+  renderArgs();
+  cmdSel.onchange = renderArgs;
+
+  buildBtn.onclick = () => {
+    const spec = maestroCommands[cmdSel.value];
+    const parts = [cmdSel.value];
+    spec.args.forEach((arg, i) => {
+      const inp = document.getElementById(`${containerId}-marg${i}`);
+      parts.push(inp.value || '0');
+    });
+    const cmdInput = document.getElementById(cmdInputId);
+    if (cmdInput) cmdInput.value = parts.join(',');
+  };
+
+  return wrap;
+}
+
+// Build (or rebuild) the "chan" field group for an HCR action — the widget
+// switches between an emotion dropdown, an audio-channel dropdown, or a raw
+// number input depending on the selected fn. Mirrors the BC config tool.
+function renderHcrChanField(container, fn, curVal) {
+  const groupId = container.id + '-chan-group';
+  const old = document.getElementById(groupId);
+  if (old) old.remove();
+  let widget;
+  if (HCR_FN_USES_EMOTION.has(+fn)) {
+    widget = document.createElement('select');
+    HCR_EMOTIONS.forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.v; o.textContent = e.n;
+      if (curVal !== undefined && +curVal === e.v) o.selected = true;
+      widget.appendChild(o);
+    });
+  } else if (HCR_FN_USES_AUDIO_CHAN.has(+fn)) {
+    widget = document.createElement('select');
+    HCR_AUDIO_CHANS.forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.v; o.textContent = e.n;
+      if (curVal !== undefined && +curVal === e.v) o.selected = true;
+      widget.appendChild(o);
+    });
+  } else {
+    widget = document.createElement('input');
+    widget.type = 'number'; widget.min = 0; widget.max = 99;
+    widget.value = curVal ?? 0; widget.style.width = '55px';
+  }
+  widget.id = container.id + '-chan';
+  const g = makeFieldGroup(HCR_FN_USES_EMOTION.has(+fn) ? 'Emotion'
+                         : HCR_FN_USES_AUDIO_CHAN.has(+fn) ? 'Audio chan'
+                         : 'Chan', widget);
+  g.id = groupId;
+  // Insert just after the Function selector (which is the first child).
+  const fnGroup = container.querySelector('#' + container.id + '-fn')?.parentElement;
+  if (fnGroup && fnGroup.nextSibling) container.insertBefore(g, fnGroup.nextSibling);
+  else container.appendChild(g);
+}
+
+function appendActionFields(container, action) {
+  container.innerHTML = '';
+  const type = action.type || '';
+  const fid = container.id;
+
+  if (type === 'wcb_unicast') {
+    const targetInput = document.createElement('input');
+    targetInput.type = 'number';
+    targetInput.id = fid + '-target';
+    targetInput.min = 1; targetInput.max = 20;
+    targetInput.value = action.target || 1;
+    targetInput.style.width = '60px';
+    targetInput.title = 'Destination WCB board ID (1-20)';
+
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = fid + '-cmd';
+    cmdInput.placeholder = ':BL55,1';
+    cmdInput.style.width = '180px';
+    cmdInput.maxLength = 31;
+    cmdInput.value = action.cmd || '';
+
+    container.appendChild(makeFieldGroup('WCB #', targetInput));
+    container.appendChild(makeFieldGroup('Command', cmdInput));
+  } else if (type === 'wcb_broadcast') {
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = fid + '-cmd';
+    cmdInput.placeholder = ':BLALL,1';
+    cmdInput.style.width = '220px';
+    cmdInput.maxLength = 31;
+    cmdInput.value = action.cmd || '';
+    container.appendChild(makeFieldGroup('Broadcast cmd', cmdInput));
+  } else if (type === 'maestro' || type === 'maestro_local' || type === 'maestro_remote') {
+    // Unified "Maestro" action — target = Maestro ID 1-8 from Locations panel.
+    // Legacy maestro_local actions migrate to target=1; legacy maestro_remote
+    // already used target=1-8 (well, 1-4) so they map cleanly.
+    let initial = +action.target || (type === 'maestro_local' ? 1 : 1);
+    if (initial < 1 || initial > NUM_MAESTRO_SLOTS) initial = 1;
+    const slotSel = document.createElement('select');
+    slotSel.id = fid + '-target';
+    slotSel.style.minWidth = '200px';
+    slotSel.innerHTML = maestroIdOptions(initial);
+    slotSel.title = 'Logical Maestro ID — wiring defined in the Maestro Locations panel';
+
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = fid + '-cmd';
+    cmdInput.placeholder = 'setTarget,0,6000';
+    cmdInput.style.width = '220px';
+    cmdInput.maxLength = 31;
+    cmdInput.value = action.cmd || '';
+
+    container.appendChild(makeFieldGroup('Target Maestro', slotSel));
+    container.appendChild(makeFieldGroup('Maestro cmd', cmdInput));
+    container.appendChild(buildMaestroHelper(fid, fid + '-cmd'));
+  } else if (type === 'serial') {
+    const portSel = document.createElement('select');
+    portSel.id = fid + '-port';
+    serialPorts.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.v; o.textContent = p.n;
+      if (p.v === action.port) o.selected = true;
+      portSel.appendChild(o);
+    });
+    const cmdInput = document.createElement('input');
+    cmdInput.type = 'text'; cmdInput.id = fid + '-cmd';
+    cmdInput.placeholder = 'string to send';
+    cmdInput.style.width = '180px';
+    cmdInput.maxLength = 31;
+    cmdInput.value = action.cmd || '';
+    container.appendChild(makeFieldGroup('Port',    portSel));
+    container.appendChild(makeFieldGroup('Command', cmdInput));
+  } else if (type === 'hcr') {
+    // Destination is GLOBAL (sidebar HCR Destination panel) — actions only
+    // carry fn / chan / track.
+    const fnSel = document.createElement('select');
+    fnSel.id = fid + '-fn';
+    fnSel.style.minWidth = '140px';
+    [[14,'PlayWAV'],[16,'StopWAV'],[9,'StopEmote'],[8,'Stop All'],[4,'Stimulate'],
+     [3,'Trigger'],[2,'SetEmotion'],[17,'SetVolume'],[5,'Overload'],[6,'Muse'],[11,'ResetEmotions']
+    ].forEach(([v,lbl]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = lbl;
+      if (v === (action.fn || 14)) o.selected = true;
+      fnSel.appendChild(o);
+    });
+    // Re-render chan widget whenever the function changes
+    fnSel.onchange = () => renderHcrChanField(container, +fnSel.value, undefined);
+    container.appendChild(makeFieldGroup('Function', fnSel));
+
+    // Initial chan field for the selected fn
+    renderHcrChanField(container, +(action.fn || 14), action.chan);
+
+    // Track / value
+    const trackIn = document.createElement('input');
+    trackIn.type = 'number'; trackIn.id = fid + '-track';
+    trackIn.min = 0; trackIn.max = 9999; trackIn.style.width = '70px';
+    trackIn.value = action.track ?? 0;
+    trackIn.title = 'Track number (PlayWAV), volume (SetVolume), or emote level (Trigger/Stimulate)';
+    container.appendChild(makeFieldGroup('Track/Val', trackIn));
+  }
+}
+
+function updateActionFields(tier, ai) {
+  const typeVal = document.getElementById(`type-${tier}-${ai}`).value;
+  const fieldsDiv = document.getElementById(`fields-${tier}-${ai}`);
+  appendActionFields(fieldsDiv, { type: typeVal });
+}
+
+function readActionFromUI(tier, ai) {
+  const type  = document.getElementById(`type-${tier}-${ai}`)?.value || '';
+  const delay = +(document.getElementById(`delay-${tier}-${ai}`)?.value || 0);
+  const note  = (document.getElementById(`note-${tier}-${ai}`)?.value || '').trim();
+  const fid   = `fields-${tier}-${ai}`;
+  const extras = {
+    ...(delay ? { delay } : {}),
+    ...(note  ? { note  } : {}),
+  };
+  if (type === '') return null;
+
+  if (type === 'wcb_unicast') {
+    const target = +(document.getElementById(fid + '-target')?.value || 1);
+    const cmd    = document.getElementById(fid + '-cmd')?.value || '';
+    if (!cmd.trim()) return null;
+    return { type, target: String(target), cmd, ...extras };
+  }
+  if (type === 'wcb_broadcast') {
+    const cmd = document.getElementById(fid + '-cmd')?.value || '';
+    if (!cmd.trim()) return null;
+    return { type, cmd, ...extras };
+  }
+  if (type === 'maestro' || type === 'maestro_local' || type === 'maestro_remote') {
+    // Unified Maestro action — target = Maestro ID 1-8. Always emit as
+    // "maestro" so saved configs converge on the new schema. Legacy types
+    // are only accepted as inputs from older configs.
+    let target = +(document.getElementById(fid + '-target')?.value || 1);
+    if (target < 1 || target > NUM_MAESTRO_SLOTS) target = 1;
+    const cmd = document.getElementById(fid + '-cmd')?.value || '';
+    if (!cmd.trim()) return null;
+    return { type: 'maestro', target: String(target), cmd, ...extras };
+  }
+  if (type === 'serial') {
+    const port = document.getElementById(fid + '-port')?.value || 'S3';
+    const cmd  = document.getElementById(fid + '-cmd')?.value  || '';
+    if (!cmd.trim()) return null;
+    return { type, port, cmd, ...extras };
+  }
+  if (type === 'hcr') {
+    // Destination is global (config.hcrDest) — the action only carries fn/chan/track.
+    const fn    = +(document.getElementById(fid + '-fn')?.value    || 14);
+    const chan  = +(document.getElementById(fid + '-chan')?.value  || 0);
+    const track = +(document.getElementById(fid + '-track')?.value || 0);
+    return { type, fn, chan, track, ...extras };
+  }
+  return null;
+}
+
+function collectTierActions(tier) {
+  const rows = document.getElementById(`rows-${tier}`);
+  if (!rows) return [];
+  const out = [];
+  rows.querySelectorAll('.action-row').forEach(r => {
+    const ai = r.dataset.ai;
+    const a = readActionFromUI(tier, ai);
+    if (a) out.push(a);
+  });
+  return out;
+}
+
+function saveButton() {
+  const key = String(currentMode * 100 + editingBtn);
+  const exclusive = document.getElementById('modal-exclusive').checked;
+  const mapping = { exclusive };
+  for (let tier = 1; tier <= 3; tier++) {
+    const acts = collectTierActions(tier);
+    if (acts.length) mapping['t' + tier] = acts;
+  }
+  config.mappings[key] = mapping;
+  closeModal();
+  renderAssignmentList();
+  updateButtonHighlights();
+}
+
+function clearButton() {
+  const key = String(currentMode * 100 + editingBtn);
+  delete config.mappings[key];
+  closeModal();
+  renderAssignmentList();
+  updateButtonHighlights();
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  editingBtn  = null;
+  editingSw   = null;
+  editingKnob = null;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Knob / Slider / Joystick-axis modal
+//
+//  Each analog source has:
+//    • SBUS channel (1-24, 0 = disabled)
+//    • Function — parallel choices, knob does ONE of these:
+//        KF_MAESTRO_PASSTHROUGH (1) → outputs[] drive Maestro servos
+//        KF_HCR_VOLUME          (2) → outputs[] drive HCR audio volumes
+//    • outputs[] — up to 8 entries, all sharing the parent function. Each:
+//        target     KF_MAESTRO_PASSTHROUGH: Maestro slot ID 1-8
+//                   KF_HCR_VOLUME:          HCR audio chan 0=V, 1=A, 2=B
+//        maestroCh  Maestro servo channel (Maestro Pass-Through only)
+//        posMin     value at SBUS min — qus for servo, 0-99 for HCR volume
+//        posMax     value at SBUS max — qus for servo, 0-99 for HCR volume
+// ════════════════════════════════════════════════════════════════════════════
+function openKnobModal(name) {
+  editingBtn  = null;
+  editingSw   = null;
+  editingKnob = name;
+  if (!config.knobs) config.knobs = {};
+  const d = config.knobs[name] || {};
+  const def = knobDefaults[name] || { channel: 0, function: 0, outputs: [] };
+  const k = {
+    channel:     d.channel  !== undefined ? d.channel  : def.channel,
+    function:    d.function !== undefined ? d.function : def.function,
+    outputs:     Array.isArray(d.outputs) ? d.outputs.map(o => ({...o})) : [],
+  };
+
+  // ─── Backward-compat migrations ──────────────────────────────────────────
+  // Ancient single-output schema: collapse top-level maestroCh/maestroSlot
+  // into outputs[0] as a Maestro Pass-Through.
+  if (k.outputs.length === 0 && d.function && d.maestroCh !== undefined) {
+    const legacySlot = (+d.function === 2) ? (d.maestroSlot ?? 1) : 0;
+    k.outputs.push({
+      target:    legacySlot === 0 ? 1 : legacySlot,
+      maestroCh: d.maestroCh ?? 0,
+      posMin:    d.posMin    ?? 4000,
+      posMax:    d.posMax    ?? 8000,
+    });
+    k.function = KF_MAESTRO_PASSTHROUGH;
+  }
+  // Per-output-kind schema (previous revision): map kind+slot → target,
+  // then drop the legacy fields.  KF_PASSTHROUGH (=1) becomes either
+  // KF_MAESTRO_PASSTHROUGH (=1) or KF_HCR_VOLUME (=2) based on first output's kind.
+  let inferredHcr = false;
+  k.outputs.forEach(o => {
+    if (o.target !== undefined) return;            // already on new schema
+    if (o.kind === 1) {                            // legacy KOUT_HCR_VOLUME
+      o.target = o.slot ?? 0;                      // slot was audio chan
+      inferredHcr = true;
+    } else {                                       // legacy KOUT_MAESTRO
+      const s = o.slot ?? 0;
+      o.target = (s === 0) ? 1 : s;                // map "local" (0) → Maestro 1
+    }
+    delete o.kind;
+    delete o.slot;
+  });
+  if (inferredHcr) k.function = KF_HCR_VOLUME;
+  if (k.function === 1 && k.outputs.length === 0) k.function = KF_NONE;
+
+  editingKnobDraft = k;
+
+  document.getElementById('modal-title').textContent = sourceTitleFor(name);
+  document.getElementById('modal-mode-badges').innerHTML = '';
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = 'none';
+
+  const helpText = (def.kind === 'joystick')
+    ? `Joystick axis pass-through. SBUS 172→posMin, SBUS 1811→posMax. Flip min/max to invert direction.`
+    : `Continuous pass-through. SBUS 172→posMin, SBUS 1811→posMax. Flip min/max to invert.`;
+
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = `
+    <div class="tier-card">
+      <div class="tier-title">Source</div>
+      <div class="action-row" style="flex-wrap:wrap; gap:10px">
+        <div class="field-group">
+          <label>SBUS channel</label>
+          <input type="number" id="kn-channel" min="0" max="24" value="${k.channel}" style="width:70px"
+                 title="0 = disabled, 1-24 = SBUS channel number">
+        </div>
+        <div class="field-group">
+          <label>Function</label>
+          <select id="kn-function" onchange="changeKnobFunction(+this.value)">
+            ${Object.entries(knobFunctions).map(([v, lbl]) =>
+              `<option value="${v}" ${+v === k.function ? 'selected' : ''}>${lbl}</option>`
+            ).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${helpText}</div>
+    </div>
+    <div class="tier-card">
+      <div class="tier-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span id="kn-outputs-title">Outputs</span>
+        <span style="color:var(--muted);font-size:10px" id="kn-output-count"></span>
+      </div>
+      <div id="kn-outputs-rows" class="rows-container"></div>
+      <button type="button" class="btn btn-ghost btn-add-action" id="kn-add-output"
+              onclick="addKnobOutput()">+ Add output</button>
+    </div>
+  `;
+  document.getElementById('modal').classList.add('open');
+  renderKnobOutputs();
+}
+
+// Function-change handler — sync DOM, reset any out-of-band output values for
+// the new function (Maestro qus vs HCR volume 0-99), then re-render.
+function changeKnobFunction(newFn) {
+  if (!editingKnobDraft) return;
+  syncKnobOutputsFromDom();
+  editingKnobDraft.function = newFn;
+  if (newFn === KF_NONE) {
+    // Keep outputs[] in memory so flipping back doesn't lose work
+  } else if (editingKnobDraft.outputs.length === 0) {
+    // Seed one output so the user has something to edit immediately
+    addKnobOutput();
+    return;
+  } else {
+    editingKnobDraft.outputs.forEach(o => {
+      if (newFn === KF_HCR_VOLUME) {
+        if (o.posMax > 99) { o.posMin = 0; o.posMax = 99; }
+        if (o.target > 2)  o.target = 0;
+      } else if (newFn === KF_MAESTRO_PASSTHROUGH) {
+        if (o.posMax <= 99) { o.posMin = 4000; o.posMax = 8000; }
+        if (o.target < 1 || o.target > 8) o.target = 1;
+      }
+    });
+  }
+  renderKnobOutputs();
+}
+
+// Render all outputs[] entries in the modal. Pure render — does NOT touch
+// editingKnobDraft.outputs. Callers must commit any in-flight DOM edits via
+// syncKnobOutputsFromDom() BEFORE calling render, otherwise edits in fields
+// that aren't currently displayed will be lost.
+function renderKnobOutputs() {
+  const fn = +document.getElementById('kn-function').value;
+  const rows = document.getElementById('kn-outputs-rows');
+  const addBtn = document.getElementById('kn-add-output');
+  const counter = document.getElementById('kn-output-count');
+  const title = document.getElementById('kn-outputs-title');
+  if (!rows || !editingKnobDraft) return;
+
+  if (title) {
+    title.textContent = fn === KF_HCR_VOLUME ? 'HCR volume outputs'
+                      : fn === KF_MAESTRO_PASSTHROUGH ? 'Maestro outputs'
+                      : 'Outputs';
+  }
+  if (fn === KF_NONE) {
+    rows.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px">Function disabled — outputs ignored.</div>';
+    if (addBtn) addBtn.disabled = true;
+    if (counter) counter.textContent = '';
+    return;
+  }
+  if (addBtn) addBtn.disabled = editingKnobDraft.outputs.length >= KNOB_MAX_OUTPUTS;
+  if (counter) counter.textContent = `${editingKnobDraft.outputs.length} / ${KNOB_MAX_OUTPUTS}`;
+
+  rows.innerHTML = '';
+  editingKnobDraft.outputs.forEach((o, idx) => {
+    const row = document.createElement('div');
+    row.className = 'action-row';
+    row.style.flexWrap = 'wrap';
+    row.dataset.idx = idx;
+    row.innerHTML = renderKnobOutputFields(idx, o, fn) +
+                    `<button type="button" class="btn-remove-action" onclick="removeKnobOutput(${idx})" title="Remove output">×</button>`;
+    rows.appendChild(row);
+  });
+}
+
+// Build the function-specific input fields for one output row.
+// The field IDs use the same prefix (kn-out-${idx}-...) for both functions so
+// syncKnobOutputsFromDom can read them with one ID per slot.
+function renderKnobOutputFields(idx, o, fn) {
+  if (fn === KF_HCR_VOLUME) {
+    return `
+      <div class="field-group">
+        <label>Audio chan</label>
+        <select id="kn-out-${idx}-target" style="min-width:110px">
+          ${hcrAudioChanOptions(o.target)}
+        </select>
+      </div>
+      <input type="hidden" id="kn-out-${idx}-ch" value="0">
+      <div class="field-group">
+        <label>Vol min (0-99)</label>
+        <input type="number" id="kn-out-${idx}-min" min="0" max="99" value="${o.posMin ?? 0}" style="width:70px">
+      </div>
+      <div class="field-group">
+        <label>Vol max (0-99)</label>
+        <input type="number" id="kn-out-${idx}-max" min="0" max="99" value="${o.posMax ?? 99}" style="width:70px">
+      </div>
+    `;
+  }
+  // KF_MAESTRO_PASSTHROUGH
+  return `
+    <div class="field-group">
+      <label>Target Maestro</label>
+      <select id="kn-out-${idx}-target" style="min-width:220px">${maestroIdOptions(+o.target || 1)}</select>
+    </div>
+    <div class="field-group">
+      <label>Maestro ch</label>
+      <input type="number" id="kn-out-${idx}-ch" min="0" max="31" value="${o.maestroCh ?? 0}" style="width:60px">
+    </div>
+    <div class="field-group">
+      <label>Pos min (qus)</label>
+      <input type="number" id="kn-out-${idx}-min" min="0" max="16383" value="${o.posMin ?? 4000}" style="width:75px">
+    </div>
+    <div class="field-group">
+      <label>Pos max (qus)</label>
+      <input type="number" id="kn-out-${idx}-max" min="0" max="16383" value="${o.posMax ?? 8000}" style="width:75px">
+    </div>
+  `;
+}
+
+function syncKnobOutputsFromDom() {
+  if (!editingKnobDraft) return;
+  const rows = document.querySelectorAll('#kn-outputs-rows .action-row');
+  const next = [];
+  rows.forEach(r => {
+    const idx = r.dataset.idx;
+    const target = +(document.getElementById(`kn-out-${idx}-target`)?.value || 0);
+    const ch     = +(document.getElementById(`kn-out-${idx}-ch`)?.value     || 0);
+    const pn     = +(document.getElementById(`kn-out-${idx}-min`)?.value    || 0);
+    const px     = +(document.getElementById(`kn-out-${idx}-max`)?.value    || 0);
+    next.push({ target, maestroCh: ch, posMin: pn, posMax: px });
+  });
+  editingKnobDraft.outputs = next;
+}
+
+function addKnobOutput() {
+  if (!editingKnobDraft) return;
+  syncKnobOutputsFromDom();
+  if (editingKnobDraft.outputs.length >= KNOB_MAX_OUTPUTS) return;
+  // Seed defaults based on current function — Maestro Pass-Through gets a
+  // Maestro 1 target with full travel range; HCR Volume gets V chan and 0-99.
+  const fn = +(document.getElementById('kn-function')?.value || KF_NONE);
+  if (fn === KF_HCR_VOLUME) {
+    editingKnobDraft.outputs.push({ target: 0, maestroCh: 0, posMin: 0, posMax: 99 });
+  } else {
+    editingKnobDraft.outputs.push({ target: 1, maestroCh: 0, posMin: 4000, posMax: 8000 });
+  }
+  renderKnobOutputs();
+}
+
+function removeKnobOutput(idx) {
+  if (!editingKnobDraft) return;
+  syncKnobOutputsFromDom();
+  editingKnobDraft.outputs.splice(idx, 1);
+  renderKnobOutputs();
+}
+
+function saveKnobModal() {
+  if (!editingKnob || !editingKnobDraft) return;
+  if (!config.knobs) config.knobs = {};
+  syncKnobOutputsFromDom();
+  const fn = +document.getElementById('kn-function').value;
+  // Drop maestroCh for HCR Volume outputs (it's unused). For Maestro
+  // Pass-Through, keep all four fields.
+  const cleanedOutputs = editingKnobDraft.outputs.map(o => {
+    if (fn === KF_HCR_VOLUME) {
+      return { target: +o.target || 0, posMin: +o.posMin || 0, posMax: +o.posMax || 99 };
+    }
+    return {
+      target:    Math.max(1, Math.min(NUM_MAESTRO_SLOTS, +o.target || 1)),
+      maestroCh: +o.maestroCh || 0,
+      posMin:    +o.posMin || 0,
+      posMax:    +o.posMax || 0,
+    };
+  });
+  config.knobs[editingKnob] = {
+    channel:  +document.getElementById('kn-channel').value,
+    function: fn,
+    outputs:  fn === KF_NONE ? [] : cleanedOutputs,
+  };
+  editingKnobDraft = null;
+  closeModal();
+  renderKnobHighlights();
+}
+
+function clearKnobModal() {
+  if (!editingKnob) return;
+  delete config.knobs[editingKnob];
+  editingKnobDraft = null;
+  closeModal();
+  renderKnobHighlights();
+}
+
+function renderKnobHighlights() {
+  document.querySelectorAll('.knob-zone').forEach(el => {
+    const name = el.dataset.knob;
+    const k = config.knobs && config.knobs[name];
+    const hasFunc = k && k.function && k.function !== 0;
+    el.classList.toggle('configured', !!hasFunc);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Switch modal
+// ════════════════════════════════════════════════════════════════════════════
+function openSwitchModal(swName) {
+  editingBtn = null;
+  editingKnob = null;
+  editingSw  = swName;
+  if (!config.switches) config.switches = {};
+  const d = config.switches[swName] || {};
+  const defaults = switchDefaults[swName] || { channel: 0, positions: 3 };
+  const sw = {
+    channel:   d.channel   || defaults.channel,
+    positions: d.positions || defaults.positions,
+    p0: d.p0 || [],
+    p1: d.p1 || [],
+    p2: d.p2 || [],
+  };
+
+  document.getElementById('modal-title').textContent = `Switch ${swName}`;
+  document.getElementById('modal-mode-badges').innerHTML = '';
+  document.getElementById('modal-exclusive').parentElement.parentElement.style.display = 'none';
+
+  const container = document.getElementById('tiers-container');
+  container.innerHTML = '';
+
+  const hwCard = document.createElement('div');
+  hwCard.className = 'tier-card';
+  hwCard.innerHTML = `
+    <div class="tier-title">Switch hardware</div>
+    <div class="action-row">
+      <div class="field-group">
+        <label>SBUS channel</label>
+        <input type="number" id="sw-channel" min="1" max="24" value="${sw.channel}" style="width:70px">
+      </div>
+      <div class="field-group">
+        <label>Positions</label>
+        <select id="sw-positions" onchange="rebuildSwitchTiers()">
+          <option value="2" ${sw.positions==2?'selected':''}>2 (Down / Up)</option>
+          <option value="3" ${sw.positions==3?'selected':''}>3 (Down / Mid / Up)</option>
+        </select>
+      </div>
+    </div>
+  `;
+  container.appendChild(hwCard);
+
+  buildSwitchTiers(sw);
+  document.getElementById('modal').classList.add('open');
+}
+
+function buildSwitchTiers(sw) {
+  const container = document.getElementById('tiers-container');
+  while (container.children.length > 1) container.removeChild(container.lastChild);
+
+  const positions = +sw.positions || 3;
+  const slots = positions === 2
+    ? [{idx:0,label:'Position DOWN'},{idx:2,label:'Position UP'}]
+    : [{idx:0,label:'Position DOWN'},{idx:1,label:'Position MID'},{idx:2,label:'Position UP'}];
+  for (const slot of slots) {
+    const acts = sw['p' + slot.idx] || [];
+    const tierKey = 'p' + slot.idx;
+
+    const card = document.createElement('div');
+    card.className = 'tier-card';
+    card.id = `tier-card-${tierKey}`;
+    card.innerHTML = `<div class="tier-title">${slot.label}</div>`;
+
+    const rows = document.createElement('div');
+    rows.id = `rows-${tierKey}`;
+    rows.className = 'rows-container';
+    card.appendChild(rows);
+
+    const startCount = Math.max(1, acts.length);
+    for (let ai = 0; ai < startCount; ai++) {
+      const a = acts[ai] || { type: '' };
+      rows.appendChild(buildActionRow(tierKey, ai, a));
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-ghost btn-add-action';
+    addBtn.textContent = '+ Add action';
+    addBtn.onclick = () => addActionRow(tierKey);
+    card.appendChild(addBtn);
+
+    container.appendChild(card);
+    refreshTierState(tierKey);
+  }
+}
+
+function rebuildSwitchTiers() {
+  if (!editingSw) return;
+  const cur = config.switches[editingSw] || {};
+  cur.positions = +document.getElementById('sw-positions').value;
+  cur.channel   = +document.getElementById('sw-channel').value;
+  buildSwitchTiers(cur);
+}
+
+function saveSwitchModal() {
+  if (!editingSw) return;
+  const out = {
+    channel:   +document.getElementById('sw-channel').value,
+    positions: +document.getElementById('sw-positions').value,
+  };
+  const indices = out.positions === 2 ? [0, 2] : [0, 1, 2];
+  for (const idx of indices) {
+    const acts = collectTierActions('p' + idx);
+    if (acts.length) out['p' + idx] = acts;
+  }
+  if (!config.switches) config.switches = {};
+  config.switches[editingSw] = out;
+  closeModal();
+  renderSwitchHighlights();
+}
+
+function clearSwitchModal() {
+  if (!editingSw) return;
+  delete config.switches[editingSw];
+  closeModal();
+  renderSwitchHighlights();
+}
+
+function renderSwitchHighlights() {
+  document.querySelectorAll('.switch-zone').forEach(el => {
+    const sw = el.dataset.sw;
+    const d  = config.switches && config.switches[sw];
+    const hasChannel = d && d.channel && d.channel > 0;
+    const hasActions = d && ((d.p0 && d.p0.length) || (d.p1 && d.p1.length) || (d.p2 && d.p2.length));
+    el.classList.toggle('configured', !!(hasChannel || hasActions));
+  });
+}
+
+// Dispatch Apply / Clear All to the right handler.
+function saveModalDispatch() {
+  if (editingKnob)     saveKnobModal();
+  else if (editingSw)  saveSwitchModal();
+  else                 saveButton();
+}
+function clearModalDispatch() {
+  if (editingKnob)     clearKnobModal();
+  else if (editingSw)  clearSwitchModal();
+  else                 clearButton();
+}
+
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Mode tabs
+// ════════════════════════════════════════════════════════════════════════════
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    currentMode = +tab.dataset.mode;
+    document.querySelectorAll('.mode-tab').forEach(t => t.className = 'mode-tab');
+    tab.className = `mode-tab active-${currentMode}`;
+    document.getElementById('mode-label').textContent = modeLabels[currentMode];
+    renderAssignmentList();
+    updateButtonHighlights();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Top bar buttons
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-refresh').addEventListener('click', () => sendJSON({ type: 'GET_CONFIG' }));
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  config.tapWindowMs = +(document.getElementById('tapwin-input').value) || 500;
+  await sendJSON({ type: 'SET_CONFIG', data: config });
+});
+
+document.getElementById('btn-defaults').addEventListener('click', async () => {
+  if (!confirm('Reset all button mappings to factory defaults?')) return;
+  await sendJSON({ type: 'RESET_DEFAULTS' });
+  await new Promise(r => setTimeout(r, 300));
+  await sendJSON({ type: 'GET_CONFIG' });
+});
+
+document.getElementById('btn-export-cfg').addEventListener('click', exportConfigCsv);
+document.getElementById('btn-import-cfg').addEventListener('click', () => document.getElementById('cfg-import-file').click());
+document.getElementById('btn-calibrate').addEventListener('click', openCalibrationModal);
+document.getElementById('cfg-import-file').addEventListener('change', handleConfigImportFile);
+
+document.getElementById('btn-mon-start').addEventListener('click', async () => {
+  await sendJSON({ type: 'START_MONITOR' });
+  isMonitoring = true;
+  document.getElementById('btn-mon-start').disabled = true;
+  document.getElementById('btn-mon-stop').disabled  = false;
+});
+
+document.getElementById('btn-mon-stop').addEventListener('click', async () => {
+  await sendJSON({ type: 'STOP_MONITOR' });
+  isMonitoring = false;
+  document.getElementById('btn-mon-start').disabled = false;
+  document.getElementById('btn-mon-stop').disabled  = true;
+});
+
+async function stopMonitor() {
+  await sendJSON({ type: 'STOP_MONITOR' }).catch(() => {});
+  isMonitoring = false;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Calibration modal — step through every control on the transmitter and
+//  either capture (for buttons → updates threshold) or verify (switches/
+//  knobs/joystick axes).  Highlights the current control on a cloned SVG.
+// ════════════════════════════════════════════════════════════════════════════
+function buildCalibrationSteps() {
+  const buttonSteps = Array.from({ length: 18 }, (_, i) => ({
+    type: 'button',
+    btn: i + 1,
+    label: btnLabels[i + 1]
+  }));
+
+  const switchSteps = ['SA','SB','SC','SD','SE','SF','SG','SH','SI','SJ'].map(swName => ({
+    type: 'switch', swName, label: swName
+  }));
+
+  // All knob-like sources: panel knobs/sliders + 4 gimbal axes
+  const knobSteps = ['S1','S2','LS','RS','J1','J2','J3','J4'].map(knobName => ({
+    type: 'knob', knobName,
+    label: (knobDefaults[knobName] && knobDefaults[knobName].friendly) || knobName
+  }));
+
+  return [...buttonSteps, ...switchSteps, ...knobSteps];
+}
+
+function openCalibrationModal() {
+  if (!port) {
+    alert('Connect to the board first.');
+    return;
+  }
+  const autoAdvance = localStorage.getItem('rcCalibAutoAdvance') !== '0';
+  document.getElementById('calib-auto-advance').checked = autoAdvance;
+  calibrationState = {
+    steps: buildCalibrationSteps(),
+    index: 0,
+    lastMsg: null,
+    captured: 0,
+    stepCaptured: false,
+    autoAdvance,
+    autoAdvanceTimer: null
+  };
+  document.getElementById('calibration-modal').classList.add('open');
+  const nextBtn = document.getElementById('btn-calibration-next');
+  nextBtn.textContent = 'Next →';
+  nextBtn.onclick = calibrationNextStep;
+  document.getElementById('btn-calibration-capture').disabled = false;
+
+  // Clone the main transmitter SVG into the calibration panel (non-interactive)
+  const mainSvg = document.querySelector('.tx-wrap svg');
+  const svgWrap = document.getElementById('calib-svg-wrap');
+  svgWrap.innerHTML = '';
+  if (mainSvg) {
+    const clone = mainSvg.cloneNode(true);
+    clone.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+    svgWrap.appendChild(clone);
+  }
+
+  renderCalibrationStep();
+  if (!isMonitoring) document.getElementById('btn-mon-start').click();
+}
+
+function closeCalibrationModal() {
+  if (calibrationState && calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+  }
+  calibrationState = null;
+  document.getElementById('calibration-modal').classList.remove('open');
+  clearCalibrationHighlights();
+}
+
+function setCalibrationStatus(text, warning = false) {
+  const summary = document.getElementById('calibration-summary');
+  if (!summary) return;
+  summary.textContent = text;
+  summary.style.color = warning ? 'var(--red)' : 'var(--muted)';
+}
+
+function renderCalibrationStep() {
+  if (!calibrationState) return;
+  calibrationState.stepCaptured = false;
+  const step = calibrationState.steps[calibrationState.index];
+  let instruction = '';
+  if (step.type === 'button') {
+    instruction = `Press ${step.label} on the transmitter and hold until captured.`;
+  } else if (step.type === 'switch') {
+    const sw = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
+    const ch  = sw.channel || switchDefaults[step.swName].channel;
+    const isMomentary = step.swName === 'SI' || step.swName === 'SJ';
+    instruction = isMomentary
+      ? `Press and release ${step.label}${ch ? ` (ch${ch})` : ''} — verify the position flips to Up ▲ when pressed, then click Next.`
+      : `Toggle ${step.label}${ch ? ` (ch${ch})` : ''} through all positions — verify the position name updates below, then click Next.`;
+  } else if (step.type === 'knob') {
+    const kn = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
+    const ch = kn.channel || knobDefaults[step.knobName].channel;
+    const isSlider = step.knobName === 'LS' || step.knobName === 'RS';
+    const isJoy    = step.knobName[0] === 'J';
+    if (isJoy) {
+      instruction = `Move the joystick axis ${step.label}${ch ? ` (ch${ch})` : ''} from min to max — verify the value changes below, then click Next.`;
+    } else if (isSlider) {
+      instruction = `Move ${step.label}${ch ? ` (ch${ch})` : ''} from bottom to top — verify the value changes below, then click Next.`;
+    } else {
+      instruction = `Rotate ${step.label}${ch ? ` (ch${ch})` : ''} from min to max — verify the value changes below, then click Next.`;
+    }
+  }
+  document.getElementById('calibration-instruction').textContent = instruction;
+  document.getElementById('calibration-live-value').textContent = 'Waiting for live SBUS data...';
+  setCalibrationStatus('');
+  document.getElementById('btn-calibration-capture').style.display =
+    step.type === 'button' ? '' : 'none';
+  const prevBtn = document.getElementById('btn-calibration-prev');
+  if (prevBtn) prevBtn.disabled = calibrationState.index === 0;
+  highlightCalibrationTarget(step);
+}
+
+function updateCalibrationLive(msg) {
+  if (!calibrationState) return;
+  const step = calibrationState.steps[calibrationState.index];
+  let liveText = '';
+
+  if (step.type === 'button') {
+    liveText = `Detected: ${msg.btn ? btnLabels[msg.btn] : 'none'} — raw ${fmtVal(msg.matrixVal)}`;
+  } else if (step.type === 'switch') {
+    const sw      = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
+    const channel = sw.channel || switchDefaults[step.swName].channel;
+    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
+    if (Number.isFinite(value)) {
+      const pos = value < 400 ? 'Down ▼' : value > 1500 ? 'Up ▲' : 'Mid ●';
+      liveText = `${step.swName}  ch${channel}: ${fmtVal(value)}  →  Position: ${pos}`;
+    } else {
+      liveText = `${step.swName} ch${channel}: awaiting SBUS data`;
+    }
+  } else if (step.type === 'knob') {
+    const kn      = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
+    const channel = kn.channel || knobDefaults[step.knobName].channel;
+    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
+    if (Number.isFinite(value)) {
+      const pct = Math.max(0, Math.min(100, Math.round((value - 172) / (1811 - 172) * 100)));
+      liveText = `${step.knobName}  ch${channel}: ${fmtVal(value)}  (${pct}%)`;
+    } else {
+      liveText = `${step.knobName} ch${channel}: awaiting SBUS data`;
+    }
+  }
+  document.getElementById('calibration-live-value').textContent = liveText;
+
+  // Auto-capture — buttons only
+  if (step.type !== 'button' || calibrationState.stepCaptured) return;
+  const value = msg.matrixVal;
+  if (Number.isFinite(value) && (value < 962 || value > 1022)) {
+    calibrationState.stepCaptured = true;
+    captureCalibrationValue();
+  }
+}
+
+function highlightCalibrationTarget(step) {
+  clearCalibrationHighlights();
+  const scope = document.querySelector('#calib-svg-wrap svg') || document;
+  let target = null;
+  if (step.type === 'button') {
+    target = scope.querySelector(`.btn-zone[data-btn="${step.btn}"]`);
+  } else if (step.type === 'switch') {
+    target = scope.querySelector(`.switch-zone[data-sw="${step.swName}"]`);
+  } else if (step.type === 'knob') {
+    target = scope.querySelector(`.knob-zone[data-knob="${step.knobName}"]`);
+  }
+  if (target) target.classList.add('calibration-highlight');
+  if (calibrationState) {
+    const counter = document.getElementById('calib-step-counter');
+    if (counter) counter.textContent = `Step ${calibrationState.index + 1} of ${calibrationState.steps.length}`;
+  }
+}
+
+function clearCalibrationHighlights() {
+  const scope = document.querySelector('#calib-svg-wrap svg') || document;
+  scope.querySelectorAll('.calibration-highlight').forEach(el => el.classList.remove('calibration-highlight'));
+}
+
+function captureCalibrationValue() {
+  if (!calibrationState) return;
+  const step = calibrationState.steps[calibrationState.index];
+  const msg = calibrationState.lastMsg;
+  if (!msg) {
+    setCalibrationStatus('No live SBUS message yet. Move a control to capture.', true);
+    return;
+  }
+  if (step.type === 'button') {
+    const value = msg.matrixVal;
+    if (!Number.isFinite(value)) {
+      setCalibrationStatus('Matrix value unavailable. Try again.', true);
+      return;
+    }
+    if (value >= 962 && value <= 1022) {
+      setCalibrationStatus(`No button pressed (matrix at ${fmtVal(value)}). Press ${step.label} and hold while clicking Capture.`, true);
+      return;
+    }
+    const detectedLabel = msg.btn ? btnLabels[msg.btn] : 'none';
+    const mismatch = msg.btn && msg.btn !== step.btn;
+    const current = config.thresholds[step.btn - 1] || { label: step.label, minPwm: 0, maxPwm: 0 };
+    config.thresholds[step.btn - 1] = {
+      ...current,
+      label: step.label,
+      minPwm: value - 10,
+      maxPwm: value + 10
+    };
+    renderThresholds();
+    updatePWMTooltips();
+    calibrationState.captured += 1;
+    const note = mismatch ? ` (FW saw ${detectedLabel} — corrected)` : '';
+    const advNote = calibrationState.autoAdvance ? ' Auto-advancing…' : ' Click Next → to continue.';
+    setCalibrationStatus(`${step.label} captured at ${fmtVal(value)}.${advNote}${note}`, false);
+    if (calibrationState.autoAdvance) {
+      calibrationState.autoAdvanceTimer = setTimeout(() => {
+        if (calibrationState) calibrationNextStep();
+      }, 900);
+    }
+  }
+}
+
+function calibrationNextStep() {
+  if (!calibrationState) return;
+  if (calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+    calibrationState.autoAdvanceTimer = null;
+  }
+  if (calibrationState.index >= calibrationState.steps.length) return;
+  calibrationState.index += 1;
+  if (calibrationState.index >= calibrationState.steps.length) {
+    setCalibrationStatus(`Calibration complete! ${calibrationState.captured} values captured.`);
+    document.getElementById('btn-calibration-capture').disabled = true;
+    const nextBtn = document.getElementById('btn-calibration-next');
+    nextBtn.textContent = 'Save & Close';
+    nextBtn.onclick = finishCalibration;
+    document.getElementById('calibration-instruction').textContent =
+      'All done! Click "Save & Close" to push the updated thresholds to the board.';
+    clearCalibrationHighlights();
+    return;
+  }
+  renderCalibrationStep();
+}
+
+function calibrationPrevStep() {
+  if (!calibrationState) return;
+  if (calibrationState.index <= 0) return;
+  if (calibrationState.autoAdvanceTimer) {
+    clearTimeout(calibrationState.autoAdvanceTimer);
+    calibrationState.autoAdvanceTimer = null;
+  }
+  calibrationState.index -= 1;
+  document.getElementById('btn-calibration-capture').disabled = false;
+  renderCalibrationStep();
+}
+
+function finishCalibration() {
+  closeCalibrationModal();
+  if (port) {
+    config.tapWindowMs = +(document.getElementById('tapwin-input').value) || 500;
+    sendJSON({ type: 'SET_CONFIG', data: config });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WCB Send panel — fires a one-off WCB command (unicast or broadcast) via
+//  the firmware's WCB_SEND handler.  No NVS write, useful for bring-up tests.
+//  Firmware shape:  {"type":"WCB_SEND","target":<0..20>,"cmd":"..."}
+//    target == 0  → broadcast  ·  1..20 → unicast to that WCB board.
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-qs-send').addEventListener('click', async () => {
+  if (!port) { alert('Connect to the board first.'); return; }
+  const target = +(document.getElementById('qs-target').value || 0);
+  const cmd    = document.getElementById('qs-cmd').value.trim();
+  if (!cmd) { alert('Enter a command.'); return; }
+  if (target < 0 || target > 20) { alert('WCB ID must be 0 (broadcast) or 1-20.'); return; }
+  await sendJSON({ type: 'WCB_SEND', target, cmd });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CSV export / import
+// ════════════════════════════════════════════════════════════════════════════
+function exportConfigCsv() {
+  // CSV column layout — kept stable for tooling. transport/wcbPort were
+  // dropped when HCR destination became a global setting (no longer per
+  // action); their values now live in a dedicated "hcrDest" config row.
+  const header = [
+    'type','control','buttonId','channel','positions','mode','tier','position',
+    'actionType','target','port','cmd','slot','maestroCh','posMin','posMax',
+    'delay','note','pwmValue','exclusive','value',
+    // HCR action command (fn/chan/track) — used for hcr action rows AND
+    // implicitly for any config rows that need extra fields.
+    'fn','chan','track'
+  ];
+  const rows = [csvRow(header)];
+  // Helper — pad a partial row out to the full header length with empty strings
+  const pad = arr => { while (arr.length < header.length) arr.push(''); return arr; };
+
+  rows.push(csvRow(pad(['config','matrixChannel','','' + (config.matrixChannel || '')])));
+  rows.push(csvRow(pad(['config','tapWindowMs','','' + (config.tapWindowMs || '')])));
+  if (config.funcBindings && config.funcBindings.mode !== undefined) {
+    rows.push(csvRow(pad(['config','funcBinding_mode','','' + config.funcBindings.mode])));
+  }
+
+  // Global HCR destination — every HCR action shares this routing.
+  if (config.hcrDest) {
+    const d = config.hcrDest;
+    // We reuse the `port` column for the serial port label (or empty in WCB
+    // mode), and the `target` column for the WCB ID (or empty in serial mode).
+    // `delay` is overloaded as the WCB port number — kept compact, parser
+    // disambiguates by transport.
+    rows.push(csvRow(pad([
+      'hcrDest', d.transport || 'serial', '', '', '', '', '', '',
+      '', d.target || '', d.port || '', '',                  // target / port
+      '', '', '', '',                                        // unused
+      d.wcbPort !== undefined ? String(d.wcbPort) : '',      // delay slot = wcbPort
+      '', '', '', ''                                         // note/pwm/exclusive/value
+    ])));
+  }
+
+  // Maestro Locations — 8 slot definitions describing each logical Maestro's
+  // wiring. Buttons/knobs reference these by slot ID (1-8).
+  if (Array.isArray(config.maestros)) {
+    config.maestros.forEach((slot, i) => {
+      rows.push(csvRow(pad([
+        'maestro', 'M' + (i + 1), String(i + 1),       // type, control, buttonId(=slot ID)
+        '', '', '', '', '',                            // channel/positions/mode/tier/position
+        '', '', '', '',                                // actionType/target/port/cmd
+        String(slot.type || 0),                        // slot column = type (0/1/2)
+        String(slot.device !== undefined ? slot.device : (i + 1)),  // maestroCh column = device #
+        '', '', '', '', '', '', ''                    // remaining columns empty
+      ])));
+    });
+  }
+
+  const thresholds = config.thresholds || defaultThresholds();
+  for (let mode = 1; mode <= 3; mode++) {
+    for (let btn = 1; btn <= 18; btn++) {
+      const key = String(mode * 100 + btn);
+      const mapping = config.mappings[key] || {};
+      const threshold = thresholds[btn - 1] || {};
+      const pwmValue = (threshold.minPwm !== undefined && threshold.maxPwm !== undefined)
+        ? Math.round((threshold.minPwm + threshold.maxPwm) / 2) : '';
+      const isExclusive = mapping.exclusive ? '1' : '';
+      for (let tier = 1; tier <= 3; tier++) {
+        const actions = mapping['t' + tier] || [];
+        if (!actions.length) {
+          rows.push(csvRow(pad(['button', btnLabels[btn], btn, config.matrixChannel || '', '', mode, tier, '', '', '', '', '', '', '', '', '', '', '', pwmValue, isExclusive, ''])));
+        } else {
+          actions.forEach(a => {
+            rows.push(csvRow(pad([
+              'button', btnLabels[btn], btn, config.matrixChannel || '', '', mode, tier, '',
+              a.type || '', a.target || '', a.port || '', a.cmd || '',
+              a.slot || '', a.maestroCh || '', a.posMin || '', a.posMax || '',
+              a.delay || '', a.note || '', pwmValue, isExclusive, '',
+              (a.fn !== undefined ? a.fn : ''),
+              (a.chan !== undefined ? a.chan : ''),
+              (a.track !== undefined ? a.track : '')
+            ])));
+          });
+        }
+      }
+    }
+  }
+
+  const switchNames = Object.keys(switchDefaults);
+  for (const swName of switchNames) {
+    const defaults = switchDefaults[swName];
+    const sw = (config.switches && config.switches[swName]) || {};
+    const positions = sw.positions || defaults.positions || 3;
+    rows.push(csvRow(['switch-hw', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']));
+    const posMap = positions === 2
+      ? [{ idx: 0, label: 'DOWN' }, { idx: 2, label: 'UP' }]
+      : [{ idx: 0, label: 'DOWN' }, { idx: 1, label: 'MID' }, { idx: 2, label: 'UP' }];
+    for (const pos of posMap) {
+      const actions = sw['p' + pos.idx] || [];
+      if (!actions.length) {
+        rows.push(csvRow(pad(['switch', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', pos.label])));
+      } else {
+        actions.forEach(a => {
+          rows.push(csvRow(pad([
+            'switch', swName, '', sw.channel !== undefined ? sw.channel : defaults.channel || '', positions, '', '', pos.label,
+            a.type || '', a.target || '', a.port || '', a.cmd || '',
+            a.slot || '', a.maestroCh || '', a.posMin || '', a.posMax || '',
+            a.delay || '', a.note || '', '', '', '',
+            (a.fn !== undefined ? a.fn : ''),
+            (a.chan !== undefined ? a.chan : ''),
+            (a.track !== undefined ? a.track : '')
+          ])));
+        });
+      }
+    }
+  }
+
+  const knobNames = Object.keys(knobDefaults);
+  for (const knobName of knobNames) {
+    const def = knobDefaults[knobName] || { channel: 0, function: 0 };
+    const kn = (config.knobs && config.knobs[knobName]) || {};
+    rows.push(csvRow(pad([
+      'knob', knobName, '',
+      kn.channel !== undefined ? kn.channel : def.channel || '',
+      '', '', '', '',
+      '', '', '', '',
+      kn.maestroSlot || '', kn.maestroCh || '', kn.posMin || '', kn.posMax || '',
+      '', '', '', '',
+      kn.function !== undefined ? kn.function : ''
+    ])));
+  }
+
+  const dtg = formatDTG(new Date());
+  downloadCsv(rows.join('\r\n'), `RC_config_${dtg}.csv`);
+}
+
+function handleConfigImportFile(event) {
+  const input = event.target;
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = reader.result;
+      const rows = parseCsv(text);
+      if (!rows.length) throw new Error('Empty CSV file.');
+      const header = rows[0].map(h => String(h || '').trim().toLowerCase());
+      const ix = name => header.indexOf(name);
+      const indexes = {
+        type: ix('type'), control: ix('control'), buttonId: ix('buttonid'),
+        channel: ix('channel'), positions: ix('positions'), mode: ix('mode'),
+        tier: ix('tier'), position: ix('position'), actionType: ix('actiontype'),
+        target: ix('target'), port: ix('port'), cmd: ix('cmd'),
+        slot: ix('slot'), maestroCh: ix('maestroch'),
+        posMin: ix('posmin'), posMax: ix('posmax'),
+        delay: ix('delay'), note: ix('note'),
+        pwmValue: ix('pwmvalue'), pwmMin: ix('pwmmin'), pwmMax: ix('pwmmax'),
+        exclusive: ix('exclusive'), value: ix('value'),
+        fn: ix('fn'), chan: ix('chan'), track: ix('track'),
+        // Legacy columns from older CSVs — accepted but not emitted any more
+        transport: ix('transport'), wcbPort: ix('wcbport'),
+      };
+      if (indexes.type < 0 || indexes.control < 0) {
+        throw new Error('CSV must contain at least type and control columns.');
+      }
+
+      const imported = {
+        ...config,
+        mappings: {},
+        thresholds: config.thresholds ? config.thresholds.map(t => ({ ...t })) : defaultThresholds(),
+        // Preserve in-memory defaults for hcrDest/maestros unless the CSV
+        // explicitly contains them — then we replace.
+        hcrDest:  config.hcrDest ? { ...config.hcrDest } : { transport: 'serial', port: 'S3' },
+        maestros: Array.isArray(config.maestros)
+                    ? config.maestros.map(m => ({ ...m }))
+                    : Array.from({ length: NUM_MAESTRO_SLOTS }, (_, i) => ({ type: 0, device: 1 + i })),
+      };
+      let csvHadHcrDest = false;
+      let csvHadMaestros = false;
+      const newSwitches = {};
+      const newKnobs = {};
+
+      const cellStr = (row, idx) => idx >= 0 ? String(row[idx] || '').trim() : '';
+      const cellNum = (row, idx) => {
+        const s = cellStr(row, idx);
+        return s === '' ? NaN : Number(s);
+      };
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row.some(cell => cell !== undefined && String(cell).trim() !== '')) continue;
+        const type = cellStr(row, indexes.type).toLowerCase();
+        const control = cellStr(row, indexes.control);
+        const buttonId = cellNum(row, indexes.buttonId);
+        const channel = cellNum(row, indexes.channel);
+        const positions = cellNum(row, indexes.positions);
+        const mode = cellNum(row, indexes.mode);
+        const tier = cellNum(row, indexes.tier);
+        const positionLabel = cellStr(row, indexes.position).toUpperCase();
+        const actionType = cellStr(row, indexes.actionType);
+        const target = cellStr(row, indexes.target);
+        const port = cellStr(row, indexes.port);
+        const cmd = cellStr(row, indexes.cmd);
+        const slot = cellStr(row, indexes.slot);
+        const maestroCh = cellStr(row, indexes.maestroCh);
+        const posMin = cellStr(row, indexes.posMin);
+        const posMax = cellStr(row, indexes.posMax);
+        const delay = cellStr(row, indexes.delay);
+        const note = cellStr(row, indexes.note);
+        const exclusive = cellStr(row, indexes.exclusive);
+        const value = cellStr(row, indexes.value);
+        // HCR-specific cells — empty for non-HCR rows or older CSVs
+        const transport = cellStr(row, indexes.transport);
+        const wcbPort   = cellStr(row, indexes.wcbPort);
+        const fn        = cellStr(row, indexes.fn);
+        const chan      = cellStr(row, indexes.chan);
+        const track     = cellStr(row, indexes.track);
+
+        if (type === 'config') {
+          if (control === 'matrixchannel') {
+            imported.matrixChannel = Number(value || channel || imported.matrixChannel);
+          } else if (control === 'tapwindowms') {
+            imported.tapWindowMs = Number(value || channel || imported.tapWindowMs);
+          } else if (control === 'funcbinding_mode') {
+            imported.funcBindings = imported.funcBindings || {};
+            imported.funcBindings.mode = Number(value || channel || imported.funcBindings.mode || 0);
+          }
+          continue;
+        }
+
+        // Global HCR destination — one row, control = "serial" or "wcb"
+        if (type === 'hcrdest') {
+          csvHadHcrDest = true;
+          const transport = (control || 'serial').toLowerCase();
+          imported.hcrDest = { transport };
+          if (transport === 'wcb') {
+            if (target) imported.hcrDest.target = target;
+            // The export packs wcbPort into the `delay` column for compactness
+            if (delay)  imported.hcrDest.wcbPort = Number(delay);
+          } else {
+            imported.hcrDest.port = port || 'S3';
+          }
+          continue;
+        }
+
+        // Maestro Locations slot — one row per slot ID. buttonId column = ID (1-8),
+        // slot column = type (0/1/2), maestroCh column = device # (0-127).
+        if (type === 'maestro') {
+          csvHadMaestros = true;
+          if (!Number.isFinite(buttonId) || buttonId < 1 || buttonId > NUM_MAESTRO_SLOTS) continue;
+          const idx = buttonId - 1;
+          if (!Array.isArray(imported.maestros)) imported.maestros = [];
+          while (imported.maestros.length < NUM_MAESTRO_SLOTS) {
+            imported.maestros.push({ type: 0, device: 1 + imported.maestros.length });
+          }
+          const slotType = Number(cellStr(row, indexes.slot));
+          const slotDev  = Number(cellStr(row, indexes.maestroCh));
+          imported.maestros[idx] = {
+            type:   Number.isFinite(slotType) ? slotType : 0,
+            device: Number.isFinite(slotDev)  ? slotDev  : (1 + idx),
+          };
+          continue;
+        }
+
+        function buildAction() {
+          if (!actionType) return null;
+          const a = { type: actionType };
+          if (target) a.target = target;
+          if (port)   a.port = port;
+          if (cmd)    a.cmd = cmd;
+          if (slot)      a.slot = Number(slot);
+          if (maestroCh) a.maestroCh = Number(maestroCh);
+          if (posMin)    a.posMin = Number(posMin);
+          if (posMax)    a.posMax = Number(posMax);
+          if (delay)     a.delay = Number(delay);
+          if (note)      a.note = note;
+          // HCR action command fields (fn/chan/track). transport/wcbPort
+          // are silently dropped if present in legacy CSVs — those fields
+          // are now in the global hcrDest row.
+          if (fn)          a.fn    = Number(fn);
+          if (chan !== '') a.chan  = Number(chan);
+          if (track !== '') a.track = Number(track);
+          return a;
+        }
+
+        if (type === 'button') {
+          if (!Number.isFinite(buttonId) || buttonId < 1 || buttonId > 18) continue;
+          if (!Number.isFinite(mode) || mode < 1 || mode > 3) continue;
+          if (!Number.isFinite(tier) || tier < 1 || tier > 3) continue;
+          let center = null;
+          if (indexes.pwmValue >= 0) {
+            const v = Number(cellStr(row, indexes.pwmValue));
+            if (Number.isFinite(v) && v > 0) center = v;
+          }
+          if (center === null && indexes.pwmMin >= 0 && indexes.pwmMax >= 0) {
+            const mn = Number(cellStr(row, indexes.pwmMin));
+            const mx = Number(cellStr(row, indexes.pwmMax));
+            if (Number.isFinite(mn) && Number.isFinite(mx)) center = Math.round((mn + mx) / 2);
+          }
+          if (center !== null) {
+            imported.thresholds[buttonId - 1] = {
+              id: buttonId,
+              label: btnLabels[buttonId],
+              minPwm: center - 10,
+              maxPwm: center + 10,
+            };
+          }
+          const key = String(mode * 100 + buttonId);
+          if (!actionType) {
+            if (exclusive === '1') {
+              imported.mappings[key] = imported.mappings[key] || {};
+              imported.mappings[key].exclusive = true;
+            }
+            continue;
+          }
+          imported.mappings[key] = imported.mappings[key] || {};
+          if (exclusive === '1') imported.mappings[key].exclusive = true;
+          const tierKey = 't' + tier;
+          imported.mappings[key][tierKey] = imported.mappings[key][tierKey] || [];
+          const action = buildAction();
+          if (action) imported.mappings[key][tierKey].push(action);
+          continue;
+        }
+
+        if (type === 'switch-hw' || type === 'switch') {
+          const swName = control;
+          if (!swName) continue;
+          const sw = newSwitches[swName] || {};
+          if (Number.isFinite(channel)) sw.channel = Number(channel);
+          if (Number.isFinite(positions)) sw.positions = Number(positions);
+          if (type === 'switch') {
+            const posIdx = positionNameToIndex(positionLabel);
+            if (posIdx === null || !actionType) {
+              newSwitches[swName] = sw;
+              continue;
+            }
+            const tierKey = 'p' + posIdx;
+            sw[tierKey] = sw[tierKey] || [];
+            const action = buildAction();
+            if (action) sw[tierKey].push(action);
+          }
+          newSwitches[swName] = sw;
+          continue;
+        }
+
+        if (type === 'knob') {
+          const knobName = control;
+          if (!knobName) continue;
+          const kn = newKnobs[knobName] || {};
+          if (Number.isFinite(channel)) kn.channel = Number(channel);
+          if (value !== '') kn.function = Number(value);
+          if (slot)      kn.maestroSlot = Number(slot);
+          if (maestroCh) kn.maestroCh = Number(maestroCh);
+          if (posMin)    kn.posMin = Number(posMin);
+          if (posMax)    kn.posMax = Number(posMax);
+          newKnobs[knobName] = kn;
+          continue;
+        }
+      }
+
+      config = imported;
+      if (Object.keys(newSwitches).length) config.switches = newSwitches;
+      if (Object.keys(newKnobs).length) config.knobs = newKnobs;
+      // hcrDest / maestros are already on `imported` (default from in-memory
+      // config OR overwritten by the parser above). The csvHad* flags are
+      // informational — we don't strip stuff we already had.
+
+      const extras = [];
+      if (csvHadHcrDest)  extras.push('HCR destination');
+      if (csvHadMaestros) extras.push('Maestro Locations');
+      const extraNote = extras.length ? ` (incl. ${extras.join(' + ')})` : '';
+      alert('Config CSV imported successfully' + extraNote + '.');
+      renderAssignmentList();
+      updateButtonHighlights();
+      renderSwitchHighlights();
+      renderKnobHighlights();
+      applyHcrDestUI();
+      renderMaestroLocations();
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function positionNameToIndex(name) {
+  if (name === 'DOWN') return 0;
+  if (name === 'MID') return 1;
+  if (name === 'UP') return 2;
+  return null;
+}
+
+function csvRow(fields) {
+  return fields.map(f => escapeCsv(f === undefined || f === null ? '' : String(f))).join(',');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(field);
+        field = '';
+      } else if (ch === '\r') {
+        continue;
+      } else if (ch === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += ch;
+      }
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function escapeCsv(value) {
+  const text = String(value || '');
+  if (/[,"\r\n]/.test(text)) {
+    return '"' + text.replace(/"/g, '""') + '"';
+  }
+  return text;
+}
+
+function formatDTG(date) {
+  const p = n => String(n).padStart(2, '0');
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const tzMap = {
+    12:'M', 11:'L', 10:'K', 9:'I', 8:'H', 7:'G', 6:'F', 5:'E', 4:'D', 3:'C', 2:'B', 1:'A', 0:'Z',
+    '-1':'N', '-2':'O', '-3':'P', '-4':'Q', '-5':'R', '-6':'S', '-7':'T', '-8':'U', '-9':'V', '-10':'W', '-11':'X', '-12':'Y'
+  };
+  const offsetHours = -(date.getTimezoneOffset() / 60);
+  const tz = tzMap[String(offsetHours)] || 'J';
+  return `${p(date.getDate())}${p(date.getHours())}${p(date.getMinutes())}${tz}${months[date.getMonth()]}${date.getFullYear()}`;
+}
+
+function downloadCsv(text, filename) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Threshold panel toggle
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('thresh-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('thresh-panel');
+  const open  = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  document.getElementById('thresh-toggle').innerHTML =
+    (open ? '▶' : '▼') + ' Channel Thresholds <small style="color:var(--muted)">(click to ' + (open ? 'expand' : 'collapse') + ')</small>';
+});
+
+document.getElementById('chan-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('chan-panel');
+  const open  = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  document.getElementById('chan-toggle').innerHTML =
+    (open ? '▶' : '▼') + ' Channel Assignments <small style="color:var(--muted)">(click to ' + (open ? 'expand' : 'collapse') + ')</small>';
+});
+
+document.getElementById('btn-thresh-rebuild').addEventListener('click', () => {
+  config.thresholds = defaultThresholds();
+  renderThresholds();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Helpers
+// ════════════════════════════════════════════════════════════════════════════
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function defaultThresholds() {
+  const labels = ['B1','B2','B3','B4','B5','B6',
+                  'T4 Left','T4 Right','T5 Left','T5 Right',
+                  'T3 Left','T3 Right','T2 Left','T2 Right',
+                  'T6 Left','T6 Right',
+                  'T1 Left','T1 Right','Unassigned'];
+  return labels.map((label, i) => ({
+    id:     i + 1,
+    label,
+    minPwm: 1850 - (i + 1) * 50,
+    maxPwm: 1850 - i * 50 - 1,
+  })).map((t, i) => {
+    if (i === 16) return { ...t, minPwm: 1023, maxPwm: 1049 };  // T1 Left
+    if (i === 17) return { ...t, minPwm: 850,  maxPwm: 960  };  // T1 Right
+    if (i === 18) return { ...t, minPwm: 800,  maxPwm: 849  };  // Unassigned
+    return t;
+  });
+}
+
+// ── WebSerial availability check ──────────────────────────────────────────
+if (!('serial' in navigator)) {
+  document.getElementById('btn-connect').disabled = true;
+  document.getElementById('status-text').textContent = 'WebSerial not available — use Chrome/Edge';
+}
+
+// ── Unit toggle wiring ───────────────────────────────────────────────────
+function applyUnitToggle() {
+  document.querySelectorAll('input[name="unit-toggle"]').forEach(r => {
+    r.checked = (r.value === displayUnit);
+  });
+  document.querySelectorAll('.unit-label').forEach(el => {
+    el.textContent = `(${unitLbl()})`;
+  });
+  renderThresholds();
+  updatePWMTooltips();
+  updatePWMDisplay(_liveCh6, _liveCh16, _liveBtn, _liveMode);
+}
+document.querySelectorAll('input[name="unit-toggle"]').forEach(r => {
+  r.addEventListener('change', () => {
+    displayUnit = r.value;
+    localStorage.setItem('rcDisplayUnit', displayUnit);
+    applyUnitToggle();
+  });
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+applyUnitToggle();
+applyHcrDestUI();
+renderMaestroLocations();
+renderAssignmentList();
+updateButtonHighlights();
+</script>
+</body>
+</html>
