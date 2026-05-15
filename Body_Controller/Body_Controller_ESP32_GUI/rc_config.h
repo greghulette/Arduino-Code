@@ -72,7 +72,7 @@ struct RcThreshold {
 //    positions = 2 (down/up) or 3 (down/mid/up)
 //    On position change, the matching RcTier fires through rcExecuteAction.
 // ─────────────────────────────────────────────────────────────────────────────
-#define RC_NUM_SWITCHES 8
+#define RC_NUM_SWITCHES 10
 
 struct RcSwitch {
   int     channel;     // SBUS channel 1-24; 0 = disabled
@@ -80,10 +80,11 @@ struct RcSwitch {
   RcTier  t[3];        // [down, mid, up] — for 2-pos switches t[1] unused
 };
 
-static const char* RC_SWITCH_LABELS[RC_NUM_SWITCHES]   = {"SA","SB","SC","SD","SE","SF","SG","SH"};
+static const char* RC_SWITCH_LABELS[RC_NUM_SWITCHES]   = {"SA","SB","SC","SD","SE","SF","SG","SH","SI","SJ"};
 //  New default channel layout (post-Kyber alignment): SA-SH on CH8-CH15 sequentially.
-static const int   RC_SWITCH_DEFAULT_CH[RC_NUM_SWITCHES] = {  8,   9,  10,  11,  12,  13,  14,  15 };
-static const uint8_t RC_SWITCH_DEFAULT_POS[RC_NUM_SWITCHES] = { 3,   3,   3,   3,   3,   2,   3,   2 };
+//  SI and SJ are momentary push buttons — assign channels when known.
+static const int   RC_SWITCH_DEFAULT_CH[RC_NUM_SWITCHES] = {  8,   9,  10,  11,  12,  13,  14,  15,   0,   0 };
+static const uint8_t RC_SWITCH_DEFAULT_POS[RC_NUM_SWITCHES] = { 3,   3,   3,   3,   3,   2,   3,   2,   2,   2 };
 
 // Switch index constants for clarity in code that binds functions to switches
 #define SW_SA 0
@@ -94,6 +95,8 @@ static const uint8_t RC_SWITCH_DEFAULT_POS[RC_NUM_SWITCHES] = { 3,   3,   3,   3
 #define SW_SF 5
 #define SW_SG 6
 #define SW_SH 7
+#define SW_SI 8
+#define SW_SJ 9
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Configurable analog knobs S1 / S2
@@ -102,7 +105,7 @@ static const uint8_t RC_SWITCH_DEFAULT_POS[RC_NUM_SWITCHES] = { 3,   3,   3,   3
 //    S1 → CH4 → HCR Vocalizer Volume
 //    S2 → CH5 → HCR WAV Volume
 // ─────────────────────────────────────────────────────────────────────────────
-#define RC_NUM_KNOBS 2
+#define RC_NUM_KNOBS 4
 
 enum RcKnobFunction : uint8_t {
   KF_NONE          = 0,
@@ -115,10 +118,10 @@ struct RcKnob {
   uint8_t function;      // RcKnobFunction
 };
 
-static const char* RC_KNOB_LABELS[RC_NUM_KNOBS]   = {"S1","S2"};
-//  New default channel layout: S1 on CH5, S2 on CH6 (CH4 is now empty/reserved).
-static const int   RC_KNOB_DEFAULT_CH[RC_NUM_KNOBS] = {  5,   6 };
-static const uint8_t RC_KNOB_DEFAULT_FN[RC_NUM_KNOBS] = {KF_HCR_VOC_VOL, KF_HCR_WAV_VOL};
+static const char* RC_KNOB_LABELS[RC_NUM_KNOBS]   = {"S1","S2","LS","RL"};
+//  S1 on CH5, S2 on CH6; LS and RL are side sliders — assign channels when known.
+static const int   RC_KNOB_DEFAULT_CH[RC_NUM_KNOBS] = {  5,   6,   0,   0 };
+static const uint8_t RC_KNOB_DEFAULT_FN[RC_NUM_KNOBS] = {KF_HCR_VOC_VOL, KF_HCR_WAV_VOL, KF_NONE, KF_NONE};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Function bindings — only the MODE selector remains here as a special case.

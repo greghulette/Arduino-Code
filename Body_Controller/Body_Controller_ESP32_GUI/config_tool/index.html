@@ -640,6 +640,38 @@
         </g>
 
         <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--  SI / SJ  — momentary push buttons (front face, inner shoulder) -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <g class="switch-zone" data-sw="SI" onclick="openSwitchModal('SI')">
+          <rect x="254" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+          <circle cx="265" cy="359" r="7" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+          <text x="265" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SI</text>
+        </g>
+
+        <g class="switch-zone" data-sw="SJ" onclick="openSwitchModal('SJ')">
+          <rect x="724" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+          <circle cx="735" cy="359" r="7" fill="url(#cap-grad)" stroke="#1a1a1a"/>
+          <text x="735" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SJ</text>
+        </g>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!--  LS / RL  — side sliders (left and right body edges)           -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <g class="knob-zone" data-knob="LS" onclick="openKnobModal('LS')">
+          <rect x="76" y="430" width="10" height="120" rx="5" fill="#0a0a0a" stroke="#1a2a4a"/>
+          <line x1="73" y1="490" x2="89" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+          <rect x="70" y="482" width="22" height="16" rx="4" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <text x="81" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">LS</text>
+        </g>
+
+        <g class="knob-zone" data-knob="RL" onclick="openKnobModal('RL')">
+          <rect x="914" y="430" width="10" height="120" rx="5" fill="#0a0a0a" stroke="#1a2a4a"/>
+          <line x1="911" y1="490" x2="927" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+          <rect x="908" y="482" width="22" height="16" rx="4" fill="url(#knob-grad)" stroke="#ffffff" stroke-width="0.6"/>
+          <text x="919" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">RL</text>
+        </g>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
         <!--                    KNOBS  S1 + S2  (below screen)               -->
         <!--   Clickable — channel + function configurable in the modal       -->
         <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -1020,19 +1052,23 @@ const knobFunctions = {
 };
 
 const knobDefaults = {
-  S1: { channel: 4, function: 1 },
-  S2: { channel: 5, function: 2 },
+  S1: { channel: 5, function: 1 },
+  S2: { channel: 6, function: 2 },
+  LS: { channel: 0, function: 0 },
+  RL: { channel: 0, function: 0 },
 };
 
 const switchDefaults = {
-  SA: {channel: 15, positions: 3},
-  SB: {channel:  7, positions: 3},
-  SC: {channel:  9, positions: 3},
-  SD: {channel: 10, positions: 3},
-  SE: {channel: 16, positions: 3},
-  SF: {channel:  8, positions: 2},
-  SG: {channel: 17, positions: 3},
-  SH: {channel: 18, positions: 2},
+  SA: {channel:  8, positions: 3},
+  SB: {channel:  9, positions: 3},
+  SC: {channel: 10, positions: 3},
+  SD: {channel: 11, positions: 3},
+  SE: {channel: 12, positions: 3},
+  SF: {channel: 13, positions: 2},
+  SG: {channel: 14, positions: 3},
+  SH: {channel: 15, positions: 2},
+  SI: {channel:  0, positions: 2},
+  SJ: {channel:  0, positions: 2},
 };
 
 // The in-memory config — mirrors what's on the board
@@ -1543,12 +1579,12 @@ function buildCalibrationSteps() {
   }));
 
   // One step per switch — just live verification (firmware thresholds are fixed)
-  const switchSteps = ['SA','SB','SC','SD','SE','SF','SG','SH'].map(swName => ({
+  const switchSteps = ['SA','SB','SC','SD','SE','SF','SG','SH','SI','SJ'].map(swName => ({
     type: 'switch', swName, label: swName
   }));
 
-  // One step per knob — verify the knob channel responds
-  const knobSteps = ['S1','S2'].map(knobName => ({
+  // One step per knob/slider — verify the channel responds
+  const knobSteps = ['S1','S2','LS','RL'].map(knobName => ({
     type: 'knob', knobName, label: knobName
   }));
 
@@ -1618,11 +1654,17 @@ function renderCalibrationStep() {
   } else if (step.type === 'switch') {
     const sw = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
     const ch  = sw.channel || switchDefaults[step.swName].channel;
-    instruction = `Toggle ${step.label} (ch${ch}) through all positions — verify the position name updates below, then click Next.`;
+    const isMomentary = step.swName === 'SI' || step.swName === 'SJ';
+    instruction = isMomentary
+      ? `Press and release ${step.label}${ch ? ` (ch${ch})` : ''} — verify the position flips to Up ▲ when pressed, then click Next.`
+      : `Toggle ${step.label}${ch ? ` (ch${ch})` : ''} through all positions — verify the position name updates below, then click Next.`;
   } else if (step.type === 'knob') {
     const kn = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
     const ch = kn.channel || knobDefaults[step.knobName].channel;
-    instruction = `Rotate ${step.label} (ch${ch}) from min to max — verify the value changes below, then click Next.`;
+    const isSlider = step.knobName === 'LS' || step.knobName === 'RL';
+    instruction = isSlider
+      ? `Move ${step.label}${ch ? ` (ch${ch})` : ''} from bottom to top — verify the value changes below, then click Next.`
+      : `Rotate ${step.label}${ch ? ` (ch${ch})` : ''} from min to max — verify the value changes below, then click Next.`;
   }
   document.getElementById('calibration-instruction').textContent = instruction;
   document.getElementById('calibration-live-value').textContent = 'Waiting for live SBUS data...';

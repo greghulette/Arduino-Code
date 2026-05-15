@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R2-D2 Servo Sequence Editor</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:      #1a1a2e;
+    --surface: #16213e;
+    --card:    #0f3460;
+    --accent:  #e94560;
+    --accent2: #0f7a9d;
+    --text:    #e0e0e0;
+    --muted:   #888;
+    --border:  #2a3a5a;
+    --green:   #4caf50;
+    --yellow:  #ffc107;
+    --red:     #f44336;
+    --bs-col:  #e94560;
+    --dc-col:  #0f7a9d;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; overflow: hidden; height: 100vh; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 13px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; transition: opacity .15s; white-space: nowrap; gap: 5px; }
+  .btn:hover:not(:disabled) { opacity: .82; }
+  .btn:disabled { opacity: .38; cursor: not-allowed; }
+  .btn-primary { background: var(--accent);  color: #fff; }
+  .btn-blue    { background: var(--accent2); color: #fff; }
+  .btn-ghost   { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-green   { background: var(--green);   color: #fff; }
+  .btn-warn    { background: var(--yellow);  color: #000; }
+  .btn-sm      { padding: 3px 9px; font-size: 11px; }
+
+  input[type=text], input[type=number] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 7px; border-radius: 4px; font-size: 12px;
+  }
+  .lbl { font-size: 11px; color: var(--muted); }
+
+  /* ── Top bar ── */
+  .topbar { background: var(--surface); padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); height: 44px; flex-shrink: 0; }
+  .topbar h1 { font-size: 15px; color: var(--accent); white-space: nowrap; margin-right: 4px; }
+  .sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
+  .spacer { flex: 1; }
+
+  /* ── Analysis bar ── */
+  #analysisBar {
+    background: linear-gradient(135deg, #0d2a1a, #0a1f2e);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: none;
+    gap: 24px;
+    align-items: flex-start;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .analysis-col { display: flex; flex-direction: column; gap: 4px; }
+  .analysis-bpm  { font-size: 28px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; line-height: 1; }
+  .analysis-bpm small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .star-row { display: flex; gap: 3px; align-items: center; margin-top: 2px; }
+  .star { font-size: 16px; }
+  .star.on  { color: var(--yellow); }
+  .star.off { color: var(--border); }
+  .rating-label { font-size: 13px; font-weight: 700; margin-left: 6px; }
+  .rating-label.excellent { color: #4caf50; }
+  .rating-label.good      { color: #8bc34a; }
+  .rating-label.moderate  { color: var(--yellow); }
+  .rating-label.fair      { color: #ff9800; }
+  .rating-label.poor      { color: var(--red); }
+  .analysis-desc { font-size: 12px; color: var(--muted); max-width: 340px; line-height: 1.4; }
+  .analysis-alts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .alt-bpm-btn { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 11px; cursor: pointer; }
+  .alt-bpm-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .analysis-actions { display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; }
+  .song-stats { font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .analyzing-spinner { display: inline-block; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── App layout ── */
+  .app { display: flex; flex: 1; min-height: 0; height: calc(100vh - 44px); }
+  #analysisBar.visible ~ .app { height: calc(100vh - 44px - var(--analysisH, 0px)); }
+
+  /* ── Sidebar ── */
+  .sidebar { width: 210px; min-width: 210px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .sb-sect { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .sb-sect h3 { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; margin-bottom: 8px; }
+  .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+  .field:last-child { margin-bottom: 0; }
+  .board-tabs { display: flex; border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+  .board-tab { flex: 1; padding: 6px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 700; background: var(--surface); transition: background .15s; }
+  .board-tab:hover { background: var(--card); }
+  .board-tab.active-bs { background: var(--bs-col); color: #fff; }
+  .board-tab.active-dc { background: var(--dc-col); color: #fff; }
+  .beat-box { background: var(--card); border-radius: 5px; padding: 7px; text-align: center; }
+  .beat-big { font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .beat-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+  /* Masks panel */
+  .mask-list { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow-y: auto; }
+  .mask-chip {
+    display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--card); cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .mask-chip:hover { border-color: var(--accent2); }
+  .mask-chip.armed { border-color: var(--yellow); background: rgba(255,193,7,.08); }
+  .mask-name  { font-size: 11px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mask-bits  { display: flex; gap: 1px; flex-shrink: 0; }
+  .mask-bit   { width: 7px; height: 7px; border-radius: 1px; background: var(--border); }
+  .mask-bit.on-bs { background: var(--bs-col); }
+  .mask-bit.on-dc { background: var(--dc-col); }
+  .mask-hint { font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+  /* ── Content ── */
+  .content { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+  /* Waveform */
+  .waveform-wrap { height: 68px; background: #090b14; border-bottom: 1px solid var(--border); flex-shrink: 0; position: relative; }
+  #waveformCanvas { position: absolute; inset: 0; display: none; cursor: pointer; }
+  .wave-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+  /* Piano roll */
+  .roll-wrap { flex: 1; overflow: auto; min-height: 0; }
+  .roll-table { border-collapse: collapse; table-layout: fixed; }
+  .roll-table th, .roll-table td { border: 1px solid var(--border); padding: 0; user-select: none; }
+
+  .corner-th { width: 148px; min-width: 148px; background: var(--surface); position: sticky; top: 0; left: 0; z-index: 4; font-size: 10px; color: var(--muted); padding: 4px 8px; text-transform: uppercase; }
+  .beat-th {
+    width: 34px; min-width: 34px; max-width: 34px; background: var(--surface);
+    position: sticky; top: 0; z-index: 3; text-align: center; font-size: 11px;
+    color: var(--muted); padding: 4px 2px; cursor: pointer;
+  }
+  .beat-th:hover { background: rgba(15,122,157,.2); color: var(--text); }
+  .beat-th.playing   { color: var(--accent) !important; background: rgba(233,69,96,.12); }
+  .beat-th.has-data  { color: var(--text); }
+
+  .servo-td { width: 148px; min-width: 148px; max-width: 148px; background: var(--surface); position: sticky; left: 0; z-index: 2; padding: 3px 6px 3px 10px; font-size: 12px; white-space: nowrap; cursor: pointer; }
+  .servo-td:hover { background: var(--card); }
+  .servo-td.bs-row { border-left: 3px solid var(--bs-col); }
+  .servo-td.dc-row { border-left: 3px solid var(--dc-col); }
+  .servo-td.selected { background: rgba(255,193,7,.1) !important; border-left-color: var(--yellow) !important; }
+
+  .cell { width: 34px; height: 30px; background: var(--card); cursor: pointer; transition: background .05s; }
+  .cell:hover { background: rgba(15,122,157,.38); }
+  .cell.on-bs { background: var(--bs-col) !important; }
+  .cell.on-dc { background: var(--dc-col) !important; }
+  .cell.on-bs:hover { background: #ff6b82 !important; }
+  .cell.on-dc:hover { background: #1aa3d9 !important; }
+
+  /* Info strip */
+  .info-strip { background: var(--surface); border-top: 1px solid var(--border); padding: 4px 12px; display: flex; gap: 20px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .info-strip span b { color: var(--text); }
+
+  /* Export panel */
+  .export-panel { background: #0d0f1c; border-top: 1px solid var(--border); height: 195px; min-height: 195px; display: flex; flex-direction: column; flex-shrink: 0; }
+  .export-hdr { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .export-hdr-title { font-size: 12px; font-weight: 700; flex: 1; }
+  .export-tabs { display: flex; gap: 4px; }
+  .export-tab { padding: 2px 9px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--muted); background: transparent; border: 1px solid var(--border); }
+  .export-tab.active { background: var(--card); color: var(--text); }
+  .export-body { flex: 1; overflow-y: auto; padding: 8px 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #a8e6a8; white-space: pre; line-height: 1.35; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); padding: 8px 20px; border-radius: 20px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <h1>🤖 Servo Sequencer</h1>
+  <div class="sep"></div>
+  <span class="lbl">Name</span>
+  <input type="text" id="seqName" value="SeqMyRoutine" style="width:148px">
+  <div class="sep"></div>
+  <span class="lbl">BPM</span>
+  <input type="number" id="bpmInput" value="103.4" step="0.1" min="20" max="300" style="width:74px">
+  <button class="btn btn-ghost btn-sm" id="tapBtn">Tap</button>
+  <div class="spacer"></div>
+  <label style="cursor:pointer">
+    <input type="file" id="audioFile" accept=".wav,.mp3,.ogg,.flac,.aac,.m4a" style="display:none">
+    <span class="btn btn-blue">🎵 Analyze Audio</span>
+  </label>
+  <button class="btn btn-ghost" id="playBtn" disabled>▶ Play</button>
+  <div class="sep"></div>
+  <button class="btn btn-ghost btn-sm" onclick="saveProject()">Save</button>
+  <label style="cursor:pointer">
+    <input type="file" id="projectFile" accept=".json" style="display:none" onchange="loadProject(this)">
+    <span class="btn btn-ghost btn-sm">Load</span>
+  </label>
+</div>
+
+<!-- Analysis bar -->
+<div id="analysisBar">
+  <!-- filled by showAnalysis() -->
+</div>
+
+<!-- App -->
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <div class="sb-sect">
+      <h3>Board</h3>
+      <div class="board-tabs">
+        <div class="board-tab active-bs" id="tab-bs" onclick="setBoard('BS')">BS</div>
+        <div class="board-tab" id="tab-dc" onclick="setBoard('DC')">DC</div>
+      </div>
+    </div>
+
+    <div class="sb-sect">
+      <h3>Timing</h3>
+      <div class="field">
+        <span class="lbl">Beats</span>
+        <div style="display:flex;gap:5px;align-items:center">
+          <input type="number" id="numBeats" value="36" min="4" max="500" style="width:64px">
+          <button class="btn btn-ghost btn-sm" id="fullSongBtn" title="Set beats to cover full song" disabled>Full Song</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Pulse width (cs)</span>
+        <input type="number" id="pulseWidth" value="15" min="1" max="500">
+      </div>
+      <div class="field">
+        <span class="lbl">Initial offset (cs)</span>
+        <input type="number" id="initOffset" value="17" min="0" max="1000">
+      </div>
+      <div class="beat-box">
+        <div class="beat-big" id="beatCsDisplay">58 cs</div>
+        <div class="beat-sub" id="beatSecDisplay">0.580 s / beat</div>
+      </div>
+    </div>
+
+    <div class="sb-sect">
+      <h3>Masks <span style="font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">(click to arm, then click beat #)</span></h3>
+      <div class="mask-list" id="maskList"></div>
+      <div class="mask-hint" id="maskHint">No mask armed — clicking cells toggles individually.</div>
+    </div>
+
+    <div class="sb-sect">
+      <h3>Presets</h3>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="clearGrid()">Clear All</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="fillAll()">All On</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="applyStayingAlive()">Staying Alive Pattern</button>
+    </div>
+
+    <div class="sb-sect">
+      <h3>Row Ops <span id="rowLabel" style="font-size:10px;color:var(--accent);text-transform:none;letter-spacing:0"></span></h3>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="rowOp('clear')">Clear Selected Row</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="rowOp('fill')">Fill Selected Row</button>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px">Click a servo name to select its row</div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Waveform -->
+    <div class="waveform-wrap" id="waveformWrap">
+      <div class="wave-placeholder" id="wavePlaceholder">Load audio to display waveform &amp; beat markers</div>
+      <canvas id="waveformCanvas"></canvas>
+    </div>
+
+    <!-- Piano roll -->
+    <div class="roll-wrap" id="rollWrap"></div>
+
+    <!-- Info strip -->
+    <div class="info-strip">
+      <span id="infoTotal">Total: — </span>
+      <span id="infoBeat">— beats</span>
+      <span id="infoActive">Active: 0</span>
+    </div>
+
+    <!-- Export panel -->
+    <div class="export-panel">
+      <div class="export-hdr">
+        <span class="export-hdr-title">Generated Code</span>
+        <div class="export-tabs">
+          <div class="export-tab active" id="expTabBS"   onclick="setExportTab('BS')">BS</div>
+          <div class="export-tab"        id="expTabDC"   onclick="setExportTab('DC')">DC</div>
+          <div class="export-tab"        id="expTabBoth" onclick="setExportTab('Both')">Both</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="copyCode()">Copy</button>
+        <button class="btn btn-warn btn-sm"  onclick="modifyLibrary()" title="Open ServoSequencer.h and insert sequences directly">Modify ServoSequencer.h</button>
+      </div>
+      <div class="export-body" id="exportBody"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  SERVO & MASK DEFINITIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SERVOS = {
+  BS: ['Top Utility Arm','Bot Utility Arm','Large Left Door','Large Right Door',
+       'Charge Bay Door','Data Panel Door','Drawer S1','Drawer S2',
+       'Drawer S3','Drawer S4','CPU Arm Raise','CPU Arm Rotate','CPU Arm Extend'],
+  DC: ['Small Panel 1','Small Panel 2','Small Panel 3','Med Panel Painted',
+       'Med Panel Silver','Big Panel','Pie Panel 1','Pie Panel 2',
+       'Pie Panel 3','Pie Panel 4']
+};
+
+// Named mask groups matching firmware defines
+const MASKS = {
+  BS: [
+    { name:'UTILITY_ARMS',         label:'Utility Arms',           servos:[0,1] },
+    { name:'TOP_UTILITY_ARM',      label:'Top Utility Arm',        servos:[0] },
+    { name:'BOTTOM_UTILITY_ARM',   label:'Bot Utility Arm',        servos:[1] },
+    { name:'LARGE_DOORS',          label:'Large Doors',            servos:[2,3] },
+    { name:'LARGE_LEFT_DOOR',      label:'Large Left Door',        servos:[2] },
+    { name:'LARGE_RIGHT_DOOR',     label:'Large Right Door',       servos:[3] },
+    { name:'SMALL_DOORS',          label:'Small Doors (CBI+DP)',   servos:[4,5] },
+    { name:'CHARGE_BAY_DOOR',      label:'Charge Bay Door',        servos:[4] },
+    { name:'DATA_PANEL_DOOR',      label:'Data Panel Door',        servos:[5] },
+    { name:'ALL_DRAWERS',          label:'All Drawers (S1–S4)',    servos:[6,7,8,9] },
+    { name:'DRAWER_S1',            label:'Drawer S1',              servos:[6] },
+    { name:'DRAWER_S2',            label:'Drawer S2',              servos:[7] },
+    { name:'DRAWER_S3',            label:'Drawer S3',              servos:[8] },
+    { name:'DRAWER_S4',            label:'Drawer S4',              servos:[9] },
+    { name:'ALL_DOORS_MASK',       label:'All Doors (no arms)',    servos:[2,3,4,5,6,7,8,9] },
+    { name:'ALL_SERVOS_MASK',      label:'All Servos',             servos:[0,1,2,3,4,5,6,7,8,9] },
+    { name:'CPU_SERVOS',           label:'CPU Arm (all)',          servos:[10,11,12] },
+    { name:'CPU_ARM_RAISE',        label:'CPU Raise',              servos:[10] },
+    { name:'CPU_ARM_ROTATE',       label:'CPU Rotate',             servos:[11] },
+    { name:'CPU_ARM_EXTEND',       label:'CPU Extend',             servos:[12] },
+  ],
+  DC: [
+    { name:'SMALL_PANELS_MASK',    label:'Small Panels (1-3)',     servos:[0,1,2] },
+    { name:'SMALL_PANEL_ONE',      label:'Small Panel 1',          servos:[0] },
+    { name:'SMALL_PANEL_TWO',      label:'Small Panel 2',          servos:[1] },
+    { name:'SMALL_PANEL_THREE',    label:'Small Panel 3',          servos:[2] },
+    { name:'MEDIUM_PANELS_MASK',   label:'Medium Panels',          servos:[3,4] },
+    { name:'MEDIUM_PANEL_PAINTED', label:'Med Panel Painted',      servos:[3] },
+    { name:'MEDIUM_PANEL_SILVER',  label:'Med Panel Silver',       servos:[4] },
+    { name:'BIG_PANEL',            label:'Big Panel',              servos:[5] },
+    { name:'DOME_PANELS_MASK',     label:'Dome Panels (1-6)',      servos:[0,1,2,3,4,5] },
+    { name:'PIE_PANELS_MASK',      label:'Pie Panels (1-4)',       servos:[6,7,8,9] },
+    { name:'PIE_PANEL_ONE',        label:'Pie Panel 1',            servos:[6] },
+    { name:'PIE_PANEL_TWO',        label:'Pie Panel 2',            servos:[7] },
+    { name:'PIE_PANEL_THREE',      label:'Pie Panel 3',            servos:[8] },
+    { name:'PIE_PANEL_FOUR',       label:'Pie Panel 4',            servos:[9] },
+    { name:'ALL_SERVOS_MASK',      label:'All Servos',             servos:[0,1,2,3,4,5,6,7,8,9] },
+  ]
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+let activeBoard  = 'BS';
+let exportTab    = 'BS';
+let selectedRow  = -1;
+let armedMask    = null;   // { servos: [...] } or null
+let armedMaskIdx = -1;
+
+// grids[board][beat][servo] = bool
+const grids = { BS: [], DC: [] };
+
+// ── Helpers ──
+const $ = id => document.getElementById(id);
+const getN      = () => Math.max(4, parseInt($('numBeats').value)   || 36);
+const getBpm    = () => Math.max(20, parseFloat($('bpmInput').value) || 103.4);
+const getPulse  = () => Math.max(1,  parseInt($('pulseWidth').value) || 15);
+const getOffset = () => Math.max(0,  parseInt($('initOffset').value) || 0);
+const getBeatCs = () => Math.round(6000 / getBpm());
+
+function ensureGrid(board, n) {
+  const cnt = SERVOS[board].length;
+  while (grids[board].length < n)   grids[board].push(new Array(cnt).fill(false));
+  if   (grids[board].length > n)    grids[board].length = n;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BPM DETECTION
+// ═══════════════════════════════════════════════════════════════════════════
+
+function detectBPM(audioBuffer) {
+  const sr      = audioBuffer.sampleRate;
+  const maxSamp = Math.min(audioBuffer.length, sr * 45);  // use first 45s
+
+  // Mono mix
+  const ch0 = audioBuffer.getChannelData(0);
+  const mono = audioBuffer.numberOfChannels > 1
+    ? Float32Array.from({ length: maxSamp }, (_, i) => (ch0[i] + audioBuffer.getChannelData(1)[i]) * 0.5)
+    : ch0.slice(0, maxSamp);
+
+  // Downsample to ~4 kHz for speed
+  const skip    = Math.floor(sr / 4000);
+  const dsr     = sr / skip;
+  const ds      = [];
+  for (let i = 0; i < maxSamp; i += skip) ds.push(mono[i]);
+
+  // Energy envelope: RMS over 20 ms windows, 10 ms hop
+  const W   = Math.floor(dsr * 0.020);
+  const HOP = Math.floor(dsr * 0.010);
+  const env = [];
+  for (let i = 0; i + W < ds.length; i += HOP) {
+    let e = 0;
+    for (let j = 0; j < W; j++) e += ds[i + j] ** 2;
+    env.push(Math.sqrt(e / W));
+  }
+
+  // Onset function: half-wave rectified first-difference
+  const fps    = dsr / HOP;
+  const onset  = env.map((v, i) => i === 0 ? 0 : Math.max(0, v - env[i - 1]));
+
+  // Mean-subtract to emphasise peaks
+  const mu   = onset.reduce((a, b) => a + b, 0) / onset.length;
+  const norm = onset.map(v => Math.max(0, v - mu * 0.5));
+
+  // Autocorrelation for BPM 50-220
+  const lagMin = Math.max(1, Math.floor(fps * 60 / 220));
+  const lagMax = Math.ceil(fps * 60 / 50);
+  const useN   = Math.min(norm.length - lagMax, Math.floor(fps * 30));
+
+  if (useN <= 0) return { bpm: 120, confidence: 0 };
+
+  let bestLag = lagMin, bestVal = -Infinity;
+  const vals  = [];
+  for (let lag = lagMin; lag <= lagMax; lag++) {
+    let s = 0;
+    for (let i = 0; i < useN; i++) s += norm[i] * norm[i + lag];
+    s /= useN;
+    vals.push(s);
+    if (s > bestVal) { bestVal = s; bestLag = lag; }
+  }
+
+  // Raw BPM — clamp to musical range 60-180
+  let bpm = fps * 60 / bestLag;
+  while (bpm < 60)  bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  bpm = Math.round(bpm * 10) / 10;
+
+  // Confidence: peak vs median
+  vals.sort((a, b) => a - b);
+  const med = vals[Math.floor(vals.length / 2)] || 0.001;
+  const confidence = Math.min(98, Math.max(5, Math.round((bestVal / med - 1) * 35)));
+
+  return { bpm, confidence };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VIABILITY RATING
+// ═══════════════════════════════════════════════════════════════════════════
+
+function rateBPM(bpm) {
+  const beatMs = Math.round(60000 / bpm);
+  if (bpm < 55)
+    return { stars:1, cls:'poor',      label:'Poor',        pulse:25,
+      desc:`At ${bpm} BPM each beat is ${beatMs}ms — panels sit open too long and the effect looks loose.` };
+  if (bpm < 72)
+    return { stars:2, cls:'fair',      label:'Fair',        pulse:20,
+      desc:`Slow tempo (${beatMs}ms/beat). Panels move but transitions feel sluggish. Better for ambient routines.` };
+  if (bpm < 95)
+    return { stars:4, cls:'good',      label:'Good',        pulse:15,
+      desc:`Good tempo. Plenty of time for full panel travel (${beatMs}ms/beat). Clear, deliberate movements.` };
+  if (bpm < 145)
+    return { stars:5, cls:'excellent', label:'Excellent ★', pulse:12,
+      desc:`Ideal range for panel choreography. At ${beatMs}ms/beat panels snap crisply in sync with the music.` };
+  if (bpm < 175)
+    return { stars:3, cls:'moderate',  label:'Moderate',    pulse:10,
+      desc:`Fast at ${beatMs}ms/beat. Panels can keep up but some may not fully open. Use short pulse widths (~10cs).` };
+  if (bpm < 210)
+    return { stars:2, cls:'fair',      label:'Challenging', pulse:8,
+      desc:`Very fast (${beatMs}ms/beat). Consider sequencing every other beat or only fast-moving panels.` };
+  return { stars:1, cls:'poor',        label:'Too Fast',    pulse:5,
+    desc:`${bpm} BPM is too fast for mechanical servo movement. Panels can't complete a visible cycle.` };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ANALYSIS PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function showAnalysis(bpm, confidence, songDuration) {
+  const r = rateBPM(bpm);
+  const stars = Array.from({ length: 5 }, (_, i) =>
+    `<span class="star ${i < r.stars ? 'on' : 'off'}">★</span>`).join('');
+
+  const beatSec   = 60 / bpm;
+  const fullBeats = Math.round((songDuration - getOffset() / 100) / beatSec);
+  const altBpms   = [bpm / 2, bpm * 2].map(b => Math.round(b * 10) / 10)
+                     .filter(b => b >= 40 && b <= 250 && Math.abs(b - bpm) > 2);
+
+  const altBtns = altBpms.map(b =>
+    `<span class="alt-bpm-btn" onclick="useBPM(${b})">${b} BPM (${b < bpm ? '½×' : '2×'})</span>`
+  ).join('');
+
+  const bar = $('analysisBar');
+  bar.innerHTML = `
+    <div class="analysis-col">
+      <div class="analysis-bpm">${bpm} <small>BPM · ${confidence}% confidence</small></div>
+      <div class="star-row">${stars}<span class="rating-label ${r.cls}">${r.label}</span></div>
+      <div class="analysis-desc">${r.desc}</div>
+      ${altBpms.length ? `<div class="analysis-alts"><span class="lbl" style="align-self:center">Alt:</span>${altBtns}</div>` : ''}
+    </div>
+    <div class="analysis-col">
+      <div class="song-stats">
+        Song duration: <b>${fmtTime(songDuration)}</b><br>
+        Full song beats: <b>${fullBeats} beats</b> @ ${bpm} BPM<br>
+        Suggested pulse: <b>${r.pulse} cs</b>
+      </div>
+      <div class="analysis-actions" style="margin-top:8px">
+        <button class="btn btn-green btn-sm" onclick="useBPM(${bpm})">Use ${bpm} BPM</button>
+        <button class="btn btn-ghost btn-sm" onclick="setFullSong(${fullBeats})">Set ${fullBeats} beats (full song)</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pulseWidth').value=${r.pulse};updateExport()">Use ${r.pulse}cs pulse</button>
+      </div>
+    </div>
+    <div class="analysis-col" style="border-left:1px solid var(--border);padding-left:20px;min-width:260px">
+      <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">⚡ Auto-Generate Sequence</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+        Analyzes frequency content at each beat and maps it to servo groups.<br>
+        <b style="color:var(--text)">Bass → body panels &nbsp;·&nbsp; High → dome/pie</b>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span class="lbl" style="white-space:nowrap">Sensitivity</span>
+        <input type="range" id="sensitivity" min="0" max="100" value="50" style="flex:1;accent-color:var(--accent)"
+          oninput="$('sensLabel').textContent=this.value+'%'">
+        <span id="sensLabel" style="font-size:11px;color:var(--text);width:34px;text-align:right">50%</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary" style="flex:1" onclick="autoGenerate('both')">⚡ Both Boards</button>
+        <button class="btn btn-ghost btn-sm" onclick="autoGenerate('BS')">BS</button>
+        <button class="btn btn-ghost btn-sm" onclick="autoGenerate('DC')">DC</button>
+      </div>
+    </div>`;
+  bar.style.display = 'flex';
+}
+
+function useBPM(bpm) {
+  $('bpmInput').value = bpm;
+  updateBeatDisplay();
+}
+function setFullSong(n) {
+  $('numBeats').value = n;
+  ensureGrid('BS', n); ensureGrid('DC', n);
+  renderGrid(); updateExport();
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AUDIO / WAVEFORM
+// ═══════════════════════════════════════════════════════════════════════════
+
+let audioCtx    = null;
+let audioBuffer = null;
+let srcNode     = null;
+let isPlaying   = false;
+let pbOffset    = 0;
+let pbStart     = 0;
+let rafId       = null;
+
+$('audioFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  // Show analyzing state
+  const bar = $('analysisBar');
+  bar.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+    <span class="analyzing-spinner">⚙</span>
+    <span style="color:var(--muted)">Analyzing <b style="color:var(--text)">${file.name}</b>…</span></div>`;
+  bar.style.display = 'flex';
+
+  if (!audioCtx) audioCtx = new AudioContext();
+  else if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(await file.arrayBuffer());
+
+    // Run BPM detection
+    const { bpm, confidence } = detectBPM(audioBuffer);
+
+    // Update UI
+    $('bpmInput').value = bpm;
+    updateBeatDisplay();
+    showAnalysis(bpm, confidence, audioBuffer.duration);
+
+    $('wavePlaceholder').style.display = 'none';
+    const cvs = $('waveformCanvas');
+    cvs.style.display = 'block';
+    resizeDrawWaveform();
+    $('playBtn').disabled   = false;
+    $('fullSongBtn').disabled = false;
+    $('fullSongBtn').onclick = () => {
+      const beats = Math.round((audioBuffer.duration - getOffset() / 100) / (60 / getBpm()));
+      setFullSong(beats);
+    };
+  } catch (err) {
+    bar.innerHTML = `<span style="color:var(--red)">⚠ Could not decode audio: ${err.message}</span>`;
+  }
+});
+
+function resizeDrawWaveform() {
+  const cvs = $('waveformCanvas'), w = $('waveformWrap');
+  cvs.width  = w.offsetWidth;
+  cvs.height = w.offsetHeight;
+  drawWaveform();
+}
+function drawWaveform() {
+  const cvs = $('waveformCanvas');
+  if (!audioBuffer || !cvs.width) return;
+  const ctx = cvs.getContext('2d');
+  const W = cvs.width, H = cvs.height;
+
+  ctx.fillStyle = '#090b14';
+  ctx.fillRect(0, 0, W, H);
+
+  // Waveform
+  const ch   = audioBuffer.getChannelData(0);
+  const step = Math.max(1, Math.floor(ch.length / W));
+  ctx.strokeStyle = '#1b5a78'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x < W; x++) {
+    let peak = 0;
+    const base = x * step;
+    for (let i = 0; i < step && base + i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[base + i]));
+    const a = peak * (H / 2 - 2);
+    ctx.moveTo(x + .5, H / 2 - a);
+    ctx.lineTo(x + .5, H / 2 + a);
+  }
+  ctx.stroke();
+
+  // Beat markers
+  const beatSec = 60 / getBpm();
+  const offSec  = getOffset() / 100;
+  const dur     = audioBuffer.duration;
+  ctx.strokeStyle = 'rgba(233,69,96,.5)'; ctx.lineWidth = 1;
+  ctx.fillStyle   = 'rgba(233,69,96,.7)'; ctx.font = '9px sans-serif';
+  let bn = 0;
+  for (let t = offSec; t < dur && bn < 400; t += beatSec, bn++) {
+    const x = (t / dur) * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    if (bn % 4 === 0) ctx.fillText(bn + 1, x + 2, 9);
+  }
+}
+
+$('waveformCanvas').addEventListener('click', e => {
+  if (!audioBuffer) return;
+  const rect = e.target.getBoundingClientRect();
+  pbOffset = ((e.clientX - rect.left) / rect.width) * audioBuffer.duration;
+  if (isPlaying) restartAudio();
+});
+
+$('playBtn').addEventListener('click', () => isPlaying ? stopAudio() : startAudio());
+
+function startAudio() {
+  if (!audioBuffer) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  srcNode = audioCtx.createBufferSource();
+  srcNode.buffer = audioBuffer;
+  srcNode.connect(audioCtx.destination);
+  pbStart = audioCtx.currentTime;
+  srcNode.start(0, pbOffset);
+  srcNode.onended = () => { if (isPlaying) stopAudio(); };
+  isPlaying = true;
+  $('playBtn').textContent = '⏹ Stop';
+  rafId = requestAnimationFrame(tickPlayhead);
+}
+function restartAudio() {
+  if (srcNode) { try { srcNode.stop(); srcNode.onended = null; } catch(e){} }
+  srcNode = audioCtx.createBufferSource();
+  srcNode.buffer = audioBuffer;
+  srcNode.connect(audioCtx.destination);
+  pbStart = audioCtx.currentTime;
+  srcNode.start(0, pbOffset);
+  srcNode.onended = () => { if (isPlaying) stopAudio(); };
+}
+function stopAudio() {
+  if (srcNode) { try { srcNode.stop(); srcNode.onended = null; } catch(e){} }
+  isPlaying = false; pbOffset = 0;
+  if (rafId) cancelAnimationFrame(rafId);
+  $('playBtn').textContent = '▶ Play';
+  document.querySelectorAll('.beat-th.playing').forEach(t => t.classList.remove('playing'));
+}
+function tickPlayhead() {
+  if (!isPlaying) return;
+  const elapsed  = audioCtx.currentTime - pbStart + pbOffset;
+  const beatSec  = 60 / getBpm();
+  const offSec   = getOffset() / 100;
+  const curBeat  = Math.floor((elapsed - offSec) / beatSec);
+  document.querySelectorAll('.beat-th').forEach((th, i) => th.classList.toggle('playing', i === curBeat));
+  // Redraw waveform with playhead
+  drawWaveform();
+  const cvs = $('waveformCanvas'), ctx = cvs.getContext('2d');
+  const x = (elapsed / audioBuffer.duration) * cvs.width;
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cvs.height); ctx.stroke();
+  rafId = requestAnimationFrame(tickPlayhead);
+}
+window.addEventListener('resize', () => { if (audioBuffer) resizeDrawWaveform(); });
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MASKS PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderMasks() {
+  const masks = MASKS[activeBoard];
+  const cls   = activeBoard.toLowerCase();
+  const cnt   = SERVOS[activeBoard].length;
+  const MAX_BITS = 13; // show up to 13 bit indicators
+
+  const html = masks.map((m, i) => {
+    const bits = Array.from({ length: Math.min(cnt, MAX_BITS) }, (_, si) =>
+      `<div class="mask-bit${m.servos.includes(si) ? ' on-' + cls : ''}"></div>`
+    ).join('');
+    const armed = (i === armedMaskIdx);
+    return `<div class="mask-chip${armed ? ' armed' : ''}" data-midx="${i}" onclick="toggleMask(${i})">
+      <span class="mask-name">${m.label}</span>
+      <div class="mask-bits">${bits}</div>
+    </div>`;
+  }).join('');
+
+  $('maskList').innerHTML = html;
+  $('maskHint').textContent = armedMask
+    ? `Armed: ${armedMask.label} — click beat number to apply.`
+    : 'No mask armed — clicking cells toggles individually.';
+}
+
+function toggleMask(idx) {
+  if (armedMaskIdx === idx) {
+    armedMask = null; armedMaskIdx = -1;
+  } else {
+    armedMask    = MASKS[activeBoard][idx];
+    armedMaskIdx = idx;
+  }
+  renderMasks();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PIANO ROLL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderGrid() {
+  const n      = getN();
+  ensureGrid('BS', n); ensureGrid('DC', n);
+  const servos = SERVOS[activeBoard];
+  const grid   = grids[activeBoard];
+  const cls    = activeBoard.toLowerCase();
+
+  // Build corner + beat headers
+  let html = '<table class="roll-table"><thead><tr>';
+  html += `<th class="corner-th">${activeBoard === 'BS' ? 'Body Servo' : 'Dome Ctrl'} (${servos.length})</th>`;
+  for (let b = 0; b < n; b++) {
+    const hasData = grid[b] && grid[b].some(v => v);
+    html += `<th class="beat-th${hasData ? ' has-data' : ''}" id="bh${b}" data-beat="${b}">${b + 1}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (let si = 0; si < servos.length; si++) {
+    const isSel = si === selectedRow;
+    html += `<tr>`;
+    html += `<td class="servo-td ${cls}-row${isSel ? ' selected' : ''}" data-si="${si}">${servos[si]}</td>`;
+    for (let bi = 0; bi < n; bi++) {
+      const on = grid[bi] && grid[bi][si];
+      html += `<td class="cell${on ? ' on-' + cls : ''}" data-b="${bi}" data-s="${si}"></td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  $('rollWrap').innerHTML = html;
+  updateInfo();
+}
+
+// ── Drag painting ──
+let isDragging = false, dragVal = false;
+
+$('rollWrap').addEventListener('mousedown', e => {
+  // Servo name → select row
+  const td = e.target.closest('.servo-td');
+  if (td) {
+    selectedRow = parseInt(td.dataset.si);
+    $('rowLabel').textContent = '· ' + SERVOS[activeBoard][selectedRow];
+    renderGrid(); return;
+  }
+  // Beat header → apply armed mask (if any)
+  const th = e.target.closest('.beat-th');
+  if (th) {
+    if (armedMask) {
+      applyMaskToBeat(parseInt(th.dataset.beat));
+      renderGrid(); updateExport(); return;
+    }
+    return;
+  }
+  // Cell → paint
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  e.preventDefault();
+  const bi = parseInt(cell.dataset.b), si = parseInt(cell.dataset.s);
+  const g  = grids[activeBoard];
+  dragVal  = !(g[bi] && g[bi][si]);
+  paintCell(bi, si, dragVal, cell);
+  isDragging = true;
+});
+$('rollWrap').addEventListener('mouseover', e => {
+  if (!isDragging) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  const bi = parseInt(cell.dataset.b), si = parseInt(cell.dataset.s);
+  if ((grids[activeBoard][bi] && grids[activeBoard][bi][si]) !== dragVal)
+    paintCell(bi, si, dragVal, cell);
+});
+document.addEventListener('mouseup', () => {
+  if (isDragging) { isDragging = false; updateExport(); updateInfo(); }
+});
+
+function paintCell(bi, si, val, el) {
+  const g = grids[activeBoard];
+  if (!g[bi]) g[bi] = new Array(SERVOS[activeBoard].length).fill(false);
+  g[bi][si] = val;
+  const cls = activeBoard.toLowerCase();
+  if (val) el.classList.add('on-' + cls);
+  else     el.classList.remove('on-bs', 'on-dc');
+  // Update beat-th has-data state
+  const th = document.querySelector(`#bh${bi}`);
+  if (th) th.classList.toggle('has-data', g[bi].some(v => v));
+}
+
+function applyMaskToBeat(bi) {
+  if (!armedMask) return;
+  const g = grids[activeBoard];
+  if (!g[bi]) g[bi] = new Array(SERVOS[activeBoard].length).fill(false);
+  // Toggle: if ALL mask servos are already on → turn off; else turn on
+  const allOn = armedMask.servos.every(si => si < g[bi].length && g[bi][si]);
+  armedMask.servos.forEach(si => {
+    if (si < SERVOS[activeBoard].length) g[bi][si] = !allOn;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BOARD SWITCHING
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setBoard(b) {
+  activeBoard = b;
+  armedMask = null; armedMaskIdx = -1; selectedRow = -1;
+  $('tab-bs').className = 'board-tab' + (b === 'BS' ? ' active-bs' : '');
+  $('tab-dc').className = 'board-tab' + (b === 'DC' ? ' active-dc' : '');
+  $('rowLabel').textContent = '';
+  renderMasks();
+  renderGrid();
+  updateExport();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRESETS & ROW OPS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function clearGrid() {
+  const n = getN(), cnt = SERVOS[activeBoard].length;
+  grids[activeBoard] = Array.from({ length: n }, () => new Array(cnt).fill(false));
+  renderGrid(); updateExport();
+}
+function fillAll() {
+  const n = getN(), cnt = SERVOS[activeBoard].length;
+  grids[activeBoard] = Array.from({ length: n }, () => new Array(cnt).fill(true));
+  renderGrid(); updateExport();
+}
+function applyStayingAlive() {
+  const n = getN();
+  ensureGrid(activeBoard, n);
+  if (activeBoard === 'BS') {
+    const p = [[0,1,2,3],[4,5,8,9],[0,1,2,3,4,5,6,7,8,9],[6,7]];
+    for (let b = 0; b < n; b++) {
+      grids.BS[b] = new Array(SERVOS.BS.length).fill(false);
+      p[b%4].forEach(i => { if (i < SERVOS.BS.length) grids.BS[b][i] = true; });
+    }
+  } else {
+    const p = [[0,1,2,3,4,5,6,7,8,9],[6,7,8,9],[0,1,2,3,4,5],[0,2,4,6,8]];
+    for (let b = 0; b < n; b++) {
+      grids.DC[b] = new Array(SERVOS.DC.length).fill(false);
+      p[b%4].forEach(i => { if (i < SERVOS.DC.length) grids.DC[b][i] = true; });
+    }
+  }
+  renderGrid(); updateExport();
+}
+function rowOp(op) {
+  if (selectedRow < 0) { toast('Click a servo name first'); return; }
+  const n = getN();
+  ensureGrid(activeBoard, n);
+  for (let b = 0; b < n; b++) {
+    if (!grids[activeBoard][b]) grids[activeBoard][b] = new Array(SERVOS[activeBoard].length).fill(false);
+    grids[activeBoard][b][selectedRow] = (op === 'fill');
+  }
+  renderGrid(); updateExport();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CODE GENERATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+function computeMask(board, beat) {
+  const bytes = [0,0,0,0], row = grids[board][beat];
+  if (!row) return bytes;
+  for (let si = 0; si < SERVOS[board].length; si++) {
+    if (row[si]) {
+      const byteIdx = si >> 3, bit = 7 - (si & 7);
+      if (byteIdx < 4) bytes[byteIdx] |= 1 << bit;
+    }
+  }
+  return bytes;
+}
+const toBin = n => 'B' + n.toString(2).padStart(8,'0');
+const fmtStep = (cs, b) => `    { ${String(cs).padStart(4)},   ${toBin(b[0])}, ${toBin(b[1])}, ${toBin(b[2])}, ${toBin(b[3])} },`;
+
+function generateCode(board) {
+  const bpm    = getBpm(), n = getN(), pulse = getPulse(), offset = getOffset();
+  const beatCs = getBeatCs();
+  const base   = $('seqName').value || 'SeqMyRoutine';
+  const name   = base + board;
+
+  const steps = [];
+  let pending  = offset;
+
+  for (let b = 0; b < n; b++) {
+    const m    = computeMask(board, b);
+    const anyOn = m.some(v => v);
+    if (anyOn) {
+      if (pending > 0) { steps.push([pending, [0,0,0,0]]); pending = 0; }
+      steps.push([pulse, m]);
+      pending = Math.max(1, beatCs - pulse);
+    } else {
+      pending += beatCs;
+    }
+  }
+  if (pending > 0) steps.push([pending, [0,0,0,0]]);
+  steps.push([0, [0,0,0,0]]);
+
+  const totalCs  = offset + n * beatCs;
+  const board_l  = board === 'BS' ? 'Body Servo Controller' : 'Dome Controller';
+  const cmd      = board === 'BS' ? ':D2327' : ':D1327';
+  const comment  = `// ${name} — ${board_l}\n// ${bpm} BPM, ${n} beats, ~${(totalCs/100).toFixed(1)}s\n// Trigger: ${cmd}`;
+
+  return `${comment}\nstatic const ServoSequence ${name} PROGMEM =\n{\n${steps.map(([cs,m]) => fmtStep(cs,m)).join('\n')}\n};\n`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EXPORT PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setExportTab(tab) {
+  exportTab = tab;
+  ['BS','DC','Both'].forEach(t =>
+    $(`expTab${t}`).classList.toggle('active', t === tab));
+  updateExport();
+}
+function updateExport() {
+  $('exportBody').textContent = exportTab === 'Both'
+    ? generateCode('BS') + '\n' + generateCode('DC')
+    : generateCode(exportTab);
+}
+function copyCode() {
+  navigator.clipboard.writeText($('exportBody').textContent)
+    .then(() => toast('Copied to clipboard!'));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LIBRARY MODIFICATION (File System Access API)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function modifyLibrary() {
+  if (!('showOpenFilePicker' in window)) {
+    alert('File System Access API requires Chrome 86+. Try opening the page from a local server (not file://).');
+    return;
+  }
+
+  let fh;
+  try {
+    [fh] = await window.showOpenFilePicker({
+      types: [{ description: 'ServoSequencer header', accept: { 'text/plain': ['.h'] } }],
+      suggestedName: 'ServoSequencer.h',
+      multiple: false
+    });
+  } catch (e) { return; }  // user cancelled
+
+  const file    = await fh.getFile();
+  let   content = await file.text();
+
+  const base   = $('seqName').value || 'SeqMyRoutine';
+  const codeBS = generateCode('BS');
+  const codeDC = generateCode('DC');
+  const newCode = '\n' + codeBS + '\n' + codeDC;
+
+  // Check for existing sequences with same name
+  const existsBS = content.includes(`SeqSequence ${base}BS`) || content.includes(`ServoSequence ${base}BS`);
+  const existsDC = content.includes(`ServoSequence ${base}DC`);
+
+  if (existsBS || existsDC) {
+    const names = [existsBS && `${base}BS`, existsDC && `${base}DC`].filter(Boolean).join(' and ');
+    if (!confirm(`${names} already exist in the file. Replace them?`)) return;
+    // Remove existing blocks
+    if (existsBS) content = removeSeqBlock(content, `${base}BS`);
+    if (existsDC) content = removeSeqBlock(content, `${base}DC`);
+  }
+
+  // Insert before #endif (or append)
+  const endifIdx = content.lastIndexOf('#endif');
+  if (endifIdx !== -1) {
+    content = content.slice(0, endifIdx) + newCode + '\n' + content.slice(endifIdx);
+  } else {
+    content += newCode;
+  }
+
+  // Write back to the same file
+  try {
+    const writable = await fh.createWritable();
+    await writable.write(content);
+    await writable.close();
+    toast(`✓ ServoSequencer.h updated with ${base}BS + ${base}DC`);
+  } catch (err) {
+    // If createWritable fails (read-only), offer download instead
+    downloadText(content, file.name);
+    toast('Write blocked — downloading modified file instead');
+  }
+}
+
+function removeSeqBlock(content, seqName) {
+  // Find the start of the block (allow preceding comment lines)
+  const seqDecl = `static const ServoSequence ${seqName} PROGMEM`;
+  let start = content.indexOf(seqDecl);
+  if (start === -1) return content;
+
+  // Walk backwards over comment lines
+  let lineStart = content.lastIndexOf('\n', start - 1) + 1;
+  while (lineStart > 0) {
+    const prevLine = content.lastIndexOf('\n', lineStart - 2) + 1;
+    const line = content.slice(prevLine, lineStart - 1).trim();
+    if (line.startsWith('//')) { lineStart = prevLine; }
+    else break;
+  }
+
+  // Walk forward to find closing "};\n"
+  let end = content.indexOf('};', start);
+  if (end === -1) return content;
+  end += 2;
+  // Consume trailing newline(s)
+  while (end < content.length && (content[end] === '\n' || content[end] === '\r')) end++;
+
+  return content.slice(0, lineStart) + content.slice(end);
+}
+
+function downloadText(text, filename) {
+  const a  = document.createElement('a');
+  a.href   = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  a.download = filename;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BEAT DISPLAY / INFO
+// ═══════════════════════════════════════════════════════════════════════════
+
+function updateBeatDisplay() {
+  const bpm    = getBpm();
+  const beatCs = getBeatCs();
+  $('beatCsDisplay').textContent = `${beatCs} cs`;
+  $('beatSecDisplay').textContent = `${(beatCs / 100).toFixed(3)} s / beat`;
+  updateInfo(); updateExport();
+  if (audioBuffer) drawWaveform();
+}
+function updateInfo() {
+  const bpm = getBpm(), n = getN(), offset = getOffset(), beatCs = getBeatCs();
+  const total  = offset + n * beatCs;
+  const active = grids[activeBoard].filter(r => r && r.some(v => v)).length;
+  $('infoTotal').innerHTML  = `Total: <b>${(total/100).toFixed(2)}s</b> (${total}cs)`;
+  $('infoBeat').innerHTML   = `<b>${n}</b> beats @ <b>${bpm}</b> BPM`;
+  $('infoActive').innerHTML = `Active: <b>${active}</b> beats (${activeBoard})`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TAP TEMPO
+// ═══════════════════════════════════════════════════════════════════════════
+
+let tapTimes = [];
+$('tapBtn').addEventListener('click', () => {
+  const now = Date.now();
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > 3000) tapTimes = [];
+  tapTimes.push(now);
+  if (tapTimes.length > 8) tapTimes.shift();
+  if (tapTimes.length >= 2) {
+    const gaps = tapTimes.slice(1).map((t, i) => t - tapTimes[i]);
+    const avg  = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    $('bpmInput').value = Math.round(60000 / avg * 10) / 10;
+    updateBeatDisplay();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SAVE / LOAD PROJECT
+// ═══════════════════════════════════════════════════════════════════════════
+
+function saveProject() {
+  const data = {
+    name: $('seqName').value, bpm: getBpm(), numBeats: getN(),
+    pulseWidth: getPulse(), initOffset: getOffset(),
+    grids: { BS: grids.BS, DC: grids.DC }
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = (data.name || 'sequence') + '.json';
+  a.click();
+  toast('Project saved');
+}
+function loadProject(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      $('seqName').value    = d.name       || '';
+      $('bpmInput').value   = d.bpm        || 103.4;
+      $('numBeats').value   = d.numBeats   || 36;
+      $('pulseWidth').value = d.pulseWidth || 15;
+      $('initOffset').value = d.initOffset || 17;
+      if (d.grids?.BS) grids.BS = d.grids.BS;
+      if (d.grids?.DC) grids.DC = d.grids.DC;
+      updateBeatDisplay(); renderMasks(); renderGrid(); updateExport();
+      toast('Project loaded');
+    } catch (err) { alert('Load failed: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════════════════
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTROL LISTENERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+$('bpmInput').addEventListener('input', updateBeatDisplay);
+$('initOffset').addEventListener('input', updateBeatDisplay);
+$('pulseWidth').addEventListener('input', () => { updateExport(); updateInfo(); });
+$('numBeats').addEventListener('change', () => {
+  const n = getN();
+  ensureGrid('BS', n); ensureGrid('DC', n);
+  renderGrid(); updateExport();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FFT (iterative Cooley-Tukey radix-2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function fft(re, im) {
+  const n = re.length;
+  // Bit-reverse permutation
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  // Butterfly passes
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang  = -2 * Math.PI / len;
+    const wRe  = Math.cos(ang), wIm = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let curRe = 1, curIm = 0;
+      const half = len >> 1;
+      for (let j = 0; j < half; j++) {
+        const uRe = re[i + j],      uIm = im[i + j];
+        const vRe = re[i+j+half] * curRe - im[i+j+half] * curIm;
+        const vIm = re[i+j+half] * curIm + im[i+j+half] * curRe;
+        re[i+j]      = uRe + vRe;  im[i+j]      = uIm + vIm;
+        re[i+j+half] = uRe - vRe;  im[i+j+half] = uIm - vIm;
+        const nr = curRe * wRe - curIm * wIm;
+        curIm = curRe * wIm + curIm * wRe;
+        curRe = nr;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AUTO-GENERATE FROM AUDIO
+//
+//  Frequency band → servo group mapping:
+//
+//  Sub-bass  (20–200 Hz)   kick drum, bass hits
+//    BS: Utility Arms + Large Doors (big mechanical impact)
+//    DC: All Dome Panels (sweeping motion on the big hits)
+//
+//  Low-mid   (200–800 Hz)  bass guitar, low snare body
+//    BS: Charge Bay + Data Panel + Drawers S3/S4
+//    DC: Medium Panels + Big Panel
+//
+//  Mid       (800–3000 Hz) snare crack, guitar, vocals
+//    BS: Drawers S1 + S2
+//    DC: Small Panels 1–3
+//
+//  High      (3–12 kHz)    hi-hats, cymbals, bright transients
+//    BS: (skipped — body panels are too slow for hi-hat rate)
+//    DC: Pie Panels 1–4 (smallest/fastest dome panels)
+//
+//  Sensitivity slider 0–100% controls the threshold T:
+//    0%   → T = 1.8  (only the loudest beats fire — sparse)
+//    50%  → T = 0.6  (moderately active)
+//    100% → T = -0.3 (almost everything fires — dense)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function autoGenerate(target) {
+  if (!audioBuffer) { toast('Load audio first'); return; }
+
+  const bpm    = getBpm();
+  const n      = getN();
+  const offset = getOffset() / 100;    // seconds
+  const beatSec = 60 / bpm;
+  const sr      = audioBuffer.sampleRate;
+
+  // Mono mix
+  const ch0  = audioBuffer.getChannelData(0);
+  const mono = audioBuffer.numberOfChannels > 1
+    ? Float32Array.from({ length: audioBuffer.length },
+        (_, i) => (ch0[i] + audioBuffer.getChannelData(1)[i]) * 0.5)
+    : ch0;
+
+  const FFT_SIZE = 2048;
+  const HALF     = FFT_SIZE >> 1;
+
+  // Pre-compute Hanning window
+  const hann = Float32Array.from({ length: FFT_SIZE },
+    (_, i) => 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1))));
+
+  // Frequency bin → band boundaries
+  const bin = f => Math.round(f * FFT_SIZE / sr);
+  const bands = {
+    sub:  [bin(20),   bin(200)],
+    low:  [bin(200),  bin(800)],
+    mid:  [bin(800),  bin(3000)],
+    high: [bin(3000), Math.min(bin(12000), HALF)],
+  };
+
+  // ── Analyze each beat ──
+  const beatEnergy = [];
+  for (let b = 0; b < n; b++) {
+    const tSec  = offset + b * beatSec;
+    const start = Math.max(0, Math.floor(tSec * sr) - (FFT_SIZE >> 1));
+
+    const re = new Float32Array(FFT_SIZE);
+    const im = new Float32Array(FFT_SIZE);
+    for (let i = 0; i < FFT_SIZE; i++) {
+      const idx = start + i;
+      re[i] = (idx < mono.length ? mono[idx] : 0) * hann[i];
+    }
+
+    fft(re, im);
+
+    const e = {};
+    for (const [name, [lo, hi]] of Object.entries(bands)) {
+      let sum = 0;
+      for (let k = lo; k < hi; k++) sum += re[k] * re[k] + im[k] * im[k];
+      e[name] = sum / Math.max(1, hi - lo);
+    }
+    beatEnergy.push(e);
+  }
+
+  // ── Per-band statistics (mean + std) ──
+  const stats = {};
+  for (const band of Object.keys(bands)) {
+    const vals = beatEnergy.map(e => e[band]);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const std  = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / vals.length);
+    stats[band] = { mean, std: Math.max(std, mean * 0.01) };
+  }
+
+  // ── Sensitivity → threshold ──
+  // Slider 0% → T=1.8 (sparse),  50% → T=0.6,  100% → T=-0.3 (dense)
+  const sens = parseInt(($('sensitivity') || { value: 50 }).value);
+  const T    = 1.8 - (sens / 100) * 2.1;
+
+  const fire = (band, beat) =>
+    beatEnergy[beat][band] > stats[band].mean + T * stats[band].std;
+
+  // ── Fill grids ──
+  const doBS = (target === 'BS' || target === 'both');
+  const doDC = (target === 'DC' || target === 'both');
+
+  for (let b = 0; b < n; b++) {
+    if (doBS) {
+      grids.BS[b] = new Array(SERVOS.BS.length).fill(false);
+      if (fire('sub', b))  [0,1,2,3].forEach(i => { grids.BS[b][i] = true; });  // arms + large doors
+      if (fire('low', b))  [4,5,8,9].forEach(i => { if (i < SERVOS.BS.length) grids.BS[b][i] = true; }); // CBI + DP + S3/S4
+      if (fire('mid', b))  [6,7].forEach(i => { grids.BS[b][i] = true; });      // drawers S1/S2
+    }
+    if (doDC) {
+      grids.DC[b] = new Array(SERVOS.DC.length).fill(false);
+      if (fire('sub', b))  [0,1,2,3,4,5].forEach(i => { grids.DC[b][i] = true; }); // all dome panels
+      if (fire('low', b))  [3,4,5].forEach(i => { grids.DC[b][i] = true; });        // med + big
+      if (fire('mid', b))  [0,1,2].forEach(i => { grids.DC[b][i] = true; });        // small panels
+      if (fire('high', b)) [6,7,8,9].forEach(i => { if (i < SERVOS.DC.length) grids.DC[b][i] = true; }); // pie panels
+    }
+  }
+
+  // Switch to the generated board's view and refresh
+  if (target !== 'both') setBoard(target);
+  renderGrid();
+  updateExport();
+
+  // Count active beats for feedback
+  const bsActive = grids.BS.filter(r => r && r.some(v => v)).length;
+  const dcActive = grids.DC.filter(r => r && r.some(v => v)).length;
+  toast(`Generated: BS ${bsActive}/${n} beats active, DC ${dcActive}/${n} beats active`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════
+
+ensureGrid('BS', 36);
+ensureGrid('DC', 36);
+renderMasks();
+renderGrid();
+updateBeatDisplay();
+updateExport();
+</script>
+</body>
+</html>
