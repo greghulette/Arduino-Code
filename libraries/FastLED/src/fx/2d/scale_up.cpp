@@ -1,18 +1,17 @@
 
-#include <stdint.h>
+#include "fl/stdint.h"
 
 #define FASTLED_INTERNAL
 #include "FastLED.h"
-#include "bilinear_expansion.h"
-#include "fl/ptr.h"
+#include "fl/upscale.h"
+#include "fl/memory.h"
+#include "fl/xymap.h"
 #include "fx/fx2d.h"
 #include "lib8tion/random8.h"
 #include "noise.h"
-#include "fl/xymap.h"
 
 // Include here so that #define PI used in Arduino.h does not produce a warning.
 #include "scale_up.h"
-
 
 // Optimized for 2^n grid sizes in terms of both memory and performance.
 // If you are somehow running this on AVR then you probably want this if
@@ -35,7 +34,7 @@
 
 namespace fl {
 
-ScaleUp::ScaleUp(XYMap xymap, Fx2dPtr fx) : Fx2d(xymap), mDelegate(fx) {
+ScaleUp::ScaleUp(const XYMap& xymap, Fx2dPtr fx) : Fx2d(xymap), mDelegate(fx) {
     // Turn off re-mapping of the delegate's XYMap, since bilinearExpand needs
     // to work in screen coordinates. The final mapping will for this class will
     // still be performed.
@@ -43,11 +42,11 @@ ScaleUp::ScaleUp(XYMap xymap, Fx2dPtr fx) : Fx2d(xymap), mDelegate(fx) {
 }
 
 void ScaleUp::draw(DrawContext context) {
-    if (!mSurface) {
-        mSurface.reset(new CRGB[mDelegate->getNumLeds()]);
+    if (mSurface.empty()) {
+        mSurface.resize(mDelegate->getNumLeds());
     }
     DrawContext delegateContext = context;
-    delegateContext.leds = mSurface.get();
+    delegateContext.leds = mSurface.data();
     mDelegate->draw(delegateContext);
 
     uint16_t in_w = mDelegate->getWidth();
@@ -56,22 +55,22 @@ void ScaleUp::draw(DrawContext context) {
     uint16_t out_h = getHeight();
     ;
     if (in_w == out_w && in_h == out_h) {
-        noExpand(mSurface.get(), context.leds, in_w, in_h);
+        noExpand(mSurface.data(), context.leds, in_w, in_h);
     } else {
-        expand(mSurface.get(), context.leds, in_w, in_h, mXyMap);
+        expand(mSurface.data(), context.leds, in_w, in_h, mXyMap);
     }
 }
 
 void ScaleUp::expand(const CRGB *input, CRGB *output, uint16_t width,
-                     uint16_t height, XYMap mXyMap) {
+                     uint16_t height, const XYMap& mXyMap) {
 #if FASTLED_SCALE_UP == FASTLED_SCALE_UP_ALWAYS_POWER_OF_2
-    bilinearExpandPowerOf2(input, output, width, height, mXyMap);
+    fl::upscalePowerOf2(input, output, static_cast<uint8_t>(width), static_cast<uint8_t>(height), mXyMap);
 #elif FASTLED_SCALE_UP == FASTLED_SCALE_UP_HIGH_PRECISION
-    bilinearExpandArbitrary(input, output, width, height, mXyMap);
+    fl::upscaleArbitrary(input, output, width, height, mXyMap);
 #elif FASTLED_SCALE_UP == FASTLED_SCALE_UP_DECIDE_AT_RUNTIME
-    bilinearExpand(input, output, width, height, mXyMap);
+    fl::upscale(input, output, width, height, mXyMap);
 #elif FASTLED_SCALE_UP == FASTLED_SCALE_UP_FORCE_FLOATING_POINT
-    bilinearExpandFloat(input, output, width, height, mXyMap);
+    fl::upscaleFloat(input, output, static_cast<uint8_t>(width), static_cast<uint8_t>(height), mXyMap);
 #else
 #error "Invalid FASTLED_SCALE_UP"
 #endif

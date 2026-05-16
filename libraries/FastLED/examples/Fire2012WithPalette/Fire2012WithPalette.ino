@@ -2,6 +2,7 @@
 /// @brief   Simple one-dimensional fire animation with a programmable color palette
 /// @example Fire2012WithPalette.ino
 
+#include <Arduino.h>
 #include <FastLED.h>
 
 #define LED_PIN     5
@@ -139,13 +140,13 @@ void setup() {
   
   // Third, here's a simpler, three-step gradient, from black to red to white
   //   gPal = CRGBPalette16( CRGB::Black, CRGB::Red, CRGB::White);
-
+  Serial.println("setup");
 }
 
 void loop()
 {
   // Add entropy to random number generator; we use a lot of it.
-  random16_add_entropy( random());
+  random16_add_entropy( random16());
 
   // Fourth, the most sophisticated: this one sets up a new palette every
   // time through the loop, based on a hue that changes every time.

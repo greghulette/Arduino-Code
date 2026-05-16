@@ -171,7 +171,7 @@ void normalDisplay(void);
 // normal brightness & contrast:  contrast = 100
 void setContrast(uint8_t contrast, uint8_t precharge = 241, uint8_t comdetect = 64);
 
-// Convenience method to access
+// Convenience method to access setContrast with only brightness parameter
 void setBrightness(uint8_t);
 
 // Turn the display upside down

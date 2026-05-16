@@ -2,10 +2,11 @@
 #if defined(ESP32)
 
 #include "sdkconfig.h"
+#include "fl/has_include.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 
-#if !__has_include("esp_memory_utils.h")
+#if !FL_HAS_INCLUDE("esp_memory_utils.h")
 #warning "esp_memory_utils.h is not available, are you on esp-idf 4? The parallel clockless i2s driver will not be available"
 #else
 
@@ -27,7 +28,7 @@
 #include "fl/math_macros.h"
 #include "pixel_iterator.h"
 #include "fl/allocator.h"
-#include "fl/scoped_ptr.h"
+#include "fl/unique_ptr.h"
 #include "fl/assert.h"
 #include "fl/rectangular_draw_buffer.h"
 #include "cpixel_ledcontroller.h"
@@ -37,8 +38,9 @@
 namespace { // anonymous namespace
 
 typedef fl::FixedVector<int, 16> PinList16;
+typedef uint8_t I2SPin;  // Renamed to avoid conflict with FastLED Pin class
 
-typedef uint8_t Pin;
+bool gPsramInited = false;
 
 
 
@@ -46,7 +48,7 @@ typedef uint8_t Pin;
 class I2SEsp32S3_Group {
   public:
 
-    fl::scoped_ptr<fl::I2SClocklessLedDriveresp32S3> mDriver;
+    fl::unique_ptr<fl::I2SClocklessLedDriveresp32S3> mDriver;
     fl::RectangularDrawBuffer mRectDrawBuffer;
     bool mDrawn = false;
 
@@ -66,7 +68,7 @@ class I2SEsp32S3_Group {
         mRectDrawBuffer.onQueuingDone();
     }
 
-    void addObject(Pin pin, uint16_t numLeds, bool is_rgbw) {
+    void addObject(I2SPin pin, uint16_t numLeds, bool is_rgbw) {
         mRectDrawBuffer.queue(fl::DrawItem(pin, numLeds, is_rgbw));
     }
 
@@ -121,7 +123,7 @@ void I2S_Esp32::showPixels(uint8_t data_pin, PixelIterator& pixel_iterator) {
     group.onQueuingDone();
     const Rgbw rgbw = pixel_iterator.get_rgbw();
     int numLeds = pixel_iterator.size();
-    Slice<uint8_t> strip_bytes = group.mRectDrawBuffer.getLedsBufferBytesForPin(data_pin, true);
+            span<uint8_t> strip_bytes = group.mRectDrawBuffer.getLedsBufferBytesForPin(data_pin, true);
     if (rgbw.active()) {
         uint8_t r, g, b, w;
         while (pixel_iterator.has(1)) {
@@ -180,6 +182,13 @@ class Driver: public InternalI2SDriver {
 };
 
 InternalI2SDriver* InternalI2SDriver::create() {
+    if (!gPsramInited) {
+        gPsramInited = true;
+        bool ok = psramInit();
+        if (!ok) {
+            log_e("PSRAM initialization failed, I2S driver may crash.");
+        }
+    }
     return new Driver();
 }
 
@@ -187,7 +196,7 @@ InternalI2SDriver* InternalI2SDriver::create() {
 
 #endif // CONFIG_IDF_TARGET_ESP32S3
 
-#endif // __has_include("esp_memory_utils.h")
+#endif // FL_HAS_INCLUDE("esp_memory_utils.h")
 
 
 #endif // ESP32

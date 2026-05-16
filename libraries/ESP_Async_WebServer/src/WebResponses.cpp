@@ -1,71 +1,75 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-// Copyright 2016-2025 Hristo Gochkov, Mathieu Carbou, Emil Muratov
+// Copyright 2016-2026 Hristo Gochkov, Mathieu Carbou, Emil Muratov, Will Miles
 
 #include "ESPAsyncWebServer.h"
 #include "WebResponseImpl.h"
+#include "AsyncWebServerLogging.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+
+#ifndef CONFIG_LWIP_TCP_WND_DEFAULT
+#ifdef TCP_WND  // ESP8266
+#define CONFIG_LWIP_TCP_WND_DEFAULT TCP_WND
+#else
+// as it is defined for esp32's LWIP
+#define CONFIG_LWIP_TCP_WND_DEFAULT 5760
+#endif
+#endif
 
 using namespace asyncsrv;
-
-// Since ESP8266 does not link memchr by default, here's its implementation.
-void *memchr(void *ptr, int ch, size_t count) {
-  unsigned char *p = static_cast<unsigned char *>(ptr);
-  while (count--) {
-    if (*p++ == static_cast<unsigned char>(ch)) {
-      return --p;
-    }
-  }
-  return nullptr;
-}
 
 /*
  * Abstract Response
  *
  */
 
-const char *AsyncWebServerResponse::responseCodeToString(int code) {
+STR_RETURN_TYPE AsyncWebServerResponse::responseCodeToString(int code) {
   switch (code) {
-    case 100: return T_HTTP_CODE_100;
-    case 101: return T_HTTP_CODE_101;
-    case 200: return T_HTTP_CODE_200;
-    case 201: return T_HTTP_CODE_201;
-    case 202: return T_HTTP_CODE_202;
-    case 203: return T_HTTP_CODE_203;
-    case 204: return T_HTTP_CODE_204;
-    case 205: return T_HTTP_CODE_205;
-    case 206: return T_HTTP_CODE_206;
-    case 300: return T_HTTP_CODE_300;
-    case 301: return T_HTTP_CODE_301;
-    case 302: return T_HTTP_CODE_302;
-    case 303: return T_HTTP_CODE_303;
-    case 304: return T_HTTP_CODE_304;
-    case 305: return T_HTTP_CODE_305;
-    case 307: return T_HTTP_CODE_307;
-    case 400: return T_HTTP_CODE_400;
-    case 401: return T_HTTP_CODE_401;
-    case 402: return T_HTTP_CODE_402;
-    case 403: return T_HTTP_CODE_403;
-    case 404: return T_HTTP_CODE_404;
-    case 405: return T_HTTP_CODE_405;
-    case 406: return T_HTTP_CODE_406;
-    case 407: return T_HTTP_CODE_407;
-    case 408: return T_HTTP_CODE_408;
-    case 409: return T_HTTP_CODE_409;
-    case 410: return T_HTTP_CODE_410;
-    case 411: return T_HTTP_CODE_411;
-    case 412: return T_HTTP_CODE_412;
-    case 413: return T_HTTP_CODE_413;
-    case 414: return T_HTTP_CODE_414;
-    case 415: return T_HTTP_CODE_415;
-    case 416: return T_HTTP_CODE_416;
-    case 417: return T_HTTP_CODE_417;
-    case 429: return T_HTTP_CODE_429;
-    case 500: return T_HTTP_CODE_500;
-    case 501: return T_HTTP_CODE_501;
-    case 502: return T_HTTP_CODE_502;
-    case 503: return T_HTTP_CODE_503;
-    case 504: return T_HTTP_CODE_504;
-    case 505: return T_HTTP_CODE_505;
-    default:  return T_HTTP_CODE_ANY;
+    case 100: return STR(T_HTTP_CODE_100);
+    case 101: return STR(T_HTTP_CODE_101);
+    case 200: return STR(T_HTTP_CODE_200);
+    case 201: return STR(T_HTTP_CODE_201);
+    case 202: return STR(T_HTTP_CODE_202);
+    case 203: return STR(T_HTTP_CODE_203);
+    case 204: return STR(T_HTTP_CODE_204);
+    case 205: return STR(T_HTTP_CODE_205);
+    case 206: return STR(T_HTTP_CODE_206);
+    case 300: return STR(T_HTTP_CODE_300);
+    case 301: return STR(T_HTTP_CODE_301);
+    case 302: return STR(T_HTTP_CODE_302);
+    case 303: return STR(T_HTTP_CODE_303);
+    case 304: return STR(T_HTTP_CODE_304);
+    case 305: return STR(T_HTTP_CODE_305);
+    case 307: return STR(T_HTTP_CODE_307);
+    case 400: return STR(T_HTTP_CODE_400);
+    case 401: return STR(T_HTTP_CODE_401);
+    case 402: return STR(T_HTTP_CODE_402);
+    case 403: return STR(T_HTTP_CODE_403);
+    case 404: return STR(T_HTTP_CODE_404);
+    case 405: return STR(T_HTTP_CODE_405);
+    case 406: return STR(T_HTTP_CODE_406);
+    case 407: return STR(T_HTTP_CODE_407);
+    case 408: return STR(T_HTTP_CODE_408);
+    case 409: return STR(T_HTTP_CODE_409);
+    case 410: return STR(T_HTTP_CODE_410);
+    case 411: return STR(T_HTTP_CODE_411);
+    case 412: return STR(T_HTTP_CODE_412);
+    case 413: return STR(T_HTTP_CODE_413);
+    case 414: return STR(T_HTTP_CODE_414);
+    case 415: return STR(T_HTTP_CODE_415);
+    case 416: return STR(T_HTTP_CODE_416);
+    case 417: return STR(T_HTTP_CODE_417);
+    case 429: return STR(T_HTTP_CODE_429);
+    case 500: return STR(T_HTTP_CODE_500);
+    case 501: return STR(T_HTTP_CODE_501);
+    case 502: return STR(T_HTTP_CODE_502);
+    case 503: return STR(T_HTTP_CODE_503);
+    case 504: return STR(T_HTTP_CODE_504);
+    case 505: return STR(T_HTTP_CODE_505);
+    case 507: return STR(T_HTTP_CODE_507);
+    default:  return STR(T_HTTP_CODE_ANY);
   }
 }
 
@@ -132,6 +136,30 @@ bool AsyncWebServerResponse::headerMustBePresentOnce(const String &name) {
     }
   }
   return false;
+}
+
+bool AsyncWebServerResponse::addHeader(AsyncWebHeader &&header, bool replaceExisting) {
+  if (!header) {
+    return false;  // invalid header
+  }
+  for (auto i = _headers.begin(); i != _headers.end(); ++i) {
+    if (i->name().equalsIgnoreCase(header.name())) {
+      // header already set
+      if (replaceExisting) {
+        // remove, break and add the new one
+        _headers.erase(i);
+        break;
+      } else if (headerMustBePresentOnce(i->name())) {  // we can have only one header with that name
+        // do not update
+        return false;
+      } else {
+        break;  // accept multiple headers with the same name
+      }
+    }
+  }
+  // header was not found found, or existing one was removed
+  _headers.emplace_back(std::move(header));
+  return true;
 }
 
 bool AsyncWebServerResponse::addHeader(const char *name, const char *value, bool replaceExisting) {
@@ -224,13 +252,6 @@ bool AsyncWebServerResponse::_sourceValid() const {
 }
 void AsyncWebServerResponse::_respond(AsyncWebServerRequest *request) {
   _state = RESPONSE_END;
-  request->client()->close();
-}
-size_t AsyncWebServerResponse::_ack(AsyncWebServerRequest *request, size_t len, uint32_t time) {
-  (void)request;
-  (void)len;
-  (void)time;
-  return 0;
 }
 
 /*
@@ -251,70 +272,61 @@ AsyncBasicResponse::AsyncBasicResponse(int code, const char *contentType, const 
 
 void AsyncBasicResponse::_respond(AsyncWebServerRequest *request) {
   _state = RESPONSE_HEADERS;
-  String out;
-  _assembleHead(out, request->version());
-  size_t outLen = out.length();
-  size_t space = request->client()->space();
-  if (!_contentLength && space >= outLen) {
-    _writtenLength += request->client()->write(out.c_str(), outLen);
-    _state = RESPONSE_WAIT_ACK;
-  } else if (_contentLength && space >= outLen + _contentLength) {
-    out += _content;
-    outLen += _contentLength;
-    _writtenLength += request->client()->write(out.c_str(), outLen);
-    _state = RESPONSE_WAIT_ACK;
-  } else if (space && space < outLen) {
-    String partial = out.substring(0, space);
-    _content = out.substring(space) + _content;
-    _contentLength += outLen - space;
-    _writtenLength += request->client()->write(partial.c_str(), partial.length());
-    _state = RESPONSE_CONTENT;
-  } else if (space > outLen && space < (outLen + _contentLength)) {
-    size_t shift = space - outLen;
-    outLen += shift;
-    _sentLength += shift;
-    out += _content.substring(0, shift);
-    _content = _content.substring(shift);
-    _writtenLength += request->client()->write(out.c_str(), outLen);
-    _state = RESPONSE_CONTENT;
-  } else {
-    _content = out + _content;
-    _contentLength += outLen;
-    _state = RESPONSE_CONTENT;
-  }
+  _assembleHead(_assembled_headers, request->version());
+  write_send_buffs(request, 0, 0);
 }
 
-size_t AsyncBasicResponse::_ack(AsyncWebServerRequest *request, size_t len, uint32_t time) {
+size_t AsyncBasicResponse::write_send_buffs(AsyncWebServerRequest *request, size_t len, uint32_t time) {
   (void)time;
+
+  // this is not functionally needed in AsyncBasicResponse itself, but kept for compatibility if some of the derived classes are rely on it somehow
   _ackedLength += len;
-  if (_state == RESPONSE_CONTENT) {
-    size_t available = _contentLength - _sentLength;
-    size_t space = request->client()->space();
-    // we can fit in this packet
-    if (space > available) {
-      _writtenLength += request->client()->write(_content.c_str(), available);
-      _content = emptyString;
-      _state = RESPONSE_WAIT_ACK;
-      return available;
+  size_t payloadlen{0};  // amount of data to be written to tcp sockbuff during this call, used as return value of this method
+
+  // send http headers first
+  if (_state == RESPONSE_HEADERS) {
+    // copy headers buffer to sock buffer
+    size_t const pcb_written = request->client()->add(_assembled_headers.c_str() + _writtenHeadersLength, _assembled_headers.length() - _writtenHeadersLength);
+    _writtenLength += pcb_written;
+    _writtenHeadersLength += pcb_written;
+    if (_writtenHeadersLength < _assembled_headers.length()) {
+      // we were not able to fit all headers in current buff, send this part here and return later for the rest
+      if (!request->client()->send()) {
+        // something is wrong, what should we do here?
+        request->client()->close();
+        return 0;
+      }
+      return pcb_written;
     }
-    // send some data, the rest on ack
-    String out = _content.substring(0, space);
-    _content = _content.substring(space);
-    _sentLength += space;
-    _writtenLength += request->client()->write(out.c_str(), space);
-    return space;
-  } else if (_state == RESPONSE_WAIT_ACK) {
-    if (_ackedLength >= _writtenLength) {
+    // otherwise we've added all the (remainder) headers in current buff, go on with content
+    _state = RESPONSE_CONTENT;
+    payloadlen += pcb_written;
+    _assembled_headers = String();  // clear
+  }
+
+  if (_state == RESPONSE_CONTENT) {
+    size_t const pcb_written = request->client()->write(_content.c_str() + _sentLength, _content.length() - _sentLength);
+    _writtenLength += pcb_written;  // total written data (hdrs + body)
+    _sentLength += pcb_written;     // body written data
+    payloadlen += pcb_written;      // data writtent in current buff
+    if (_sentLength >= _content.length()) {
+      // we've just sent all the (remainder) data in current buff, complete the response
       _state = RESPONSE_END;
     }
   }
-  return 0;
+
+  // implicit complete
+  if (_state == RESPONSE_WAIT_ACK) {
+    _state = RESPONSE_END;
+  }
+
+  return payloadlen;
 }
 
 /*
  * Abstract Response
- * */
-
+ *
+ */
 AsyncAbstractResponse::AsyncAbstractResponse(AwsTemplateProcessor callback) : _callback(callback) {
   // In case of template processing, we're unable to determine real response size
   if (callback) {
@@ -326,12 +338,12 @@ AsyncAbstractResponse::AsyncAbstractResponse(AwsTemplateProcessor callback) : _c
 
 void AsyncAbstractResponse::_respond(AsyncWebServerRequest *request) {
   addHeader(T_Connection, T_close, false);
-  _assembleHead(_head, request->version());
+  _assembleHead(_assembled_headers, request->version());
   _state = RESPONSE_HEADERS;
-  _ack(request, 0, 0);
+  write_send_buffs(request, 0, 0);
 }
 
-size_t AsyncAbstractResponse::_ack(AsyncWebServerRequest *request, size_t len, uint32_t time) {
+size_t AsyncAbstractResponse::write_send_buffs(AsyncWebServerRequest *request, size_t len, uint32_t time) {
   (void)time;
   if (!_sourceValid()) {
     _state = RESPONSE_FAILED;
@@ -340,142 +352,168 @@ size_t AsyncAbstractResponse::_ack(AsyncWebServerRequest *request, size_t len, u
   }
 
 #if ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
+  /*
+    for response payloads with unknown length or length larger than TCP_WND we need to control AsyncTCP's queue and in-flight fragmentation.
+    Either user callback could fill buffer with very small chunks or long running large response could receive a lot of poll() calls here,
+    both could flood asynctcp's queue with large number of events to handle and fragment socket buffer space for large responses.
+    Let's ignore polled acks and acks in case when available window size is less than our used buffer size since we won't be able to fill and send it whole
+    That way we could balance on having at least half tcp win in-flight while minimizing send/ack events in asynctcp Q
+    This could decrease sustained bandwidth for one single connection but would drastically improve parallelism and equalize bandwidth sharing
+  */
   // return a credit for each chunk of acked data (polls does not give any credits)
   if (len) {
     ++_in_flight_credit;
+    _in_flight -= std::min(len, _in_flight);
   }
 
-  // for chunked responses ignore acks if there are no _in_flight_credits left
-  if (_chunked && !_in_flight_credit) {
-#ifdef ESP32
-    log_d("(chunk) out of in-flight credits");
-#endif
-    return 0;
-  }
-
-  _in_flight -= (_in_flight > len) ? len : _in_flight;
-  // get the size of available sock space
-#endif
-
-  _ackedLength += len;
-  size_t space = request->client()->space();
-
-  size_t headLen = _head.length();
-  if (_state == RESPONSE_HEADERS) {
-    if (space >= headLen) {
-      _state = RESPONSE_CONTENT;
-      space -= headLen;
-    } else {
-      String out = _head.substring(0, space);
-      _head = _head.substring(space);
-      _writtenLength += request->client()->write(out.c_str(), out.length());
-#if ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
-      _in_flight += out.length();
-      --_in_flight_credit;  // take a credit
-#endif
-      return out.length();
-    }
-  }
-
-  if (_state == RESPONSE_CONTENT) {
-#if ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
-    // for response data we need to control the queue and in-flight fragmentation. Sending small chunks could give low latency,
-    // but flood asynctcp's queue and fragment socket buffer space for large responses.
-    // Let's ignore polled acks and acks in case when we have more in-flight data then the available socket buff space.
-    // That way we could balance on having half the buffer in-flight while another half is filling up, while minimizing events in asynctcp q
-    if (_in_flight > space) {
-      // log_d("defer user call %u/%u", _in_flight, space);
-      //  take the credit back since we are ignoring this ack and rely on other inflight data
+  if (_chunked || !_sendContentLength || (_sentLength > CONFIG_LWIP_TCP_WND_DEFAULT)) {
+    if (!_in_flight_credit || (ASYNC_RESPONCE_BUFF_SIZE > request->client()->space())) {
+      // async_ws_log_d("defer user call in_flight:%u, tcpwin:%u", _in_flight, request->client()->space());
+      // take the credit back since we are ignoring this ack and rely on other inflight data acks
       if (len) {
         --_in_flight_credit;
       }
       return 0;
     }
+  }
 #endif
 
-    size_t outLen;
-    if (_chunked) {
-      if (space <= 8) {
-        return 0;
-      }
+  // this is not functionally needed in AsyncAbstractResponse itself, but kept for compatibility if some of the derived classes are rely on it somehow
+  _ackedLength += len;
 
-      outLen = space;
-    } else if (!_sendContentLength) {
-      outLen = space;
-    } else {
-      outLen = ((_contentLength - _sentLength) > space) ? space : (_contentLength - _sentLength);
-    }
+  size_t payloadlen{0};  // amount of data to be written to tcp sockbuff during this call, used as return value of this method
 
-    uint8_t *buf = (uint8_t *)malloc(outLen + headLen);
-    if (!buf) {
-#ifdef ESP32
-      log_e("Failed to allocate");
-#endif
-      request->abort();
-      return 0;
-    }
-
-    if (headLen) {
-      memcpy(buf, _head.c_str(), _head.length());
-    }
-
-    size_t readLen = 0;
-
-    if (_chunked) {
-      // HTTP 1.1 allows leading zeros in chunk length. Or spaces may be added.
-      // See RFC2616 sections 2, 3.6.1.
-      readLen = _fillBufferAndProcessTemplates(buf + headLen + 6, outLen - 8);
-      if (readLen == RESPONSE_TRY_AGAIN) {
-        free(buf);
-        return 0;
-      }
-      outLen = sprintf((char *)buf + headLen, "%04x", readLen) + headLen;
-      buf[outLen++] = '\r';
-      buf[outLen++] = '\n';
-      outLen += readLen;
-      buf[outLen++] = '\r';
-      buf[outLen++] = '\n';
-    } else {
-      readLen = _fillBufferAndProcessTemplates(buf + headLen, outLen);
-      if (readLen == RESPONSE_TRY_AGAIN) {
-        free(buf);
-        return 0;
-      }
-      outLen = readLen + headLen;
-    }
-
-    if (headLen) {
-      _head = emptyString;
-    }
-
-    if (outLen) {
-      _writtenLength += request->client()->write((const char *)buf, outLen);
+  // send http headers first
+  if (_state == RESPONSE_HEADERS) {
+    // copy headers buffer to sock buffer
+    size_t const pcb_written = request->client()->add(_assembled_headers.c_str() + _writtenHeadersLength, _assembled_headers.length() - _writtenHeadersLength);
+    _writtenLength += pcb_written;
+    _writtenHeadersLength += pcb_written;
+    if (_writtenHeadersLength < _assembled_headers.length()) {
+// we were not able to fit all headers in current buff, send this part here and return later for the rest
 #if ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
-      _in_flight += outLen;
+      _in_flight += pcb_written;
       --_in_flight_credit;  // take a credit
 #endif
-    }
-
-    if (_chunked) {
-      _sentLength += readLen;
-    } else {
-      _sentLength += outLen - headLen;
-    }
-
-    free(buf);
-
-    if ((_chunked && readLen == 0) || (!_sendContentLength && outLen == 0) || (!_chunked && _sentLength == _contentLength)) {
-      _state = RESPONSE_WAIT_ACK;
-    }
-    return outLen;
-
-  } else if (_state == RESPONSE_WAIT_ACK) {
-    if (!_sendContentLength || _ackedLength >= _writtenLength) {
-      _state = RESPONSE_END;
-      if (!_chunked && !_sendContentLength) {
-        request->client()->close(true);
+      if (!request->client()->send()) {
+        // something is wrong, what should we do here?
+        request->client()->close();
+        return 0;
       }
+      return pcb_written;
     }
+    // otherwise we've added all the (remainder) headers in current buff
+    _state = RESPONSE_CONTENT;
+    payloadlen += pcb_written;
+    _assembled_headers = String();  // clear
+  }
+
+  // send content body
+  if (_state == RESPONSE_CONTENT) {
+    do {
+      if (_send_buffer_len && _send_buffer) {
+        // data is pending in buffer from a previous call or previous iteration
+        size_t const added_len =
+          request->client()->add(reinterpret_cast<char *>(_send_buffer->data() + _send_buffer_offset), _send_buffer_len - _send_buffer_offset);
+        if (added_len != _send_buffer_len - _send_buffer_offset) {
+          // we were not able to add entire buffer's content to tcp buffs, leave it for later
+          // (this should not happen normally unless connection's TCP window suddenly changed from remote or mem pressure)
+          _send_buffer_offset += added_len;
+          break;
+        } else {
+          _send_buffer_len = _send_buffer_offset = 0;  // consider buffer empty
+        }
+        payloadlen += added_len;
+      }
+
+      auto tcp_win = request->client()->space();
+      if (tcp_win == 0 || _state == RESPONSE_END) {
+        break;  // no room left or no more data
+      }
+
+      if ((_chunked || !_sendContentLength) && (tcp_win < CONFIG_LWIP_TCP_MSS / 2)) {
+        // available window size is not enough to send a new chunk sized half of tcp mss, let's wait for better chance and reduce pressure to AsyncTCP's event Q
+        break;
+      }
+
+      if (!_send_buffer) {
+        auto p = new (std::nothrow) std::array<uint8_t, ASYNC_RESPONCE_BUFF_SIZE>;
+        if (p) {
+          _send_buffer.reset(p);
+          _send_buffer_len = _send_buffer_offset = 0;
+        } else {
+          break;  // OOM
+        }
+      }
+
+      if (_chunked) {
+        // HTTP 1.1 allows leading zeros in chunk length. Or spaces may be added.
+        // See https://datatracker.ietf.org/doc/html/rfc9112#section-7.1
+        size_t const readLen =
+          _fillBufferAndProcessTemplates(_send_buffer->data() + 6, std::min(_send_buffer->size(), tcp_win) - 8);  // reserve 8 bytes for chunk size data
+        if (readLen != RESPONSE_TRY_AGAIN) {
+          // Write 4 hex digits directly without null terminator
+          static constexpr char hexChars[] = "0123456789abcdef";
+          _send_buffer->data()[0] = hexChars[(readLen >> 12) & 0xF];
+          _send_buffer->data()[1] = hexChars[(readLen >> 8) & 0xF];
+          _send_buffer->data()[2] = hexChars[(readLen >> 4) & 0xF];
+          _send_buffer->data()[3] = hexChars[readLen & 0xF];
+          _send_buffer->data()[4] = '\r';
+          _send_buffer->data()[5] = '\n';
+          // data (readLen bytes) is already there
+          _send_buffer->at(readLen + 6) = '\r';
+          _send_buffer->at(readLen + 7) = '\n';
+          _send_buffer_len += readLen + 8;  // set buffers's size to match added data
+          _sentLength += readLen;           // data is not sent yet, but we won't get a chance to count this later properly for chunked data
+          if (!readLen) {
+            // last chunk?
+            _state = RESPONSE_END;
+          }
+        }
+      } else {
+        // Non-chunked data. We can either have a response:
+        // - with a known content-length (example: Json response), in that case we pass the remaining length if lower than tcp_win
+        // - or with unknown content-length (see LargeResponse example, like ESP32Cam with streaming), in that case we just fill as much as tcp_win allows
+        size_t maxLen = std::min(_send_buffer->size(), tcp_win);
+        if (_contentLength) {
+          maxLen = _contentLength > _sentLength ? std::min(maxLen, _contentLength - _sentLength) : 0;
+        }
+
+        size_t const readLen = _fillBufferAndProcessTemplates(_send_buffer->data(), maxLen);
+
+        if (readLen == 0) {
+          // no more data to send
+          _state = RESPONSE_END;
+        } else if (readLen != RESPONSE_TRY_AGAIN) {
+          _send_buffer_len += readLen;  // set buffers's size to match added data
+          _sentLength += readLen;       // data is not sent yet, but we need it to understand that it would be last block
+          if (_sendContentLength && (_sentLength == _contentLength)) {
+            // it was last piece of content
+            _state = RESPONSE_END;
+          }
+        }
+      }
+    } while (_send_buffer_len);  // go on till we have something in buffer pending to send
+
+    // execute sending whatever we have in sock buffs now
+    request->client()->send();
+    _writtenLength += payloadlen;
+#if ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
+    _in_flight += payloadlen;
+    --_in_flight_credit;  // take a credit
+#endif
+    if (_send_buffer_len == 0) {
+      // buffer empty, we can release mem, otherwise need to keep it till next run (should not happen under normal conditions)
+      _send_buffer.reset();
+    }
+    return payloadlen;
+  }  // (_state == RESPONSE_CONTENT)
+
+  // implicit check
+  if (_state == RESPONSE_WAIT_ACK) {
+    // we do not need to wait for any acks actually if we won't send any more data,
+    // connection would be closed gracefully with last piece of data (in AsyncWebServerRequest::_onAck)
+    _state = RESPONSE_END;
   }
   return 0;
 }
@@ -503,8 +541,8 @@ size_t AsyncAbstractResponse::_fillBufferAndProcessTemplates(uint8_t *data, size
   // Now we've read 'len' bytes, either from cache or from file
   // Search for template placeholders
   uint8_t *pTemplateStart = data;
-  while ((pTemplateStart < &data[len]) && (pTemplateStart = (uint8_t *)memchr(pTemplateStart, TEMPLATE_PLACEHOLDER, &data[len - 1] - pTemplateStart + 1))
-  ) {  // data[0] ... data[len - 1]
+  while ((pTemplateStart < &data[len]) && (pTemplateStart = (uint8_t *)memchr(pTemplateStart, TEMPLATE_PLACEHOLDER, &data[len - 1] - pTemplateStart + 1))) {
+    // data[0] ... data[len - 1]
     uint8_t *pTemplateEnd =
       (pTemplateStart < &data[len - 1]) ? (uint8_t *)memchr(pTemplateStart + 1, TEMPLATE_PLACEHOLDER, &data[len - 1] - pTemplateStart) : nullptr;
     // temporary buffer to hold parameter name
@@ -595,6 +633,16 @@ size_t AsyncAbstractResponse::_fillBufferAndProcessTemplates(uint8_t *data, size
  * File Response
  * */
 
+/**
+ * @brief Sets the content type based on the file path extension
+ *
+ * This method determines the appropriate MIME content type for a file based on its
+ * file extension. It supports both external content type functions (if available)
+ * and an internal mapping of common file extensions to their corresponding MIME types.
+ *
+ * @param path The file path string from which to extract the extension
+ * @note The method modifies the internal _contentType member variable
+ */
 void AsyncFileResponse::_setContentTypeFromPath(const String &path) {
 #if HAVE_EXTERN_GET_Content_Type_FUNCTION
 #ifndef ESP8266
@@ -604,90 +652,137 @@ void AsyncFileResponse::_setContentTypeFromPath(const String &path) {
 #endif
   _contentType = getContentType(path);
 #else
-  if (path.endsWith(T__html)) {
+  const char *cpath = path.c_str();
+  const char *dot = strrchr(cpath, '.');
+
+  if (!dot) {
+    _contentType = T_application_octet_stream;
+    return;
+  }
+
+  if (strcmp(dot, T__html) == 0 || strcmp(dot, T__htm) == 0) {
     _contentType = T_text_html;
-  } else if (path.endsWith(T__htm)) {
-    _contentType = T_text_html;
-  } else if (path.endsWith(T__css)) {
+  } else if (strcmp(dot, T__css) == 0) {
     _contentType = T_text_css;
-  } else if (path.endsWith(T__json)) {
+  } else if (strcmp(dot, T__js) == 0 || strcmp(dot, T__mjs) == 0) {
+    _contentType = T_text_javascript;
+  } else if (strcmp(dot, T__json) == 0) {
     _contentType = T_application_json;
-  } else if (path.endsWith(T__js)) {
-    _contentType = T_application_javascript;
-  } else if (path.endsWith(T__png)) {
+  } else if (strcmp(dot, T__png) == 0) {
     _contentType = T_image_png;
-  } else if (path.endsWith(T__gif)) {
-    _contentType = T_image_gif;
-  } else if (path.endsWith(T__jpg)) {
-    _contentType = T_image_jpeg;
-  } else if (path.endsWith(T__ico)) {
+  } else if (strcmp(dot, T__ico) == 0) {
     _contentType = T_image_x_icon;
-  } else if (path.endsWith(T__svg)) {
+  } else if (strcmp(dot, T__svg) == 0) {
     _contentType = T_image_svg_xml;
-  } else if (path.endsWith(T__eot)) {
-    _contentType = T_font_eot;
-  } else if (path.endsWith(T__woff)) {
-    _contentType = T_font_woff;
-  } else if (path.endsWith(T__woff2)) {
+  } else if (strcmp(dot, T__jpg) == 0) {
+    _contentType = T_image_jpeg;
+  } else if (strcmp(dot, T__webp) == 0) {
+    _contentType = T_image_webp;
+  } else if (strcmp(dot, T__avif) == 0) {
+    _contentType = T_image_avif;
+  } else if (strcmp(dot, T__gif) == 0) {
+    _contentType = T_image_gif;
+  } else if (strcmp(dot, T__woff2) == 0) {
     _contentType = T_font_woff2;
-  } else if (path.endsWith(T__ttf)) {
+  } else if (strcmp(dot, T__woff) == 0) {
+    _contentType = T_font_woff;
+  } else if (strcmp(dot, T__ttf) == 0) {
     _contentType = T_font_ttf;
-  } else if (path.endsWith(T__xml)) {
+  } else if (strcmp(dot, T__xml) == 0) {
     _contentType = T_text_xml;
-  } else if (path.endsWith(T__pdf)) {
+  } else if (strcmp(dot, T__pdf) == 0) {
     _contentType = T_application_pdf;
-  } else if (path.endsWith(T__zip)) {
-    _contentType = T_application_zip;
-  } else if (path.endsWith(T__gz)) {
-    _contentType = T_application_x_gzip;
-  } else {
+  } else if (strcmp(dot, T__mp4) == 0) {
+    _contentType = T_video_mp4;
+  } else if (strcmp(dot, T__opus) == 0) {
+    _contentType = T_audio_opus;
+  } else if (strcmp(dot, T__webm) == 0) {
+    _contentType = T_video_webm;
+  } else if (strcmp(dot, T__txt) == 0) {
     _contentType = T_text_plain;
+  } else {
+    _contentType = T_application_octet_stream;
   }
 #endif
 }
 
+/**
+ * @brief Constructor for AsyncFileResponse that handles file serving with compression support
+ *
+ * This constructor creates an AsyncFileResponse object that can serve files from a filesystem,
+ * with automatic fallback to gzip-compressed versions if the original file is not found.
+ * It also handles ETag generation for caching and supports both inline and download modes.
+ *
+ * @param fs Reference to the filesystem object used to open files
+ * @param path Path to the file to be served (without compression extension)
+ * @param contentType MIME type of the file content (empty string for auto-detection)
+ * @param download If true, file will be served as download attachment; if false, as inline content
+ * @param callback Template processor callback for dynamic content processing
+ */
 AsyncFileResponse::AsyncFileResponse(FS &fs, const String &path, const char *contentType, bool download, AwsTemplateProcessor callback)
   : AsyncAbstractResponse(callback) {
-  _code = 200;
-  _path = path;
 
-  if (!download && !fs.exists(_path) && fs.exists(_path + T__gz)) {
-    _path = _path + T__gz;
-    addHeader(T_Content_Encoding, T_gzip, false);
-    _callback = nullptr;  // Unable to process zipped templates
-    _sendContentLength = true;
-    _chunked = false;
+  // Try to open the uncompressed version first
+  _content = fs.open(path, fs::FileOpenMode::read);
+  if (!_content.available()) {
+    // If not available try to open the compressed version (.gz)
+    String gzPath;
+    uint16_t pathLen = path.length();
+    gzPath.reserve(pathLen + 3);
+    gzPath.concat(path);
+    gzPath.concat(asyncsrv::T__gz);
+    _content = fs.open(gzPath, fs::FileOpenMode::read);
+
+    char serverETag[11];
+    if (AsyncWebServerRequest::_getEtag(_content, serverETag)) {
+      addHeader(T_Content_Encoding, T_gzip, false);
+      _callback = nullptr;  // Unable to process zipped templates
+      _sendContentLength = true;
+      _chunked = false;
+
+      // Add ETag and cache headers
+      addHeader(T_ETag, serverETag, true);
+      addHeader(T_Cache_Control, T_no_cache, true);
+
+      _content.seek(0);
+    } else {
+      // File is corrupted or invalid
+      _code = 404;
+      return;
+    }
   }
 
-  _content = fs.open(_path, fs::FileOpenMode::read);
   _contentLength = _content.size();
 
-  if (strlen(contentType) == 0) {
+  if (*contentType == '\0') {
     _setContentTypeFromPath(path);
   } else {
     _contentType = contentType;
   }
 
-  int filenameStart = path.lastIndexOf('/') + 1;
-  char buf[26 + path.length() - filenameStart];
-  char *filename = (char *)path.c_str() + filenameStart;
-
   if (download) {
-    // set filename and force download
-    snprintf_P(buf, sizeof(buf), PSTR("attachment; filename=\"%s\""), filename);
+    // Extract filename from path and set as download attachment
+    int filenameStart = path.lastIndexOf('/') + 1;
+    const char *filename = path.c_str() + filenameStart;
+    String buf;
+    buf.reserve(sizeof(T_attachment) - 1 + strlen(filename) + 2);
+    buf = T_attachment;
+    buf += filename;
+    buf += "\"";
+    addHeader(T_Content_Disposition, buf, false);
   } else {
-    // set filename and force rendering
-    snprintf_P(buf, sizeof(buf), PSTR("inline"));
+    // Serve file inline (display in browser)
+    addHeader(T_Content_Disposition, T_inline, false);
   }
-  addHeader(T_Content_Disposition, buf, false);
+
+  _code = 200;
 }
 
 AsyncFileResponse::AsyncFileResponse(File content, const String &path, const char *contentType, bool download, AwsTemplateProcessor callback)
   : AsyncAbstractResponse(callback) {
   _code = 200;
-  _path = path;
 
-  if (!download && String(content.name()).endsWith(T__gz) && !path.endsWith(T__gz)) {
+  if (String(content.name()).endsWith(T__gz) && !path.endsWith(T__gz)) {
     addHeader(T_Content_Encoding, T_gzip, false);
     _callback = nullptr;  // Unable to process gzipped templates
     _sendContentLength = true;
@@ -697,22 +792,26 @@ AsyncFileResponse::AsyncFileResponse(File content, const String &path, const cha
   _content = content;
   _contentLength = _content.size();
 
-  if (strlen(contentType) == 0) {
+  if (*contentType == '\0') {
     _setContentTypeFromPath(path);
   } else {
     _contentType = contentType;
   }
 
-  int filenameStart = path.lastIndexOf('/') + 1;
-  char buf[26 + path.length() - filenameStart];
-  char *filename = (char *)path.c_str() + filenameStart;
-
   if (download) {
-    snprintf_P(buf, sizeof(buf), PSTR("attachment; filename=\"%s\""), filename);
+    // Extract filename from path and set as download attachment
+    int filenameStart = path.lastIndexOf('/') + 1;
+    const char *filename = path.c_str() + filenameStart;
+    String buf;
+    buf.reserve(sizeof(T_attachment) - 1 + strlen(filename) + 2);
+    buf = T_attachment;
+    buf += filename;
+    buf += "\"";
+    addHeader(T_Content_Disposition, buf, false);
   } else {
-    snprintf_P(buf, sizeof(buf), PSTR("inline"));
+    // Serve file inline (display in browser)
+    addHeader(T_Content_Disposition, T_inline, false);
   }
-  addHeader(T_Content_Disposition, buf, false);
 }
 
 size_t AsyncFileResponse::_fillBuffer(uint8_t *data, size_t len) {
@@ -792,24 +891,17 @@ size_t AsyncChunkedResponse::_fillBuffer(uint8_t *data, size_t len) {
  * */
 
 AsyncProgmemResponse::AsyncProgmemResponse(int code, const char *contentType, const uint8_t *content, size_t len, AwsTemplateProcessor callback)
-  : AsyncAbstractResponse(callback) {
+  : AsyncAbstractResponse(callback), _content(content), _index(0) {
   _code = code;
-  _content = content;
   _contentType = contentType;
   _contentLength = len;
-  _readLength = 0;
 }
 
 size_t AsyncProgmemResponse::_fillBuffer(uint8_t *data, size_t len) {
-  size_t left = _contentLength - _readLength;
-  if (left > len) {
-    memcpy_P(data, _content + _readLength, len);
-    _readLength += len;
-    return len;
-  }
-  memcpy_P(data, _content + _readLength, left);
-  _readLength += left;
-  return left;
+  size_t read_size = std::min(len, _contentLength - _index);
+  memcpy_P(data, _content + _index, read_size);
+  _index += read_size;
+  return read_size;
 }
 
 /*
@@ -820,22 +912,32 @@ AsyncResponseStream::AsyncResponseStream(const char *contentType, size_t bufferS
   _code = 200;
   _contentLength = 0;
   _contentType = contentType;
-  if (!_content.reserve(bufferSize)) {
-#ifdef ESP32
-    log_e("Failed to allocate");
-#endif
+  // internal buffer will be null on allocation failure
+  _content = std::unique_ptr<cbuf>(new cbuf(bufferSize));
+  if (bufferSize && _content->size() < bufferSize) {
+    async_ws_log_e("Failed to allocate");
   }
 }
 
 size_t AsyncResponseStream::_fillBuffer(uint8_t *buf, size_t maxLen) {
-  return _content.readBytes((char *)buf, maxLen);
+  return _content->read((char *)buf, maxLen);
 }
 
 size_t AsyncResponseStream::write(const uint8_t *data, size_t len) {
   if (_started()) {
     return 0;
   }
-  size_t written = _content.write(data, len);
+  if (len > _content->room()) {
+    size_t needed = len - _content->room();
+    _content->resizeAdd(needed);
+    // log a warning if allocation failed, but do not return: keep writing the bytes we can
+    // with _content->write: if len is more than the available size in the buffer, only
+    // the available size will be written
+    if (len > _content->room()) {
+      async_ws_log_e("Failed to allocate");
+    }
+  }
+  size_t written = _content->write((const char *)data, len);
   _contentLength += written;
   return written;
 }

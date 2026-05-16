@@ -9,17 +9,29 @@
 // infact everything it touches. PixelIterator is concrete and doesn't have these
 // problems. See PixelController::as_iterator() for how to create a PixelIterator.
 
-#include <stddef.h>
 
-#include "FastLED.h"
+#include "lib8tion/intmap.h"
+
 #include "rgbw.h"
-#include "five_bit_hd_gamma.h"
+#include "fl/five_bit_hd_gamma.h"
 #include "fl/force_inline.h"
+#include "lib8tion/scale8.h"
 #include "fl/namespace.h"
 #include "eorder.h"
 #include "dither_mode.h"
 #include "pixel_iterator.h"
 #include "crgb.h"
+#include "fl/compiler_control.h"
+
+
+#include "FastLED.h"  // Problematic.
+
+
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_SIGN_CONVERSION
+FL_DISABLE_WARNING_IMPLICIT_INT_CONVERSION
+FL_DISABLE_WARNING_FLOAT_CONVERSION
+
 
 FASTLED_NAMESPACE_BEGIN
 
@@ -83,8 +95,8 @@ struct PixelController {
         kMask = MASK
     };
 
-    FASTLED_FORCE_INLINE PixelIterator as_iterator(const Rgbw& rgbw) {
-        return PixelIterator(this, rgbw);
+    FASTLED_FORCE_INLINE fl::PixelIterator as_iterator(const Rgbw& rgbw) {
+        return fl::PixelIterator(this, rgbw);
     }
 
     void disableColorAdjustment() {
@@ -493,7 +505,7 @@ struct PixelController {
             brightness = 255;
             CRGB scale = mColorAdjustment.premixed;
             #endif
-            five_bit_hd_gamma_bitshift(
+            fl::five_bit_hd_gamma_bitshift(
                 rgb,
                 scale,
                 brightness,
@@ -570,7 +582,7 @@ struct PixelController {
         };
         EOrderW w_placement = rgbw.w_placement;
         // Apply w-component insertion.
-        rgbw_partial_reorder(
+        fl::rgbw_partial_reorder(
             w_placement, out[0], out[1], out[2],
             0, // Pre-ordered RGB data with a 0 white component.
             b0_out, b1_out, b2_out, b3_out);
@@ -581,13 +593,13 @@ struct PixelController {
         // Get the naive RGB data order in r,g,b order.
         CRGB rgb(mData[0], mData[1], mData[2]);
         uint8_t w = 0;
-        rgb_2_rgbw(rgbw.rgbw_mode,
+        fl::rgb_2_rgbw(rgbw.rgbw_mode,
                    rgbw.white_color_temp,
                    rgb.r, rgb.g, rgb.b,  // Input colors
                    mColorAdjustment.premixed.r, mColorAdjustment.premixed.g, mColorAdjustment.premixed.b,  // How these colors are scaled for color balance.
                    &rgb.r, &rgb.g, &rgb.b, &w);
         // Now finish the ordering so that the output is in the native led order for all of RGBW.
-        rgbw_partial_reorder(
+        fl::rgbw_partial_reorder(
             rgbw.w_placement,
             rgb.raw[b0_index],  // in-place re-ordering for the RGB data.
             rgb.raw[b1_index],
@@ -601,3 +613,5 @@ struct PixelController {
 
 FASTLED_NAMESPACE_END
 
+
+FL_DISABLE_WARNING_POP

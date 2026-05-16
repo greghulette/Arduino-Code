@@ -1,3 +1,13 @@
+/// @file    FxGfx2Video.ino
+/// @brief   Demonstrates graphics to video conversion
+/// @example FxGfx2Video.ino
+///
+/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
+/// 1. Install Fastled: `pip install fastled`
+/// 2. cd into this examples page.
+/// 3. Run the FastLED web compiler at root: `fastled`
+/// 4. When the compiler is done a web page will open.
+
 /// @file    Gfx2Video.ino
 /// @brief   Demonstrates drawing to a frame buffer, which is used as source video for the memory player.
 ///          The render pattern is alternating black/red pixels as a checkerboard.
@@ -19,7 +29,7 @@
 #include <FastLED.h>
 #include "fl/bytestreammemory.h"
 #include "fx/fx_engine.h"
-#include "fl/ptr.h"
+#include "fl/memory.h"
 #include "fx/video.h"
 #include "fl/dbg.h"
 
@@ -60,6 +70,9 @@ void write_one_frame(ByteStreamMemoryPtr memoryStream) {
         }
         total_bytes_written += bytes_written;
     }
+    if (total_bytes_written) {
+        FASTLED_DBG("Frame written, total bytes: " << total_bytes_written);
+    }
 }
 
 void setup() {
@@ -70,7 +83,7 @@ void setup() {
     FastLED.setBrightness(BRIGHTNESS);
 
     // Create and fill the ByteStreamMemory with test data
-    memoryStream = ByteStreamMemoryPtr::New(BUFFER_SIZE*sizeof(CRGB));
+    memoryStream = fl::make_shared<ByteStreamMemory>(BUFFER_SIZE*sizeof(CRGB));
 
     video.beginStream(memoryStream);
     // Add the video effect to the FxEngine

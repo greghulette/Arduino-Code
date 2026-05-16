@@ -238,7 +238,9 @@ bool WCBClient::sendRaw(uint8_t target_wcb, uint8_t target_port,
 // Broadcast raw binary data to ALL WCBs on the network via the Kyber path.
 //
 // How it works:
-//   The packet uses WCB_TARGET_KYBER (98) with the ETM packet struct.
+//   The packet uses WCB_TARGET_KYBER (98) with the NON-ETM packet struct
+//   (wcb_packet_t / 249 bytes) — see the long note in the function body for
+//   why the ETM struct does not work here.
 //   Any WCB that has Kyber_Remote enabled receives the broadcast and writes the
 //   bytes to its locally wired Maestro serial port(s). WCBs without Kyber_Remote
 //   ignore it. This mirrors exactly what the WCB firmware does when a physical
@@ -264,19 +266,27 @@ bool WCBClient::sendKyber(const uint8_t* data, size_t len) {
     // Firmware caps Kyber chunks at 178 bytes (structCommand[180] - 2-byte header)
     if (len > 178) len = 178;
 
-    // Kyber broadcast uses the ETM packet format (252 bytes) with targetID=98.
-    // The structPacketType = 0 (COMMAND) and seqNum = 0 (no ACK for this path).
-    // Receiving WCBs check the targetID first and handle WCB_TARGET_KYBER before
-    // any ETM processing — no ACK is sent back.
-    wcb_packet_etm_t pkt;
+    // Kyber broadcast MUST use the non-ETM struct (wcb_packet_t, 249 bytes) —
+    // NOT the ETM struct.  The WCB firmware routes incoming ESP-NOW packets by
+    // size: 252-byte packets go down the ETM path, 249-byte packets down the
+    // standard path.  The Kyber-broadcast handler (targetID==98) only exists in
+    // the *standard* path, and the standard path has an explicit Kyber bypass
+    // so a 249-byte targetID-98 frame falls straight through to it and is
+    // written to every WCB's local Maestro port(s) — true one-send broadcast.
+    //
+    // An ETM-sized (252-byte) Kyber packet never reaches that handler: the ETM
+    // path treats it as a PACKET_TYPE_COMMAND and drops it at the target gate
+    // (targetID 98 is neither 0/broadcast nor this board's ID) before any Kyber
+    // processing.  That made Kyber broadcast silently fail on every ETM-enabled
+    // WCB (the default).  Using wcb_packet_t here is what the WCB firmware and
+    // this library's own WCB_TARGET_KYBER header doc actually expect.
+    wcb_packet_t pkt;
     memset(&pkt, 0, sizeof(pkt));
 
     strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
     snprintf(pkt.structSenderID, sizeof(pkt.structSenderID), "%d", _deviceID);
     snprintf(pkt.structTargetID, sizeof(pkt.structTargetID), "%d", WCB_TARGET_KYBER);
     pkt.structCommandIncluded = 1;
-    pkt.structPacketType      = WCB_PACKET_COMMAND;
-    pkt.structSequenceNumber  = 0;  // No ACK tracking — fire and forget
 
     // 2-byte little-endian length header, then data
     pkt.structCommand[0] = (uint8_t)(len & 0xFF);

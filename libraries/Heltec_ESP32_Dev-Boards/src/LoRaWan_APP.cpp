@@ -17,8 +17,12 @@ CubeCell_NeoPixel pixels(1, RGB, NEO_GRB + NEO_KHZ800);
 #endif
 
 
-#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V2)||defined(WIFI_LORA_32)||defined(WIRELESS_STICK_V3)||defined(WIRELESS_STICK)
-#include <Wire.h>  
+/* VEXT polarity for supported ESP32 OLED boards */
+#define VEXT_ON_LEVEL  LOW
+#define VEXT_OFF_LEVEL HIGH
+
+#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V4)||defined(WIFI_LORA_32_V4_R8)||defined(WIFI_LORA_32_V2)||defined(WIFI_LORA_32)||defined(WIRELESS_STICK_V3)||defined(WIRELESS_STICK)
+#include <Wire.h>
 #include "HT_SSD1306Wire.h"
 RTC_DATA_ATTR uint8_t ifDisplayAck=0;
 RTC_DATA_ATTR uint8_t isDispayOn=0;
@@ -251,7 +255,7 @@ static void McpsIndication( McpsIndication_t *mcpsIndication )
 	{
 		return;
 	}
-#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V2)||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
+#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V4)||defined(WIFI_LORA_32_V4_R8)||defined(WIFI_LORA_32_V2)||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
 	ifDisplayAck=1;
 	revrssi=mcpsIndication->Rssi;
 	revsnr=mcpsIndication->Snr;
@@ -338,7 +342,7 @@ static void MlmeConfirm( MlmeConfirm_t *mlmeConfirm )
 			if( mlmeConfirm->Status == LORAMAC_EVENT_INFO_STATUS_OK )
 			{
 
-#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V2)||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
+#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V4)||defined(WIFI_LORA_32_V4_R8)||defined(WIFI_LORA_32_V2)||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
 				if(isDispayOn)
 				{
 					LoRaWAN.displayJoined();
@@ -554,6 +558,9 @@ void LoRaWanClass::init(DeviceClass_t lorawanClass,LoRaMacRegion_t region)
 		case LORAMAC_REGION_US915_HYBRID:
 			Serial.print("US915_HYBRID ");
 			break;
+		case LORAMAC_REGION_RU864:
+			Serial.print("RU864");
+			break;
 		default:
 			break;
 	}
@@ -722,7 +729,7 @@ void LoRaWanClass::ifskipjoin()
 }
 #endif
 
-#if defined(WIFI_LORA_32_V3)||defined( WIFI_LORA_32_V2 )||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
+#if defined(WIFI_LORA_32_V3)||defined(WIFI_LORA_32_V4)||defined(WIFI_LORA_32_V4_R8)||defined( WIFI_LORA_32_V2 )||defined(WIRELESS_STICK_V3)||defined( WIFI_LORA_32 )||defined(WIRELESS_STICK)
 void LoRaWanClass::displayJoining()
 {
 	display.setFont(ArialMT_Plain_16);
@@ -737,7 +744,7 @@ void LoRaWanClass::displayJoining()
 void LoRaWanClass::displayJoined()
 {
 #if (SLOW_CLK_TPYE==1)
-	digitalWrite(Vext,LOW);
+	digitalWrite(Vext,VEXT_ON_LEVEL);
 	display.init();
 	display.setFont(ArialMT_Plain_16);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);
@@ -750,7 +757,7 @@ void LoRaWanClass::displayJoined()
 void LoRaWanClass::displaySending()
 {
     isDispayOn = 1;
-	digitalWrite(Vext,LOW);
+	digitalWrite(Vext,VEXT_ON_LEVEL);
 	display.init();
 	display.setFont(ArialMT_Plain_16);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);
@@ -767,7 +774,7 @@ void LoRaWanClass::displayAck()
     }
     ifDisplayAck--;
 #if (SLOW_CLK_TPYE==1)
-		digitalWrite(Vext,LOW);
+		digitalWrite(Vext,VEXT_ON_LEVEL);
 		display.init();
 		display.setFont(ArialMT_Plain_16);
 		display.setTextAlignment(TEXT_ALIGN_CENTER);
@@ -791,14 +798,14 @@ void LoRaWanClass::displayAck()
 	{
 		delay(2000);
 		isDispayOn = 0;
-		digitalWrite(Vext,HIGH);
+		digitalWrite(Vext,VEXT_OFF_LEVEL);
 		display.stop();
 	}
 }
 void LoRaWanClass::displayMcuInit()
 {
 	isDispayOn = 1;
-	digitalWrite(Vext,LOW);
+	digitalWrite(Vext,VEXT_ON_LEVEL);
 	display.init();
 	display.setFont(ArialMT_Plain_16);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);

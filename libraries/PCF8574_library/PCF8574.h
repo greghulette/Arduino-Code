@@ -2,7 +2,7 @@
  * PCF8574 GPIO Port Expand
  *
  * AUTHOR:  Renzo Mischianti
- * VERSION: 2.3.4
+ * VERSION: 2.4.0
  *
  * https://www.mischianti.org/2019/01/02/pcf8574-i2c-digital-i-o-expander-fast-easy-usage/
  *
@@ -64,6 +64,18 @@
 // #define SEQUENCE_ENCODER_ALGORITHM
 // #define POKI_ENCODER_ALGORITHM
 
+// Define where debug output will be printed.
+#define PCF8574_DEBUG_PRINTER Serial
+
+// Setup debug printing macros.
+#ifdef PCF8574_DEBUG
+	#define PCF8574_DEBUG_PRINT(...) { PCF8574_DEBUG_PRINTER.print(__VA_ARGS__); }
+	#define PCF8574_DEBUG_PRINTLN(...) { PCF8574_DEBUG_PRINTER.println(__VA_ARGS__); }
+#else
+	#define PCF8574_DEBUG_PRINT(...) {}
+	#define PCF8574_DEBUG_PRINTLN(...) {}
+#endif
+
 #ifdef PCF8574_LOW_LATENCY
 	#define READ_ELAPSED_TIME 0
 #else
@@ -91,18 +103,32 @@
 #include <math.h>
 
 
+// Uncomment to enable begin() to return a detailed enum result instead of only bool.
+// Define this in your sketch or uncomment below to enable the feature.
+#define PCF8574_BEGIN_ENUM_RESULT
+
+#ifdef PCF8574_BEGIN_ENUM_RESULT
+#include <stdint.h>
+enum class BeginResult : uint8_t {
+    OK = 0,
+    I2C_ERROR,
+    NO_PINS_CONFIGURED,
+    INVALID_ADDRESS
+};
+#endif
+
 class PCF8574 {
 public:
 
 	PCF8574(uint8_t address);
 	PCF8574(uint8_t address, uint8_t interruptPin,  void (*interruptFunction)() );
 
-#if !defined(__AVR) && !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_STM32) && !defined(TEENSYDUINO)
+#if !defined(__AVR) && !defined(ARDUINO_ARCH_SAMD) && !defined(TEENSYDUINO) && !defined(ARDUINO_ARCH_RENESAS)
 	PCF8574(uint8_t address, int sda, int scl);
 	PCF8574(uint8_t address, int sda, int scl, uint8_t interruptPin,  void (*interruptFunction)());
 #endif
 
-#if defined(ESP32) || defined(ARDUINO_ARCH_SAMD)
+#if defined(ESP32) || defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_RENESAS)
 	///// changes for second i2c bus
 	PCF8574(TwoWire *pWire, uint8_t address);
 	PCF8574(TwoWire *pWire, uint8_t address, uint8_t interruptPin,  void (*interruptFunction)() );
@@ -112,7 +138,27 @@ public:
 	PCF8574(TwoWire *pWire, uint8_t address, int sda, int scl, uint8_t interruptPin,  void (*interruptFunction)());
 #endif
 
+	// Existing begin() API is kept for backward compatibility.
 	bool begin();
+	bool begin(uint8_t address);
+
+#ifdef PCF8574_BEGIN_ENUM_RESULT
+	// New more descriptive begin() variant available when PCF8574_BEGIN_ENUM_RESULT is defined.
+	BeginResult beginResult();
+	BeginResult beginResult(uint8_t address);
+
+	// Map BeginResult to a human-readable static string
+	static const char* beginResultToString(BeginResult result);
+
+    // Print a human-readable description of a BeginResult value (verbose option)
+    void printBeginResult(BeginResult result, bool verbose = true);
+
+    // Convenience wrappers that call beginResult() and optionally print diagnostics.
+    // Returns true when BeginResult::OK.
+    bool beginWithResultPrint(bool showDiagnostics = true);
+    bool beginWithResultPrint(uint8_t address, bool showDiagnostics = true);
+#endif
+
 	void pinMode(uint8_t pin, uint8_t mode, uint8_t output_start = HIGH);
 
 	void encoder(uint8_t pinA, uint8_t pinB);
@@ -122,6 +168,34 @@ public:
 
 	void readBuffer(bool force = true);
 	uint8_t digitalRead(uint8_t pin, bool forceReadNow = false);
+	// Measure length (in microseconds) of a pulse on the pin. Compatible with Arduino pulseIn semantics.
+	unsigned long pulseIn(uint8_t pin, uint8_t state, unsigned long timeout = 1000000UL);
+    // Measure length (in microseconds) of a pulse on the pin using timed polling to reduce I2C requests.
+    // pollIntervalMicros: how often (microseconds) to actually read from the PCF8574 (default 50us).
+    unsigned long pulseInPoll(uint8_t pin, uint8_t state, unsigned long timeout = 1000000UL, unsigned int pollIntervalMicros = 50);
+
+	// Ultrasonic sensor methods (HC-SR04 compatible)
+	// Send trigger pulse and measure echo response (returns microseconds)
+	unsigned long ping(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500);
+	// Same as ping but with polling to reduce I2C traffic
+	unsigned long pingPoll(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500, unsigned int pollIntervalMicros = 100);
+	// Get distance in centimeters (returns 0 on timeout)
+	unsigned long ping_cm(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500);
+	// Get distance in centimeters with polling
+	unsigned long ping_cm_poll(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500, unsigned int pollIntervalMicros = 100);
+	// Get distance in inches (returns 0 on timeout)
+	unsigned long ping_in(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500);
+	// Get distance in inches with polling
+	unsigned long ping_in_poll(uint8_t trigPin, uint8_t echoPin, unsigned long maxDistance_cm = 500, unsigned int pollIntervalMicros = 100);
+	// Get median distance from multiple samples (more stable readings)
+	unsigned long ping_median(uint8_t trigPin, uint8_t echoPin, uint8_t iterations = 5, unsigned long maxDistance_cm = 500);
+	// Get median distance with polling
+	unsigned long ping_median_poll(uint8_t trigPin, uint8_t echoPin, uint8_t iterations = 5, unsigned long maxDistance_cm = 500, unsigned int pollIntervalMicros = 100);
+	// Convert microseconds to centimeters
+	static unsigned long microsecondsToDistance_cm(unsigned long microseconds);
+	// Convert microseconds to inches
+	static unsigned long microsecondsToDistance_in(unsigned long microseconds);
+
 	#ifndef PCF8574_LOW_MEMORY
 		struct DigitalInput {
 			uint8_t p0;
@@ -181,7 +255,17 @@ public:
 		return transmissionStatus;
 	}
 
-	bool isLastTransmissionSuccess();
+	bool isLastTransmissionSuccess(){
+		 PCF8574_DEBUG_PRINT(F("STATUS --> "));
+		PCF8574_DEBUG_PRINTLN(transmissionStatus);
+		return transmissionStatus==0;
+	}
+
+    // New convenience helper to probe the device on the I2C bus.
+    // Returns true when the PCF8574 at the configured address ACKs.
+    // This is a lightweight check you can call before a read/write to
+    // confirm the device is present.
+    bool isOnline();
 private:
 	uint8_t _address;
 
@@ -250,4 +334,3 @@ private:
 };
 
 #endif
-

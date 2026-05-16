@@ -3,23 +3,26 @@ import unittest
 import warnings
 from pathlib import Path
 
-from ci.bin_2_elf import bin_to_elf
-from ci.elf import dump_symbol_sizes
-from ci.paths import PROJECT_ROOT
-from ci.tools import Tools, load_tools
+from ci.util.bin_2_elf import bin_to_elf
+from ci.util.elf import dump_symbol_sizes
+from ci.util.paths import PROJECT_ROOT
+from ci.util.tools import Tools, load_tools
+
 
 HERE = Path(__file__).resolve().parent.absolute()
 UNO = HERE / "uno"
 OUTPUT = HERE / "output"
 
 
-BUILD_INFO_PATH = PROJECT_ROOT / ".build" / "uno" / "build_info.json"
+BUILD_INFO_PATH = PROJECT_ROOT / ".build" / "examples" / "uno" / "build_info.json"
+BUILD_INFO_PATH2 = (
+    PROJECT_ROOT / ".build" / "fled" / "examples" / "uno" / "build_info.json"
+)
 
 DISABLED = True
 
 
 class TestBinToElf(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         if DISABLED:
@@ -30,7 +33,7 @@ class TestBinToElf(unittest.TestCase):
             print("Uno build not found. Running compilation...")
             try:
                 subprocess.run(
-                    "uv run ci/ci-compile.py uno --examples Blink",
+                    "uv run python -m ci.ci-compile uno --examples Blink",
                     shell=True,
                     check=True,
                 )
@@ -43,7 +46,12 @@ class TestBinToElf(unittest.TestCase):
     def test_bin_to_elf_conversion(self) -> None:
         if DISABLED:
             return
-        tools: Tools = load_tools(BUILD_INFO_PATH)
+        tools: Tools
+        try:
+            tools = load_tools(BUILD_INFO_PATH)
+        except FileNotFoundError as e:
+            warnings.warn(f"Error while loading tools: {e}")
+            tools = load_tools(BUILD_INFO_PATH2)
         bin_file = UNO / "firmware.hex"
         map_file = UNO / "firmware.map"
         output_elf = OUTPUT / "output.elf"

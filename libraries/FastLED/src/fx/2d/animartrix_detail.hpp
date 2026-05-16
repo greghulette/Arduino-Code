@@ -27,11 +27,13 @@ License CC BY-NC 3.0
 */
 
 #include "fl/vector.h"
-#include <math.h>  // ok include
-#include <stdint.h>
+#include <math.h> // ok include
+#include "fl/stdint.h"
+#include "fl/math_macros.h"
 
 #ifndef ANIMARTRIX_INTERNAL
-#error "This file is not meant to be included directly. Include animartrix.hpp instead."
+#error                                                                         \
+    "This file is not meant to be included directly. Include animartrix.hpp instead."
 #endif
 
 // Copyright Stefen Petrick 2023.
@@ -39,30 +41,56 @@ License CC BY-NC 3.0
 // Adapted to FastLED by Zach Vorhies 2024.
 // Licensed under the Creative Commons Attribution License CC BY-NC 3.0
 // https://creativecommons.org/licenses/by-nc/3.0/
-// This header is distributed with FastLED but has a different license that limits commercial use.
-// If you include this high quality LED animation library in your project, you must agree to the licensing terms.
-// It is not included by FastLED by default, you must include it manually.
-// Setting FASTLED_ANIMARTRIX_LICENSING_AGREEMENT=1 will indicate that you agree to the licensing terms of the ANIMartRIX library for non commercial use only.
+// This header is distributed with FastLED but has a different license that
+// limits commercial use. If you include this high quality LED animation library
+// in your project, you must agree to the licensing terms. It is not included by
+// FastLED by default, you must include it manually. Setting
+// FASTLED_ANIMARTRIX_LICENSING_AGREEMENT=1 will indicate that you agree to the
+// licensing terms of the ANIMartRIX library for non commercial use only.
 //
-// Like the rest of FastLED, this header is free for non-commercial use and licensed under the Creative Commons Attribution License CC BY-NC 3.0.
-// If you are just making art, then by all means do what you want with this library and you can stop reading now.
-// If you are using this header for commercial purposes, then you need to contact Stefan Petrick for a commercial use license.
+// Like the rest of FastLED, this header is free for non-commercial use and
+// licensed under the Creative Commons Attribution License CC BY-NC 3.0. If you
+// are just making art, then by all means do what you want with this library and
+// you can stop reading now. If you are using this header for commercial
+// purposes, then you need to contact Stefan Petrick for a commercial use
+// license.
 
-
-
-
-#include "fl/force_inline.h"
 #include "crgb.h"
+#include "fl/force_inline.h"
 #include "fl/namespace.h"
+#include "fl/math.h"
+#include "fl/compiler_control.h"
 
-// Setting this to 1 means you agree to the licensing terms of the ANIMartRIX library for non commercial use only.
-#if defined(FASTLED_ANIMARTRIX_LICENSING_AGREEMENT) || (FASTLED_ANIMARTRIX_LICENSING_AGREEMENT != 0)
-#warning "Warning: Non-standard license. This fx header is separate from the FastLED driver and carries different licensing terms. On the plus side, IT'S FUCKING AMAZING. ANIMartRIX: free for non-commercial use and licensed under the Creative Commons Attribution License CC BY-NC-SA 4.0. If you'd like to purchase a commercial use license please contact Stefan Petrick. Github: github.com/StefanPetrick/animartrix Reddit: reddit.com/user/StefanPetrick/ Modified by github.com/netmindz for class portability. Ported into FastLED by Zach Vorhies."
-#endif  // 
+#ifndef FL_ANIMARTRIX_USES_FAST_MATH
+#define FL_ANIMARTRIX_USES_FAST_MATH 1
+#endif
 
+// Performence notes @ 64x64:
+//   * ESP32-S3:
+//     * FL_ANIMARTRIX_USES_FAST_MATH 0: 143ms
+//     * FL_ANIMARTRIX_USES_FAST_MATH 1: 90ms
+
+
+#define FL_SIN_F(x) sinf(x)
+#define FL_COS_F(x) cosf(x)
+
+
+#if FL_ANIMARTRIX_USES_FAST_MATH
+FL_FAST_MATH_BEGIN
+FL_OPTIMIZATION_LEVEL_O3_BEGIN
+#endif
+
+
+// Setting this to 1 means you agree to the licensing terms of the ANIMartRIX
+// library for non commercial use only.
+#if defined(FASTLED_ANIMARTRIX_LICENSING_AGREEMENT) ||                         \
+    (FASTLED_ANIMARTRIX_LICENSING_AGREEMENT != 0)
+#warning                                                                       \
+    "Warning: Non-standard license. This fx header is separate from the FastLED driver and carries different licensing terms. On the plus side, IT'S FUCKING AMAZING. ANIMartRIX: free for non-commercial use and licensed under the Creative Commons Attribution License CC BY-NC-SA 4.0. If you'd like to purchase a commercial use license please contact Stefan Petrick. Github: github.com/StefanPetrick/animartrix Reddit: reddit.com/user/StefanPetrick/ Modified by github.com/netmindz for class portability. Ported into FastLED by Zach Vorhies."
+#endif //
 
 #ifndef PI
-#define PI         3.1415926535897932384626433832795
+#define PI 3.1415926535897932384626433832795
 #endif
 
 #ifdef ANIMARTRIX_PRINT_USES_SERIAL
@@ -72,6 +100,8 @@ License CC BY-NC 3.0
 #endif
 
 #define num_oscillators 10
+
+
 
 namespace animartrix_detail {
 FASTLED_USING_NAMESPACE
@@ -92,7 +122,6 @@ struct render_parameters {
     float high_limit = 1;
 };
 
-
 struct oscillators {
 
     float master_speed; // global transition speed
@@ -100,7 +129,6 @@ struct oscillators {
         offset[num_oscillators];  // oscillators can be shifted by a time offset
     float ratio[num_oscillators]; // speed ratios for the individual oscillators
 };
-
 
 struct modulators {
 
@@ -110,14 +138,9 @@ struct modulators {
     float noise_angle[num_oscillators]; // returns 0 to 2*PI
 };
 
-
-
-
 struct rgb {
     float red, green, blue;
 };
-
-
 
 static const uint8_t PERLIN_NOISE[] = {
     151, 160, 137, 91,  90,  15,  131, 13,  201, 95,  96,  53,  194, 233, 7,
@@ -141,7 +164,7 @@ static const uint8_t PERLIN_NOISE[] = {
 
 FASTLED_FORCE_INLINE uint8_t P(uint8_t x) {
     const uint8_t idx = x & 255;
-    const uint8_t* ptr = PERLIN_NOISE + idx;
+    const uint8_t *ptr = PERLIN_NOISE + idx;
     return *ptr;
 }
 
@@ -158,7 +181,7 @@ class ANIMartRIX {
     bool serpentine;
 
     render_parameters animation; // all animation parameters in one place
-    oscillators timings; // all speed settings in one place
+    oscillators timings;         // all speed settings in one place
     modulators move; // all oscillator based movers and shifters at one place
     rgb pixel;
 
@@ -179,10 +202,9 @@ class ANIMartRIX {
 
     virtual uint16_t xyMap(uint16_t x, uint16_t y) = 0;
 
-    uint32_t currentTime = 0;
-    void setTime(uint32_t t) { currentTime = t; }
-    uint32_t getTime() { return currentTime ? currentTime : millis(); }
-
+    fl::u32 currentTime = 0;
+    void setTime(fl::u32 t) { currentTime = t; }
+    fl::u32 getTime() { return currentTime ? currentTime : millis(); }
 
     void init(int w, int h) {
         animation = render_parameters();
@@ -192,16 +214,13 @@ class ANIMartRIX {
 
         this->num_x = w;
         this->num_y = h;
-        if (w <= 16) {
-            this->radial_filter_radius = 11;
-        } else {
-            this->radial_filter_radius = 23; // on 32x32, use 11 for 16x16
-        }
+        this->radial_filter_radius = MIN(w,h) * 0.65;
         render_polar_lookup_table(
             (num_x / 2) - 0.5,
             (num_y / 2) - 0.5); // precalculate all polar coordinates
                                 // polar origin is set to matrix centre
-        // set default speed ratio for the oscillators, not all effects set their own, so start from know state
+        // set default speed ratio for the oscillators, not all effects set
+        // their own, so start from know state
         timings.master_speed = 0.01;
     }
 
@@ -256,7 +275,6 @@ class ANIMartRIX {
         return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
     }
 
-
     float pnoise(float x, float y, float z) {
 
         int X = (int)floorf(x) & 255, /* FIND UNIT CUBE THAT */
@@ -293,17 +311,16 @@ class ANIMartRIX {
 
         for (int i = 0; i < num_oscillators; i++) {
 
-            move.linear[i] =
-                (runtime + timings.offset[i]) *
-                timings.ratio[i]; // continously rising offsets, returns 0 to
-                                  // max_float
+            move.linear[i] = (runtime + timings.offset[i]) *
+                             timings.ratio[i]; // continously rising offsets,
+                                               // returns 0 to max_float
 
             move.radial[i] = fmodf(move.linear[i],
                                    2 * PI); // angle offsets for continous
                                             // rotation, returns    0 to 2 * PI
 
             move.directional[i] =
-                sinf(move.radial[i]); // directional offsets or factors, returns
+                FL_SIN_F(move.radial[i]); // directional offsets or factors, returns
                                       // -1 to 1
 
             move.noise_angle[i] =
@@ -314,7 +331,7 @@ class ANIMartRIX {
         }
     }
 
-    void run_default_oscillators(float master_speed = 0.005) {        
+    void run_default_oscillators(float master_speed = 0.005) {
         timings.master_speed = master_speed;
 
         timings.ratio[0] = 1; // speed ratios for the oscillators, higher values
@@ -352,10 +369,10 @@ class ANIMartRIX {
         // convert polar coordinates back to cartesian ones
 
         float newx = (animation.offset_x + animation.center_x -
-                      (cosf(animation.angle) * animation.dist)) *
+                      (FL_COS_F(animation.angle) * animation.dist)) *
                      animation.scale_x;
         float newy = (animation.offset_y + animation.center_y -
-                      (sinf(animation.angle) * animation.dist)) *
+                      (FL_SIN_F(animation.angle) * animation.dist)) *
                      animation.scale_y;
         float newz = (animation.offset_z + animation.z) * animation.scale_z;
 
@@ -504,7 +521,7 @@ class ANIMartRIX {
         ANIMARTRIX_PRINT(round(push));
         ANIMARTRIX_PRINT(" µs)  Core-temp: ");
         // TODO ANIMARTRIX_PRINT( tempmonGetTemp() );
-        //Serial.println(" °C");
+        // Serial.println(" °C");
         ANIMARTRIX_PRINT(" °C\n");
     }
 
@@ -1123,7 +1140,7 @@ class ANIMartRIX {
         get_ready();
 
         timings.master_speed = 0.000001; // speed ratios for the oscillators
-        timings.ratio[0] = 0.4;         // higher values = faster transitions
+        timings.ratio[0] = 0.4;          // higher values = faster transitions
         timings.ratio[1] = 0.32;
         timings.ratio[2] = 0.10;
         timings.ratio[3] = 0.05;
@@ -1170,7 +1187,7 @@ class ANIMartRIX {
 
                 pixel = rgb_sanity_check(pixel);
 
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1248,7 +1265,7 @@ class ANIMartRIX {
                 pixel.blue = 0;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1385,7 +1402,7 @@ class ANIMartRIX {
                 pixel.blue = f * (show3 - show1);
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1473,7 +1490,7 @@ class ANIMartRIX {
                 pixel.blue = 0;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1524,7 +1541,7 @@ class ANIMartRIX {
                 pixel.blue = radial * (show1 - show3) / 5;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1576,7 +1593,7 @@ class ANIMartRIX {
                 pixel.blue = radial * show3;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1750,7 +1767,7 @@ class ANIMartRIX {
                 pixel.blue = radial * (show3 + show2) * 0.5 * x / 15;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1808,7 +1825,7 @@ class ANIMartRIX {
                 pixel.blue = radial * (show3 + show2) * 0.5 * x / 15;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1867,7 +1884,7 @@ class ANIMartRIX {
 
                 pixel = rgb_sanity_check(pixel);
 
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -1948,7 +1965,7 @@ class ANIMartRIX {
 
                 pixel = rgb_sanity_check(pixel);
 
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
         // show_frame();
@@ -3244,8 +3261,8 @@ class ANIMartRIX {
 
                 animation.dist =
                     distance[x][y] +
-                    4 * sinf(move.directional[5] * PI + (float)x / 2) +
-                    4 * cosf(move.directional[6] * PI + float(y) / 2);
+                    4 * FL_SIN_F(move.directional[5] * PI + (float)x / 2) +
+                    4 * FL_COS_F(move.directional[6] * PI + float(y) / 2);
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 5;
                 animation.scale_x = 0.06;
@@ -3257,7 +3274,7 @@ class ANIMartRIX {
                 show1 = render_value(animation);
 
                 animation.dist = (10 + move.directional[0]) *
-                                 sinf(-move.radial[5] + move.radial[0] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[0] +
                                       (distance[x][y] / (3)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 5;
@@ -3270,7 +3287,7 @@ class ANIMartRIX {
                 show2 = render_value(animation);
 
                 animation.dist = (10 + move.directional[1]) *
-                                 sinf(-move.radial[5] + move.radial[1] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[1] +
                                       (distance[x][y] / (3)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 500;
@@ -3283,7 +3300,7 @@ class ANIMartRIX {
                 show3 = render_value(animation);
 
                 animation.dist = (10 + move.directional[2]) *
-                                 sinf(-move.radial[5] + move.radial[2] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[2] +
                                       (distance[x][y] / (3)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 500;
@@ -3339,7 +3356,7 @@ class ANIMartRIX {
                 float f = 10 + 2 * move.directional[0];
 
                 animation.dist = (f + move.directional[0]) *
-                                 sinf(-move.radial[5] + move.radial[0] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[0] +
                                       (distance[x][y] / (s)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 5;
@@ -3352,7 +3369,7 @@ class ANIMartRIX {
                 show2 = render_value(animation);
 
                 animation.dist = (f + move.directional[1]) *
-                                 sinf(-move.radial[5] + move.radial[1] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[1] +
                                       (distance[x][y] / (s)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 500;
@@ -3365,7 +3382,7 @@ class ANIMartRIX {
                 show3 = render_value(animation);
 
                 animation.dist = (f + move.directional[2]) *
-                                 sinf(-move.radial[5] + move.radial[2] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[2] +
                                       (distance[x][y] / (s)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 5000;
@@ -3378,7 +3395,7 @@ class ANIMartRIX {
                 show4 = render_value(animation);
 
                 animation.dist = (f + move.directional[3]) *
-                                 sinf(-move.radial[5] + move.radial[3] +
+                                 FL_SIN_F(-move.radial[5] + move.radial[3] +
                                       (distance[x][y] / (s)));
                 animation.angle = 1 * polar_theta[x][y];
                 animation.z = 2000;
@@ -3567,7 +3584,7 @@ class ANIMartRIX {
                 pixel.blue = 40 - show1;
 
                 pixel = rgb_sanity_check(pixel);
-                setPixelColorInternal(y, x, pixel);
+                setPixelColorInternal(x, y, pixel);
             }
         }
     }
@@ -3669,7 +3686,7 @@ class ANIMartRIX {
                 float s = 1.5;
 
                 animation.dist = distance[x][y] +
-                                 sinf(0.5 * distance[x][y] - move.radial[3]);
+                                 FL_SIN_F(0.5 * distance[x][y] - move.radial[3]);
                 animation.angle = polar_theta[x][y];
                 animation.z = 5;
                 animation.scale_x = 0.1 * s;
@@ -3715,7 +3732,7 @@ class ANIMartRIX {
                 float s = 0.8;
 
                 animation.dist = distance[x][y] +
-                                 sinf(0.25 * distance[x][y] - move.radial[3]);
+                                 FL_SIN_F(0.25 * distance[x][y] - move.radial[3]);
                 animation.angle = polar_theta[x][y];
                 animation.z = 5;
                 animation.scale_x = 0.1 * s;
@@ -3727,7 +3744,7 @@ class ANIMartRIX {
                 show1 = render_value(animation);
 
                 animation.dist = distance[x][y] +
-                                 sinf(0.24 * distance[x][y] - move.radial[4]);
+                                 FL_SIN_F(0.24 * distance[x][y] - move.radial[4]);
                 animation.angle = polar_theta[x][y];
                 animation.z = 10;
                 animation.scale_x = 0.1 * s;
@@ -3780,7 +3797,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     2 + distance[x][y] +
-                    2 * sinf(0.25 * distance[x][y] - move.radial[3]);
+                    2 * FL_SIN_F(0.25 * distance[x][y] - move.radial[3]);
                 animation.angle = polar_theta[x][y];
                 animation.z = 5;
                 animation.scale_x = 0.1 * s;
@@ -3793,7 +3810,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     2 + distance[x][y] +
-                    2 * sinf(0.24 * distance[x][y] - move.radial[4]);
+                    2 * FL_SIN_F(0.24 * distance[x][y] - move.radial[4]);
                 animation.angle = polar_theta[x][y];
                 animation.z = 10;
                 animation.scale_x = 0.1 * s;
@@ -3857,7 +3874,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     3 + distance[x][y] +
-                    3 * sinf(0.25 * distance[x][y] - move.radial[3]);
+                    3 * FL_SIN_F(0.25 * distance[x][y] - move.radial[3]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[0] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -3871,7 +3888,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     4 + distance[x][y] +
-                    4 * sinf(0.24 * distance[x][y] - move.radial[4]);
+                    4 * FL_SIN_F(0.24 * distance[x][y] - move.radial[4]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[1] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -3885,7 +3902,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     5 + distance[x][y] +
-                    5 * sinf(0.23 * distance[x][y] - move.radial[5]);
+                    5 * FL_SIN_F(0.23 * distance[x][y] - move.radial[5]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[2] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -3899,7 +3916,7 @@ class ANIMartRIX {
 
                 show4 = colordodge(show1, show2);
 
-                float rad = sinf(PI / 2 +
+                float rad = FL_SIN_F(PI / 2 +
                                  distance[x][y] / 14); // better radial filter?!
 
                 /*
@@ -4001,7 +4018,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     3 + distance[x][y] +
-                    3 * sinf(0.25 * distance[x][y] - move.radial[3]);
+                    3 * FL_SIN_F(0.25 * distance[x][y] - move.radial[3]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[0] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -4015,7 +4032,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     4 + distance[x][y] +
-                    4 * sinf(0.24 * distance[x][y] - move.radial[4]);
+                    4 * FL_SIN_F(0.24 * distance[x][y] - move.radial[4]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[1] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -4029,7 +4046,7 @@ class ANIMartRIX {
 
                 animation.dist =
                     5 + distance[x][y] +
-                    5 * sinf(0.23 * distance[x][y] - move.radial[5]);
+                    5 * FL_SIN_F(0.23 * distance[x][y] - move.radial[5]);
                 animation.angle = polar_theta[x][y] + move.noise_angle[2] +
                                   move.noise_angle[6];
                 animation.z = 5;
@@ -4043,7 +4060,7 @@ class ANIMartRIX {
 
                 show4 = colordodge(show1, show2);
 
-                float rad = sinf(PI / 2 +
+                float rad = FL_SIN_F(PI / 2 +
                                  distance[x][y] / 14); // better radial filter?!
 
                 /*
@@ -4068,4 +4085,10 @@ class ANIMartRIX {
     }
 };
 
-}  // namespace animartrix_detail
+} // namespace animartrix_detail
+
+// End fast math optimizations
+#if FL_ANIMARTRIX_USES_FAST_MATH
+FL_OPTIMIZATION_LEVEL_O3_END
+FL_FAST_MATH_END
+#endif

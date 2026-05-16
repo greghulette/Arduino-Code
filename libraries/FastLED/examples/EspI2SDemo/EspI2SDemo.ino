@@ -1,46 +1,25 @@
-// Simple test for the I2S on the ESP32dev board.
-// IMPORTANT:
-//   This is using examples is built on esp-idf 4.x. This existed prior to Arduino Core 3.0.0.
-//   To use this example, you MUST downgrade to Arduino Core < 3.0.0
-//   or it won't work on Arduino.
+
+#include "fl/has_include.h"
 
 
-#define FASTLED_ESP32_I2S
-#include <FastLED.h>
+// Platform must be esp32.
+#if !defined(ESP32) || !FL_HAS_INCLUDE("sdkconfig.h")
+#define IS_ESP32_DEV 0
+#else
 
-// How many leds in your strip?
-#define NUM_LEDS 1
+#include "sdkconfig.h"
 
-// For led chips like WS2812, which have a data line, ground, and power, you just
-// need to define DATA_PIN.  For led chipsets that are SPI based (four wires - data, clock,
-// ground, and power), like the LPD8806 define both DATA_PIN and CLOCK_PIN
-// Clock pin only needed for SPI based chipsets when not using hardware SPI
-#define DATA_PIN 3
+#if CONFIG_IDF_TARGET_ESP32
+#define IS_ESP32_DEV 1
+#else
+#define IS_ESP32_DEV 0
+#endif
+#endif
 
-// Define the array of leds
-CRGB leds[NUM_LEDS];
 
-void setup() { 
-    // Uncomment/edit one of the following lines for your leds arrangement.
-    // ## Clockless types ##
-    FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);  // GRB ordering is assumed
-}
 
-void loop() { 
-  // Turn the LED on, then pause
-  leds[0] = CRGB::Red;
-  FastLED.show();
-  delay(500);
-  // Now turn the LED off, then pause
-  leds[0] = CRGB::Black;
-  FastLED.show();
-  delay(500);
-
-  // This is a no-op but tests that we have access to gCntBuffer, part of the
-  // i2s api. You can delete this in your own sketch. It's only here for testing
-  // purposes.
-  if (false) {
-    int value = gCntBuffer;
-    value++;
-  }
-}
+#if IS_ESP32_DEV
+#include "EspI2SDemo.h"
+#else
+#include "platforms/sketch_fake.hpp"
+#endif

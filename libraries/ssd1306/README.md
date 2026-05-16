@@ -103,6 +103,10 @@ through API.
 | [SDL Emulation](https://github.com/lexus2k/ssd1306/wiki/How-to-run-emulator-mode) |  X  |  X  | demo code can be run without real OLED HW via MinGW32 + SDL library |
 | **Energia**  |    |     |          |
 | MSP432P401R |  X  |  X  |  |
+| **Raspberry Pi Pico**  |    |     |          |
+| RP2040 |  X  |  X  | via [Arduino-Pico](https://github.com/earlephilhower/arduino-pico) or [Mbed RP2040](https://arduino-pico.readthedocs.io/) |
+| **WCH32**  |    |     |          |
+| WCH32V003 |  X  |      |          |
 
 Digispark users, please check compilation options in your Arduino prior to using this library.
 Ssd1306 library requires at least c++11 and c99 (by default Digispark package misses the options
@@ -119,12 +123,18 @@ Ssd1306 library requires at least c++11 and c99 (by default Digispark package mi
 
 *i2c Hardware setup is described [here](https://github.com/lexus2k/ssd1306/wiki/Hardware-setup)*
 
-*Setting up for Arduino from github sources)*
+*Setting up for Arduino from github sources*
  * Download source from https://github.com/lexus2k/ssd1306
  * Put the sources to Arduino/libraries/ssd1306/ folder
 
 *Setting up for Arduino from Arduino IDE library manager*
  * Install ssd1306 library (named ssd1306 by Alexey Dynda) via Arduino IDE library manager
+
+*Setting up for PlatformIO*
+  * Open platformio.ini, a project configuration file located in the root of PlatformIO project.
+  * Add the following line to the lib_deps option of [env:] section:
+    `lexus2k/ssd1306`
+  * Build a project, PlatformIO will automatically install dependencies.
 
 *Using with plain avr-gcc:*
  * Download source from https://github.com/lexus2k/ssd1306
@@ -139,9 +149,52 @@ Ssd1306 library requires at least c++11 and c99 (by default Digispark package mi
   * Put downloaded sources to components/ssd1306/ folder.
   * Compile your project as described in ESP-IDF build system documentation
 
+ *For wch32v003:*
+* Can be build using PlaftormIO, add the following line to `platformio.ini` file:
+    `platform = https://github.com/Community-PIO-CH32V/platform-ch32v.git`
+
 For more information about this library, please, visit https://github.com/lexus2k/ssd1306.
 Doxygen documentation can be found at [github.io site](http://lexus2k.github.io/ssd1306).
 If you found any problem or have any idea, please, report to Issues section.
+
+## FAQ
+
+### How to select I2C bus on Linux?
+
+Pass the bus number as `busId` to the init function. For example, if your display is on `/dev/i2c-7`:
+```c
+// busId=7 maps to /dev/i2c-7, address 0x3C
+ssd1306_i2cInit_Wire(7, 0x3C, -1, -1);
+```
+
+### How to use Software I2C?
+
+Software I2C is available on AVR platforms. Define `CONFIG_SOFTWARE_I2C_ENABLE` before including the library header, then use the standard init functions with your desired SDA/SCL pins.
+
+### How to use larger fonts?
+
+Use `ssd1306_setFreeFont()` with a larger font, or use the 2x-scaled print functions (`ssd1306_printFixed2x()`). To generate custom fonts from TTF files, use `tools/fontgenerator.py`:
+```bash
+pip install freetype-py
+python3 tools/fontgenerator.py --ttf myfont.ttf -s 16 -f new > myfont.h
+```
+
+### How to turn the display on/off for power saving?
+
+```c
+ssd1306_sendCommand(0xAE);  // Display OFF (sleep mode)
+ssd1306_sendCommand(0xAF);  // Display ON
+```
+
+### How to build Linux demos?
+
+```bash
+cd examples && make -f Makefile.linux PROJECT=demos/ssd1306_demo
+# Or for a specific demo:
+cd examples && make -f Makefile.linux PROJECT=demos/ssd1331_demo
+# Or using the build script:
+cd tools && ./build_and_run.sh -p linux demos/ssd1306_demo
+```
 
 ## License
 

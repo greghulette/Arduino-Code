@@ -119,16 +119,17 @@ extern "C" {
 /*!
  * Syncword for Private LoRa networks
  */
+#ifndef LORA_MAC_PRIVATE_SYNCWORD
 #define LORA_MAC_PRIVATE_SYNCWORD                   0x1424
+#endif
 
 /*!
  * Syncword for Public LoRa networks
  */
+#ifndef LORA_MAC_PUBLIC_SYNCWORD
 #define LORA_MAC_PUBLIC_SYNCWORD                    0x3444
+#endif
 
-/*!
- * The address of the register giving a 4 bytes random number
- */
 #define RANDOM_NUMBER_GENERATORBASEADDR             0x0819
 
 /*!

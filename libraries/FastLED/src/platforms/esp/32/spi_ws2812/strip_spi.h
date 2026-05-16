@@ -1,6 +1,10 @@
 #pragma once
 
-#include <stdint.h>
+#include "fl/stdint.h"
+#include "fl/int.h"
+#include "fl/namespace.h"
+
+FASTLED_NAMESPACE_BEGIN
 
 class ISpiStripWs2812 {
   public:
@@ -51,7 +55,7 @@ class ISpiStripWs2812 {
     virtual bool isDrawing() = 0;
 
     virtual void fill(uint8_t red, uint8_t green, uint8_t blue) = 0;
-    virtual uint32_t numPixels() = 0;
+    virtual fl::u32 numPixels() = 0;
 
     // Useful for iterating over the LEDs in a strip, especially RGBW mode which the spi
     // api does not support natively.
@@ -62,3 +66,5 @@ protected:
     virtual void setPixel(uint32_t index, uint8_t red, uint8_t green,
                           uint8_t blue) = 0;
 };
+
+FASTLED_NAMESPACE_END

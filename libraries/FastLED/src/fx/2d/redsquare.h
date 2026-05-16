@@ -3,8 +3,8 @@
 #pragma once
 
 #include "FastLED.h"
+#include "fl/memory.h"
 #include "fx/fx2d.h"
-#include "fl/ptr.h"
 
 namespace fl {
 
@@ -13,15 +13,15 @@ FASTLED_SMART_PTR(RedSquare);
 class RedSquare : public Fx2d {
   public:
     struct Math {
-        template <typename T> static T min(T a, T b) { return a < b ? a : b; }
+        template <typename T> static T Min(T a, T b) { return a < b ? a : b; }
     };
 
-    RedSquare(XYMap xymap) : Fx2d(xymap) {}
+    RedSquare(const XYMap& xymap) : Fx2d(xymap) {}
 
     void draw(DrawContext context) override {
         uint16_t width = getWidth();
         uint16_t height = getHeight();
-        uint16_t square_size = Math::min(width, height) / 2;
+        uint16_t square_size = Math::Min(width, height) / 2;
         uint16_t start_x = (width - square_size) / 2;
         uint16_t start_y = (height - square_size) / 2;
 
@@ -40,7 +40,7 @@ class RedSquare : public Fx2d {
         }
     }
 
-    fl::Str fxName() const override { return "red_square"; }
+    fl::string fxName() const override { return "red_square"; }
 };
 
-}  // namespace fl
+} // namespace fl

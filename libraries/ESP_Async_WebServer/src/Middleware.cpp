@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-// Copyright 2016-2025 Hristo Gochkov, Mathieu Carbou, Emil Muratov
+// Copyright 2016-2026 Hristo Gochkov, Mathieu Carbou, Emil Muratov, Will Miles
 
 #include "WebAuthentication.h"
 #include <ESPAsyncWebServer.h>
+
+#include <list>
 
 AsyncMiddlewareChain::~AsyncMiddlewareChain() {
   for (AsyncMiddleware *m : _middlewares) {
@@ -85,6 +87,12 @@ void AsyncAuthenticationMiddleware::setPasswordHash(const char *hash) {
   _hasCreds = _username.length() && _credentials.length();
 }
 
+void AsyncAuthenticationMiddleware::setToken(const char *token) {
+  _credentials = token;
+  _hash = _credentials.length();
+  _hasCreds = _credentials.length();
+}
+
 bool AsyncAuthenticationMiddleware::generateHash() {
   // ensure we have all the necessary data
   if (!_hasCreds) {
@@ -120,19 +128,15 @@ bool AsyncAuthenticationMiddleware::generateHash() {
 }
 
 bool AsyncAuthenticationMiddleware::allowed(AsyncWebServerRequest *request) const {
-  if (_authMethod == AsyncAuthType::AUTH_NONE) {
-    return true;
+  switch (_authMethod) {
+    case AsyncAuthType::AUTH_NONE:   return true;
+    case AsyncAuthType::AUTH_DENIED: return false;
+    case AsyncAuthType::AUTH_BEARER: return _authcFunc(request);
+    case AsyncAuthType::AUTH_OTHER:  return _authcFunc(request);
+    case AsyncAuthType::AUTH_BASIC:  return !_hasCreds || _authcFunc(request);
+    case AsyncAuthType::AUTH_DIGEST: return !_hasCreds || _authcFunc(request);
+    default:                         return false;
   }
-
-  if (_authMethod == AsyncAuthType::AUTH_DENIED) {
-    return false;
-  }
-
-  if (!_hasCreds) {
-    return true;
-  }
-
-  return request->authenticate(_username.c_str(), _credentials.c_str(), _realm.c_str(), _hash);
 }
 
 void AsyncAuthenticationMiddleware::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
@@ -172,7 +176,11 @@ void AsyncLoggingMiddleware::run(AsyncWebServerRequest *request, ArMiddlewareNex
     return;
   }
   _out->print(F("* Connection from "));
+#ifndef LIBRETINY
   _out->print(request->client()->remoteIP().toString());
+#else
+  _out->print(request->client()->remoteIP());
+#endif
   _out->print(':');
   _out->println(request->client()->remotePort());
   _out->print('>');
@@ -224,8 +232,13 @@ void AsyncLoggingMiddleware::run(AsyncWebServerRequest *request, ArMiddlewareNex
   }
 }
 
-void AsyncCorsMiddleware::addCORSHeaders(AsyncWebServerResponse *response) {
-  response->addHeader(asyncsrv::T_CORS_ACAO, _origin.c_str());
+void AsyncCorsMiddleware::addCORSHeaders(AsyncWebServerRequest *request, AsyncWebServerResponse *response) {
+  if (request != nullptr && _credentials && _origin == "*") {
+    // cannot use wildcard when allowing credentials
+    response->addHeader(asyncsrv::T_CORS_ACAO, request->header(asyncsrv::T_CORS_O).c_str());
+  } else {
+    response->addHeader(asyncsrv::T_CORS_ACAO, _origin.c_str());
+  }
   response->addHeader(asyncsrv::T_CORS_ACAM, _methods.c_str());
   response->addHeader(asyncsrv::T_CORS_ACAH, _headers.c_str());
   response->addHeader(asyncsrv::T_CORS_ACAC, _credentials ? asyncsrv::T_TRUE : asyncsrv::T_FALSE);
@@ -236,9 +249,9 @@ void AsyncCorsMiddleware::run(AsyncWebServerRequest *request, ArMiddlewareNext n
   // Origin header ? => CORS handling
   if (request->hasHeader(asyncsrv::T_CORS_O)) {
     // check if this is a preflight request => handle it and return
-    if (request->method() == HTTP_OPTIONS) {
+    if (request->method() == AsyncWebRequestMethod::HTTP_OPTIONS) {
       AsyncWebServerResponse *response = request->beginResponse(200);
-      addCORSHeaders(response);
+      addCORSHeaders(request, response);
       request->send(response);
       return;
     }
@@ -247,7 +260,7 @@ void AsyncCorsMiddleware::run(AsyncWebServerRequest *request, ArMiddlewareNext n
     next();
     AsyncWebServerResponse *response = request->getResponse();
     if (response) {
-      addCORSHeaders(response);
+      addCORSHeaders(request, response);
     }
 
   } else {

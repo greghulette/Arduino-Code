@@ -1,21 +1,20 @@
 #include "fx/video.h"
 
 #include "crgb.h"
-#include "fx/video/pixel_stream.h"
-#include "fx/frame.h"
-#include "fx/video/frame_interpolator.h"
+#include "fl/bytestreammemory.h"
 #include "fl/dbg.h"
+#include "fl/math_macros.h"
 #include "fl/str.h"
 #include "fl/warn.h"
-#include "fl/math_macros.h"
-#include "fx/video/video_impl.h"
+#include "fx/frame.h"
+#include "fx/video/frame_interpolator.h"
 #include "fx/video/pixel_stream.h"
-#include "fl/bytestreammemory.h"
+#include "fx/video/video_impl.h"
 
 #define DBG FASTLED_DBG
 
-using fl::FileHandlePtr;
 using fl::ByteStreamPtr;
+using fl::FileHandlePtr;
 
 #include "fl/namespace.h"
 
@@ -25,24 +24,20 @@ FASTLED_SMART_PTR(PixelStream);
 FASTLED_SMART_PTR(FrameInterpolator);
 FASTLED_SMART_PTR(Frame);
 
-Video::Video(): Fx1d(0) {
+Video::Video() : Fx1d(0) {}
+
+Video::Video(size_t pixelsPerFrame, float fps, size_t frame_history_count)
+    : Fx1d(pixelsPerFrame) {
+    mImpl = fl::make_shared<VideoImpl>(pixelsPerFrame, fps, frame_history_count);
 }
 
-Video::Video(size_t pixelsPerFrame, float fps, size_t frame_history_count): Fx1d(pixelsPerFrame) {
-    mImpl = VideoImplPtr::New(pixelsPerFrame, fps, frame_history_count);
-}
-
-void Video::setFade(uint32_t fadeInTime, uint32_t fadeOutTime) {
+void Video::setFade(fl::u32 fadeInTime, fl::u32 fadeOutTime) {
     mImpl->setFade(fadeInTime, fadeOutTime);
 }
 
-void Video::pause(uint32_t now) {
-    mImpl->pause(now);
-}
+void Video::pause(fl::u32 now) { mImpl->pause(now); }
 
-void Video::resume(uint32_t now) {
-    mImpl->resume(now);
-}
+void Video::resume(fl::u32 now) { mImpl->resume(now); }
 
 Video::~Video() = default;
 Video::Video(const Video &) = default;
@@ -50,7 +45,8 @@ Video &Video::operator=(const Video &) = default;
 
 bool Video::begin(FileHandlePtr handle) {
     if (!mImpl) {
-        FASTLED_WARN("Video::begin: mImpl is null, manually constructed videos must include full parameters.");
+        FASTLED_WARN("Video::begin: mImpl is null, manually constructed videos "
+                     "must include full parameters.");
         return false;
     }
     if (!handle) {
@@ -82,7 +78,7 @@ bool Video::beginStream(ByteStreamPtr bs) {
     return true;
 }
 
-bool Video::draw(uint32_t now, CRGB *leds) {
+bool Video::draw(fl::u32 now, CRGB *leds) {
     if (!mImpl) {
         FASTLED_WARN_IF(!mError.empty(), mError.c_str());
         return false;
@@ -110,11 +106,9 @@ int32_t Video::durationMicros() const {
     return mImpl->durationMicros();
 }
 
-Str Video::fxName() const {
-    return "Video";
-}
+Str Video::fxName() const { return "Video"; }
 
-bool Video::draw(uint32_t now, Frame *frame) {
+bool Video::draw(fl::u32 now, Frame *frame) {
     if (!mImpl) {
         return false;
     }
@@ -141,9 +135,7 @@ float Video::timeScale() const {
     return mImpl->timeScale();
 }
 
-Str Video::error() const {
-    return mError;
-}
+Str Video::error() const { return mError; }
 
 size_t Video::pixelsPerFrame() const {
     if (!mImpl) {
@@ -166,17 +158,16 @@ bool Video::rewind() {
     return mImpl->rewind();
 }
 
-
-VideoFxWrapper::VideoFxWrapper(Ptr<Fx> fx) : Fx1d(fx->getNumLeds()), mFx(fx) {
+VideoFxWrapper::VideoFxWrapper(fl::shared_ptr<Fx> fx) : Fx1d(fx->getNumLeds()), mFx(fx) {
     if (!mFx->hasFixedFrameRate(&mFps)) {
-        FASTLED_WARN("VideoFxWrapper: Fx does not have a fixed frame rate, assuming 30fps.");
+        FASTLED_WARN("VideoFxWrapper: Fx does not have a fixed frame rate, "
+                     "assuming 30fps.");
         mFps = 30.0f;
     }
-    mVideo = VideoImplPtr::New(mFx->getNumLeds(), mFps, 2);
-    mByteStream = ByteStreamMemoryPtr::New(mFx->getNumLeds() * sizeof(CRGB));
+    mVideo = fl::make_shared<VideoImpl>(mFx->getNumLeds(), mFps, 2);
+    mByteStream = fl::make_shared<ByteStreamMemory>(mFx->getNumLeds() * sizeof(CRGB));
     mVideo->beginStream(mByteStream);
 }
-
 
 VideoFxWrapper::~VideoFxWrapper() = default;
 
@@ -188,8 +179,10 @@ Str VideoFxWrapper::fxName() const {
 
 void VideoFxWrapper::draw(DrawContext context) {
     if (mVideo->needsFrame(context.now)) {
-        mFx->draw(context);  // use the leds in the context as a tmp buffer.
-        mByteStream->writeCRGB(context.leds, mFx->getNumLeds());  // now write the leds to the byte stream.
+        mFx->draw(context); // use the leds in the context as a tmp buffer.
+        mByteStream->writeCRGB(
+            context.leds,
+            mFx->getNumLeds()); // now write the leds to the byte stream.
     }
     bool ok = mVideo->draw(context.now, context.leds);
     if (!ok) {
@@ -197,9 +190,8 @@ void VideoFxWrapper::draw(DrawContext context) {
     }
 }
 
-void VideoFxWrapper::setFade(uint32_t fadeInTime, uint32_t fadeOutTime) {
+void VideoFxWrapper::setFade(fl::u32 fadeInTime, fl::u32 fadeOutTime) {
     mVideo->setFade(fadeInTime, fadeOutTime);
 }
 
-
-}  // namespace fl
+} // namespace fl

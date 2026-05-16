@@ -1,3 +1,12 @@
+/// @file    FxFire2012.ino
+/// @brief   Fire2012 effect with ScreenMap
+/// @example FxFire2012.ino
+///
+/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
+/// 1. Install Fastled: `pip install fastled`
+/// 2. cd into this examples page.
+/// 3. Run the FastLED web compiler at root: `fastled`
+/// 4. When the compiler is done a web page will open.
 
 /// @brief   Simple one-dimensional fire animation function
 // Fire2012 by Mark Kriegsman, July 2012
@@ -38,13 +47,14 @@
 
 #include <FastLED.h>
 #include "fx/1d/fire2012.h"
+#include "fl/screenmap.h"
 
 using namespace fl;
 
 #define LED_PIN     5
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2811
-#define NUM_LEDS    30
+#define NUM_LEDS    92
 
 #define BRIGHTNESS  128
 #define FRAMES_PER_SECOND 30
@@ -53,12 +63,13 @@ using namespace fl;
 #define REVERSE_DIRECTION false
 
 CRGB leds[NUM_LEDS];
-Fire2012Ptr fire = Fire2012Ptr::New(NUM_LEDS, COOLING, SPARKING, REVERSE_DIRECTION);
+Fire2012Ptr fire = fl::make_shared<Fire2012>(NUM_LEDS, COOLING, SPARKING, REVERSE_DIRECTION);
 
 void setup() {
-  delay(3000); // sanity delay
+  ScreenMap screenMap = ScreenMap::DefaultStrip(NUM_LEDS, 1.5, .4);
   FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS)
     .setCorrection(TypicalLEDStrip)
+    .setScreenMap(screenMap)
     .setRgbw();
   FastLED.setBrightness(BRIGHTNESS);
 }
@@ -70,4 +81,3 @@ void loop()
   FastLED.show(millis()); // display this frame
   FastLED.delay(1000 / FRAMES_PER_SECOND);
 }
-

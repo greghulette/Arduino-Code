@@ -1,8 +1,8 @@
 #pragma once
 
 #include "FastLED.h"
-#include "fx/fx1d.h"
 #include "fl/namespace.h"
+#include "fx/fx1d.h"
 #include "noisegen.h"
 
 namespace fl {
@@ -33,12 +33,12 @@ class NoiseWave : public Fx1d {
         }
     }
 
-    fl::Str fxName() const override { return "NoiseWave"; }
+    fl::string fxName() const override { return "NoiseWave"; }
 
   private:
     NoiseGenerator noiseGeneratorRed;
     NoiseGenerator noiseGeneratorBlue;
-    uint32_t start_time = 0;
+    fl::u32 start_time = 0;
 };
 
-}  // namespace fl
+} // namespace fl

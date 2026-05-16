@@ -1,22 +1,17 @@
 #pragma once
 
-#include "fl/warn.h"
-#include "fl/has_define.h"
+// allow-include-after-namespace
 
-#ifdef ESP32
-#include "platforms/esp/esp_assert.h"
-#else
-#if __has_include("assert.h")
-#include <assert.h>  // ok include.
-#else
-#define assert(x) ((void)0)
-#endif
+// Forward declaration to avoid pulling in fl/io.h and causing fl/io.cpp to be compiled
+namespace fl {
+    void println(const char* str);
+}
 
-#define FASTLED_ASSERT(x, MSG)         \
-    {                                  \
-        if (!(x)) {                    \
-            FASTLED_WARN(MSG);         \
-            assert(false);             \
-        }                              \
+#include "fl/strstream.h"
+
+#define FASTLED_ASSERT(x, MSG)                                                 \
+    {                                                                          \
+        if (!(x)) {                                                            \
+            fl::println((fl::StrStream() << "FASTLED ASSERT FAILED: " << MSG).c_str());  \
+        }                                                                      \
     }
-#endif

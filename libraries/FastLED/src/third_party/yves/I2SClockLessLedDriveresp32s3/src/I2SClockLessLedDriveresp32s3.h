@@ -1,5 +1,8 @@
 
-#if !__has_include("esp_memory_utils.h")
+
+#include "fl/has_include.h"
+
+#if !FL_HAS_INCLUDE("esp_memory_utils.h")
 #error                                                                         \
     "esp_memory_utils.h is not available, are you using esp-idf 4.4 or earlier?"
 #else
@@ -14,8 +17,8 @@
 #include "esp_intr_alloc.h"
 #include "esp_memory_utils.h"
 #include "esp_pm.h"
-#include <stdint.h>
-#include <stdio.h> // ok include
+#include "fl/stdint.h"
+#include "platforms/assert_defs.h"
 #include <string.h>
 // #include "esp_lcd_panel_io_interface.h"
 // #include "esp_lcd_panel_io.h"
@@ -44,7 +47,7 @@
 #include "soc/gdma_reg.h"
 #include "platforms/esp/esp_version.h"
 
-#define IDF_5_3_OR_EARLIER (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 4, 0))
+#define IDF_5_4_OR_EARLIER (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 5, 0))
 
 // According to bug reports, this driver does not work well with the new WS2812-v5b. This is
 // probably due to the extrrra long reset time requirements of this chipset. so we put in
@@ -65,10 +68,45 @@
 
 #define I2S_DEVICE 0
 
+#pragma push_macro("AA")
+#pragma push_macro("CC")
+#pragma push_macro("FF")
+#pragma push_macro("FF2")
+
+// #ifndef AA
+// #define AA (0x00AA00AAL)
+// #endif
+
+#ifdef AA
+#undef AA
+#endif
+
+
+
+#ifdef BA
+#undef BA
+#endif
+
+#ifdef CC
+#undef CC
+#endif
+
+#ifdef FF
+#undef FF
+#endif
+
+#ifdef FF2
+#undef FF2
+#endif
+
 #define AA (0x00AA00AAL)
 #define CC (0x0000CCCCL)
 #define FF (0xF0F0F0F0L)
 #define FF2 (0x0F0F0F0FL)
+
+// ---------------------------------------------------------------------------
+// End scoped constants
+// ---------------------------------------------------------------------------
 
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -147,7 +185,20 @@
 #endif
 
 #define LCD_DRIVER_PSRAM_DATA_ALIGNMENT 64
-#define CLOCKLESS_PIXEL_CLOCK_HZ (24 * 100 * 1000)
+
+// Note: I2S REQUIRES that the FASTLED_OVERCLOCK factor is a a build-level-define and
+// not an include level define. This is easy if you are already using PlatformIO or CMake.
+// If you are using ArduinoIDE you'll have to download FastLED source code and hack the src
+// to make this work.
+#ifdef FASTLED_OVERCLOCK
+#define FASTLED_ESP32S3_I2S_CLOCK_HZ_SCALE (FASTLED_OVERCLOCK)
+#else
+#define FASTLED_ESP32S3_I2S_CLOCK_HZ_SCALE (1)
+#endif
+
+#ifndef FASTLED_ESP32S3_I2S_CLOCK_HZ
+#define FASTLED_ESP32S3_I2S_CLOCK_HZ uint32_t((24 * 100 * 1000)*FASTLED_ESP32S3_I2S_CLOCK_HZ_SCALE)
+#endif
 
 namespace fl {
 
@@ -288,11 +339,11 @@ class I2SClocklessLedDriveresp32S3 {
         for (int i = 0; i < 256; i++) {
             tmp = powf((float)i / 255, 1 / _gammag);
             __green_map[i] = (uint8_t)(tmp * brightness);
-            tmp = powf((float)i / 255, 1 / _gammag);
+            tmp = powf((float)i / 255, 1 / _gammab);
             __blue_map[i] = (uint8_t)(tmp * brightness);
-            tmp = powf((float)i / 255, 1 / _gammag);
+            tmp = powf((float)i / 255, 1 / _gammar);
             __red_map[i] = (uint8_t)(tmp * brightness);
-            tmp = powf((float)i / 255, 1 / _gammag);
+            tmp = powf((float)i / 255, 1 / _gammaw);
             __white_map[i] = (uint8_t)(tmp * brightness);
         }
     }
@@ -316,7 +367,7 @@ class I2SClocklessLedDriveresp32S3 {
                   int NUM_LED_PER_STRIP) {
 
         // esp_lcd_panel_io_handle_t init_lcd_driver(unsigned int
-        // CLOCKLESS_PIXEL_CLOCK_HZ, size_t _nb_components) {
+        // FASTLED_ESP32S3_I2S_CLOCK_HZ, size_t _nb_components) {
 
         esp_lcd_i80_bus_handle_t i80_bus = NULL;
 
@@ -336,25 +387,26 @@ class I2SClocklessLedDriveresp32S3 {
         }
         bus_config.bus_width = 16;
         bus_config.max_transfer_bytes =
-            _nb_components * NUM_LED_PER_STRIP * 8 * 3 * 2 + __OFFSET;
-        #if IDF_5_3_OR_EARLIER
+            _nb_components * NUM_LED_PER_STRIP * 8 * 3 * 2 + __OFFSET + __OFFSET_END;
+        #if IDF_5_4_OR_EARLIER
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         #endif
         // In IDF 5.3, psram_trans_align became deprecated. We kick the can down
-        // the road a little bit and suppress the warning until idf 5.4 arrives.
+        // the road a little bit and suppress the warning until idf 5.5 arrives.
         bus_config.psram_trans_align = LCD_DRIVER_PSRAM_DATA_ALIGNMENT;
         bus_config.sram_trans_align = 4;
-        #if IDF_5_3_OR_EARLIER
+        #if IDF_5_4_OR_EARLIER
         #pragma GCC diagnostic pop
         #endif
 
-        ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&bus_config, &i80_bus));
+        esp_err_t bus_err = esp_lcd_new_i80_bus(&bus_config, &i80_bus);
+        FASTLED_ASSERT(bus_err == ESP_OK, "Failed to create ESP32 I2S LCD bus");
 
         esp_lcd_panel_io_i80_config_t io_config;
 
         io_config.cs_gpio_num = -1;
-        io_config.pclk_hz = CLOCKLESS_PIXEL_CLOCK_HZ;
+        io_config.pclk_hz = FASTLED_ESP32S3_I2S_CLOCK_HZ;
         io_config.trans_queue_depth = 1;
         io_config.dc_levels = {
             .dc_idle_level = 0,
@@ -369,8 +421,8 @@ class I2SClocklessLedDriveresp32S3 {
         io_config.user_ctx = this;
 
         io_config.on_color_trans_done = flush_ready;
-        ESP_ERROR_CHECK(
-            esp_lcd_new_panel_io_i80(i80_bus, &io_config, &led_io_handle));
+        esp_err_t panel_err = esp_lcd_new_panel_io_i80(i80_bus, &io_config, &led_io_handle);
+        FASTLED_ASSERT(panel_err == ESP_OK, "Failed to create ESP32 I2S LCD panel IO");
     }
 
     void initled(uint8_t *leds, const int *pins, int numstrip,
@@ -385,7 +437,7 @@ class I2SClocklessLedDriveresp32S3 {
             I2SClocklessLedDriverS3_sem = xSemaphoreCreateBinary();
         }
         // esp_lcd_panel_io_handle_t init_lcd_driver(unsigned int
-        // CLOCKLESS_PIXEL_CLOCK_HZ, size_t _nb_components) {
+        // FASTLED_ESP32S3_I2S_CLOCK_HZ, size_t _nb_components) {
         led_output = (uint16_t *)heap_caps_aligned_alloc(
             LCD_DRIVER_PSRAM_DATA_ALIGNMENT,
             8 * _nb_components * NUM_LED_PER_STRIP * 3 * 2 + __OFFSET +
@@ -483,7 +535,6 @@ class I2SClocklessLedDriveresp32S3 {
 static bool IRAM_ATTR flush_ready(esp_lcd_panel_io_handle_t panel_io,
                                   esp_lcd_panel_io_event_data_t *edata,
                                   void *user_ctx) {
-    // printf("we're here");
     DRIVER_READY = true;
     isDisplaying = false;
     I2SClocklessLedDriveresp32S3 *cont =
@@ -503,4 +554,9 @@ static bool IRAM_ATTR flush_ready(esp_lcd_panel_io_handle_t panel_io,
 
 } // namespace fl
 
-#endif // __has_include("esp_memory_utils.h")
+#pragma pop_macro("AA")
+#pragma pop_macro("CC")
+#pragma pop_macro("FF")
+#pragma pop_macro("FF2")
+
+#endif // FL_HAS_INCLUDE("esp_memory_utils.h")

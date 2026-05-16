@@ -1,49 +1,88 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-// Copyright 2016-2025 Hristo Gochkov, Mathieu Carbou, Emil Muratov
+// Copyright 2016-2026 Hristo Gochkov, Mathieu Carbou, Emil Muratov, Will Miles
 
-#ifndef _ESPAsyncWebServer_H_
-#define _ESPAsyncWebServer_H_
+#pragma once
 
-#include "Arduino.h"
+#include <Arduino.h>
+#include <FS.h>
 
-#include "FS.h"
+#if !defined(HOST) || __has_include(<lwip/tcpbase.h>)
+#include <lwip/tcpbase.h>
+#endif
+
 #include <algorithm>
 #include <deque>
 #include <functional>
 #include <list>
+#include <memory>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-#ifdef ESP32
+#define __asyncws_unused __attribute__((unused))
+
+#if __has_include("ArduinoJson.h")
+#include <ArduinoJson.h>
+
+#if ARDUINOJSON_VERSION_MAJOR >= 5
+#define ASYNC_JSON_SUPPORT 1
+#else
+#define ASYNC_JSON_SUPPORT 0
+#endif  // ARDUINOJSON_VERSION_MAJOR >= 5
+
+#if ARDUINOJSON_VERSION_MAJOR >= 6
+#define ASYNC_MSG_PACK_SUPPORT 1
+#else
+#define ASYNC_MSG_PACK_SUPPORT 0
+#endif  // ARDUINOJSON_VERSION_MAJOR >= 6
+
+#endif  // __has_include("ArduinoJson.h")
+
+#if defined(ESP32) || defined(LIBRETINY) || defined(HOST)
 #include <AsyncTCP.h>
-#include <WiFi.h>
+#include <assert.h>
 #elif defined(ESP8266)
-#include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #elif defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350)
 #include <RPAsyncTCP.h>
-#include <HTTP_Method.h>
-#include <WiFi.h>
-#include <http_parser.h>
 #else
 #error Platform not supported
 #endif
 
-#include "literals.h"
+#if !defined(ASYNCWEBSERVER_USE_MUTEX)
+#if defined(ESP32) || defined(HOST)
+#define ASYNCWEBSERVER_USE_MUTEX 1
+#else
+#define ASYNCWEBSERVER_USE_MUTEX 0
+#endif
+#endif
 
 #include "AsyncWebServerVersion.h"
 #define ASYNCWEBSERVER_FORK_ESP32Async
 
 #ifdef ASYNCWEBSERVER_REGEX
-#define ASYNCWEBSERVER_REGEX_ATTRIBUTE
-#else
-#define ASYNCWEBSERVER_REGEX_ATTRIBUTE __attribute__((warning("ASYNCWEBSERVER_REGEX not defined")))
+#include <regex>
 #endif
+
+#include "./literals.h"
 
 // See https://github.com/ESP32Async/ESPAsyncWebServer/commit/3d3456e9e81502a477f6498c44d0691499dda8f9#diff-646b25b11691c11dce25529e3abce843f0ba4bd07ab75ec9eee7e72b06dbf13fR388-R392
 // This setting slowdown chunk serving but avoids crashing or deadlocks in the case where slow chunk responses are created, like file serving form SD Card
 #ifndef ASYNCWEBSERVER_USE_CHUNK_INFLIGHT
 #define ASYNCWEBSERVER_USE_CHUNK_INFLIGHT 1
+#endif
+
+#if SOC_WIFI_SUPPORTED || CONFIG_ESP_WIFI_REMOTE_ENABLED || LT_ARD_HAS_WIFI || CONFIG_ESP32_WIFI_ENABLED || defined(ESP8266)
+#define ASYNCWEBSERVER_WIFI_SUPPORTED 1
+#else
+#define ASYNCWEBSERVER_WIFI_SUPPORTED 0
+#endif
+
+// Enable integration with other HTTP libraries
+#if defined(HTTP_ANY) || defined(http_parser_h)
+#define ASYNCWEBSERVER_HTTP_METHOD_INTEGRATION
+#define ASYNCWEBSERVER_NO_GLOBAL_HTTP_METHODS
 #endif
 
 class AsyncWebServer;
@@ -58,21 +97,201 @@ class AsyncCallbackWebHandler;
 class AsyncResponseStream;
 class AsyncMiddlewareChain;
 
-#if defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350)
-typedef enum http_method WebRequestMethod;
-#else
-#ifndef WEBSERVER_H
-typedef enum {
-  HTTP_GET = 0b00000001,
-  HTTP_POST = 0b00000010,
-  HTTP_DELETE = 0b00000100,
-  HTTP_PUT = 0b00001000,
-  HTTP_PATCH = 0b00010000,
-  HTTP_HEAD = 0b00100000,
-  HTTP_OPTIONS = 0b01000000,
-  HTTP_ANY = 0b01111111,
-} WebRequestMethod;
+// Namespace for web request method defines
+namespace AsyncWebRequestMethod {
+// The long name here is because we sometimes include this in the global namespace
+enum AsyncWebRequestMethodType : uint32_t {
+  HTTP_UNKNOWN = 0u,
+
+  HTTP_DELETE = 1u << 0,
+  HTTP_GET = 1u << 1,
+  HTTP_HEAD = 1u << 2,
+  HTTP_POST = 1u << 3,
+  HTTP_PUT = 1u << 4,
+
+  /* pathological */
+  HTTP_CONNECT = 1u << 5,
+  HTTP_OPTIONS = 1u << 6,
+  HTTP_TRACE = 1u << 7,
+
+  /* WebDAV */
+  HTTP_COPY = 1u << 8,
+  HTTP_LOCK = 1u << 9,
+  HTTP_MKCOL = 1u << 10,
+  HTTP_MOVE = 1u << 11,
+  HTTP_PROPFIND = 1u << 12,
+  HTTP_PROPPATCH = 1u << 13,
+  HTTP_SEARCH = 1u << 14,
+  HTTP_UNLOCK = 1u << 15,
+  HTTP_BIND = 1u << 16,
+  HTTP_REBIND = 1u << 17,
+  HTTP_UNBIND = 1u << 18,
+  HTTP_ACL = 1u << 19,
+
+  /* subversion */
+  // HTTP_REPORT
+  // HTTP_MKACTIVITY
+  // HTTP_CHECKOUT
+  // HTTP_MERGE
+
+  /* upnp */
+  // HTTP_MSEARCH
+  // HTTP_NOTIFY
+  // HTTP_SUBSCRIBE
+  // HTTP_UNSUBSCRIBE
+
+  /* RFC-5789 */
+  HTTP_PATCH = 1u << 20,
+  HTTP_PURGE = 1u << 21,
+
+  /* CalDAV */
+  // HTTP_MKCALENDAR
+
+  /* RFC-2068, section 19.6.1.2 */
+  HTTP_LINK = 1u << 22,
+  HTTP_UNLINK = 1u << 23,
+
+  /* icecast */
+  // HTTP_SOURCE
+
+  HTTP_INVALID = 1u << 31  // Sentinel
+};
+
+};  // namespace AsyncWebRequestMethod
+
+typedef AsyncWebRequestMethod::AsyncWebRequestMethodType WebRequestMethod;
+class WebRequestMethodComposite {
+  uint32_t mask;
+
+private:
+  constexpr WebRequestMethodComposite(uint32_t m) : mask(m){};
+
+public:
+  // Default constructor: by default, matches nothing
+  constexpr WebRequestMethodComposite() : mask(0){};
+
+  // Constructor: allows implicit conversion from WebRequestMethod
+  constexpr WebRequestMethodComposite(WebRequestMethod m) : mask(static_cast<uint32_t>(m)){};
+
+  // Combine composites
+  constexpr inline WebRequestMethodComposite operator|(const WebRequestMethodComposite &r) const {
+    return WebRequestMethodComposite(mask | r.mask);
+  };
+
+  // == operator for composite
+  constexpr inline bool operator==(const WebRequestMethodComposite &r) const {
+    return mask == r.mask;
+  };
+
+  constexpr inline bool operator!=(const WebRequestMethodComposite &r) const {
+    return mask != r.mask;
+  };
+
+  // Check for a match
+  constexpr inline bool matches(WebRequestMethod m) const {
+    return mask & static_cast<uint32_t>(m);
+  };
+
+  constexpr inline bool operator&(WebRequestMethod m) const {
+    return matches(m);
+  }
+
+  // Super cool feature: integration with platform `http_method` enum
+#ifdef ASYNCWEBSERVER_HTTP_METHOD_INTEGRATION
+
+// Conversion function for integration with external libraries.
+// Horrible ternary implementation for C++11 compatibility.
+#define MAP_EXTERNAL_TERNARY(x) (t == http_method::x) ? static_cast<uint32_t>(WebRequestMethod::x)
+  constexpr static inline uint32_t map_http_method(http_method t) {
+    return MAP_EXTERNAL_TERNARY(HTTP_DELETE)
+      : MAP_EXTERNAL_TERNARY(HTTP_GET)
+      : MAP_EXTERNAL_TERNARY(HTTP_HEAD)
+      : MAP_EXTERNAL_TERNARY(HTTP_POST)
+      : MAP_EXTERNAL_TERNARY(HTTP_PUT)
+      : MAP_EXTERNAL_TERNARY(HTTP_CONNECT)
+      : MAP_EXTERNAL_TERNARY(HTTP_OPTIONS)
+      : MAP_EXTERNAL_TERNARY(HTTP_TRACE)
+      : MAP_EXTERNAL_TERNARY(HTTP_COPY)
+      : MAP_EXTERNAL_TERNARY(HTTP_LOCK)
+      : MAP_EXTERNAL_TERNARY(HTTP_MKCOL)
+      : MAP_EXTERNAL_TERNARY(HTTP_MOVE)
+      : MAP_EXTERNAL_TERNARY(HTTP_PROPFIND)
+      : MAP_EXTERNAL_TERNARY(HTTP_PROPPATCH)
+      : MAP_EXTERNAL_TERNARY(HTTP_SEARCH)
+      : MAP_EXTERNAL_TERNARY(HTTP_UNLOCK)
+      : MAP_EXTERNAL_TERNARY(HTTP_BIND)
+      : MAP_EXTERNAL_TERNARY(HTTP_REBIND)
+      : MAP_EXTERNAL_TERNARY(HTTP_UNBIND)
+      : MAP_EXTERNAL_TERNARY(HTTP_ACL)
+      : MAP_EXTERNAL_TERNARY(HTTP_PATCH)
+      : MAP_EXTERNAL_TERNARY(HTTP_PURGE)
+      : MAP_EXTERNAL_TERNARY(HTTP_LINK)
+      : MAP_EXTERNAL_TERNARY(HTTP_UNLINK)
+#if defined(HTTP_ANY)
+      : (t == HTTP_ANY) ? static_cast<uint32_t>(WebRequestMethod::HTTP_INVALID) - 1
 #endif
+                        : static_cast<uint32_t>(WebRequestMethod::HTTP_INVALID);
+  }
+#undef MAP_EXTERNAL_TERNARY
+
+  constexpr WebRequestMethodComposite(http_method m) : mask(map_http_method(m)){};
+#endif
+};  // WebRequestMethodComposite
+
+// Operator| for WebRequestMethod: combine to a WebRequestMethodComposite
+constexpr inline WebRequestMethodComposite operator|(WebRequestMethod l, WebRequestMethod r) {
+  return static_cast<WebRequestMethodComposite>(l) | r;
+};
+
+namespace AsyncWebRequestMethod {
+constexpr WebRequestMethodComposite HTTP_ALL = static_cast<WebRequestMethod>(static_cast<uint32_t>(HTTP_INVALID) - 1);
+
+// Support HTTP_ANY if we can
+#ifndef HTTP_ANY
+constexpr WebRequestMethodComposite HTTP_ANY = HTTP_ALL;
+#endif
+}  // namespace AsyncWebRequestMethod
+
+// WebRequestMethod string conversion functions
+#if ASYNCWEBSERVER_USE_MUTEX
+#include <mutex>
+#endif
+
+namespace asyncsrv {
+#if ASYNCWEBSERVER_USE_MUTEX
+typedef std::recursive_mutex mutex_type;
+typedef std::lock_guard<mutex_type> lock_guard_type;
+typedef std::unique_lock<mutex_type> unique_lock_type;
+#else
+// Do-nothing locks that will evaporate under optimization
+class null_mutex {
+public:
+  void lock() {}
+  void unlock() {}
+  bool try_lock() {
+    return true;
+  };
+};
+typedef null_mutex mutex_type;
+
+class lock_guard_type {
+public:
+  lock_guard_type(mutex_type &){};
+};
+class unique_lock_type {
+public:
+  unique_lock_type(mutex_type &){};
+  void unlock() {};
+};
+#endif
+
+WebRequestMethod stringToMethod(const String &);
+const char *methodToString(WebRequestMethod);
+}  // namespace asyncsrv
+
+#if !defined(ASYNCWEBSERVER_NO_GLOBAL_HTTP_METHODS)
+// Import the method enum values to the global namespace
+using namespace AsyncWebRequestMethod;
 #endif
 
 #ifndef HAVE_FS_FILE_OPEN_MODE
@@ -92,7 +311,6 @@ public:
 #define RESPONSE_TRY_AGAIN          0xFFFFFFFF
 #define RESPONSE_STREAM_BUFFER_SIZE 1460
 
-typedef uint8_t WebRequestMethodComposite;
 typedef std::function<void(void)> ArDisconnectHandler;
 
 /*
@@ -137,12 +355,20 @@ private:
   String _value;
 
 public:
+  AsyncWebHeader() {}
   AsyncWebHeader(const AsyncWebHeader &) = default;
+  AsyncWebHeader(AsyncWebHeader &&) = default;
   AsyncWebHeader(const char *name, const char *value) : _name(name), _value(value) {}
   AsyncWebHeader(const String &name, const String &value) : _name(name), _value(value) {}
-  AsyncWebHeader(const String &data);
+
+#ifndef ESP8266
+  [[deprecated("Use AsyncWebHeader::parse(data) instead")]]
+#endif
+  AsyncWebHeader(const String &data)
+    : AsyncWebHeader(parse(data)){};
 
   AsyncWebHeader &operator=(const AsyncWebHeader &) = default;
+  AsyncWebHeader &operator=(AsyncWebHeader &&other) = default;
 
   const String &name() const {
     return _name;
@@ -150,7 +376,18 @@ public:
   const String &value() const {
     return _value;
   }
+
   String toString() const;
+
+  // returns true if the header is valid
+  operator bool() const {
+    return _name.length();
+  }
+
+  static const AsyncWebHeader parse(const String &data) {
+    return parse(data.c_str());
+  }
+  static const AsyncWebHeader parse(const char *data);
 };
 
 /*
@@ -186,6 +423,9 @@ class AsyncWebServerRequest {
   using FS = fs::FS;
   friend class AsyncWebServer;
   friend class AsyncCallbackWebHandler;
+  friend class AsyncFileResponse;
+  friend class AsyncStaticWebHandler;
+  friend class AsyncURIMatcher;
 
 private:
   AsyncClient *_client;
@@ -202,7 +442,7 @@ private:
   uint8_t _parseState;
 
   uint8_t _version;
-  WebRequestMethodComposite _method;
+  WebRequestMethod _method;
   String _url;
   String _host;
   String _contentType;
@@ -218,7 +458,9 @@ private:
 
   std::list<AsyncWebHeader> _headers;
   std::list<AsyncWebParameter> _params;
+#ifdef ASYNCWEBSERVER_REGEX
   std::list<String> _pathParams;
+#endif
 
   std::unordered_map<const char *, String, std::hash<const char *>, std::equal_to<const char *>> _attributes;
 
@@ -234,14 +476,19 @@ private:
   size_t _itemBufferIndex;
   bool _itemIsFile;
 
+  size_t _chunkStartIndex;  // Offset from start of the chunked data stream
+  size_t _chunkOffset;      // Offset into the current chunk
+  size_t _chunkSize;        // Size of the current chunk
+  uint8_t _chunkedParseState;
+  uint8_t _chunkedLastChar;
+  bool _parseChunkedBytes(uint8_t *data, size_t len);
+
   void _onPoll();
   void _onAck(size_t len, uint32_t time);
   void _onError(int8_t error);
   void _onTimeout(uint32_t time);
   void _onDisconnect();
   void _onData(void *buf, size_t len);
-
-  void _addPathParam(const char *param);
 
   bool _parseReqHead();
   bool _parseReqHeader();
@@ -257,6 +504,8 @@ private:
   void _send();
   void _runMiddlewareChain();
 
+  static bool _getEtag(File gzFile, char *eTag);
+
 public:
   File _tempFile;
   void *_tempObject;
@@ -267,10 +516,23 @@ public:
   AsyncClient *client() {
     return _client;
   }
+
+  /**
+   * @brief release owned AsyncClient object
+   * AsyncClient pointer will be abandoned in this instance,
+   * the further ownership of the connection should be managed out of request's life-time scope
+   * could be used for long lived connection like SSE or WebSockets
+   * @note do not call this method unless you know what you are doing, otherwise it may lead to
+   * memory leaks and connections lingering
+   *
+   * @return AsyncClient* pointer to released connection object
+   */
+  AsyncClient *clientRelease();
+
   uint8_t version() const {
     return _version;
   }
-  WebRequestMethodComposite method() const {
+  WebRequestMethod method() const {
     return _method;
   }
   const String &url() const {
@@ -289,7 +551,9 @@ public:
     return _isMultipart;
   }
 
-  const char *methodToString() const;
+  inline const char *methodToString() const {
+    return asyncsrv::methodToString(_method);
+  };
   const char *requestedConnTypeToString() const;
 
   RequestedConnectionType requestedConnType() const {
@@ -298,10 +562,10 @@ public:
   bool isExpectedRequestedConnType(RequestedConnectionType erct1, RequestedConnectionType erct2 = RCT_NOT_USED, RequestedConnectionType erct3 = RCT_NOT_USED)
     const;
   bool isWebSocketUpgrade() const {
-    return _method == HTTP_GET && isExpectedRequestedConnType(RCT_WS);
+    return _method == AsyncWebRequestMethod::HTTP_GET && isExpectedRequestedConnType(RCT_WS);
   }
   bool isSSE() const {
-    return _method == HTTP_GET && isExpectedRequestedConnType(RCT_EVENT);
+    return _method == AsyncWebRequestMethod::HTTP_GET && isExpectedRequestedConnType(RCT_EVENT);
   }
   bool isHTTP() const {
     return isExpectedRequestedConnType(RCT_DEFAULT, RCT_HTTP);
@@ -318,6 +582,17 @@ public:
   }
   void requestAuthentication(AsyncAuthType method, const char *realm = nullptr, const char *_authFailMsg = nullptr);
 
+  // detected Authentication type from "Authorization" request header during request parsing
+  AsyncAuthType authType() const {
+    return _authMethod;
+  }
+
+  // raw value of "Authorization" request header after the auth type
+  // For example, for header "Authorization: Bearer <token>", <token> is the value returned
+  const String &authChallenge() const {
+    return _authorization;
+  }
+
   // IMPORTANT: this method is for internal use ONLY
   // Please do not use it!
   // It can be removed or modified at any time without notice
@@ -328,12 +603,12 @@ public:
 #ifndef ESP8266
   [[deprecated("All headers are now collected. Use removeHeader(name) or AsyncHeaderFreeMiddleware if you really need to free some headers.")]]
 #endif
-  void addInterestingHeader(__unused const char *name) {
+  void addInterestingHeader(__asyncws_unused const char *name) {
   }
 #ifndef ESP8266
   [[deprecated("All headers are now collected. Use removeHeader(name) or AsyncHeaderFreeMiddleware if you really need to free some headers.")]]
 #endif
-  void addInterestingHeader(__unused const String &name) {
+  void addInterestingHeader(__asyncws_unused const String &name) {
   }
 
   /**
@@ -369,13 +644,7 @@ public:
     send(beginResponse(code, contentType, content, len, callback));
   }
 
-  void send(FS &fs, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr) {
-    if (fs.exists(path) || (!download && fs.exists(path + asyncsrv::T__gz))) {
-      send(beginResponse(fs, path, contentType, download, callback));
-    } else {
-      send(404);
-    }
-  }
+  void send(FS &fs, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr);
   void send(FS &fs, const String &path, const String &contentType, bool download = false, AwsTemplateProcessor callback = nullptr) {
     send(fs, path, contentType.c_str(), download, callback);
   }
@@ -445,15 +714,17 @@ public:
 
   AsyncWebServerResponse *
     beginResponse(FS &fs, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr);
-  AsyncWebServerResponse *
-    beginResponse(FS &fs, const String &path, const String &contentType = emptyString, bool download = false, AwsTemplateProcessor callback = nullptr) {
+  AsyncWebServerResponse *beginResponse(
+    FS &fs, const String &path, const String &contentType = asyncsrv::emptyString, bool download = false, AwsTemplateProcessor callback = nullptr
+  ) {
     return beginResponse(fs, path, contentType.c_str(), download, callback);
   }
 
   AsyncWebServerResponse *
     beginResponse(File content, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr);
-  AsyncWebServerResponse *
-    beginResponse(File content, const String &path, const String &contentType = emptyString, bool download = false, AwsTemplateProcessor callback = nullptr) {
+  AsyncWebServerResponse *beginResponse(
+    File content, const String &path, const String &contentType = asyncsrv::emptyString, bool download = false, AwsTemplateProcessor callback = nullptr
+  ) {
     return beginResponse(content, path, contentType.c_str(), download, callback);
   }
 
@@ -468,7 +739,9 @@ public:
   }
 
   AsyncWebServerResponse *beginChunkedResponse(const char *contentType, AwsResponseFiller callback, AwsTemplateProcessor templateCallback = nullptr);
-  AsyncWebServerResponse *beginChunkedResponse(const String &contentType, AwsResponseFiller callback, AwsTemplateProcessor templateCallback = nullptr);
+  AsyncWebServerResponse *beginChunkedResponse(const String &contentType, AwsResponseFiller callback, AwsTemplateProcessor templateCallback = nullptr) {
+    return beginChunkedResponse(contentType.c_str(), callback, templateCallback);
+  }
 
   AsyncResponseStream *beginResponseStream(const char *contentType, size_t bufferSize = RESPONSE_STREAM_BUFFER_SIZE);
   AsyncResponseStream *beginResponseStream(const String &contentType, size_t bufferSize = RESPONSE_STREAM_BUFFER_SIZE) {
@@ -537,6 +810,9 @@ public:
      * @return const AsyncWebParameter*
      */
   const AsyncWebParameter *getParam(size_t num) const;
+  const AsyncWebParameter *getParam(int num) const {
+    return num < 0 ? nullptr : getParam((size_t)num);
+  }
 
   size_t args() const {
     return params();
@@ -551,9 +827,15 @@ public:
 #ifdef ESP8266
   const String &arg(const __FlashStringHelper *data) const;  // get request argument value by F(name)
 #endif
-  const String &arg(size_t i) const;      // get request argument value by number
+  const String &arg(size_t i) const;  // get request argument value by number
+  const String &arg(int i) const {
+    return i < 0 ? asyncsrv::emptyString : arg((size_t)i);
+  };
   const String &argName(size_t i) const;  // get request argument name by number
-  bool hasArg(const char *name) const;    // check if argument exists
+  const String &argName(int i) const {
+    return i < 0 ? asyncsrv::emptyString : argName((size_t)i);
+  };
+  bool hasArg(const char *name) const;  // check if argument exists
   bool hasArg(const String &name) const {
     return hasArg(name.c_str());
   };
@@ -561,7 +843,22 @@ public:
   bool hasArg(const __FlashStringHelper *data) const;  // check if F(argument) exists
 #endif
 
-  const String &ASYNCWEBSERVER_REGEX_ATTRIBUTE pathArg(size_t i) const;
+#ifdef ASYNCWEBSERVER_REGEX
+  const String &pathArg(size_t i) const {
+    if (i >= _pathParams.size()) {
+      return asyncsrv::emptyString;
+    }
+    auto it = _pathParams.begin();
+    std::advance(it, i);
+    return *it;
+  }
+  const String &pathArg(int i) const {
+    return i < 0 ? asyncsrv::emptyString : pathArg((size_t)i);
+  }
+#else
+  const String &pathArg(size_t i) const __attribute__((error("ERR: pathArg() requires -D ASYNCWEBSERVER_REGEX and only works on regex handlers")));
+  const String &pathArg(int i) const __attribute__((error("ERR: pathArg() requires -D ASYNCWEBSERVER_REGEX and only works on regex handlers")));
+#endif
 
   // get request header value by name
   const String &header(const char *name) const;
@@ -573,8 +870,14 @@ public:
   const String &header(const __FlashStringHelper *data) const;  // get request header value by F(name)
 #endif
 
-  const String &header(size_t i) const;      // get request header value by number
+  const String &header(size_t i) const;  // get request header value by number
+  const String &header(int i) const {
+    return i < 0 ? asyncsrv::emptyString : header((size_t)i);
+  };
   const String &headerName(size_t i) const;  // get request header name by number
+  const String &headerName(int i) const {
+    return i < 0 ? asyncsrv::emptyString : headerName((size_t)i);
+  };
 
   size_t headers() const;  // get header count
 
@@ -596,6 +899,9 @@ public:
 #endif
 
   const AsyncWebHeader *getHeader(size_t num) const;
+  const AsyncWebHeader *getHeader(int num) const {
+    return num < 0 ? nullptr : getHeader((size_t)num);
+  };
 
   const std::list<AsyncWebHeader> &getHeaders() const {
     return _headers;
@@ -628,7 +934,7 @@ public:
     _attributes[name] = value;
   }
   void setAttribute(const char *name, bool value) {
-    _attributes[name] = value ? "1" : emptyString;
+    _attributes[name] = value ? "1" : asyncsrv::emptyString;
   }
   void setAttribute(const char *name, long value) {
     _attributes[name] = String(value);
@@ -644,13 +950,242 @@ public:
     return _attributes.find(name) != _attributes.end();
   }
 
-  const String &getAttribute(const char *name, const String &defaultValue = emptyString) const;
+  const String &getAttribute(const char *name, const String &defaultValue = asyncsrv::emptyString) const;
   bool getAttribute(const char *name, bool defaultValue) const;
   long getAttribute(const char *name, long defaultValue) const;
   float getAttribute(const char *name, float defaultValue) const;
   double getAttribute(const char *name, double defaultValue) const;
 
   String urlDecode(const String &text) const;
+};
+
+class AsyncURIMatcher {
+private:
+  // Matcher types are internal, not part of public API
+  enum class Type {
+    None,                // default state: matcher does not match anything
+    All,                 // matches everything
+    Exact,               // matches equivalent to regex: ^{_uri}$
+    Prefix,              // matches equivalent to regex: ^{_uri}.*
+    Extension,           // non-regular match: /pattern../*.ext
+    BackwardCompatible,  // matches equivalent to regex: ^{_uri}(/.*)?$
+    Regex,               // matches _url as regex
+  };
+
+public:
+  /**
+   * @brief No special matching behavior (default)
+   */
+  static constexpr uint16_t None = 0;
+
+  /**
+   * @brief Enable case-insensitive URI matching
+   *
+   * When CaseInsensitive is specified:
+   * - The URI pattern is converted to lowercase during construction
+   * - Incoming request URLs are converted to lowercase before matching
+   * - For regex matchers, the std::regex::icase flag is used
+   *
+   * Example usage:
+   * ```cpp
+   * // Matches /login, /LOGIN, /Login, /LoGiN, etc.
+   * server.on(AsyncURIMatcher::exact("/login", AsyncURIMatcher::CaseInsensitive), handler);
+   *
+   * // Matches /api/\*, /API/\*, /Api/\*, etc.
+   * server.on(AsyncURIMatcher::prefix("/api", AsyncURIMatcher::CaseInsensitive), handler);
+   *
+   * // Regex with case insensitive matching
+   * server.on(AsyncURIMatcher::regex("^/user/([a-z]+)$", AsyncURIMatcher::CaseInsensitive), handler);
+   * ```
+   *
+   * Performance note: Case conversion adds minimal overhead during construction and matching.
+   */
+  static constexpr uint16_t CaseInsensitive = (1 << 0);
+
+  // public constructors
+  AsyncURIMatcher() : AsyncURIMatcher({}, Type::None, None) {}
+  AsyncURIMatcher(const char *uri, uint16_t modifiers = None) : AsyncURIMatcher(String(uri), modifiers) {}
+  AsyncURIMatcher(String uri, uint16_t modifiers = None);
+
+#ifdef ASYNCWEBSERVER_REGEX
+  AsyncURIMatcher(const AsyncURIMatcher &c);
+  AsyncURIMatcher(AsyncURIMatcher &&c);
+  ~AsyncURIMatcher();
+
+  AsyncURIMatcher &operator=(const AsyncURIMatcher &r);
+  AsyncURIMatcher &operator=(AsyncURIMatcher &&r);
+
+#else
+  AsyncURIMatcher(const AsyncURIMatcher &) = default;
+  AsyncURIMatcher(AsyncURIMatcher &&) = default;
+  ~AsyncURIMatcher() = default;
+
+  AsyncURIMatcher &operator=(const AsyncURIMatcher &) = default;
+  AsyncURIMatcher &operator=(AsyncURIMatcher &&) = default;
+#endif
+
+  bool matches(AsyncWebServerRequest *request) const;
+
+  // static factory methods for common match types:
+  // - AsyncURIMatcher::all() - matches everything
+  // - AsyncURIMatcher::none() - matches nothing
+  // - AsyncURIMatcher::exact(uri, modifiers) - exact match
+  // - AsyncURIMatcher::prefix(uri, modifiers) - prefix match
+  // - AsyncURIMatcher::dir(uri, modifiers) - directory/folder match (trailing slash added automatically)
+  // - AsyncURIMatcher::ext(uri, modifiers) - extension match (pattern with wildcard)
+  // - AsyncURIMatcher::regex(uri, modifiers) - regex match (requires ASYNCWEBSERVER_REGEX)
+
+  /**
+   * @brief Create a matcher that matches all URIs unconditionally
+   * @return AsyncURIMatcher that accepts any request URL
+   *
+   * Usage: server.on(AsyncURIMatcher::all(), handler);
+   */
+  static inline AsyncURIMatcher all() {
+    return AsyncURIMatcher{{}, Type::All, None};
+  }
+
+  /**
+   * @brief Create a matcher that matches no URIs (never matches)
+   * @return AsyncURIMatcher that rejects all request URLs
+   *
+   * Usage: server.on(AsyncURIMatcher::none(), handler);
+   */
+  static inline AsyncURIMatcher none() {
+    return AsyncURIMatcher{{}, Type::None, None};
+  }
+
+  /**
+   * @brief Create an exact URI matcher
+   * @param c The exact URI string to match (e.g., "/login", "/api/status")
+   * @param modifiers Optional modifiers (CaseInsensitive, etc.)
+   * @return AsyncURIMatcher that matches only the exact URI
+   *
+   * Usage: server.on(AsyncURIMatcher::exact("/login"), handler);
+   * Matches: "/login"
+   * Doesn't match: "/login/", "/login-page"
+   * Doesn't match: "/LOGIN" (unless CaseInsensitive flag used)
+   */
+  static inline AsyncURIMatcher exact(String c, uint16_t modifiers = None) {
+    return AsyncURIMatcher{std::move(c), Type::Exact, modifiers};
+  }
+
+  /**
+   * @brief Create a prefix URI matcher
+   * @param c The URI prefix to match (e.g., "/api", "/static")
+   * @param modifiers Optional modifiers (CaseInsensitive, etc.)
+   * @return AsyncURIMatcher that matches URIs starting with the prefix
+   *
+   * Usage: server.on(AsyncURIMatcher::prefix("/api"), handler);
+   * Matches: "/api", "/api/users", "/api-v2", "/apitest"
+   * Note: This is pure prefix matching - does NOT require folder separator
+   */
+  static inline AsyncURIMatcher prefix(String c, uint16_t modifiers = None) {
+    return AsyncURIMatcher{std::move(c), Type::Prefix, modifiers};
+  }
+
+  /**
+   * @brief Create a directory/folder URI matcher
+   * @param c The directory path (trailing slash automatically added if missing)
+   * @param modifiers Optional modifiers (CaseInsensitive, etc.)
+   * @return AsyncURIMatcher that matches URIs under the directory
+   *
+   * Usage: server.on(AsyncURIMatcher::dir("/admin"), handler);
+   * Matches: "/admin/users", "/admin/settings", "/admin/sub/path"
+   * Doesn't match: "/admin" (exact), "/admin-panel" (no folder separator)
+   *
+   * The trailing slash is automatically added for convenience and efficiency.
+   */
+  static inline AsyncURIMatcher dir(String c, uint16_t modifiers = None) {
+    // Pre-calculate folder for efficiency
+    if (!c.length()) {
+      return AsyncURIMatcher{"/", Type::Prefix, modifiers};
+    }
+    if (c[c.length() - 1] != '/') {
+      c.concat('/');
+    }
+    return AsyncURIMatcher{std::move(c), Type::Prefix, modifiers};
+  }
+
+  /**
+   * @brief Create a file extension URI matcher
+   * @param c The pattern with wildcard extension (e.g., "/images/\*.jpg", "/docs/\*.pdf")
+   * @param modifiers Optional modifiers (CaseInsensitive, etc.)
+   * @return AsyncURIMatcher that matches files with specific extensions under a path
+   *
+   * Usage: server.on(AsyncURIMatcher::ext("/images/\*.jpg"), handler);
+   * Matches: "/images/photo.jpg", "/images/gallery/pic.jpg"
+   * Doesn't match: "/images/photo.png", "/img/photo.jpg"
+   *
+   * Pattern format: "/path/\*.extension" where "*" is a literal wildcard placeholder.
+   * The path before "/\*." must match exactly, and the URI must end with the extension.
+   */
+  static inline AsyncURIMatcher ext(String c, uint16_t modifiers = None) {
+    return AsyncURIMatcher{std::move(c), Type::Extension, modifiers};
+  }
+
+#ifdef ASYNCWEBSERVER_REGEX
+  /**
+   * @brief Create a regular expression URI matcher
+   * @param c The regex pattern string (e.g., "^/user/([0-9]+)$", "^/blog/([0-9]{4})/([0-9]{2})$")
+   * @param modifiers Optional modifiers (CaseInsensitive applies to regex compilation)
+   * @return AsyncURIMatcher that matches URIs using regex with capture groups
+   *
+   * Usage: server.on(AsyncURIMatcher::regex("^/user/([0-9]+)$"), handler);
+   * Matches: "/user/123", "/user/456"
+   * Doesn't match: "/user/abc", "/user/123/profile"
+   *
+   * Captured groups can be accessed via request->pathArg(index) in the handler.
+   * Requires ASYNCWEBSERVER_REGEX to be defined during compilation.
+   * Performance note: Regex matching is slower than other match types.
+   */
+  static inline AsyncURIMatcher regex(String c, uint16_t modifiers = None) {
+    return AsyncURIMatcher{std::move(c), Type::Regex, modifiers};
+  }
+#endif
+
+private:
+  // fields
+  String _value;
+  union {
+    intptr_t _flags;  // type and flags packed together
+#ifdef ASYNCWEBSERVER_REGEX
+    // Overlay the pattern pointer storage with the type.  It is treated as a tagged pointer:
+    // if any of the LSBs are set, it stores type, as a valid object must be aligned and so
+    // none of the LSBs can be set in a valid pointer.
+    std::regex *pattern;
+#endif
+  };
+
+  // private constructor called from static factory methods
+  AsyncURIMatcher(String uri, Type type, uint16_t modifiers);
+
+#ifdef ASYNCWEBSERVER_REGEX
+  inline bool _isRegex() const {
+    static_assert(
+      (std::alignment_of<std::regex>::value % 2) == 0, "Unexpected regex type alignment - please let the ESPAsyncWebServer team know about your platform!"
+    );
+    // pattern is non-null pointer with correct alignment.
+    // We use the _flags view as it's already a integer type.
+    return _flags && !(_flags & (std::alignment_of<std::regex>::value - 1));
+  }
+#endif
+
+  static constexpr intptr_t _toFlags(Type type, uint16_t modifiers) {
+    // Use lsb to disambiguate from regex pointer in the case where someone has regex activated but uses a non-regex type.
+    // We always do this shift, even if regex is not enabled, to keep the layout identical and also catch programmatic errors earlier.
+    // For example a mistake is to set a modifier flag to (1 << 15), which is the msb of the uint16_t.
+    // This msb is discarded during this shift operation.
+    // So pay attention to not have more than 15 modifier flags.
+    return ((uint32_t(modifiers) << 16 | uint16_t(type)) << 1) + 1;
+  }
+
+  static constexpr std::tuple<Type, uint16_t> _fromFlags(intptr_t in_flags) {
+    // shift off disambiguation bit
+    // - Type is lower 16 bits
+    // - Modifiers are upper 16 bits
+    return std::make_tuple(static_cast<Type>((in_flags >> 1) & 0xFFFF), (in_flags >> 1) >> 16);
+  }
 };
 
 /*
@@ -676,7 +1211,7 @@ using ArMiddlewareCallback = std::function<void(AsyncWebServerRequest *request, 
 class AsyncMiddleware {
 public:
   virtual ~AsyncMiddleware() {}
-  virtual void run(__unused AsyncWebServerRequest *request, __unused ArMiddlewareNext next) {
+  virtual void run(__asyncws_unused AsyncWebServerRequest *request, __asyncws_unused ArMiddlewareNext next) {
     return next();
   };
 
@@ -719,9 +1254,34 @@ protected:
 // AsyncAuthenticationMiddleware is a middleware that checks if the request is authenticated
 class AsyncAuthenticationMiddleware : public AsyncMiddleware {
 public:
+  const String &username() const {
+    return _username;
+  }
+  const String &credentials() const {
+    return _credentials;
+  }
+  const String &realm() const {
+    return _realm;
+  }
+  const String &authFailureMessage() const {
+    return _authFailMsg;
+  }
+  bool isHash() const {
+    return _hash;
+  }
+  AsyncAuthType authType() const {
+    return _authMethod;
+  }
+
   void setUsername(const char *username);
   void setPassword(const char *password);
   void setPasswordHash(const char *hash);
+
+  // can be used for Bearer token authentication with a static shared secret
+  void setToken(const char *token);
+  void setAuthentificationFunction(std::function<bool(AsyncWebServerRequest *request)> func) {
+    _authcFunc = func;
+  }
 
   void setRealm(const char *realm) {
     _realm = realm;
@@ -765,6 +1325,9 @@ private:
   AsyncAuthType _authMethod = AsyncAuthType::AUTH_NONE;
   String _authFailMsg;
   bool _hasCreds = false;
+  std::function<bool(AsyncWebServerRequest *request)> _authcFunc = [this](AsyncWebServerRequest *request) {
+    return request->authenticate(_username.c_str(), _credentials.c_str(), _realm.c_str(), _hash);
+  };
 };
 
 using ArAuthorizeFunction = std::function<bool(AsyncWebServerRequest *request)>;
@@ -854,7 +1417,13 @@ public:
     _maxAge = seconds;
   }
 
-  void addCORSHeaders(AsyncWebServerResponse *response);
+#ifndef ESP8266
+  [[deprecated("Use instead: addCORSHeaders(AsyncWebServerRequest *request, AsyncWebServerResponse *response)")]]
+#endif
+  void addCORSHeaders(AsyncWebServerResponse *response) {
+    addCORSHeaders(nullptr, response);
+  }
+  void addCORSHeaders(AsyncWebServerRequest *request, AsyncWebServerResponse *response);
 
   void run(AsyncWebServerRequest *request, ArMiddlewareNext next);
 
@@ -962,12 +1531,15 @@ public:
   virtual bool canHandle(AsyncWebServerRequest *request __attribute__((unused))) const {
     return false;
   }
-  virtual void handleRequest(__unused AsyncWebServerRequest *request) {}
+  virtual void handleRequest(__asyncws_unused AsyncWebServerRequest *request) {}
   virtual void handleUpload(
-    __unused AsyncWebServerRequest *request, __unused const String &filename, __unused size_t index, __unused uint8_t *data, __unused size_t len,
-    __unused bool final
+    __asyncws_unused AsyncWebServerRequest *request, __asyncws_unused const String &filename, __asyncws_unused size_t index, __asyncws_unused uint8_t *data,
+    __asyncws_unused size_t len, __asyncws_unused bool final
   ) {}
-  virtual void handleBody(__unused AsyncWebServerRequest *request, __unused uint8_t *data, __unused size_t len, __unused size_t index, __unused size_t total) {}
+  virtual void handleBody(
+    __asyncws_unused AsyncWebServerRequest *request, __asyncws_unused uint8_t *data, __asyncws_unused size_t len, __asyncws_unused size_t index,
+    __asyncws_unused size_t total
+  ) {}
   virtual bool isRequestHandlerTrivial() const {
     return true;
   }
@@ -995,15 +1567,18 @@ protected:
   bool _sendContentLength;
   bool _chunked;
   size_t _headLength;
+  // amount of data sent for content part of the response (excluding all headers)
   size_t _sentLength;
   size_t _ackedLength;
+  // amount of response bytes (including all headers) written to sockbuff for delivery
   size_t _writtenLength;
   WebResponseState _state;
 
   static bool headerMustBePresentOnce(const String &name);
 
 public:
-  static const char *responseCodeToString(int code);
+  // Return type changes based on platform (const char* or __FlashStringHelper*)
+  static STR_RETURN_TYPE responseCodeToString(int code);
 
 public:
   AsyncWebServerResponse();
@@ -1017,6 +1592,10 @@ public:
     setContentType(type.c_str());
   }
   void setContentType(const char *type);
+  bool addHeader(AsyncWebHeader &&header, bool replaceExisting = true);
+  bool addHeader(const AsyncWebHeader &header, bool replaceExisting = true) {
+    return header && addHeader(header.name(), header.value(), replaceExisting);
+  }
   bool addHeader(const char *name, const char *value, bool replaceExisting = true);
   bool addHeader(const String &name, const String &value, bool replaceExisting = true) {
     return addHeader(name.c_str(), value.c_str(), replaceExisting);
@@ -1049,7 +1628,20 @@ public:
   virtual bool _failed() const;
   virtual bool _sourceValid() const;
   virtual void _respond(AsyncWebServerRequest *request);
-  virtual size_t _ack(AsyncWebServerRequest *request, size_t len, uint32_t time);
+
+  /**
+   * @brief write next portion of response data to send buffs
+   * this method (re)fills tcp send buffers, it could be called either at will
+   * or from a tcp_recv/tcp_poll callbacks from AsyncTCP
+   *
+   * @param request - used to access client object
+   * @param len - size of acknowledged data from the remote side (TCP window update, not TCP ack!)
+   * @param time - time passed between last sent and received packet
+   * @return size_t amount of response data placed to TCP send buffs for delivery (defined by sdkconfig value CONFIG_LWIP_TCP_SND_BUF_DEFAULT)
+   */
+  virtual size_t _ack(AsyncWebServerRequest *request, size_t len, uint32_t time) {
+    return 0;
+  };
 };
 
 /*
@@ -1060,6 +1652,20 @@ typedef std::function<void(AsyncWebServerRequest *request)> ArRequestHandlerFunc
 typedef std::function<void(AsyncWebServerRequest *request, const String &filename, size_t index, uint8_t *data, size_t len, bool final)>
   ArUploadHandlerFunction;
 typedef std::function<void(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)> ArBodyHandlerFunction;
+
+#if ASYNC_JSON_SUPPORT == 1
+
+class AsyncCallbackJsonWebHandler;
+typedef std::function<void(AsyncWebServerRequest *request, JsonVariant &json)> ArJsonRequestHandlerFunction;
+
+#if ASYNC_MSG_PACK_SUPPORT == 1
+#ifndef ESP8266
+[[deprecated("Replaced by AsyncCallbackJsonWebHandler")]]
+#endif
+typedef AsyncCallbackJsonWebHandler AsyncCallbackMessagePackWebHandler;
+#endif  // ASYNC_MSG_PACK_SUPPORT
+
+#endif
 
 class AsyncWebServer : public AsyncMiddlewareChain {
 protected:
@@ -1074,6 +1680,15 @@ public:
 
   void begin();
   void end();
+
+  tcp_state state() const {
+#ifdef ESP8266
+    // ESPAsyncTCP and RPAsyncTCP methods are not corrected declared with const for immutable ones.
+    return static_cast<tcp_state>(const_cast<AsyncWebServer *>(this)->_server.status());
+#else
+    return static_cast<tcp_state>(_server.status());
+#endif
+  }
 
 #if ASYNC_TCP_SSL_ENABLED
   void onSslFileRequest(AcSSlFileHandler cb, void *arg);
@@ -1124,13 +1739,17 @@ public:
   AsyncWebHandler &addHandler(AsyncWebHandler *handler);
   bool removeHandler(AsyncWebHandler *handler);
 
-  AsyncCallbackWebHandler &on(const char *uri, ArRequestHandlerFunction onRequest) {
-    return on(uri, HTTP_ANY, onRequest);
+  AsyncCallbackWebHandler &on(AsyncURIMatcher uri, ArRequestHandlerFunction onRequest) {
+    return on(std::move(uri), AsyncWebRequestMethod::HTTP_ALL, onRequest);
   }
   AsyncCallbackWebHandler &on(
-    const char *uri, WebRequestMethodComposite method, ArRequestHandlerFunction onRequest, ArUploadHandlerFunction onUpload = nullptr,
+    AsyncURIMatcher uri, WebRequestMethodComposite method, ArRequestHandlerFunction onRequest, ArUploadHandlerFunction onUpload = nullptr,
     ArBodyHandlerFunction onBody = nullptr
   );
+
+#if ASYNC_JSON_SUPPORT == 1
+  AsyncCallbackJsonWebHandler &on(AsyncURIMatcher uri, WebRequestMethodComposite method, ArJsonRequestHandlerFunction onBody);
+#endif
 
   AsyncStaticWebHandler &serveStatic(const char *uri, fs::FS &fs, const char *path, const char *cache_control = NULL);
 
@@ -1181,4 +1800,6 @@ public:
 #include "WebHandlerImpl.h"
 #include "WebResponseImpl.h"
 
-#endif /* _AsyncWebServer_H_ */
+#if ASYNC_JSON_SUPPORT == 1
+#include <AsyncJson.h>
+#endif

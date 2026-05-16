@@ -1,8 +1,8 @@
 
-#include <stdint.h>
+#include "fl/stdint.h"
 
 #include "fl/ui.h"
-#include "fl/ptr.h"
+#include "fl/memory.h"
 
 #include "fl/namespace.h"
 #include "digital_pin.h"
@@ -43,6 +43,9 @@ class DigitalPinImpl : public Referent {
             case DigitalPin::kOutput:
                 ::pinMode(mDigitalPin, OUTPUT);
                 break;
+            case DigitalPin::kInputPullup:
+                ::pinMode(mDigitalPin, INPUT_PULLUP);
+                break;
         }
     }
     bool high() { return HIGH == ::digitalRead(mDigitalPin); }
@@ -66,6 +69,9 @@ class DigitalPinImpl : public Referent {
             case DigitalPin::kOutput:
                 mPin.setOutput();
                 break;
+            case DigitalPin::kInputPullup:
+                mPin.setInputPullup();
+                break;
         }
     }
 
@@ -78,7 +84,7 @@ class DigitalPinImpl : public Referent {
 
 
 DigitalPin::DigitalPin(int DigitalPin) {
-    mImpl = DigitalPinImplPtr::New(DigitalPin);
+    mImpl = fl::make_shared<DigitalPinImpl>(DigitalPin);
 }
 DigitalPin::~DigitalPin() = default;
 DigitalPin::DigitalPin(const DigitalPin &other) = default;

@@ -1,13 +1,32 @@
+/// @file    Blur2d.ino
+/// @brief   Demonstrates 2D blur effects on LED matrix
+/// @example Blur2d.ino
+///
+/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
+/// 1. Install Fastled: `pip install fastled`
+/// 2. cd into this examples page.
+/// 3. Run the FastLED web compiler at root: `fastled`
+/// 4. When the compiler is done a web page will open.
+
 // UIDescription: This example shows how to blur a strip of LEDs in 2d.
+
+#include <Arduino.h>
+#include <FastLED.h>
 
 #include "fl/ui.h"
 #include "fl/xymap.h"
-#include <FastLED.h>
+
 
 using namespace fl;
 
+
+#if SKETCH_HAS_LOTS_OF_MEMORY
 #define WIDTH 22
 #define HEIGHT 22
+#else
+#define WIDTH 12
+#define HEIGHT 12
+#endif
 
 #define NUM_LEDS (WIDTH * HEIGHT)
 #define BLUR_AMOUNT 172
@@ -24,6 +43,7 @@ void setup() {
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS)
       .setScreenMap(xymap);  // Necessary when using the FastLED web compiler to display properly on a web page.
     FastLED.setBrightness(BRIGHTNESS);
+    Serial.println("setup");
 }
 
 void loop() {

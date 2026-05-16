@@ -1,12 +1,11 @@
-
 // g++ --std=c++11 test.cpp
 
-#include "test.h"
+#include <random>
 
 #include "test.h"
 #include "fl/vector.h"
+#include "fl/initializer_list.h"
 
-#include "fl/namespace.h"
 
 using namespace fl;
 
@@ -52,7 +51,6 @@ TEST_CASE("Fixed vector simple") {
 }
 
 TEST_CASE("Fixed vector insert") {
-    FASTLED_USING_NAMESPACE;
     fl::FixedVector<int, 5> vec;
 
     SUBCASE("Insert at beginning") {
@@ -110,7 +108,6 @@ TEST_CASE("Fixed vector insert") {
 }
 
 TEST_CASE("Fixed vector find_if with predicate") {
-    FASTLED_USING_NAMESPACE;
     fl::FixedVector<int, 5> vec;
 
     SUBCASE("Find even number") {
@@ -147,13 +144,15 @@ TEST_CASE("Fixed vector find_if with predicate") {
     }
 
     SUBCASE("Find in empty vector") {
-        auto it = vec.find_if([](int n) { return true; });
+        auto it = vec.find_if([](int n) {
+            FL_UNUSED(n);
+            return true;
+        });
         CHECK(it == vec.end());
     }
 }
 
 TEST_CASE("fl::FixedVector construction and destruction") {
-    FASTLED_USING_NAMESPACE;
     
     static int live_object_count = 0;
 
@@ -203,10 +202,43 @@ TEST_CASE("fl::FixedVector construction and destruction") {
         }
         CHECK(live_object_count == 0);
     }
+
+    SUBCASE("Stress test clear, insert and remove") {
+
+        fl::vector_inlined<TestObject, 20> vec;
+        size_t checked_size = 0;
+        for (int i = 0; i < 1000; ++i) {
+            int random_value = rand() % 4;
+
+            switch (random_value) {
+                case 0:
+                    if (!vec.full()) {
+                        vec.push_back(TestObject(i));
+                        ++checked_size;
+                    } else {
+                        REQUIRE_EQ(20, vec.size());
+                    }
+                    break;
+                case 1:
+                    if (!vec.empty()) {
+                        vec.pop_back();
+                        --checked_size;
+                    } else {
+                        REQUIRE_EQ(0, checked_size);
+                    }
+                    break;
+                case 2:
+                    vec.clear();
+                    checked_size = 0;
+                    REQUIRE_EQ(0, vec.size());
+                    break;
+            }
+
+        }
+    }
 }
 
 TEST_CASE("Fixed vector advanced") {
-    FASTLED_USING_NAMESPACE;
     fl::FixedVector<int, 5> vec;
 
     SUBCASE("Pop back") {
@@ -270,7 +302,6 @@ TEST_CASE("Fixed vector advanced") {
 }
 
 TEST_CASE("Fixed vector with custom type") {
-    FASTLED_USING_NAMESPACE;
     struct Point {
         int x, y;
         Point(int x = 0, int y = 0) : x(x), y(y) {}
@@ -386,5 +417,83 @@ TEST_CASE("HeapVector") {
         for (int i = 0; i < 5; ++i) {
             CHECK_EQ(0, vec[i]);
         }
+    }
+}
+
+
+TEST_CASE("Initializer list constructors") {
+    
+    SUBCASE("FixedVector initializer list") {
+        fl::FixedVector<int, 10> vec{1, 2, 3, 4, 5};  
+        
+        CHECK(vec.size() == 5);
+        CHECK(vec[0] == 1);
+        CHECK(vec[1] == 2);
+        CHECK(vec[2] == 3);
+        CHECK(vec[3] == 4);
+        CHECK(vec[4] == 5);
+    }
+    
+    SUBCASE("FixedVector initializer list with overflow") {
+        // Test that overflow is handled gracefully - only first N elements are taken
+        fl::FixedVector<int, 3> vec{1, 2, 3, 4, 5, 6, 7};
+        
+        CHECK(vec.size() == 3);
+        CHECK(vec[0] == 1);
+        CHECK(vec[1] == 2);
+        CHECK(vec[2] == 3);
+    }
+    
+    SUBCASE("HeapVector initializer list") {
+        fl::HeapVector<int> vec{10, 20, 30, 40};
+        
+        CHECK(vec.size() == 4);
+        CHECK(vec[0] == 10);
+        CHECK(vec[1] == 20);
+        CHECK(vec[2] == 30);
+        CHECK(vec[3] == 40);
+    }
+    
+    SUBCASE("InlinedVector initializer list - small size") {
+        fl::InlinedVector<int, 10> vec{1, 2, 3};
+        
+        CHECK(vec.size() == 3);
+        CHECK(vec[0] == 1);
+        CHECK(vec[1] == 2);
+        CHECK(vec[2] == 3);
+    }
+    
+    SUBCASE("InlinedVector initializer list - large size") {
+        fl::InlinedVector<int, 3> vec{1, 2, 3, 4, 5, 6};  // Should trigger heap mode
+        
+        CHECK(vec.size() == 6);
+        CHECK(vec[0] == 1);
+        CHECK(vec[1] == 2);
+        CHECK(vec[2] == 3);
+        CHECK(vec[3] == 4);
+        CHECK(vec[4] == 5);
+        CHECK(vec[5] == 6);
+    }
+    
+    SUBCASE("fl::vector initializer list") {
+        fl::vector<int> vec{100, 200, 300};  // This uses HeapVector
+        
+        CHECK(vec.size() == 3);
+        CHECK(vec[0] == 100);
+        CHECK(vec[1] == 200);
+        CHECK(vec[2] == 300);
+    }
+    
+    SUBCASE("Empty initializer list") {
+        fl::FixedVector<int, 5> fixed_vec{};
+        fl::HeapVector<int> heap_vec{};
+        fl::InlinedVector<int, 3> inlined_vec{};
+        
+        CHECK(fixed_vec.size() == 0);
+        CHECK(fixed_vec.empty());
+        CHECK(heap_vec.size() == 0);
+        CHECK(heap_vec.empty());
+        CHECK(inlined_vec.size() == 0);
+        CHECK(inlined_vec.empty());
     }
 }

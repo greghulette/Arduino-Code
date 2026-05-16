@@ -200,19 +200,30 @@
     /** The macro is defined when SPI library is available */
     #define CONFIG_PLATFORM_SPI_AVAILABLE
 
-#else
-    /** The macro is defined when i2c Wire library is available */
-    #define CONFIG_SOFTWARE_I2C_AVAILABLE
+#elif defined(ARDUINO_ARCH_RP2040)
+
     /** The macro is defined when i2c Wire library is available */
     #define CONFIG_PLATFORM_I2C_AVAILABLE
     /** The macro is defined when Wire library speed can be configured */
     #define SSD1306_WIRE_CLOCK_CONFIGURABLE
-    /** The macro is defined when TWI module is available (ATTINY) */
-    #define CONFIG_TWI_I2C_AVAILABLE
     /** The macro is defined when SPI library is available */
     #define CONFIG_PLATFORM_SPI_AVAILABLE
+
+#else
+    /** The macro is defined when i2c Wire library is available */
+    #define CONFIG_PLATFORM_I2C_AVAILABLE
+    /** The macro is defined when Wire library speed can be configured */
+    #define SSD1306_WIRE_CLOCK_CONFIGURABLE
+    /** The macro is defined when SPI library is available */
+    #define CONFIG_PLATFORM_SPI_AVAILABLE
+    #if defined(__AVR__)
+    /** The macro is defined when software i2c is available */
+    #define CONFIG_SOFTWARE_I2C_AVAILABLE
+    /** The macro is defined when TWI module is available (ATTINY) */
+    #define CONFIG_TWI_I2C_AVAILABLE
     /** The macro is defined when SPI module is available (ATMEGA) */
     #define CONFIG_AVR_SPI_AVAILABLE
+    #endif
 #endif
 
 //#ifdef CONFIG_PLATFORM_I2C_AVAILABLE

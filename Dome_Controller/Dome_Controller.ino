@@ -1213,6 +1213,13 @@ void stayingAlive(int servoBoard, int servoEasingMethod, uint32_t varSpeedMin, u
   D_command[0] = '\0';
 }
 
+
+// ==== SEQUENCER_TOOL: AUTO-INJECTED WRAPPERS START ====
+
+// ==== SEQUENCER_TOOL: AUTO-INJECTED WRAPPERS END ====
+
+
+
 //////////////////////////////////////////////////////////////////////
 ///*****        Sets Servo Easing Method                      *****///
 //////////////////////////////////////////////////////////////////////
@@ -1503,6 +1510,9 @@ void handleServoLimitCommand(const char* cmd) {
     } else { Serial.printf("[SERVO] Value %u out of range (500-2500)\n", val); }
   } else { Serial.println("[SERVO] Usage: #LOxxyyyy / #LCxxyyyy / #LRxx / #LL"); }
 }
+
+
+
 
 void setup(){
   //Initialize the Serial Ports
@@ -1888,6 +1898,9 @@ if (millis() - MLMillis >= mainLoopDelayVar){
           case 17: longHarlemShake(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 20: display(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);                break;
           case 27: stayingAlive(D_command[1],D_command[3],D_command[4],D_command[5],D_command[6]);          break;
+                              // ==== SEQUENCER_TOOL: AUTO-INJECTED CASES START ====
+
+          // ==== SEQUENCER_TOOL: AUTO-INJECTED CASES END ====
           case 98: closeAllDoors(2,0,0,0,0);                                                              break;
           case 99: closeAllDoors(2,0,0,0,0);                                                              break;
           default: break;

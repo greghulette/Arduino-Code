@@ -784,7 +784,6 @@ void OLEDDisplay::setContrast(uint8_t contrast, uint8_t precharge, uint8_t comde
   sendCommand(SETVCOMDETECT); //0xDB, (additionally needed to lower the contrast)
   sendCommand(comdetect);	//0x40 default, to lower the contrast, put 0
   sendCommand(DISPLAYALLON_RESUME);
-  sendCommand(NORMALDISPLAY);
   sendCommand(DISPLAYON);
 }
 

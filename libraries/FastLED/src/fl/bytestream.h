@@ -1,10 +1,10 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include "fl/stdint.h"
 
 #include "fl/namespace.h"
-#include "fl/ptr.h"
+#include "fl/memory.h"
+#include "fl/int.h"
 
 #include "crgb.h"
 
@@ -13,19 +13,17 @@ namespace fl {
 FASTLED_SMART_PTR(ByteStream);
 
 // An abstract class that represents a stream of bytes.
-class ByteStream : public fl::Referent {
+class ByteStream {
   public:
     virtual ~ByteStream() {}
-    virtual bool available(size_t) const = 0;
-    virtual size_t read(uint8_t *dst, size_t bytesToRead) = 0;
+    virtual bool available(fl::size) const = 0;
+    virtual fl::size read(fl::u8 *dst, fl::size bytesToRead) = 0;
     virtual const char *path() const = 0;
-    virtual void close() {}  // default is do nothing on close.
+    virtual void close() {} // default is do nothing on close.
     // convenience functions
-    size_t readCRGB(CRGB *dst, size_t n) {
-      return read((uint8_t *)dst, n * 3) / 3;
+    virtual fl::size readCRGB(CRGB *dst, fl::size n) {
+        return read((fl::u8 *)dst, n * 3) / 3;
     }
 };
 
-
-
-}  // namespace fl
+} // namespace fl

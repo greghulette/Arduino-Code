@@ -1,12 +1,10 @@
 #pragma once
 
 #include "FastLED.h"
-#include "fx/fx1d.h"
 #include "fl/namespace.h"
+#include "fx/fx1d.h"
 
 namespace fl {
-
-
 
 // FastLED "100-lines-of-code" demo reel, showing just a few
 // of the kinds of animation patterns you can quickly and easily
@@ -42,7 +40,7 @@ class DemoReel100 : public Fx1d {
         EVERY_N_SECONDS(10) { nextPattern(); } // change patterns periodically
     }
 
-    fl::Str fxName() const override { return "DemoReel100"; }
+    fl::string fxName() const override { return "DemoReel100"; }
 
   private:
     uint8_t current_pattern_number = 0;
@@ -131,4 +129,4 @@ class DemoReel100 : public Fx1d {
     }
 };
 
-}  // namespace fl
+} // namespace fl

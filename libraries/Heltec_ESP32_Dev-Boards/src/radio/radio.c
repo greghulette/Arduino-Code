@@ -8,8 +8,11 @@
 #include "../driver/sx126x-board.h"
 #include "../loramac/utilities.h"
 #include "../radio/radio.h"
-
-
+#include "Arduino.h"
+#include "../driver/board-config.h"
+#include "driver/gpio.h"
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
 /*!
  * \brief Initializes the radio
  *
@@ -883,6 +886,36 @@ uint32_t RadioTimeOnAir( RadioModems_t modem, uint8_t pktLen )
 extern bool lora_txing;;
 void RadioSend( uint8_t *buffer, uint8_t size )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+	pinMode(LORA_PA_EN,OUTPUT);
+	digitalWrite(LORA_PA_EN,HIGH);
+    delay(1);
+
+    pinMode(LORA_PA_TX_EN,OUTPUT);
+	digitalWrite(LORA_PA_TX_EN,HIGH);
+    delay(2);
+#endif
+
+#if defined(USE_KCT8103L_PA)
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_POWER);
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    delay(1);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,HIGH);
+    delay(1);
+
+    pinMode(LORA_PA_CTX,OUTPUT);
+	digitalWrite(LORA_PA_CTX,HIGH);
+    delay(2);
+#endif
+
     SX126xSetDioIrqParams( IRQ_TX_DONE | IRQ_RX_TX_TIMEOUT,
                            IRQ_TX_DONE | IRQ_RX_TX_TIMEOUT,
                            IRQ_RADIO_NONE,
@@ -906,6 +939,20 @@ void RadioSend( uint8_t *buffer, uint8_t size )
 
 void RadioSleep( void )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_EN,OUTPUT);
+	digitalWrite(LORA_PA_EN,LOW);
+    rtc_gpio_hold_en((gpio_num_t)LORA_PA_EN);
+#endif
+#if defined(USE_KCT8103L_PA)
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,LOW);
+    pinMode(LORA_PA_POWER,OUTPUT);
+	digitalWrite(LORA_PA_POWER,LOW);
+    rtc_gpio_hold_en((gpio_num_t)LORA_PA_CSD);
+    rtc_gpio_hold_en((gpio_num_t)LORA_PA_POWER);
+    delay(1);
+#endif
     SleepParams_t params = { 0 };
 
     params.Fields.WarmStart = 1;
@@ -921,6 +968,30 @@ void RadioStandby( void )
 
 void RadioRx( uint32_t timeout )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+	pinMode(LORA_PA_EN,OUTPUT);
+    digitalWrite(LORA_PA_EN,HIGH);
+#endif
+
+#if defined(USE_KCT8103L_PA)
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_POWER);
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    delay(1);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,HIGH);
+    delay(1);
+    
+    pinMode(LORA_PA_CTX,OUTPUT);
+    digitalWrite(LORA_PA_CTX,LORA_RX_LNA);
+    delay(1);
+#endif
     SX126xSetDioIrqParams( IRQ_RX_DONE | IRQ_CRC_ERROR| IRQ_RX_TX_TIMEOUT,
                            IRQ_RX_DONE | IRQ_CRC_ERROR| IRQ_RX_TX_TIMEOUT,
                            IRQ_RADIO_NONE,
@@ -945,6 +1016,31 @@ void RadioRx( uint32_t timeout )
 
 void RadioRxBoosted( uint32_t timeout )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+	pinMode(LORA_PA_EN,OUTPUT);
+    digitalWrite(LORA_PA_EN,HIGH);
+#endif
+
+#if defined(USE_KCT8103L_PA)
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_POWER);
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    delay(1);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,HIGH);
+    delay(1);
+    
+    pinMode(LORA_PA_CTX,OUTPUT);
+    digitalWrite(LORA_PA_CTX,LORA_RX_LNA);
+    delay(1);
+#endif
+
     SX126xSetDioIrqParams( IRQ_RX_DONE,
                            IRQ_RX_DONE,
                            IRQ_RADIO_NONE,
@@ -968,6 +1064,29 @@ void RadioRxBoosted( uint32_t timeout )
 
 void RadioSetRxDutyCycle( uint32_t rxTime, uint32_t sleepTime )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+	pinMode(LORA_PA_EN,OUTPUT);
+    digitalWrite(LORA_PA_EN,HIGH);
+#endif
+#if defined(USE_KCT8103L_PA)
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_POWER);
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    delay(1);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,HIGH);
+    delay(1);
+    
+    pinMode(LORA_PA_CTX,OUTPUT);
+    digitalWrite(LORA_PA_CTX,LORA_RX_LNA);
+    delay(1);
+#endif
     SX126xSetRxDutyCycle( rxTime, sleepTime );
 }
 
@@ -1010,6 +1129,36 @@ void RadioTx( uint32_t timeout )
 
 void RadioSetTxContinuousWave( uint32_t freq, int8_t power, uint16_t time )
 {
+#if defined(USE_GC1109_PA)
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+	pinMode(LORA_PA_EN,OUTPUT);
+	digitalWrite(LORA_PA_EN,HIGH);
+    delay(1);
+
+    pinMode(LORA_PA_TX_EN,OUTPUT);
+	digitalWrite(LORA_PA_TX_EN,HIGH);
+    delay(2);
+#endif
+
+#if defined(USE_KCT8103L_PA)
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_POWER);
+	pinMode(LORA_PA_POWER,OUTPUT);
+    digitalWrite(LORA_PA_POWER,HIGH);
+    delay(1);
+
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
+	pinMode(LORA_PA_CSD,OUTPUT);
+	digitalWrite(LORA_PA_CSD,HIGH);
+    delay(1);
+
+    pinMode(LORA_PA_CTX,OUTPUT);
+	digitalWrite(LORA_PA_CTX,HIGH);
+    delay(2);
+#endif
+
     SX126xSetRfFrequency( freq );
     SX126xSetRfTxPower( power );
     SX126xSetTxContinuousWave( );

@@ -1,12 +1,12 @@
 
 #include "fl/rectangular_draw_buffer.h"
+#include "fl/allocator.h"
 #include "fl/namespace.h"
 #include "rgbw.h"
-#include "fl/allocator.h"
 
 namespace fl {
 
-DrawItem::DrawItem(uint8_t pin, uint16_t numLeds, bool is_rgbw)
+DrawItem::DrawItem(u8 pin, u16 numLeds, bool is_rgbw)
     : mPin(pin), mIsRgbw(is_rgbw) {
     if (is_rgbw) {
         numLeds = Rgbw::size_as_rgb(numLeds);
@@ -14,13 +14,14 @@ DrawItem::DrawItem(uint8_t pin, uint16_t numLeds, bool is_rgbw)
     mNumBytes = numLeds * 3;
 }
 
-Slice<uint8_t> RectangularDrawBuffer::getLedsBufferBytesForPin(uint8_t pin, bool clear_first) {
+span<u8>
+RectangularDrawBuffer::getLedsBufferBytesForPin(u8 pin, bool clear_first) {
     auto it = mPinToLedSegment.find(pin);
     if (it == mPinToLedSegment.end()) {
         FASTLED_ASSERT(false, "Pin not found in RectangularDrawBuffer");
-        return fl::Slice<uint8_t>();
+        return fl::span<u8>();
     }
-    fl::Slice<uint8_t> slice = it->second;
+    fl::span<u8> slice = it->second;
     if (clear_first) {
         memset(slice.data(), 0, slice.size() * sizeof(slice[0]));
     }
@@ -53,45 +54,45 @@ bool RectangularDrawBuffer::onQueuingDone() {
     mDrawListChangedThisFrame = mDrawList != mPrevDrawList;
     // iterator through the current draw objects and calculate the total
     // number of bytes (representing RGB or RGBW) that will be drawn this frame.
-    uint32_t total_bytes = 0;
-    uint32_t max_bytes_in_strip = 0;
-    uint32_t num_strips = 0;
+    u32 total_bytes = 0;
+    u32 max_bytes_in_strip = 0;
+    u32 num_strips = 0;
     getBlockInfo(&num_strips, &max_bytes_in_strip, &total_bytes);
     if (total_bytes > mAllLedsBufferUint8Size) {
-        uint8_t* old_ptr = mAllLedsBufferUint8.release();
-        fl::LargeBlockAllocator<uint8_t>::Free(old_ptr);
-        uint8_t* ptr = fl::LargeBlockAllocator<uint8_t>::Alloc(total_bytes);
+        u8 *old_ptr = mAllLedsBufferUint8.release();
+        fl::PSRamAllocator<u8>::Free(old_ptr);
+        u8 *ptr = fl::PSRamAllocator<u8>::Alloc(total_bytes);
         mAllLedsBufferUint8.reset(ptr);
     }
     mAllLedsBufferUint8Size = total_bytes;
-    uint32_t offset = 0;
+    u32 offset = 0;
     for (auto it = mDrawList.begin(); it != mDrawList.end(); ++it) {
-        uint8_t pin = it->mPin;
-        Slice<uint8_t> slice(mAllLedsBufferUint8.get() + offset,
-                             max_bytes_in_strip);
+        u8 pin = it->mPin;
+        span<u8> slice(mAllLedsBufferUint8.get() + offset,
+                            max_bytes_in_strip);
         mPinToLedSegment[pin] = slice;
         offset += max_bytes_in_strip;
     }
     return true;
 }
 
-uint32_t RectangularDrawBuffer::getMaxBytesInStrip() const {
-    uint32_t max_bytes = 0;
+u32 RectangularDrawBuffer::getMaxBytesInStrip() const {
+    u32 max_bytes = 0;
     for (auto it = mDrawList.begin(); it != mDrawList.end(); ++it) {
         max_bytes = MAX(max_bytes, it->mNumBytes);
     }
     return max_bytes;
 }
 
-uint32_t RectangularDrawBuffer::getTotalBytes() const {
-    uint32_t num_strips = mDrawList.size();
-    uint32_t max_bytes = getMaxBytesInStrip();
+u32 RectangularDrawBuffer::getTotalBytes() const {
+    u32 num_strips = mDrawList.size();
+    u32 max_bytes = getMaxBytesInStrip();
     return num_strips * max_bytes;
 }
 
-void RectangularDrawBuffer::getBlockInfo(uint32_t *num_strips,
-                                         uint32_t *bytes_per_strip,
-                                         uint32_t *total_bytes) const {
+void RectangularDrawBuffer::getBlockInfo(u32 *num_strips,
+                                         u32 *bytes_per_strip,
+                                         u32 *total_bytes) const {
     *num_strips = mDrawList.size();
     *bytes_per_strip = getMaxBytesInStrip();
     *total_bytes = (*num_strips) * (*bytes_per_strip);

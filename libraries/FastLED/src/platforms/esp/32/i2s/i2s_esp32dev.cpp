@@ -13,7 +13,8 @@
 
 #include "i2s_esp32dev.h"
 #include "fl/namespace.h"
-#include <stdint.h>
+#include "fl/stdint.h"
+#include "fl/memfill.h"
 #include <string.h> // for memset
 
 #include "platforms/esp/esp_version.h"
@@ -84,20 +85,20 @@ DMABuffer *dmaBuffers[NUM_DMA_BUFFERS];
 // -- Global semaphore for the whole show process
 //    Semaphore is not given until all data has been sent
 #if tskKERNEL_VERSION_MAJOR >= 7
-static SemaphoreHandle_t gTX_sem = NULL;
+static SemaphoreHandle_t gTX_semaphore = NULL;
 #else
-static xSemaphoreHandle gTX_sem = NULL;
+static xSemaphoreHandle gTX_semaphore = NULL;
 #endif
 
 // -- One-time I2S initialization
-static bool gInitialized = false;
+static bool gInitializedI2sInitialized = false;
 
 static DMABuffer *allocateDMABuffer(int bytes) {
     DMABuffer *b =
         (DMABuffer *)heap_caps_malloc(sizeof(DMABuffer), MALLOC_CAP_DMA);
 
     b->buffer = (uint8_t *)heap_caps_malloc(bytes, MALLOC_CAP_DMA);
-    memset(b->buffer, 0, bytes);
+    fl::memfill(b->buffer, 0, bytes);
 
     b->descriptor.length = bytes;
     b->descriptor.size = bytes;
@@ -140,7 +141,7 @@ static IRAM_ATTR void interruptHandler(void *arg) {
 #endif
             {
                 portBASE_TYPE HPTaskAwoken = 0;
-                xSemaphoreGiveFromISR(gTX_sem, &HPTaskAwoken);
+                xSemaphoreGiveFromISR(gTX_semaphore, &HPTaskAwoken);
                 if (HPTaskAwoken == pdTRUE)
                     portYIELD_FROM_ISR();
             }
@@ -339,11 +340,11 @@ void i2s_define_bit_patterns(int T1, int T2, int T3) {
         ++i;
     }
 
-    memset(gPixelRow, 0, NUM_COLOR_CHANNELS * 32);
-    memset(gPixelBits, 0, NUM_COLOR_CHANNELS * 32);
+    fl::memfill(gPixelRow, 0, NUM_COLOR_CHANNELS * 32);
+    fl::memfill(gPixelBits, 0, NUM_COLOR_CHANNELS * 32);
 }
 
-bool i2s_is_initialized() { return gInitialized; }
+bool i2s_is_initialized() { return gInitializedI2sInitialized; }
 
 void i2s_init(int i2s_device) {
 
@@ -431,13 +432,13 @@ void i2s_init(int i2s_device) {
 
     // -- Create a semaphore to block execution until all the controllers are
     // done
-    if (gTX_sem == NULL) {
-        gTX_sem = xSemaphoreCreateBinary();
-        xSemaphoreGive(gTX_sem);
+    if (gTX_semaphore == NULL) {
+        gTX_semaphore = xSemaphoreCreateBinary();
+        xSemaphoreGive(gTX_semaphore);
     }
 
     // Serial.println("Init I2S");
-    gInitialized = true;
+    gInitializedI2sInitialized = true;
 }
 
 void i2s_clear_dma_buffer(uint32_t *buf) {
@@ -509,14 +510,14 @@ void i2s_stop() {
     i2s->conf.tx_start = 0;
 }
 
-void i2s_begin() { xSemaphoreTake(gTX_sem, portMAX_DELAY); }
+void i2s_begin() { xSemaphoreTake(gTX_semaphore, portMAX_DELAY); }
 
 void i2s_wait() {
     // -- Wait here while the rest of the data is sent. The interrupt handler
     //    will keep refilling the DMA buffers until it is all sent; then it
     //    gives the semaphore back.
-    xSemaphoreTake(gTX_sem, portMAX_DELAY);
-    xSemaphoreGive(gTX_sem);
+    xSemaphoreTake(gTX_semaphore, portMAX_DELAY);
+    xSemaphoreGive(gTX_semaphore);
 }
 
 void i2s_setup_pin(int _pin, int offset) {

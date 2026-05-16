@@ -1,10 +1,16 @@
 # Testing
 
+  * REPO SYNC MODE: When there is a compiler error there isn't a hard failure. The compiler error needs to get propagate back to the top.
+
+
   * Esp32 testing
     * https://github.com/marketplace/actions/esp32-qemu-runner will run a sketch for X seconds and see's if it crashes
       * There's specific tests we'd like to run with this including the WS2812 and APA102 tests to test the clockless and clocked drivers
 
 # Feature Enhancements
+
+  [ ] Adafruit converter driver
+  [ ] NeoPixel converter driver
 
   * I2S driver for ESP32 WS2812
     * https://github.com/hpwit/I2SClocklessLedDriver
@@ -35,3 +41,7 @@
 
   * sutaburosu's guide to playing around with FastLED 4
     * https://github.com/sutaburosu/FastLED4-ESP32-playpen
+
+
+# Animartrix: try using sinf, cosf and other found trip instead of trying to go
+full double precision.

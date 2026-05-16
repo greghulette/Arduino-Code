@@ -9,6 +9,9 @@
 #include "eorder.h"
 #include "pixel_iterator.h"
 #include "idf5_rmt.h"
+#include "fl/namespace.h"
+
+FASTLED_NAMESPACE_BEGIN
 
 
 template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 5>
@@ -16,18 +19,14 @@ class ClocklessController : public CPixelLEDController<RGB_ORDER>
 {
 private:
     // -- The actual controller object for ESP32
-    RmtController5 mRMTController;
+    fl::RmtController5 mRMTController;
 
         // -- Verify that the pin is valid
-    static_assert(FastPin<DATA_PIN>::validpin(), "Invalid pin specified");
+    static_assert(FastPin<DATA_PIN>::validpin(), "This pin has been marked as an invalid pin, common reasons includes it being a ground pin, read only, or too noisy (e.g. hooked up to the uart).");
 
-    static RmtController5::DmaMode DefaultDmaMode()
+    static fl::RmtController5::DmaMode DefaultDmaMode()
     {
-        #ifdef FASTLED_RMT_USE_DMA
-        return RmtController5::DMA_ENABLED;
-        #else
-        return RmtController5::DMA_AUTO;
-        #endif
+        return fl::RmtController5::DMA_AUTO;
     }
 
 public:
@@ -44,7 +43,7 @@ protected:
     // Prepares data for the draw.
     virtual void showPixels(PixelController<RGB_ORDER> &pixels) override
     {
-        PixelIterator iterator = pixels.as_iterator(this->getRgbw());
+        fl::PixelIterator iterator = pixels.as_iterator(this->getRgbw());
         mRMTController.loadPixelData(iterator);
     }
 
@@ -54,3 +53,5 @@ protected:
         mRMTController.showPixels();
     }
 };
+
+FASTLED_NAMESPACE_END

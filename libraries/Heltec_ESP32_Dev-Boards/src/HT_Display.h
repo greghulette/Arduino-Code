@@ -5,6 +5,13 @@
 #include <Arduino.h>
 #include <HT_DisplayFonts.h>
 
+enum DISPLAY_BUFFER
+{
+	BLACK_BUFFER = 0,
+	COLOR_BUFFER = 1,
+
+};
+
 //#define DEBUG_DISPLAY(...) Serial.printf( __VA_ARGS__ )
 //#define DEBUG_DISPLAY(...) dprintf("%s",  __VA_ARGS__ )
 
@@ -241,7 +248,10 @@ class ScreenDisplay : public Print  {
 
     // Write the buffer to the display memory
     virtual void display(void) = 0;
+    virtual void update(DISPLAY_BUFFER bufferType = BLACK_BUFFER)
+    {
 
+    }
     // Clear the local pixel buffer
     void clear(void);
 
@@ -261,7 +271,7 @@ class ScreenDisplay : public Print  {
 
     // Implement needed function to be compatible with Print class
     size_t write(uint8_t c);
-    size_t write(const char* s);
+    size_t write(const uint8_t* s, size_t size);
 	
     // Implement needed function to be compatible with Stream clas
 

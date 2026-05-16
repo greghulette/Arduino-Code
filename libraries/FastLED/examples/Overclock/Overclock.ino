@@ -1,8 +1,18 @@
 /// @file    Overclock.ino
+/// @brief   High performance LED display example
+/// @example Overclock.ino
+///
+/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
+/// 1. Install Fastled: `pip install fastled`
+/// 2. cd into this examples page.
+/// 3. Run the FastLED web compiler at root: `fastled`
+/// 4. When the compiler is done a web page will open.
+
 /// @brief   Demonstrates how to overclock a FastLED setup
 
+#include "FastLED.h"
 
-#ifdef __AVR__
+#if !SKETCH_HAS_LOTS_OF_MEMORY
 // To effectively test the overclock feature we need
 // a large enough dataset to test against. Unfortunately
 // the avr platforms don't have enough memory so this example
@@ -16,7 +26,7 @@ void loop() {}
 
 #include "fx/2d/noisepalette.h"
 #include "fx/fx.h"
-#include <FastLED.h>
+
 
 using namespace fl;
 

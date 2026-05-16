@@ -1,6 +1,12 @@
-/// @file    Pacifica.ino
-/// @brief   Gentle, blue-green ocean wave animation
-/// @example Pacifica.ino
+/// @file    FxPacifica.ino
+/// @brief   Pacifica ocean effect with ScreenMap
+/// @example FxPacifica.ino
+///
+/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
+/// 1. Install Fastled: `pip install fastled`
+/// 2. cd into this examples page.
+/// 3. Run the FastLED web compiler at root: `fastled`
+/// 4. When the compiler is done a web page will open.
 
 //
 //  "Pacifica"
@@ -13,6 +19,14 @@
 #define FASTLED_ALLOW_INTERRUPTS 0
 #include <FastLED.h>
 #include "fx/1d/pacifica.h"
+#include "fl/screenmap.h"
+#include "defs.h"  // for ENABLE_SKETCH
+
+#if !ENABLE_SKETCH
+void setup() {}
+void loop() {}
+#else
+
 
 using namespace fl;
 
@@ -26,9 +40,11 @@ CRGB leds[NUM_LEDS];
 Pacifica pacifica(NUM_LEDS);
 
 void setup() {
-  delay(3000); // 3 second delay for boot recovery, and a moment of silence
+  Serial.begin(115200);
+  ScreenMap screenMap = ScreenMap::DefaultStrip(NUM_LEDS, 1.5f, 0.5f);
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS)
-        .setCorrection(TypicalLEDStrip);
+        .setCorrection(TypicalLEDStrip)
+        .setScreenMap(screenMap);
   FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_POWER_MILLIAMPS);
 }
 
@@ -38,3 +54,5 @@ void loop() {
     FastLED.show();
   }
 }
+
+#endif // ENABLE_SKETCH

@@ -1,37 +1,55 @@
-
+// allow-include-after-namespace
 #pragma once
 
-#include <stddef.h>
-
-// FastLED smart pointer. This was originally called Ptr<T> but that conflicts with
-// ArduinoJson::Ptr<T> so it was renamed to Ptr<T>.
+// FastLED smart pointer.
+//
+//   * Make your subclasses inherit from fl::Referent.
+//     * `class Foo: public fl::Referent {};`
+//   * Use a macro to declare your smart pointer.
+//     * For regular, non-template classes:
+//       * `FASTLED_SMART_PTR(Foo)` -> `FooPtr` is now available.
+//     * For templates use `FASTLED_SMART_PTR_NO_FWD(Foo)`
+//       * `template <typename T> class Foo {}; using FooInt = Foo<int>;`
+//       * `FASTLED_SAMRT_PTR_NO_FWD(FooInt)`
+//       * `FooIntPtr` is now available.
+//   * Instantiate from heap
+//     * `FooPtr foo = fl::make_intrusive<Foo>(a, b, ...args);`
+//     * Use `foo->method()` to call methods.
+//   * Instantiate from stack object and disable tracking
+//     * `Foo foo; FooPtr fooPtr = FooPtr::NoTracking(foo);`
+///
 
 #include "fl/namespace.h"
 #include "fl/scoped_ptr.h"
-#include "fl/template_magic.h"
-
+#include "fl/type_traits.h"
+#include "fl/referent.h"
+#include "fl/bit_cast.h"
+#include "fl/int.h"
+#include "fl/deprecated.h"
 
 // Declares a smart pointer. FASTLED_SMART_PTR(Foo) will declare a class FooPtr
-// which will be a typedef of Ptr<Foo>. After this FooPtr::New(...args) can be
-// used to create a new instance of Ptr<Foo>.
+// which will be a typedef of shared_ptr<Foo>. After this fl::make_intrusive<Foo>(...args) can be
+// used to create a new instance of shared_ptr<Foo>.
 #define FASTLED_SMART_PTR(type)                                                \
     class type;                                                                \
-    using type##Ptr = fl::Ptr<type>;
+    using type##Ptr = fl::shared_ptr<type>;
 
-#define FASTLED_SMART_PTR_NO_FWD(type) using type##Ptr = fl::Ptr<type>;
+#define FASTLED_SMART_PTR_STRUCT(type)                                         \
+    struct type;                                                               \
+    using type##Ptr = fl::shared_ptr<type>;
+
+#define FASTLED_SMART_PTR_NO_FWD(type) using type##Ptr = fl::shared_ptr<type>;
 
 // If you have an interface class that you want to create a smart pointer for,
 // then you need to use this to bind it to a constructor.
 #define FASTLED_SMART_PTR_CONSTRUCTOR(type, constructor)                       \
     template <> class PtrTraits<type> {                                        \
       public:                                                                  \
-        template <typename... Args> static Ptr<type> New(Args... args) {       \
-            fl::Ptr<type> ptr = constructor(args...);                          \
+        template <typename... Args> static shared_ptr<type> New(Args... args) {       \
+            fl::shared_ptr<type> ptr = constructor(args...);                          \
             return ptr;                                                        \
         }                                                                      \
     };
-
-
 
 namespace fl {
 
@@ -40,24 +58,17 @@ class Referent; // Inherit this if you want your object to be able to go into a
 template <typename T> class Ptr; // Reference counted smart pointer base class.
 template <typename T> class WeakPtr; // Weak reference smart pointer base class.
 
+template <typename T, typename... Args> Ptr<T> NewPtr(Args... args);
 
-template <typename T> class Ptr;
-template <typename T> class WeakPtr;
+template <typename T, typename... Args> Ptr<T> NewPtrNoTracking(Args... args);
 
 template <typename T> class PtrTraits {
   public:
     using element_type = T;
     using ptr_type = Ptr<T>;
 
-    template <typename... Args> static Ptr<T> New(Args... args) {
-        T *ptr = new T(args...);
-        return Ptr<T>::TakeOwnership(ptr);
-    }
-
-    static Ptr<T> New() {
-        T *ptr = new T();
-        return Ptr<T>::TakeOwnership(ptr);
-    }
+    template <typename... Args> static Ptr<T> New(Args... args);
+    static Ptr<T> New();
 };
 
 // Ptr is a reference-counted smart pointer that manages the lifetime of an
@@ -71,7 +82,7 @@ template <typename T> class PtrTraits {
 // methods.
 //
 // To create a Ptr to a concrete object, it's best to use FASTLED_SMART_PTR(Foo)
-// and then use FooPtr::New(...) to create a new instance of Ptr<Foo>.
+// and then use fl::make_intrusive<Foo>(...) to create a new instance of Ptr<Foo>.
 //
 // To create a Ptr of an interface bound to a subclass (common for driver code
 // or when hiding implementation) use the Ptr<InterfaceClass>::TakeOwnership(new
@@ -84,13 +95,13 @@ template <typename T> class PtrTraits {
 // Example:
 //   FASTLED_SMART_PTR(Foo);
 //   class Foo: public fl::Referent {};
-//   FooPtr foo = FooPtr::New();
+//   FooPtr foo = fl::make_intrusive<Foo>();
 //
 // Example 2: (Manual binding to constructor)
 //   class FooSubclass: public Foo {};
 //   Ptr<Foo> bar = Ptr<FooSubclass>::TakeOwnership(new FooSubclass());
 //
-// Example 3: (Provide your own constructor so that FooPtr::New() works to
+// Example 3: (Provide your own constructor so that fl::make_intrusive<Foo>() works to
 // create a FooSubclass)
 //   class FooSubclass: public Foo {  // Foo is an interface, FooSubclass is an
 //   implementation.
@@ -98,34 +109,34 @@ template <typename T> class PtrTraits {
 //       static FooPtr New(int a, int b);
 //   };
 //   FASTLED_SMART_PTR_CONSTRUCTOR(Foo, FooSubclass::New);
-//   FooPtr foo = FooPtr::New(1, 2);  // this will now work.
+//   FooPtr foo = fl::make_intrusive<Foo>(1, 2);  // this will now work.
+// NOTE: This is legacy - new code should use fl::shared_ptr<T> instead
 template <typename T> class Ptr : public PtrTraits<T> {
   public:
     friend class PtrTraits<T>;
 
-    template <typename... Args> static Ptr<T> New(Args... args) {
-        return PtrTraits<T>::New(args...);
-    }
+    template <typename... Args> 
+    static Ptr<T> New(Args... args);
+    
     // Used for low level allocations, typically for pointer to an
     // implementation where it needs to convert to a Ptr of a base class.
+    // NOTE: Legacy method - use fl::shared_ptr<T> constructor or fl::make_shared<T>() instead
     static Ptr TakeOwnership(T *ptr) { return Ptr(ptr, true); }
 
     // Used for low level allocations, typically to handle memory that is
     // statically allocated where the destructor should not be called when
     // the refcount reaches 0.
+    // NOTE: Legacy method - use fl::make_shared_no_tracking<T>() instead
     static Ptr NoTracking(T &referent) { return Ptr(&referent, false); }
 
+    static Ptr Null() { return Ptr<T>(); }
 
     // Allow upcasting of Refs.
     template <typename U, typename = fl::is_derived<T, U>>
-    Ptr(const Ptr<U>& refptr) : referent_(refptr.get()) {
-        if (referent_ && isOwned()) {
-            referent_->ref();
-        }
-    }
+    // NOTE: Legacy constructor - use fl::shared_ptr<T> instead of fl::Ptr<T>
+    Ptr(const Ptr<U> &refptr);
 
-    static Ptr<T> Null() { return Ptr<T>(); }
-
+    // NOTE: Legacy constructor - use fl::shared_ptr<T> instead of fl::Ptr<T>
     Ptr() : referent_(nullptr) {}
 
     // Forbidden to convert a raw pointer to a Referent into a Ptr, because
@@ -133,302 +144,107 @@ template <typename T> class Ptr : public PtrTraits<T> {
     Ptr(T *referent) = delete;
     Ptr &operator=(T *referent) = delete;
 
-    Ptr(const Ptr &other) : referent_(other.referent_) {
-        if (referent_ && isOwned()) {
-            referent_->ref();
-        }
-    }
+    // NOTE: Legacy constructor - use fl::shared_ptr<T> instead of fl::Ptr<T>
+    Ptr(const Ptr &other);
+    // NOTE: Legacy constructor - use fl::shared_ptr<T> instead of fl::Ptr<T>
+    Ptr(Ptr &&other) noexcept;
+    ~Ptr();
 
-    Ptr(Ptr &&other) noexcept : referent_(other.referent_) {
-        other.referent_ = nullptr;
-    }
-
-    ~Ptr() {
-        if (referent_ && isOwned()) {
-            referent_->unref();
-        }
-    }
-
-    Ptr &operator=(const Ptr &other) {
-        if (this != &other) {
-            if (referent_ && isOwned()) {
-                referent_->unref();
-            }
-            referent_ = other.referent_;
-            if (referent_ && isOwned()) {
-                referent_->ref();
-            }
-        }
-        return *this;
-    }
+    // NOTE: Legacy assignment - use fl::shared_ptr<T> instead of fl::Ptr<T>
+    Ptr &operator=(const Ptr &other);
+    // NOTE: Legacy assignment - use fl::shared_ptr<T> instead of fl::Ptr<T>
+    Ptr &operator=(Ptr &&other) noexcept;
 
     // Either returns the weakptr if it exists, or an empty weakptr.
     WeakPtr<T> weakRefNoCreate() const;
     WeakPtr<T> weakPtr() const { return WeakPtr<T>(*this); }
 
     bool operator==(const T *other) const { return referent_ == other; }
-
     bool operator!=(const T *other) const { return referent_ != other; }
-
-    bool operator==(const Ptr &other) const {
-        return referent_ == other.referent_;
-    }
-    bool operator!=(const Ptr &other) const {
-        return referent_ != other.referent_;
-    }
-
-    bool operator<(const Ptr &other) const {
-        return referent_ < other.referent_;
-    }
-
-    Ptr &operator=(Ptr &&other) noexcept {
-        if (this != &other) {
-            if (referent_ && isOwned()) {
-                referent_->unref();
-            }
-            referent_ = other.referent_;
-            other.referent_ = nullptr;
-        }
-        return *this;
-    }
+    bool operator==(const Ptr &other) const { return referent_ == other.referent_; }
+    bool operator!=(const Ptr &other) const { return referent_ != other.referent_; }
+    bool operator<(const Ptr &other) const { return referent_ < other.referent_; }
 
     T *get() const { return referent_; }
-
     T *operator->() const { return referent_; }
-
     T &operator*() const { return *referent_; }
-
     explicit operator bool() const noexcept { return referent_ != nullptr; }
 
-    void reset() {
-        if (referent_ && isOwned()) {
-            referent_->unref();
-        }
-        referent_ = nullptr;
-    }
-
-    void reset(Ptr<T> &refptr) {
-        if (refptr.referent_ != referent_) {
-            if (refptr.referent_ && refptr.isOwned()) {
-                refptr.referent_->ref();
-            }
-            if (referent_ && isOwned()) {
-                referent_->unref();
-            }
-            referent_ = refptr.referent_;
-        }
-    }
+    void reset();
+    void reset(Ptr<T> &refptr);
 
     // Releases the pointer from reference counting from this Ptr.
-    T *release() {
-        T *temp = referent_;
-        referent_ = nullptr;
-        return temp;
-    }
+    T *release();
 
-    void swap(Ptr &other) noexcept {
-        T *temp = referent_;
-        referent_ = other.referent_;
-        other.referent_ = temp;
-    }
-
+    void swap(Ptr &other) noexcept;
     bool isOwned() const { return referent_ && referent_->ref_count() > 0; }
 
   private:
-    Ptr(T *referent, bool from_heap) : referent_(referent) {
-        if (referent_ && from_heap) {
-            referent_->ref();
-        }
-    }
+    Ptr(T *referent, bool from_heap);
     T *referent_;
 };
 
-// Don't inherit from this, this is an internal object.
-class WeakReferent {
-  public:
-    WeakReferent() : mRefCount(0), mReferent(nullptr) {}
-    ~WeakReferent() {}
-
-    void ref() { mRefCount++; }
-    int ref_count() const { return mRefCount; }
-    void unref() {
-        if (--mRefCount == 0) {
-            destroy();
-        }
-    }
-    void destroy() { delete this; }
-    void setReferent(Referent *referent) { mReferent = referent; }
-    Referent *getReferent() const { return mReferent; }
-
-  protected:
-    WeakReferent(const WeakReferent &) = default;
-    WeakReferent &operator=(const WeakReferent &) = default;
-    WeakReferent(WeakReferent &&) = default;
-    WeakReferent &operator=(WeakReferent &&) = default;
-
-  private:
-    mutable int mRefCount;
-    Referent *mReferent;
-};
-
+// NOTE: This is legacy - new code should use fl::weak_ptr<T> instead
 template <typename T> class WeakPtr {
   public:
-    WeakPtr() : mWeakPtr() {}
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr() : mWeakPtr(nullptr) {}
 
-    WeakPtr(const Ptr<T> &ptr) {
-        if (ptr) {
-            WeakPtr weakRefNoCreate = ptr.weakRefNoCreate();
-            bool expired = weakRefNoCreate.expired();
-            if (expired) {
-                Ptr<WeakReferent> weakRefNoCreate = Ptr<WeakReferent>::New();
-                ptr->setWeakPtr(weakRefNoCreate);
-                weakRefNoCreate->setReferent(ptr.get());
-            }
-            mWeakPtr = ptr->mWeakPtr;
-        }
-    }
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr(const Ptr<T> &ptr);
 
-    template <typename U> WeakPtr(const Ptr<U> &ptr) : mWeakPtr(ptr->mWeakPtr) {
-        if (ptr) {
-            WeakPtr weakRefNoCreate = ptr.weakRefNoCreate();
-            bool expired = weakRefNoCreate.expired();
-            if (expired) {
-                Ptr<WeakReferent> weakRefNoCreate = Ptr<WeakReferent>::New();
-                ptr->setWeakPtr(weakRefNoCreate);
-                weakRefNoCreate->setReferent(ptr.get());
-            }
-            mWeakPtr = ptr->mWeakPtr;
-        }
-    }
+    template <typename U> 
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr(const Ptr<U> &ptr);
 
-    WeakPtr(const WeakPtr &other) : mWeakPtr(other.mWeakPtr) {}
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr(const WeakPtr &other);
 
     template <typename U>
-    WeakPtr(const WeakPtr<U> &other) : mWeakPtr(other.mWeakPtr) {}
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr(const WeakPtr<U> &other);
 
-    WeakPtr(WeakPtr &&other) noexcept : mWeakPtr(other.mWeakPtr) {}
+    // NOTE: Legacy constructor - use fl::weak_ptr<T> instead of fl::WeakPtr<T>
+    WeakPtr(WeakPtr &&other) noexcept;
 
-    ~WeakPtr() { reset(); }
+    ~WeakPtr();
 
-    operator bool() const { return mWeakPtr && mWeakPtr->getReferent(); }
+    operator bool() const;
+    bool operator!() const;
+    bool operator==(const WeakPtr &other) const;
+    bool operator!=(const WeakPtr &other) const;
+    bool operator==(const T *other) const;
+    bool operator==(T *other) const;
+    bool operator==(const Ptr<T> &other) const;
+    bool operator!=(const T *other) const;
 
-    bool operator!() const {
-        bool ok = *this;
-        return !ok;
+    WeakPtr &operator=(const WeakPtr &other);
+
+    Ptr<T> lock() const;
+
+    bool expired() const;
+
+    void reset();
+
+    fl::uptr ptr_value() const {
+      fl::uptr val = fl::bit_cast<fl::uptr>(mWeakPtr);
+      return val;
     }
-
-    bool operator==(const WeakPtr &other) const {
-        return mWeakPtr == other.mWeakPtr;
-    }
-
-    bool operator!=(const WeakPtr &other) const {
-        return !(mWeakPtr != other.mWeakPtr);
-    }
-
-    bool operator==(const T *other) const { return lock().get() == other; }
-
-    bool operator==(T *other) const {
-        if (!mWeakPtr) {
-            return other == nullptr;
-        }
-        return mWeakPtr->getReferent() == other;
-    }
-
-    bool operator==(const Ptr<T> &other) const {
-        if (!mWeakPtr) {
-            return !other;
-        }
-        return mWeakPtr->getReferent() == other.get();
-    }
-
-    bool operator!=(const T *other) const {
-        bool equal = *this == other;
-        return !equal;
-    }
-
-    WeakPtr &operator=(const WeakPtr &other) {
-        this->mWeakPtr = other.mWeakPtr;
-        return *this;
-    }
-
-    Ptr<T> lock() const {
-        if (!mWeakPtr) {
-            return Ptr<T>();
-        }
-        T* out = static_cast<T*>(mWeakPtr->getReferent());
-        if (out->ref_count() == 0) {
-            // This is a static object, so the refcount is 0.
-            return Ptr<T>::NoTracking(*out);
-        }
-        // This is a heap object, so we need to ref it.
-        return Ptr<T>::TakeOwnership(static_cast<T *>(out));
-    }
-
-    bool expired() const {
-        if (!mWeakPtr) {
-            return true;
-        }
-        if (!mWeakPtr->getReferent()) {
-            return true;
-        }
-        return false;
-    }
-
-    void reset() {
-        if (mWeakPtr) {
-            mWeakPtr.reset();
-        }
-    }
-    Ptr<WeakReferent> mWeakPtr;
+    
+    WeakReferent* mWeakPtr;
 };
 
-// Objects that inherit this class can be reference counted and put into
-// a Ptr object. They can also be put into a WeakPtr object.
-class Referent {
-  public:
-    virtual int ref_count() const;
+template <typename T, typename... Args> 
+// NOTE: Legacy function - use fl::make_shared<T>(...) instead of fl::NewPtr<T>(...)
+Ptr<T> NewPtr(Args... args);
 
-  protected:
-    Referent();
-    virtual ~Referent();
-    Referent(const Referent &);
-    Referent &operator=(const Referent &);
-    Referent(Referent &&);
-    Referent &operator=(Referent &&);
+template <typename T> 
+// NOTE: Legacy function - use fl::make_shared_no_tracking<T>() instead of fl::NewPtrNoTracking<T>()
+Ptr<T> NewPtrNoTracking(T &obj);
 
-    virtual void ref();
-    virtual void unref();
-    virtual void destroy();
+} // namespace fl
 
-  private:
-    friend class WeakReferent;
-    template <typename T> friend class Ptr;
-    template <typename T> friend class WeakPtr;
-    void setWeakPtr(Ptr<WeakReferent> weakRefNoCreate) {
-        mWeakPtr = weakRefNoCreate;
-    }
-    mutable int mRefCount;
-    Ptr<WeakReferent> mWeakPtr; // Optional weak reference to this object.
-};
-
-template <typename T> inline WeakPtr<T> Ptr<T>::weakRefNoCreate() const {
-    if (!referent_) {
-        return WeakPtr<T>();
-    }
-    WeakReferent *tmp = get()->mWeakPtr.get();
-    if (!tmp) {
-        return WeakPtr<T>();
-    }
-    T *referent = static_cast<T *>(tmp->getReferent());
-    if (!referent) {
-        return WeakPtr<T>();
-    }
-    // At this point, we know that our weak referent is valid.
-    // However, the template parameter ensures that either we have
-    // an exact type, or are at least down-castable of it.
-    WeakPtr<T> out;
-    out.mWeakPtr = get()->mWeakPtr;
-    return out;
-}
-
-}  // namespace fl
+// Template implementations must always be available for instantiation
+// This achieves the goal of separating declarations from implementations
+// while ensuring templates work correctly in all compilation modes
+#include "fl/ptr_impl.h"

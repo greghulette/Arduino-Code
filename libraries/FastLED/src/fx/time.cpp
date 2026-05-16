@@ -9,64 +9,59 @@
 
 namespace fl {
 
-TimeScale::TimeScale(uint32_t realTimeNow, float initialTimeScale)
-    : mLastRealTime(realTimeNow),
-      mStartTime(realTimeNow),
+TimeWarp::TimeWarp(fl::u32 realTimeNow, float initialTimeScale)
+    : mLastRealTime(realTimeNow), mStartTime(realTimeNow),
       mTimeScale(initialTimeScale) {}
 
-TimeScale::~TimeScale() {}
+TimeWarp::~TimeWarp() {}
 
-void TimeScale::setScale(float timeScale) {
-    mTimeScale = timeScale;
-}
+void TimeWarp::setSpeed(float timeScale) { mTimeScale = timeScale; }
 
-float TimeScale::scale() const {
-    return mTimeScale;
-}
+float TimeWarp::scale() const { return mTimeScale; }
 
-void TimeScale::pause(uint32_t now) {
+void TimeWarp::pause(fl::u32 now) {
     if (mPauseTime) {
-        FASTLED_WARN("TimeScale::pause: already paused");
+        FASTLED_WARN("TimeWarp::pause: already paused");
         return;
     }
     mPauseTime = now;
 }
-void TimeScale::resume(uint32_t now) {
+void TimeWarp::resume(fl::u32 now) {
     if (mLastRealTime == 0) {
         reset(now);
         return;
     }
-    uint32_t diff = now - mPauseTime;
+    fl::u32 diff = now - mPauseTime;
     mStartTime += diff;
     mLastRealTime += diff;
     mPauseTime = 0;
 }
 
-uint32_t TimeScale::update(uint32_t timeNow) {
+fl::u32 TimeWarp::update(fl::u32 timeNow) {
 
-    //DBG("TimeScale::update: timeNow: " << timeNow << " mLastRealTime: " << mLastRealTime
+    // DBG("TimeWarp::update: timeNow: " << timeNow << " mLastRealTime: " <<
+    // mLastRealTime
     //<< " mRelativeTime: " << mRelativeTime << " mTimeScale: " << mTimeScale);
 
     if (mLastRealTime > timeNow) {
-        DBG("TimeScale::applyExact: mLastRealTime > timeNow: " << mLastRealTime << " > " << timeNow);
+        DBG("TimeWarp::applyExact: mLastRealTime > timeNow: "
+            << mLastRealTime << " > " << timeNow);
     }
 
     applyExact(timeNow);
     return time();
 }
 
-uint32_t TimeScale::time() const {
-    return mRelativeTime;
-}
+fl::u32 TimeWarp::time() const { return mRelativeTime; }
 
-void TimeScale::reset(uint32_t realTimeNow) {
+void TimeWarp::reset(fl::u32 realTimeNow) {
     mLastRealTime = realTimeNow;
     mStartTime = realTimeNow;
     mRelativeTime = 0;
 }
 
-void TimeScale::applyExact(uint32_t timeNow) {
-    uint32_t elapsedRealTime = timeNow - mLastRealTime;
+void TimeWarp::applyExact(fl::u32 timeNow) {
+    fl::u32 elapsedRealTime = timeNow - mLastRealTime;
     mLastRealTime = timeNow;
     int32_t diff = static_cast<int32_t>(elapsedRealTime * mTimeScale);
     if (diff == 0) {
@@ -78,7 +73,7 @@ void TimeScale::applyExact(uint32_t timeNow) {
     }
 
     // diff < 0
-    uint32_t abs_diff = -diff;
+    fl::u32 abs_diff = -diff;
     if (abs_diff > mRelativeTime) {
         // Protection against rollover.
         mRelativeTime = 0;
@@ -89,4 +84,6 @@ void TimeScale::applyExact(uint32_t timeNow) {
     mRelativeTime -= abs_diff;
 }
 
-}  // namespace fl
+void TimeWarp::setScale(float speed) { mTimeScale = speed; }
+
+} // namespace fl

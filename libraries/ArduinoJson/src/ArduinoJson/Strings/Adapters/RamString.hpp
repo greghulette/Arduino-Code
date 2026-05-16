@@ -1,5 +1,5 @@
 // ArduinoJson - https://arduinojson.org
-// Copyright © 2014-2025, Benoit BLANCHON
+// Copyright © 2014-2026, Benoit BLANCHON
 // MIT License
 
 #pragma once
@@ -68,6 +68,16 @@ class RamString {
 
 template <typename TChar>
 struct StringAdapter<TChar*, enable_if_t<IsChar<TChar>::value>> {
+  using AdaptedString = RamString;
+
+  static AdaptedString adapt(const TChar* p) {
+    auto str = reinterpret_cast<const char*>(p);
+    return AdaptedString(str, str ? ::strlen(str) : 0);
+  }
+};
+
+template <typename TChar>
+struct StringAdapter<TChar[], enable_if_t<IsChar<TChar>::value>> {
   using AdaptedString = RamString;
 
   static AdaptedString adapt(const TChar* p) {

@@ -1,12 +1,9 @@
 #pragma once
 
+#include "fl/stdint.h"
 
-#include <stdint.h>
+#include "fl/memory.h"
 
-#include "fl/ui.h"
-#include "fl/ptr.h"
-
-#include "fl/namespace.h"
 
 namespace fl {
 
@@ -21,10 +18,8 @@ class DigitalPin {
     enum Mode {
         kInput = 0,
         kOutput,
-        // the fallback mechanism does not support pullups or pulldowns, so we don't either yet.
-        // TODO: Add these for the fallback mechanism.
-        // kInputPullup,
-        // kInputPulldown,
+        kInputPullup,
+        // kInputPulldown,  Not implemented in Arduino.h
     };
 
     DigitalPin(int pin);

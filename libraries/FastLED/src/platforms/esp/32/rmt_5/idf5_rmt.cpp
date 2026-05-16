@@ -1,5 +1,3 @@
-
-
 #ifdef ESP32
 
 #include "third_party/espressif/led_strip/src/enabled.h"
@@ -17,9 +15,13 @@
 
 #include "fl/assert.h"
 #include "fl/convert.h"  // for convert_fastled_timings_to_timedeltas(...)
+#include "fl/namespace.h"
 #include "strip_rmt.h"
 
-#define TAG "idf5_rmt.cpp"
+
+#define IDF5_RMT_TAG "idf5_rmt.cpp"
+
+namespace fl {
 
 
 RmtController5::RmtController5(int DATA_PIN, int T1, int T2, int T3, RmtController5::DmaMode dma_mode)
@@ -32,12 +34,29 @@ RmtController5::~RmtController5() {
     }
 }
 
+static IRmtStrip::DmaMode convertDmaMode(RmtController5::DmaMode dma_mode) {
+    switch (dma_mode) {
+        case RmtController5::DMA_AUTO:
+            return IRmtStrip::DMA_AUTO;
+        case RmtController5::DMA_ENABLED:
+            return IRmtStrip::DMA_ENABLED;
+        case RmtController5::DMA_DISABLED:
+            return IRmtStrip::DMA_DISABLED;
+        default:
+            FL_ASSERT(false, "Invalid DMA mode");
+            return IRmtStrip::DMA_AUTO;
+    }
+}
+
 void RmtController5::loadPixelData(PixelIterator &pixels) {
     const bool is_rgbw = pixels.get_rgbw().active();
     if (!mLedStrip) {
         uint16_t t0h, t0l, t1h, t1l;
         convert_fastled_timings_to_timedeltas(mT1, mT2, mT3, &t0h, &t0l, &t1h, &t1l);
-        mLedStrip = IRmtStrip::Create(mPin, pixels.size(), is_rgbw, t0h, t0l, t1h, t1l, 280, IRmtStrip::DMA_AUTO);
+        mLedStrip = IRmtStrip::Create(
+            mPin, pixels.size(),
+            is_rgbw, t0h, t0l, t1h, t1l, 280,
+            convertDmaMode(mDmaMode));
         
     } else {
         FASTLED_ASSERT(
@@ -67,6 +86,8 @@ void RmtController5::loadPixelData(PixelIterator &pixels) {
 void RmtController5::showPixels() {
     mLedStrip->drawAsync();
 }
+
+} // namespace fl
 
 #endif  // FASTLED_RMT5
 

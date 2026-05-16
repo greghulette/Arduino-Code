@@ -1,5 +1,3 @@
-
-
 #include "../shared/defs.h"
 
 
@@ -9,12 +7,23 @@
 #include "./ui_state.h"
 #include "shared/Painter.h"
 #include "fl/dbg.h"
+#include "fl/unused.h"
 
 #include <Arduino.h>
 
 //#define UI_V1  // Based off the old midi shield with hand assmebled buttons.
 #define UI_V2  // Based on a new midi shield with buttons. https://learn.sparkfun.com/tutorials/midi-shield-hookup-guide
 #define UI_DBG
+
+
+#ifndef A3
+#define A3 3
+#warning "A3 is not defined, using 3"
+#endif
+#ifndef A4
+#define A4 4
+#warning "A4 is not defined, using 4"
+#endif
 
 #ifdef __STM32F1__
 // Missing A-type pins, just use digital pins mapped to analog.
@@ -49,6 +58,8 @@ void ui_init() {
 
 
 ui_state ui_update(uint32_t now_ms, uint32_t delta_ms) {
+  FL_UNUSED(delta_ms);
+  
   ui_state out;
   vis_selector.Update(now_ms);
   color_selector.Update();

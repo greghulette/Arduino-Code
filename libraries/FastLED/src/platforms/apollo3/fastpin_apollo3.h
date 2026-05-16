@@ -1,7 +1,7 @@
 #ifndef __INC_FASTPIN_APOLLO3_H
 #define __INC_FASTPIN_APOLLO3_H
 
-#include <stdint.h>
+#include "fl/stdint.h"
 #include "fl/namespace.h"
 
 FASTLED_NAMESPACE_BEGIN
@@ -113,7 +113,7 @@ _FL_DEFPIN(25, 48); _FL_DEFPIN(26, 49); _FL_DEFPIN(27, 36); _FL_DEFPIN(28, 37);
 
 #define HAS_HARDWARE_PIN_SUPPORT 1
 
-#elif defined(ARDUINO_AM_AP3_SFE_BB_ARTEMIS_ATP) || defined(ARDUINO_SFE_ARTEMIS)
+#elif defined(ARDUINO_AM_AP3_SFE_BB_ARTEMIS_ATP) || defined(ARDUINO_SFE_ARTEMIS) || defined(ARDUINO_APOLLO3_SFE_ARTEMIS_ATP)
 
 #define MAX_PIN 49
 _FL_DEFPIN(0, 0); _FL_DEFPIN(1, 1); _FL_DEFPIN(2, 2); _FL_DEFPIN(3, 3); _FL_DEFPIN(4, 4);

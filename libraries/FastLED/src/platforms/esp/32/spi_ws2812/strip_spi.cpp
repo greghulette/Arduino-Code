@@ -1,4 +1,3 @@
-
 #ifdef ESP32
 
 #include "third_party/espressif/led_strip/src/enabled.h"
@@ -14,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "third_party/espressif/led_strip/src/led_strip.h"
+#include "platforms/esp/32/esp_log_control.h"  // Control ESP logging before including esp_log.h
 #include "esp_log.h"
 #include "esp_err.h"
 
@@ -21,9 +21,12 @@
 
 #include "rgbw.h"
 #include "fl/warn.h"
+#include "fl/namespace.h"
+
+FASTLED_NAMESPACE_BEGIN
 
 
-static const char *TAG = "strip_spi";
+static const char *STRIP_SPI_TAG = "strip_spi";
 
 led_strip_handle_t configure_led(int pin, uint32_t led_count, led_model_t led_model, spi_host_device_t spi_bus, bool with_dma)
 {
@@ -32,18 +35,13 @@ led_strip_handle_t configure_led(int pin, uint32_t led_count, led_model_t led_mo
         .strip_gpio_num = pin, // The GPIO that connected to the LED strip's data line
         .max_leds = led_count,      // The number of LEDs in the strip,
         .led_model = led_model,        // LED strip model
-        // set the color order of the strip: GRB
-        .color_component_format = {
-            .format = {
-                .r_pos = 0, // red is the second byte in the color data
-                .g_pos = 1, // green is the first byte in the color data
-                .b_pos = 2, // blue is the third byte in the color data
-                .num_components = 3, // total 3 color components
-            },
-        },
+        // set the color order of the strip: RGB
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB,
         .flags = {
             .invert_out = false, // don't invert the output signal
-        }
+        },
+        // use default timings initialization, avoid compiler warnings
+        .timings = {},
     };
 
     // LED strip backend configuration: SPI
@@ -58,7 +56,7 @@ led_strip_handle_t configure_led(int pin, uint32_t led_count, led_model_t led_mo
     // LED Strip object handle
     led_strip_handle_t led_strip;
     ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &led_strip));
-    ESP_LOGI(TAG, "Created LED strip object with SPI backend");
+    FASTLED_ESP_LOGI(STRIP_SPI_TAG, "Created LED strip object with SPI backend");
     return led_strip;
 }
 
@@ -197,7 +195,7 @@ public:
         return OutputIterator(this, mLedCount);
     }
 
-    uint32_t numPixels() override
+    fl::u32 numPixels() override
     {
         return mLedCount;
     }
@@ -207,7 +205,7 @@ private:
     led_strip_handle_t mStrip;
     bool mDrawIssued = false;
     bool mIsRgbw;
-    uint32_t mLedCount = 0;
+    fl::u32 mLedCount = 0;
 };
 
 
@@ -262,7 +260,8 @@ ISpiStripWs2812* ISpiStripWs2812::Create(int pin, uint32_t led_count, bool is_rg
     return new SpiStripWs2812(pin, size_as_rgb, spi_bus, dma_mode);
 }
 
+FASTLED_NAMESPACE_END
+
 #endif  // FASTLED_ESP32_HAS_CLOCKLESS_SPI
 
 #endif  // ESP32
-

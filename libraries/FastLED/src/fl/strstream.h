@@ -1,69 +1,103 @@
 #pragma once
 
+#include "fl/int.h"
+#include "fl/str.h"
 #include "crgb.h"
 #include "str.h"
 
 
-#ifndef FASTLED_STRSTREAM_USES_SIZE_T
-#if defined(__AVR__) || defined(ESP8266) || defined(ESP32)
-#define FASTLED_STRSTREAM_USES_SIZE_T 0
-#else
-#define FASTLED_STRSTREAM_USES_SIZE_T 1
-#endif
-#endif
-
 namespace fl {
 
+class Tile2x2_u8;
+class Tile2x2_u8_wrap;  // Forward declaration to support operator<< overload
+template <typename T> struct vec2;  // Forward declaration from fl/geometry.h
+template <typename T, typename Alloc> class HeapVector;  // Forward declaration from fl/vector.h
+struct FFTBins;  // Forward declaration from fl/fft.h
+template <fl::u32 N> class BitsetFixed;
+class bitset_dynamic;
+template <fl::u32 N> class BitsetInlined;
+
 template <typename T> struct StrStreamHelper {
-    static void append(Str &str, const T& n) { str.append(n); }
+    static void append(string &str, const T &n) { str.append(n); }
 };
 
 template <> struct StrStreamHelper<int> {
-    static void append(Str &str, const int& n) { str.append(int32_t(n)); }
+    static void append(string &str, const int &n) { str.append(fl::i32(n)); }
 };
 
-template <> struct StrStreamHelper<uint8_t> {
-    static void append(Str &str, const uint8_t& n) { str.append(uint16_t(n)); }
+template <> struct StrStreamHelper<fl::u8> {
+    static void append(string &str, const fl::u8 &n) { str.append(fl::u16(n)); }
 };
 
 template <> struct StrStreamHelper<char> {
-    static void append(Str &str, const char& n) { str.append(uint16_t(n)); }
+    static void append(string &str, const char &n) { str.append(n); }  // Append as character, not number
 };
 
 template <> struct StrStreamHelper<unsigned int> {
-    static void append(Str &str, const unsigned int& n) { str.append(uint32_t(n)); }
+    static void append(string &str, const unsigned int &n) {
+        str.append(fl::u32(n));
+    }
 };
 
 class StrStream {
   public:
     StrStream() = default;
-    StrStream(const Str &str) : mStr(str) {}
+    StrStream(const string &str) : mStr(str) {}
 
     void setTreatCharAsInt(bool treatCharAsInt) {
         mTreatCharAsInt = treatCharAsInt;
     }
 
-    const Str &str() const { return mStr; }
+    const string &str() const { return mStr; }
     const char *c_str() const { return mStr.c_str(); }
 
     StrStream &operator<<(const CRGB &rgb) {
-        mStr.append("CRGB(");
-        mStr.append(rgb.r);
+        mStr.append(rgb);
+        return *this;
+    }
+    StrStream &operator<<(const StrStream &strStream) {
+        mStr.append(strStream.str());
+        return *this;
+    }
+
+    StrStream &operator<<(const Tile2x2_u8 &subpixel);
+    StrStream &operator<<(const Tile2x2_u8_wrap &tile);  // New overload for wrapped tiles
+
+    // FFTBins support - implemented in strstream.cpp.hpp
+    StrStream &operator<<(const FFTBins &bins);
+
+    // vec2<T> support - format as (x,y)
+    template<typename T>
+    StrStream &operator<<(const vec2<T> &v) {
+        mStr.append("(");
+        mStr.append(v.x);
         mStr.append(",");
-        mStr.append(rgb.g);
-        mStr.append(",");
-        mStr.append(rgb.b);
+        mStr.append(v.y);
         mStr.append(")");
         return *this;
     }
 
-    StrStream &operator=(uint16_t n) {
+    // HeapVector<T, Alloc> support - format as [item1, item2, ...]
+    template<typename T, typename Alloc>
+    StrStream &operator<<(const HeapVector<T, Alloc> &vec) {
+        mStr.append("[");
+        for (fl::size i = 0; i < vec.size(); ++i) {
+            if (i > 0) {
+                mStr.append(", ");
+            }
+            mStr.append(vec[i]);
+        }
+        mStr.append("]");
+        return *this;
+    }
+
+    StrStream &operator=(const fl::u16 &n) {
         mStr.clear();
         (*this) << n;
         return *this;
     }
 
-    StrStream &operator=(uint8_t n) {
+    StrStream &operator=(const fl::u8 &n) {
         mStr.clear();
         (*this) << n;
         return *this;
@@ -76,7 +110,7 @@ class StrStream {
     }
 
     // << operator section
-    StrStream &operator<<(const Str &str) {
+    StrStream &operator<<(const string &str) {
         mStr.append(str);
         return *this;
     }
@@ -86,7 +120,19 @@ class StrStream {
         return *this;
     }
 
-    StrStream &operator<<(char c) {
+    StrStream &operator<<(const float &f) {
+        // multiply by 100 and round to get 2 decimal places
+        mStr.append(f);
+        return *this;
+    }
+
+    StrStream &operator<<(const double &f) {
+        // multiply by 100 and round to get 2 decimal places
+        mStr.append(f);
+        return *this;
+    }
+
+    StrStream &operator<<(const char &c) {
         if (mTreatCharAsInt) {
             StrStreamHelper<int>::append(mStr, c);
         } else {
@@ -95,58 +141,100 @@ class StrStream {
         return *this;
     }
 
-    #if FASTLED_STRSTREAM_USES_SIZE_T
-    StrStream &operator<<(size_t n) {
-        mStr.append(uint32_t(n));
-        return *this;
-    }
-    #endif
-
-    template<typename T>
-    StrStream &operator<<(T n) {
-        StrStreamHelper<T>::append(mStr, n);
+    template<fl::size N>
+    StrStream &operator<<(const char (&str)[N]) {
+        mStr.append(str);
         return *this;
     }
 
-    StrStream &operator<<(uint8_t n) {
+    template<fl::u32 N>
+    StrStream &operator<<(const BitsetFixed<N> &bs) {
+        // mStr.append(bs);
+        bs.to_string(&mStr);
+        return *this;
+    }
+
+    StrStream &operator<<(const bitset_dynamic &bs) {
+        bs.to_string(&mStr);
+        return *this;
+    }
+
+    template<fl::u32 N>
+    StrStream &operator<<(const BitsetInlined<N> &bs) {
+        bs.to_string(&mStr);
+        return *this;
+    }
+
+    // bool support - output as "true"/"false" for readability
+    StrStream &operator<<(bool b) {
+        mStr.append(b ? "true" : "false");
+        return *this;
+    }
+
+    StrStream &operator<<(const fl::u8 &n) {
         if (mTreatCharAsInt) {
-            mStr.append(uint16_t(n));
+            mStr.append(fl::u16(n));
         } else {
             mStr.append(n);
         }
         return *this;
     }
 
-    StrStream &operator<<(uint16_t n) {
+    StrStream &operator<<(const fl::i16 &n) {
         mStr.append(n);
         return *this;
     }
 
-    StrStream &operator<<(int16_t n) {
+    StrStream &operator<<(const fl::i32 &n) {
         mStr.append(n);
         return *this;
     }
 
-    StrStream &operator<<(uint32_t n) {
-        mStr.append(uint32_t(n));
+    StrStream &operator<<(const fl::u32 &n) {
+        mStr.append(n);
         return *this;
     }
 
-    StrStream &operator<<(int32_t n) {
+    StrStream &operator<<(const fl::u64 &n) {
         mStr.append(n);
+        return *this;
+    }
+
+    StrStream &operator<<(const long long &n) {
+        mStr.append(static_cast<fl::i64>(n));
+        return *this;
+    }
+
+
+    // Unified handler for fl:: namespace size-like unsigned integer types and int
+    // This handles fl::size, fl::u16 from the fl:: namespace, and int type
+    template<typename T>
+    typename fl::enable_if<
+        fl::is_same<T, fl::size>::value ||
+        fl::is_same<T, fl::u16>::value ||
+        fl::is_same<T, int>::value,
+        StrStream&
+    >::type operator<<(T n) {
+        if (fl::is_same<T, int>::value) {
+            mStr.append(fl::i32(n));
+        } else {
+            mStr.append(fl::u32(n));
+        }
         return *this;
     }
 
     // assignment operator completely replaces the current string
-    StrStream &operator=(const Str &str) {
+    StrStream &operator=(const string &str) {
         mStr = str;
         return *this;
     }
 
     StrStream &operator=(const char *str) {
-        mStr = str;
+        mStr.clear();
+        mStr.append(str);
         return *this;
     }
+    
 
     // crgb
     StrStream &operator=(const CRGB &rgb) {
@@ -155,42 +243,51 @@ class StrStream {
         return *this;
     }
 
+    void clear() { mStr.clear(); }
 
   private:
-    Str mStr;
-    bool mTreatCharAsInt = true;
+    string mStr;
+    bool mTreatCharAsInt = false;  // Default to ASCII mode for readable text output
 };
 
 class FakeStrStream {
   public:
+    template <typename T> FakeStrStream &operator<<(const T &) { return *this; }
+
+    FakeStrStream &operator<<(const char *) { return *this; }
+
+    template<fl::size N>
+    FakeStrStream &operator<<(const char (&)[N]) { return *this; }
+
+    template <typename T> FakeStrStream &operator=(const T &) { return *this; }
+
+    FakeStrStream &operator<<(const CRGB &) { return *this; }
+    FakeStrStream &operator<<(const string &) { return *this; }
+    FakeStrStream &operator<<(char) { return *this; }
+
+    // bool support to match StrStream interface
+    FakeStrStream &operator<<(bool) { return *this; }
+
+    // Unified template for fl:: namespace types and int to avoid conflicts on AVR
     template<typename T>
-    FakeStrStream& operator<<(const T&) { return *this; }
-    
-    FakeStrStream& operator<<(const char*) { return *this; }
-    
-    template<typename T> 
-    FakeStrStream& operator=(const T&) { return *this; }
+    typename fl::enable_if<
+        fl::is_same<T, fl::size>::value ||
+        fl::is_same<T, fl::u16>::value ||
+        fl::is_same<T, int>::value,
+        FakeStrStream&
+    >::type operator<<(T) { return *this; }
 
-    FakeStrStream& operator<<(const CRGB&) { return *this; }
-    FakeStrStream& operator<<(const Str&) { return *this; }
-    FakeStrStream& operator<<(char) { return *this; }
-    
-    #if FASTLED_STRSTREAM_USES_SIZE_T
-    FakeStrStream& operator<<(size_t) { return *this; }
-    #endif
-    
-    FakeStrStream& operator<<(uint8_t) { return *this; }
-    FakeStrStream& operator<<(uint16_t) { return *this; }
-    FakeStrStream& operator<<(int16_t) { return *this; }
-    FakeStrStream& operator<<(uint32_t) { return *this; }
-    FakeStrStream& operator<<(int32_t) { return *this; }
-    
-    FakeStrStream& operator=(const Str&) { return *this; }
-    FakeStrStream& operator=(const CRGB&) { return *this; }
-    FakeStrStream& operator=(uint16_t) { return *this; }
-    FakeStrStream& operator=(uint8_t) { return *this; }
-    FakeStrStream& operator=(char) { return *this; }
+    FakeStrStream &operator<<(fl::u8) { return *this; }
+    FakeStrStream &operator<<(fl::i16) { return *this; }
+    FakeStrStream &operator<<(fl::i32) { return *this; }
+    FakeStrStream &operator<<(fl::u32) { return *this; }
 
+    FakeStrStream &operator=(const string &) { return *this; }
+    FakeStrStream &operator=(const CRGB &) { return *this; }
+    FakeStrStream &operator=(fl::u16) { return *this; }
+    FakeStrStream &operator=(fl::u8) { return *this; }
+    FakeStrStream &operator=(char) { return *this; }
 };
+
 
 } // namespace fl

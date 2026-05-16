@@ -1,6 +1,29 @@
 ArduinoJson: change log
 =======================
 
+v7.4.3 (2026-03-02)
+------
+
+* Fix a buffer overrun in `as<T>()` when `T` is a numeric type and
+  the variant contains a string representing a floating point number
+  with a large number of digits (issue #2220)
+
+v7.4.2 (2025-06-20)
+------
+
+* Fix truncated strings on Arduino Due (issue #2181)
+
+v7.4.1 (2025-04-11)
+------
+
+* Fix crash with tiny Flash strings (issue #2170)
+
+v7.4.0 (2025-04-09)
+------
+
+* Optimize storage of tiny strings (up to 3 characters)
+* Fix support for `const char[]` (issue #2166)
+
 v7.3.1 (2025-02-27)
 ------
 

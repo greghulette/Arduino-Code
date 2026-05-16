@@ -1,3 +1,4 @@
+// allow-include-after-namespace
 
 #ifdef ESP32
 #ifndef FASTLED_ESP32_I2S
@@ -13,6 +14,7 @@
 
 #include "FastLED.h"
 #include "fl/force_inline.h"
+#include "fl/assert.h"
 #include "platforms/esp/32/rmt_4/idf4_rmt.h"
 #include "platforms/esp/32/rmt_4/idf4_rmt_impl.h"
 #include "platforms/esp/32/clock_cycles.h"
@@ -40,6 +42,7 @@ extern "C"
 #include "freertos/semphr.h"
 #include "soc/rmt_struct.h"
 
+#include "platforms/esp/32/esp_log_control.h"  // Control ESP logging before including esp_log.h
 #include "esp_log.h"
 
 #ifdef __cplusplus
@@ -62,15 +65,6 @@ extern "C"
 #ifndef FASTLED_RMT_SERIAL_DEBUG
 #define FASTLED_RMT_SERIAL_DEBUG 0
 #endif
-
-#ifdef FASTLED_ASSERT
-#undef FASTLED_ASSERT
-#endif
-#define FASTLED_ASSERT(format, errcode, ...)                                  \
-    if (errcode != ESP_OK)                                                    \
-    {                                                                         \
-        Serial.printf(PSTR("FASTLED: " format "\n"), errcode, ##__VA_ARGS__); \
-    }
 
 
 #if FASTLED_RMT_SERIAL_DEBUG == 1
@@ -226,6 +220,7 @@ int ESP32RMTController::gMemBlocks;
 // for gpio_matrix_out
 #include <rom/gpio.h>
 
+#include "fl/memfill.h"
 // copied from rmt_private.h with slight changes to match the idf 4.x syntax
 typedef struct
 {
@@ -364,7 +359,7 @@ void ESP32RMTController::init(gpio_num_t pin, bool built_in_driver)
 
         // -- RMT configuration for transmission
         rmt_config_t rmt_tx;
-        memset(&rmt_tx, 0, sizeof(rmt_config_t));
+        fl::memfill(&rmt_tx, 0, sizeof(rmt_config_t));
         rmt_tx.channel = rmt_channel_t(i);
         rmt_tx.rmt_mode = RMT_MODE_TX;
         rmt_tx.gpio_num = pin;

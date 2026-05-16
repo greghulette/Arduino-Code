@@ -8,12 +8,7 @@
 // #include "picture_part.h"
 SPIClass fSPI(HSPI);
 
-enum DISPLAY_BUFFER
-{
-	BLACK_BUFFER = 0,
-	COLOR_BUFFER = 1,
 
-};
 
 class HT_ICMEN2R13EFC1 : public ScreenDisplay
 {
@@ -67,7 +62,7 @@ public:
 		return true;
 	}
 
-	void update(DISPLAY_BUFFER buffer)
+	void update(DISPLAY_BUFFER buffer) override
 	{
 		if (buffer == BLACK_BUFFER)
 			// updateData(0x24);
@@ -123,27 +118,22 @@ public:
 			}
 			else
 			{
-				fSPI.beginTransaction(SPISettings(6000000, MSBFIRST, SPI_MODE0));
+				fSPI.beginTransaction(SPISettings(6000000, LSBFIRST, SPI_MODE0));
 				for (int x = 250 - 1; x >= 0; x--)
 				{
 					for (int y = (ymax - 1); y >= 0; y--)
 					{
 						// if(addr==0x24)
-						if (addr == 0x13)
+						uint8_t byte_data = buffer[x + y * xmax];
+						uint8_t reversed_byte = 0;
+						for (int bit = 0; bit < 8; bit++) {
+							reversed_byte |= ((byte_data >> bit) & 1) << (7 - bit);
+						}
 
-						{
-							if (y == 0)
-								fSPI.transfer(~(buffer[x + y * xmax] << 6));
-							else
-								fSPI.transfer(~((buffer[x + y * xmax] << 6) | (buffer[x + (y - 1) * xmax] >> 2)));
-						}
+						if (addr == 0x13)
+							fSPI.transfer(~reversed_byte);
 						else
-						{
-							if (y == 0)
-								fSPI.transfer(buffer[x + y * xmax] << 6);
-							else
-								fSPI.transfer((buffer[x + y * xmax] << 6) | (buffer[x + (y - 1) * xmax] >> 2));
-						}
+							fSPI.transfer(reversed_byte);
 					}
 				}
 			}
@@ -491,9 +481,11 @@ private:
 		while (!digitalRead(_busy))
 		{ // LOW: idle, HIGH: busy
 		  // return;
-		  // Serial.println("busy");
-			esp_sleep_enable_timer_wakeup(10 * 1000);
-			esp_light_sleep_start();
+		//   Serial.println("busy");
+			// esp_sleep_enable_timer_wakeup(10 * 1000);
+			// esp_light_sleep_start();
+			delay(100);
+
 		}
 		delay(100);
 	}

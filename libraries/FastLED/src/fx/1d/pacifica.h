@@ -1,8 +1,8 @@
 #pragma once
 
 #include "FastLED.h"
-#include "fx/fx1d.h"
 #include "fl/namespace.h"
+#include "fx/fx1d.h"
 
 namespace fl {
 
@@ -17,11 +17,11 @@ class Pacifica : public Fx1d {
     Pacifica(uint16_t num_leds) : Fx1d(num_leds) {}
 
     void draw(DrawContext context) override;
-    fl::Str fxName() const override { return "Pacifica"; }
+    fl::string fxName() const override { return "Pacifica"; }
 
   private:
     uint16_t sCIStart1 = 0, sCIStart2 = 0, sCIStart3 = 0, sCIStart4 = 0;
-    uint32_t sLastms = 0;
+    fl::u32 sLastms = 0;
 
     CRGBPalette16 pacifica_palette_1 = {0x000507, 0x000409, 0x00030B, 0x00030D,
                                         0x000210, 0x000212, 0x000114, 0x000117,
@@ -36,7 +36,7 @@ class Pacifica : public Fx1d {
                                         0x000E39, 0x001040, 0x001450, 0x001860,
                                         0x001C70, 0x002080, 0x1040BF, 0x2060FF};
 
-    void pacifica_one_layer(CRGB* leds, CRGBPalette16 &p, uint16_t cistart,
+    void pacifica_one_layer(CRGB *leds, CRGBPalette16 &p, uint16_t cistart,
                             uint16_t wavescale, uint8_t bri, uint16_t ioff);
     void pacifica_add_whitecaps(CRGB *leds);
     void pacifica_deepen_colors(CRGB *leds);
@@ -44,20 +44,20 @@ class Pacifica : public Fx1d {
 
 void Pacifica::draw(DrawContext ctx) {
     CRGB *leds = ctx.leds;
-    uint32_t now = ctx.now;
+    fl::u32 now = ctx.now;
     if (leds == nullptr || mNumLeds == 0) {
         return;
     }
 
     // Update the hue each time through the loop
-    uint32_t ms = now;
-    uint32_t deltams = ms - sLastms;
+    fl::u32 ms = now;
+    fl::u32 deltams = ms - sLastms;
     sLastms = ms;
     uint16_t speedfactor1 = beatsin16(3, 179, 269);
     uint16_t speedfactor2 = beatsin16(4, 179, 269);
-    uint32_t deltams1 = (deltams * speedfactor1) / 256;
-    uint32_t deltams2 = (deltams * speedfactor2) / 256;
-    uint32_t deltams21 = (deltams1 + deltams2) / 2;
+    fl::u32 deltams1 = (deltams * speedfactor1) / 256;
+    fl::u32 deltams2 = (deltams * speedfactor2) / 256;
+    fl::u32 deltams21 = (deltams1 + deltams2) / 2;
     sCIStart1 += (deltams1 * beatsin88(1011, 10, 13));
     sCIStart2 -= (deltams21 * beatsin88(777, 8, 11));
     sCIStart3 -= (deltams1 * beatsin88(501, 5, 7));
@@ -87,9 +87,9 @@ void Pacifica::draw(DrawContext ctx) {
 }
 
 // Add one layer of waves into the led array
-void Pacifica::pacifica_one_layer(CRGB* leds, CRGBPalette16 &p, uint16_t cistart,
-                                  uint16_t wavescale, uint8_t bri,
-                                  uint16_t ioff) {
+void Pacifica::pacifica_one_layer(CRGB *leds, CRGBPalette16 &p,
+                                  uint16_t cistart, uint16_t wavescale,
+                                  uint8_t bri, uint16_t ioff) {
     uint16_t ci = cistart;
     uint16_t waveangle = ioff;
     uint16_t wavescale_half = (wavescale / 2) + 20;
@@ -132,4 +132,4 @@ void Pacifica::pacifica_deepen_colors(CRGB *leds) {
     }
 }
 
-}  // namespace fl
+} // namespace fl

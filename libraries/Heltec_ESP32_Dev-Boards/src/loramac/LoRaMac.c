@@ -35,6 +35,8 @@ Maintainer: Miguel Luis ( Semtech ), Gregory Cristian ( Semtech ) and Daniel Jae
 #include "../loramac/LoRaMacConfirmQueue.h"
 #include "esp_attr.h" 
 #include "esp_sleep.h"
+#include "../driver/board-config.h"
+#include "Arduino.h"
 //#define CONFIG_LORA_CAD
 
 #ifdef CONFIG_LORA_VERIFY
@@ -705,6 +707,7 @@ static void OpenContinuousRx2Window( void );
 extern uint64_t esp32deepsleepWaketime;
 static void OnRadioTxDone( void )
 {
+
 	DIO_PRINTF("Event : Tx Done\r\n");
 	lora_txing=false;
     GetPhyParams_t getPhy;
@@ -747,7 +750,7 @@ static void OnRadioTxDone( void )
     }
 
     // Verify if the last uplink was a join request
-    if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( MlmeConfirm.MlmeRequest == MLME_JOIN ) ) {
+    if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( LoRaMacConfirmQueueIsCmdActive( MLME_JOIN ) == true ) ) {
         LastTxIsJoinRequest = true;
     } else {
         LastTxIsJoinRequest = false;
@@ -1488,7 +1491,7 @@ static void OnMacStateCheckTimerEvent( void )
 
         if ( ( NodeAckRequested == false ) && ( noTx == false ) ) {
             if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) || ( ( LoRaMacFlags.Bits.McpsReq == 1 ) ) ) {
-                if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( MlmeConfirm.MlmeRequest == MLME_JOIN ) ) {
+                if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( LoRaMacConfirmQueueIsCmdActive( MLME_JOIN ) == true ) ) {
                     // Procedure for the join request
                     MlmeConfirm.NbRetries = JoinRequestTrials;
 
@@ -1560,7 +1563,7 @@ static void OnMacStateCheckTimerEvent( void )
             }
 #ifdef CONFIG_LWAN
         } else {
-            if ( !(( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( MlmeConfirm.MlmeRequest == MLME_JOIN )) )
+            if ( !(( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( LoRaMacConfirmQueueIsCmdActive( MLME_JOIN ) == true )) )
                 lwan_dev_status_set(DEVICE_STATUS_SEND_PASS_WITHOUT_DL);
         }
 #else
@@ -1703,7 +1706,7 @@ static void OnTxDelayedTimerEvent( void )
     TimerStop( &TxDelayedTimer );
     LoRaMacState &= ~LORAMAC_TX_DELAYED;
 
-    if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( MlmeConfirm.MlmeRequest == MLME_JOIN ) ) {
+    if ( ( LoRaMacFlags.Bits.MlmeReq == 1 ) && ( LoRaMacConfirmQueueIsCmdActive( MLME_JOIN ) == true ) ) {
         ResetMacParameters( );
 
         altDr.NbTrials = JoinRequestTrials + 1;

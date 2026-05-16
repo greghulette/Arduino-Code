@@ -15,6 +15,12 @@
  * https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series
  * */
 
+// the Arduino build environment automatically includes Arduino.h for .ino
+// sketches, so we don’t need to #include it and avoid the “cannot open source
+// file" error.
+// add the core header explicitly so editors/linters with a broken includePath
+// can still resolve the dependency
+#include <Arduino.h>
 #include "LoRaWan_APP.h"
 
 /* OTAA para*/
@@ -95,7 +101,10 @@ RTC_DATA_ATTR bool firstrun = true;
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
-
+#ifdef WIFI_LORA_32_V4
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
+#endif
   if(firstrun)
   {
     LoRaWAN.displayMcuInit();

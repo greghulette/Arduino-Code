@@ -39,7 +39,7 @@ ScreenMap init_screenmap() {
     int n = cols.array[i];
     int stagger = i % 2 ? 4 : 0;
     for (int j = 0; j < n; ++j) {
-      fl::pair_xy_float xy(i*4, j*8 + stagger);
+      fl::vec2f xy(i*4, j*8 + stagger);
       screen_map.set(curr_idx++, xy);
     }
   }
@@ -98,12 +98,14 @@ void LedRopeTCL::set_draw_offset(int val) {
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::RawCommitDraw() {
+  FASTLED_WARN("\n\n############## COMMIT DRAW ################\n\n");
   if (!controller_added_) {
     controller_added_ = true;
     CRGB* leds = led_buffer_.data();
     size_t n_leds = led_buffer_.size();
     FastLED.addLeds<APA102, PIN_DATA, PIN_CLOCK>(leds, n_leds).setScreenMap(mScreenMap);
   }
+  FASTLED_WARN("FastLED.show");
   FastLED.show();
 }
 
@@ -161,7 +163,7 @@ void LedRopeTCL::DrawRepeat(const int* value_array, int array_length) {
   
   // Make sure that the number of colors to repeat does not exceed the length
   // of the rope.
-  const int len = min(array_length, frame_buffer_.length());
+  const int len = MIN(array_length, frame_buffer_.length());
 
   for (int i = 0; i < len; ++i) {
      const Color3i* cur_color = GetIterator(i);  // Current color.
