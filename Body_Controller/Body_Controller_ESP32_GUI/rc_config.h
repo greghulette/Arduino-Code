@@ -147,6 +147,11 @@ inline int rcMapIndex(int mode, int btn) { return (mode - 1) * 19 + (btn - 1); }
 struct RcConfig {
   int            tapWindowMs;
   int            matrixChannel;   // SBUS channel carrying the multiplexed button matrix (default 7)
+  // Consecutive in-band SBUS frames a matrix button must hold before a press
+  // is accepted. 2 = noise-tolerant default (analog resistor-ladder matrix).
+  // Lower to 1 for a clean digital SBUS source to resolve fast taps ~2x sooner.
+  // Applied live on SET_CONFIG (no reboot). Clamped 1-4 by the firmware.
+  int            matrixDebounceFrames;
   RcThreshold    thresholds[RC_NUM_THRESHOLDS];
   RcMapping      mappings[RC_NUM_MAPPINGS];
   RcSwitch       switches[RC_NUM_SWITCHES];
@@ -214,6 +219,7 @@ static inline void setTier2(RcTier& tier, RcAction a0, RcAction a1) {
 void rcConfigLoadDefaults() {
   rcConfig.tapWindowMs   = 500;
   rcConfig.matrixChannel = 7;   // Kyber-aligned: button matrix lives on CH7
+  rcConfig.matrixDebounceFrames = 2;   // noise-tolerant default; lower to 1 for a digital SBUS source
 
   // Mode/function selector — drives the 1/2/3 mode that gates which matrix
   // button action set fires.  Configurable via GUI.  -1 disables modes.
@@ -455,8 +461,9 @@ String rcConfigToJSON() {
   // be parsed back without truncation.
   DynamicJsonDocument doc(32768);
 
-  doc["tapWindowMs"]   = rcConfig.tapWindowMs;
-  doc["matrixChannel"] = rcConfig.matrixChannel;
+  doc["tapWindowMs"]          = rcConfig.tapWindowMs;
+  doc["matrixChannel"]        = rcConfig.matrixChannel;
+  doc["matrixDebounceFrames"] = rcConfig.matrixDebounceFrames;
 
   // Function-to-switch bindings — only mode selector remains.
   JsonObject fb = doc.createNestedObject("funcBindings");
@@ -541,6 +548,11 @@ bool rcConfigFromJSON(const JsonObject& doc) {
 
   if (doc.containsKey("matrixChannel"))
     rcConfig.matrixChannel = doc["matrixChannel"];
+
+  if (doc.containsKey("matrixDebounceFrames")) {
+    int d = doc["matrixDebounceFrames"] | 2;
+    rcConfig.matrixDebounceFrames = (d < 1) ? 1 : (d > 4 ? 4 : d);   // clamp 1-4
+  }
 
   if (doc.containsKey("funcBindings")) {
     JsonObject fb = doc["funcBindings"];
@@ -650,6 +662,7 @@ void rcConfigSaveNVS() {
   // tap window + matrix channel + mode-selector binding
   prefs.putInt("cfg",      rcConfig.tapWindowMs);
   prefs.putInt("matrixCh", rcConfig.matrixChannel);
+  prefs.putInt("mtxDeb",   rcConfig.matrixDebounceFrames);
   prefs.putChar("fbMode",  rcConfig.funcBindings.modeSwitch);
   // Clear any legacy keys from older firmware so they don't masquerade
   // as set values on a reboot.
@@ -747,6 +760,10 @@ void rcConfigLoadNVS() {
   // tap window + matrix channel + mode-selector binding
   if (prefs.isKey("cfg"))      rcConfig.tapWindowMs   = prefs.getInt("cfg",      rcConfig.tapWindowMs);
   if (prefs.isKey("matrixCh")) rcConfig.matrixChannel = prefs.getInt("matrixCh", rcConfig.matrixChannel);
+  if (prefs.isKey("mtxDeb")) {
+    int d = prefs.getInt("mtxDeb", rcConfig.matrixDebounceFrames);
+    rcConfig.matrixDebounceFrames = (d < 1) ? 1 : (d > 4 ? 4 : d);
+  }
   if (prefs.isKey("fbMode"))   rcConfig.funcBindings.modeSwitch = prefs.getChar("fbMode", rcConfig.funcBindings.modeSwitch);
 
   // thresholds

@@ -828,14 +828,15 @@ int  sbusValues[24]  = {0};  // Sized for SBUS-24 max; SBUS-16 leaves CH17-24 at
 //
 // Design (asymmetric debounce):
 //   • A press FIRES only after the decoded button is stable for
-//     MATRIX_DEBOUNCE_FRAMES consecutive frames — rejects single-frame noise /
-//     resistor-ladder sweep transients.
+//     rcConfig.matrixDebounceFrames consecutive frames — rejects single-frame
+//     noise / resistor-ladder sweep transients. Runtime-configurable (Config
+//     modal); 1 = fastest (safe for a digital SBUS source), up to 4 for a
+//     noisy analog transmitter matrix. Applied live on SET_CONFIG.
 //   • The detector RE-ARMS on a SINGLE neutral/gap frame (decoded == 0) — so a
 //     fast re-press is recognized even if the channel only dips to neutral for
 //     one SBUS frame between presses.
 // Only a true sub-frame tap (press+release inside one ~7-14 ms frame interval)
-// is now unrecoverable, and that's a hard SBUS-protocol limit, not logic.
-#define MATRIX_DEBOUNCE_FRAMES 2
+// is unrecoverable, and that's a hard SBUS-protocol limit, not logic.
 bool matrixArmed     = true;   // true → ready to accept the next press
 int  matrixCandidate = 0;      // decoded button currently being debounced
 int  matrixCandCount = 0;      // consecutive frames matrixCandidate has held
@@ -1095,14 +1096,16 @@ void processSbus() {
         matrixCandidate = 0;
         matrixCandCount = 0;
       } else {
+        int debFrames = rcConfig.matrixDebounceFrames;
+        if (debFrames < 1) debFrames = 1;        // safety clamp (config is 1-4)
         if (decoded == matrixCandidate) {
-          if (matrixCandCount < MATRIX_DEBOUNCE_FRAMES) matrixCandCount++;
+          if (matrixCandCount < debFrames) matrixCandCount++;
         } else {
           matrixCandidate = decoded;
           matrixCandCount = 1;
         }
         // Fire once when a button has been stable long enough AND we're armed.
-        if (matrixArmed && matrixCandCount >= MATRIX_DEBOUNCE_FRAMES) {
+        if (matrixArmed && matrixCandCount >= debFrames) {
           matrixArmed = false;                // consume — needs a neutral frame to re-arm
           RCRadio_Matrix_Buttons(mxVal);
         }
