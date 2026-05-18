@@ -826,20 +826,24 @@ int  sbusValues[24]  = {0};  // Sized for SBUS-24 max; SBUS-16 leaves CH17-24 at
 // silently dropped fast re-presses of the same button (the value was identical
 // across the two sampled SBUS frames so no "edge" was seen — see analysis).
 //
-// Design (asymmetric debounce):
-//   • A press FIRES only after the decoded button is stable for
+// Three-state debounced edge machine (NEUTRAL · TRANSITION · BUTTON):
+//   • A press is COMMITTED only after the decoded button is stable in-band for
 //     rcConfig.matrixDebounceFrames consecutive frames — rejects single-frame
-//     noise / resistor-ladder sweep transients. Runtime-configurable (Config
-//     modal); 1 = fastest (safe for a digital SBUS source), up to 4 for a
-//     noisy analog transmitter matrix. Applied live on SET_CONFIG.
-//   • The detector RE-ARMS on a SINGLE neutral/gap frame (decoded == 0) — so a
-//     fast re-press is recognized even if the channel only dips to neutral for
-//     one SBUS frame between presses.
+//     noise and analog resistor-ladder sweep transients.
+//   • A release/re-arm is COMMITTED only after NEUTRAL (decoded == 0) is stable
+//     for matrixDebounceFrames consecutive frames — so a brief 1-frame neutral
+//     dip mid-press (sweep slew, contact bounce) can no longer falsely re-arm
+//     and split one press into a phantom double.
+//   • Anything not yet stable (short neutral blips, unsettled band) is the
+//     implicit TRANSITION state: it changes nothing — no fire, no re-arm.
+// matrixDebounceFrames is runtime-configurable (Config modal): 1 = fastest
+// (clean digital SBUS source), 2-4 for a noisy analog transmitter matrix.
 // Only a true sub-frame tap (press+release inside one ~7-14 ms frame interval)
 // is unrecoverable, and that's a hard SBUS-protocol limit, not logic.
-bool matrixArmed     = true;   // true → ready to accept the next press
-int  matrixCandidate = 0;      // decoded button currently being debounced
-int  matrixCandCount = 0;      // consecutive frames matrixCandidate has held
+bool matrixArmed       = true; // true → a confirmed-neutral release has armed the next press
+int  matrixCandidate   = 0;    // decoded button currently being debounced
+int  matrixCandCount   = 0;    // consecutive frames matrixCandidate has held in-band
+int  matrixNeutralCount = 0;   // consecutive NEUTRAL (decoded==0) frames — for release debounce
 
 // Read the live SBUS value of the switch at the given switch-table index
 // (0-7 = SA-SH).  Returns -1 if the index is out of range or its channel
@@ -1090,23 +1094,34 @@ void processSbus() {
       int mxVal = sbusValues[mxCh - 1];
       oldValueMatrix = mxVal;                 // keep fresh for status/diagnostics
       int decoded = pwmToButton(mxVal);       // 0 = neutral / between-band gap
+      int debFrames = rcConfig.matrixDebounceFrames;
+      if (debFrames < 1) debFrames = 1;          // safety clamp (config is 1-4)
+
       if (decoded == 0) {
-        // Neutral/gap — re-arm on a single frame so quick re-presses register.
-        matrixArmed     = true;
+        // NEUTRAL candidate. A real release sits at rest for many frames; a
+        // sweep slew / contact bounce only dips out-of-band for 1-2 frames.
+        // Only a *debounced* neutral run counts as a release → re-arm. This is
+        // the key reliability fix: a transient neutral can no longer split one
+        // physical press into a phantom double.
         matrixCandidate = 0;
         matrixCandCount = 0;
+        if (matrixNeutralCount < debFrames) matrixNeutralCount++;
+        if (matrixNeutralCount >= debFrames) matrixArmed = true;   // release confirmed
       } else {
-        int debFrames = rcConfig.matrixDebounceFrames;
-        if (debFrames < 1) debFrames = 1;        // safety clamp (config is 1-4)
+        // BUTTON candidate. Any in-band reading breaks a neutral run, so a
+        // mid-press sweep transient that briefly crosses a neighbor band does
+        // not accumulate toward a release.
+        matrixNeutralCount = 0;
         if (decoded == matrixCandidate) {
           if (matrixCandCount < debFrames) matrixCandCount++;
         } else {
           matrixCandidate = decoded;
           matrixCandCount = 1;
         }
-        // Fire once when a button has been stable long enough AND we're armed.
+        // Fire once the button has been stable in-band AND we're armed
+        // (armed only by a confirmed neutral — never by a 1-frame blip).
         if (matrixArmed && matrixCandCount >= debFrames) {
-          matrixArmed = false;                // consume — needs a neutral frame to re-arm
+          matrixArmed = false;             // consume — needs a CONFIRMED neutral to re-arm
           RCRadio_Matrix_Buttons(mxVal);
         }
       }
