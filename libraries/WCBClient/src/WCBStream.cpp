@@ -1,5 +1,23 @@
 #include "WCBStream.h"
 #include "WCBClient.h"
+#include <stdarg.h>
+
+// Non-blocking debug line. tick() runs from WCBClient::update() on the caller's
+// hot path; a plain Serial.printf() there freezes the entire sketch whenever
+// no host is draining the USB serial port (the controller stops sending ESP-NOW
+// heartbeats and the WCBs declare it offline). This formats into a small stack
+// buffer and writes ONLY if the TX buffer has room — otherwise the line is
+// dropped. It can never block, so a missing or stalled host cannot stall tick().
+static void wcbStreamLog(const char* fmt, ...) {
+    char buf[96];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n <= 0) return;
+    if (n > (int)sizeof(buf)) n = sizeof(buf);
+    if (Serial.availableForWrite() >= n) Serial.write((const uint8_t*)buf, (size_t)n);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -61,10 +79,10 @@ void WCBStream::tick() {
         bool ok;
         if (_target == 0) {
             ok = wcb->sendKyber(_buf, _len);
-            Serial.printf("[WCBStream] Broadcast (Kyber) %d bytes — %s\n", _len, ok ? "OK" : "FAIL");
+            wcbStreamLog("[WCBStream] Broadcast (Kyber) %d bytes — %s\n", _len, ok ? "OK" : "FAIL");
         } else {
             ok = wcb->sendRaw(_target, _port, _buf, _len);
-            Serial.printf("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
+            wcbStreamLog("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
         }
         _len = 0;
     }

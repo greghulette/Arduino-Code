@@ -1011,6 +1011,9 @@ let port = null;
 let reader = null;
 let writer = null;
 let readBuffer = '';
+let disconnecting = false;   // true while disconnect() tears down — stops the
+                             // read loop from re-acquiring a reader (which
+                             // would deadlock port.close()).
 let isMonitoring = false;
 let currentMode  = 1;
 let editingBtn   = null;
@@ -1202,13 +1205,42 @@ document.getElementById('btn-connect').addEventListener('click', async () => {
   }
 });
 
+// Resolve when `p` settles OR after `ms` — whichever first. Never rejects, so
+// a wedged serial op (stuck write / cancel / close) can't freeze teardown.
+function settleWithin(p, ms) {
+  return Promise.race([
+    Promise.resolve(p).then(() => {}, () => {}),
+    new Promise(res => setTimeout(res, ms)),
+  ]);
+}
+
 async function disconnect() {
-  if (isMonitoring) await stopMonitor();
-  try { if (reader) { await reader.cancel(); reader = null; } } catch(e) {}
-  try { if (writer) { writer.releaseLock(); writer = null; } } catch(e) {}
-  try { await port.close(); } catch(e) {}
-  port = null;
-  setConnected(false);
+  if (disconnecting) return;          // re-entrancy guard (rapid clicks)
+  disconnecting = true;               // stop startReading() re-acquiring a reader
+  try {
+    // Best-effort STOP_MONITOR — bounded so a back-pressured write can't hang.
+    if (isMonitoring && writer) {
+      await settleWithin(sendJSON({ type: 'STOP_MONITOR' }), 400);
+    }
+    isMonitoring = false;
+
+    // Cancel the read loop. With `disconnecting` set, startReading() exits
+    // instead of grabbing a new reader, so the stream is left unlocked.
+    if (reader) { await settleWithin(reader.cancel(), 800); reader = null; }
+
+    try { if (writer) writer.releaseLock(); } catch (_) {}
+    writer = null;
+
+    if (port) { await settleWithin(port.close(), 800); }
+  } finally {
+    port = null;
+    disconnecting = false;
+    setConnected(false);
+    const ms = document.getElementById('btn-mon-start');
+    const mx = document.getElementById('btn-mon-stop');
+    if (ms) ms.disabled = true;
+    if (mx) mx.disabled = true;
+  }
 }
 
 function setConnected(v) {
@@ -1383,7 +1415,7 @@ initTerminal();
 // reopen the reader, repeating until BC settles into valid output.
 async function startReading() {
   const decoder = new TextDecoder();
-  while (port && port.readable) {
+  while (port && port.readable && !disconnecting) {
     try {
       reader = port.readable.getReader();
       try {
@@ -1406,7 +1438,7 @@ async function startReading() {
       // Most common: FramingError during BC's boot-from-reset garbage burst.
       // Discard whatever was in the buffer (likely partial garbage) and re-
       // acquire the reader so subsequent valid bytes can come through.
-      if (!port) break;
+      if (!port || disconnecting) break;
       console.warn('Read recovered after:', e.name || 'error', '— continuing');
       readBuffer = '';
       // Tiny pause to let any in-flight garbage finish before reopening

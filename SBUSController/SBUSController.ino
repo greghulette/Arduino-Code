@@ -690,6 +690,25 @@ static void decodeSbusFrame(const uint8_t* frame, uint16_t* out, int chcnt) {
   }
 }
 
+// ── Non-blocking logging ────────────────────────────────────────────────────
+// Never stall on Serial. On WCB HW 3.2 the USB serial path back-pressures when
+// no host is draining it, so a plain Serial.printf() on a recurring path (WS
+// connect/disconnect, HTTP hits, WiFi events) freezes the whole controller once
+// the TX buffer fills. vlogf() writes ONLY if the TX buffer has room right now,
+// otherwise the line is silently dropped — it can never block. Use it for any
+// recurring/background log; reserve plain Serial.* for one-shot boot output and
+// replies to host commands (a host is by definition present and draining then).
+static void vlogf(const char* fmt, ...) {
+  char buf[192];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  if (n <= 0) return;
+  if (n > (int)sizeof(buf)) n = sizeof(buf);
+  if (Serial.availableForWrite() >= n) Serial.write((const uint8_t*)buf, (size_t)n);
+}
+
 static void printSbusDebug(const uint8_t* frame, int flen, int chcnt) {
   if (!g_serialDebug) return;
   const uint32_t now = millis();
@@ -1044,10 +1063,10 @@ static String g_wsRxBuf;
 void onWsEvent(AsyncWebSocket* srv, AsyncWebSocketClient* client,
                AwsEventType type, void* arg, uint8_t* data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    Serial.printf("[SBUS] WS#%u connected.\n", client->id());
+    vlogf("[SBUS] WS#%u connected.\n", client->id());
     client->text(buildCfgJson());
   } else if (type == WS_EVT_DISCONNECT) {
-    Serial.printf("[SBUS] WS#%u disconnected.\n", client->id());
+    vlogf("[SBUS] WS#%u disconnected.\n", client->id());
     g_wsRxBuf = "";
   } else if (type == WS_EVT_DATA) {
     AwsFrameInfo* info = (AwsFrameInfo*)arg;
@@ -1126,6 +1145,12 @@ void switchWifi(uint8_t pref) {
 // =============================================================================
 
 void setup() {
+  // TX ring buffer so the boot prints below (and runtime vlogf) have headroom
+  // to write into when no host is draining the port. On WCB HW 3.2 the USB
+  // serial path back-pressures with no host attached; the default ~128 B TX
+  // buffer fills mid-setup() and a plain Serial.print() then blocks forever,
+  // so loop() is never reached and no SBUS goes out. Must precede begin().
+  Serial.setTxBufferSize(1024);
   Serial.begin(115200);
   delay(400);
   Serial.println("\n[SBUS] SBUSController booting (X18 edition)...");
@@ -1155,7 +1180,7 @@ void setup() {
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* req){
-    Serial.printf("[SBUS] HTTP GET /  from %s\n", req->client()->remoteIP().toString().c_str());
+    vlogf("[SBUS] HTTP GET /  from %s\n", req->client()->remoteIP().toString().c_str());
     req->send_P(200, "text/html", (const uint8_t*)HTML, sizeof(HTML) - 1);  // explicit length avoids uint16 overflow on large pages
   });
   // Lightweight health-check
@@ -1170,7 +1195,7 @@ void setup() {
       req->send(404, "text/plain", "No config saved yet");
   });
   server.onNotFound([](AsyncWebServerRequest* req){
-    Serial.printf("[SBUS] 404: %s\n", req->url().c_str());
+    vlogf("[SBUS] 404: %s\n", req->url().c_str());
     req->send(404, "text/plain", "Not found");
   });
   server.begin();

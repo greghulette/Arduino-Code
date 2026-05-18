@@ -3,3 +3,7 @@ Arduino-Code.code-workspace
 *.log
 .vscode
 AmidalaFirmware/
+.claude/worktrees/laughing-khorana-c9467a/
+.claude/worktrees/cool-shockley-1983c9/
+.claude/worktrees/cool-booth-dde6e2/
+SBUSController/.claude/worktrees/determined-kirch-318908/
