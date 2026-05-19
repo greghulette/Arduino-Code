@@ -225,30 +225,37 @@ void rcConfigLoadDefaults() {
   // button action set fires.  Configurable via GUI.  -1 disables modes.
   rcConfig.funcBindings.modeSwitch = SW_SE;
 
-  // Default PWM threshold bands (button 1 = highest PWM, button 19 = lowest)
+  // Default PWM threshold bands (button 1 = highest SBUS, button 18 = lowest).
   // Order matches the FrSky X18 model: function buttons B1-B6 first, then
-  // trim pairs T4/T5/T3/T2/T6/T1, each as Left/Right.  T1 keeps narrowed bands
-  // around SBUS_CENTER 992 so the "no button pressed" state lands in a dead zone.
+  // trim pairs T4/T5/T3/T2/T6/T1. All bands sit ≥1103, well above
+  // SBUS_CENTER 992, so the "no button pressed" state never matches.
+  // Measured SBUS values from the live X18 (same physical transmitter as
+  // RC), center ±12 → ~17-count neutral deadband between buttons (SBUS
+  // noise is ±1-2; all bands clear of SBUS_CENTER 992 = button release).
+  // T3/T2 are vertical trim buttons → Up/Down. Slot 19 ("Unassigned") is
+  // INERT (0/0 can never match) and hidden in the config tool; kept only so
+  // the 19-slot mapping/NVS index math (RC_NUM_THRESHOLDS / RC_NUM_MAPPINGS
+  // / rcMapIndex) is unchanged.
   struct { const char* label; int mn; int mx; } bands[19] = {
-    { "B1",          1800, 1850 },
-    { "B2",          1750, 1799 },
-    { "B3",          1700, 1749 },
-    { "B4",          1650, 1699 },
-    { "B5",          1600, 1649 },
-    { "B6",          1550, 1599 },
-    { "T4 Left",     1500, 1549 },
-    { "T4 Right",    1450, 1499 },
-    { "T5 Left",     1400, 1449 },
-    { "T5 Right",    1350, 1399 },
-    { "T3 Left",     1300, 1349 },
-    { "T3 Right",    1250, 1299 },
-    { "T2 Left",     1200, 1249 },
-    { "T2 Right",    1150, 1199 },
-    { "T6 Left",     1100, 1149 },
-    { "T6 Right",    1050, 1099 },
-    { "T1 Left",     1023, 1049 },   // narrowed so SBUS_CENTER 992 ± 30 = dead zone
-    { "T1 Right",     850,  960 },   // narrowed so SBUS_CENTER 992 ± 30 = dead zone
-    { "Unassigned",   800,  849 },
+    { "B1",          1799, 1823 },
+    { "B2",          1758, 1782 },
+    { "B3",          1718, 1742 },
+    { "B4",          1676, 1700 },
+    { "B5",          1634, 1658 },
+    { "B6",          1594, 1618 },
+    { "T4 Left",     1553, 1577 },
+    { "T4 Right",    1512, 1536 },
+    { "T5 Left",     1471, 1495 },
+    { "T5 Right",    1430, 1454 },
+    { "T3 Up",         1389, 1413 },
+    { "T3 Down",         1348, 1372 },
+    { "T2 Up",         1308, 1332 },
+    { "T2 Down",         1266, 1290 },
+    { "T6 Left",     1225, 1249 },
+    { "T6 Right",    1184, 1208 },
+    { "T1 Left",     1143, 1167 },
+    { "T1 Right",    1103, 1127 },
+    { "Unassigned",     0,    0 },
   };
   for (int i = 0; i < 19; i++) {
     rcConfig.thresholds[i].id = i + 1;

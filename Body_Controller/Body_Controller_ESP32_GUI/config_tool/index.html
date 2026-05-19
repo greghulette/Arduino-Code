@@ -1167,8 +1167,8 @@ const knobFunctions = {
 const knobDefaults = {
   S1: { channel: 5, function: 1 },
   S2: { channel: 6, function: 2 },
-  LS: { channel: 0, function: 0 },
-  RL: { channel: 0, function: 0 },
+  LS: { channel: 18, function: 0 },
+  RL: { channel: 19, function: 0 },
 };
 
 const switchDefaults = {
@@ -1180,8 +1180,8 @@ const switchDefaults = {
   SF: {channel: 13, positions: 2},
   SG: {channel: 14, positions: 3},
   SH: {channel: 15, positions: 2},
-  SI: {channel:  0, positions: 2},
-  SJ: {channel:  0, positions: 2},
+  SI: {channel: 16, positions: 2},
+  SJ: {channel: 17, positions: 2},
 };
 
 // The in-memory config — mirrors what's on the board
@@ -1198,10 +1198,16 @@ let config = {
 const modeLabels = ['', 'SW Down (Mode 1)', 'SW Mid (Mode 2)', 'SW Up (Mode 3)'];
 // Button label order matches BC firmware's rc_config.h defaultThresholds() bands:
 // 6 function buttons B1-B6, then trim pairs T4/T5/T3/T2/T6/T1 each as Left/Right.
+// 18 physical matrix buttons (index 1-18). Index 19 ("Unassigned") is kept
+// only so legacy 19-slot configs / firmware mapping math don't shift; it is
+// NOT shown in the threshold table or calibration (loops stop at 18).
+// T3/T2 are vertical trim buttons → Up/Down, not Left/Right.
 const btnLabels  = ['', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
                         'T4 Left', 'T4 Right', 'T5 Left', 'T5 Right',
-                        'T3 Left', 'T3 Right', 'T2 Left', 'T2 Right',
+                        'T3 Up', 'T3 Down', 'T2 Up', 'T2 Down',
                         'T6 Left', 'T6 Right', 'T1 Left', 'T1 Right', 'Unassigned'];
+// Number of real, user-facing matrix buttons (excludes the inert slot 19).
+const RC_VISIBLE_BUTTONS = 18;
 
 const actionTypeLabels = {
   '': '— none —',
@@ -1774,6 +1780,9 @@ function openCalibrationModal() {
 
   renderCalibrationStep();
   if (!isMonitoring) document.getElementById('btn-mon-start').click();
+  // Mute the board: calibration deliberately exercises every control, so no
+  // action should fire while the wizard is open.
+  sendJSON({ type: 'CALIB', on: true }).catch(() => {});
 }
 
 function closeCalibrationModal() {
@@ -1783,6 +1792,10 @@ function closeCalibrationModal() {
   calibrationState = null;
   document.getElementById('calibration-modal').classList.remove('open');
   clearCalibrationHighlights();
+  // Un-mute the board — calibration is over, resume normal action dispatch.
+  // (Belt-and-suspenders: the board also auto-clears this on STOP_MONITOR
+  // and on the next PING, so a crashed page can't leave it muted.)
+  sendJSON({ type: 'CALIB', on: false }).catch(() => {});
 }
 
 function setCalibrationStatus(text, warning = false) {
@@ -1795,6 +1808,7 @@ function setCalibrationStatus(text, warning = false) {
 function renderCalibrationStep() {
   if (!calibrationState) return;
   calibrationState.stepCaptured = false;
+  calibrationState.detect = null;   // fresh channel-swing baseline per step
   const step = calibrationState.steps[calibrationState.index];
   let instruction = '';
   if (step.type === 'button') {
@@ -1804,26 +1818,61 @@ function renderCalibrationStep() {
     const ch  = sw.channel || switchDefaults[step.swName].channel;
     const isMomentary = step.swName === 'SI' || step.swName === 'SJ';
     instruction = isMomentary
-      ? `Press and release ${step.label}${ch ? ` (ch${ch})` : ''} — verify the position flips to Up ▲ when pressed, then click Next.`
-      : `Toggle ${step.label}${ch ? ` (ch${ch})` : ''} through all positions — verify the position name updates below, then click Next.`;
+      ? `Press and release ${step.label} a few times (currently ${ch ? 'ch' + ch : 'unassigned'}). The channel that swings the most is auto-detected — click Capture to save it.`
+      : `Toggle ${step.label} through ALL positions (currently ${ch ? 'ch' + ch : 'unassigned'}). The channel that swings the most is auto-detected — click Capture to save it.`;
   } else if (step.type === 'knob') {
     const kn = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
     const ch = kn.channel || knobDefaults[step.knobName].channel;
     const isSlider = step.knobName === 'LS' || step.knobName === 'RL';
-    instruction = isSlider
-      ? `Move ${step.label}${ch ? ` (ch${ch})` : ''} from bottom to top — verify the value changes below, then click Next.`
-      : `Rotate ${step.label}${ch ? ` (ch${ch})` : ''} from min to max — verify the value changes below, then click Next.`;
+    const verb = isSlider ? 'Slide' : 'Rotate';
+    instruction = `${verb} ${step.label} fully min↔max a couple of times `
+      + `(currently ${ch ? 'ch' + ch : 'unassigned'}). The channel that swings `
+      + `the most is auto-detected — click Capture to save it.`;
   }
   document.getElementById('calibration-instruction').textContent = instruction;
   document.getElementById('calibration-live-value').textContent = 'Waiting for live SBUS data...';
   setCalibrationStatus('');
-  // Force Capture is only meaningful for button steps
-  document.getElementById('btn-calibration-capture').style.display =
-    step.type === 'button' ? '' : 'none';
+  // Capture is available for every step type now: buttons capture a PWM
+  // threshold; knobs/sliders/switches capture their SBUS channel.
+  const capBtn = document.getElementById('btn-calibration-capture');
+  capBtn.style.display = '';
+  capBtn.textContent = step.type === 'button' ? 'Force Capture' : 'Capture Channel';
   // Previous: disabled on step 0
   const prevBtn = document.getElementById('btn-calibration-prev');
   if (prevBtn) prevBtn.disabled = calibrationState.index === 0;
   highlightCalibrationTarget(step);
+}
+
+// Movement thresholds (SBUS counts) for analog/switch channel auto-detect.
+//   SWING_MIN  — minimum range before we trust a detected channel / allow
+//                manual Capture (well above SBUS line noise of ±1-2).
+//   SWING_AUTO — a near-full-travel sweep; only then do we auto-capture.
+const CALIB_SWING_MIN  = 250;
+const CALIB_SWING_AUTO = 600;
+
+// Watches EVERY SBUS channel across the current step and reports the one that
+// moved the most. Robust to any X18 channel order — the user just wiggles the
+// control and we learn which channel it is. Accumulates in calibrationState
+// .detect (reset per step in renderCalibrationStep). Returns 1-based ch.
+function calibDetectChannel(msg) {
+  const chans = msg && msg.sbus && Array.isArray(msg.sbus.channels)
+              ? msg.sbus.channels : null;
+  if (!chans || !chans.length) return null;
+  let d = calibrationState.detect;
+  if (!d) d = calibrationState.detect = { min: chans.slice(), max: chans.slice() };
+  let bestI = -1, bestSwing = -1;
+  for (let i = 0; i < chans.length; i++) {
+    const v = chans[i];
+    if (!Number.isFinite(v)) continue;
+    if (i >= d.min.length) { d.min[i] = v; d.max[i] = v; }
+    if (v < d.min[i]) d.min[i] = v;
+    if (v > d.max[i]) d.max[i] = v;
+    const sw = d.max[i] - d.min[i];
+    if (sw > bestSwing) { bestSwing = sw; bestI = i; }
+  }
+  if (bestI < 0) return null;
+  return { ch: bestI + 1, swing: bestSwing, val: chans[bestI],
+           min: d.min[bestI], max: d.max[bestI] };
 }
 
 function updateCalibrationLive(msg) {
@@ -1833,33 +1882,49 @@ function updateCalibrationLive(msg) {
 
   if (step.type === 'button') {
     liveText = `Detected: ${msg.btn ? btnLabels[msg.btn] : 'none'} — raw ${fmtVal(msg.matrixVal)}`;
-  } else if (step.type === 'switch') {
-    const sw      = (config.switches && config.switches[step.swName]) || switchDefaults[step.swName];
-    const channel = sw.channel || switchDefaults[step.swName].channel;
-    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
-    if (Number.isFinite(value)) {
-      const pos = value < 400 ? 'Down ▼' : value > 1500 ? 'Up ▲' : 'Mid ●';
-      liveText = `${step.swName}  ch${channel}: ${fmtVal(value)}  →  Position: ${pos}`;
-    } else {
-      liveText = `${step.swName} ch${channel}: awaiting SBUS data`;
+    document.getElementById('calibration-live-value').textContent = liveText;
+    // Auto-capture — buttons leave the neutral band when pressed.
+    if (calibrationState.stepCaptured) return;
+    const value = msg.matrixVal;
+    if (Number.isFinite(value) && (value < 962 || value > 1022)) {
+      calibrationState.stepCaptured = true;
+      captureCalibrationValue();
     }
-  } else if (step.type === 'knob') {
-    const kn      = (config.knobs && config.knobs[step.knobName]) || knobDefaults[step.knobName];
-    const channel = kn.channel || knobDefaults[step.knobName].channel;
-    const value   = msg.sbus && Array.isArray(msg.sbus.channels) ? msg.sbus.channels[channel - 1] : null;
-    if (Number.isFinite(value)) {
-      const pct = Math.max(0, Math.min(100, Math.round((value - 172) / (1811 - 172) * 100)));
-      liveText = `${step.knobName}  ch${channel}: ${fmtVal(value)}  (${pct}%)`;
-    } else {
-      liveText = `${step.knobName} ch${channel}: awaiting SBUS data`;
-    }
+    return;
+  }
+
+  // ── Analog (knob/slider) AND switches: channel auto-detect ───────────────
+  // Same logic for both — wiggle the control, we find its channel by the
+  // largest swing and (on Capture) save it into config so it's robust to any
+  // X18 channel order. This is what fixes LS/RL/SI/SJ and mismatched inputs.
+  const isKnob = step.type === 'knob';
+  const name   = isKnob ? step.knobName : step.swName;
+  const defMap = isKnob ? knobDefaults : switchDefaults;
+  const cfgMap = isKnob ? config.knobs  : config.switches;
+  const cur    = (cfgMap && cfgMap[name]) || defMap[name] || {};
+  const assignedCh = cur.channel || (defMap[name] && defMap[name].channel) || 0;
+  const det = calibDetectChannel(msg);
+
+  if (!det) {
+    liveText = `${name}: awaiting SBUS data…`;
+  } else if (det.swing < CALIB_SWING_MIN) {
+    liveText = `${name}: move it fully through its range — `
+             + `best so far ch${det.ch} (Δ${det.swing}). `
+             + `Assigned: ${assignedCh ? 'ch' + assignedCh : '— none'}`;
+  } else {
+    const match = det.ch === assignedCh
+                ? ' ✓ matches current assignment'
+                : `  (currently ${assignedCh ? 'ch' + assignedCh : 'unassigned'})`;
+    liveText = `${name}: detected ch${det.ch}  `
+             + `range ${fmtVal(det.min)}–${fmtVal(det.max)} (Δ${det.swing})`
+             + `${match} — click Capture to save`;
   }
   document.getElementById('calibration-live-value').textContent = liveText;
 
-  // ── Auto-capture — buttons only ───────────────────────────────────────────
-  if (step.type !== 'button' || calibrationState.stepCaptured) return;
-  const value = msg.matrixVal;
-  if (Number.isFinite(value) && (value < 962 || value > 1022)) {
+  // Auto-capture only on a confident, near-full-travel sweep (and only if
+  // auto-advance is on — otherwise wait for an explicit Capture click).
+  if (calibrationState.stepCaptured) return;
+  if (calibrationState.autoAdvance && det && det.swing >= CALIB_SWING_AUTO) {
     calibrationState.stepCaptured = true;
     captureCalibrationValue();
   }
@@ -1932,8 +1997,43 @@ function captureCalibrationValue() {
         if (calibrationState) calibrationNextStep();
       }, 900);
     }
+  } else {
+    // ── Knob/slider or switch: save the auto-detected channel ──────────────
+    const det = calibDetectChannel(msg);
+    if (!det || det.swing < CALIB_SWING_MIN) {
+      calibrationState.stepCaptured = false;   // let auto-capture retry
+      setCalibrationStatus(
+        `Not enough movement yet${det ? ` (best ch${det.ch}, Δ${det.swing})` : ''}. `
+        + `Move ${step.label} fully through its range, then click Capture.`, true);
+      return;
+    }
+    const isKnob = step.type === 'knob';
+    const name   = isKnob ? step.knobName : step.swName;
+    if (isKnob) {
+      if (!config.knobs) config.knobs = {};
+      const prev = config.knobs[name] || knobDefaults[name] || {};
+      config.knobs[name] = { ...prev, channel: det.ch };
+      if (typeof renderKnobHighlights === 'function') renderKnobHighlights();
+    } else {
+      if (!config.switches) config.switches = {};
+      const dflt = switchDefaults[name] || { positions: 3 };
+      const prev = config.switches[name] || dflt;
+      config.switches[name] = { ...prev, channel: det.ch,
+        positions: prev.positions || dflt.positions || 3 };
+      if (typeof renderSwitchHighlights === 'function') renderSwitchHighlights();
+    }
+    calibrationState.captured += 1;
+    const advNote = calibrationState.autoAdvance
+      ? ' Auto-advancing…' : ' Click Next → to continue.';
+    setCalibrationStatus(
+      `${name} → ch${det.ch} saved  (range ${fmtVal(det.min)}–${fmtVal(det.max)}, `
+      + `Δ${det.swing}).${advNote}`, false);
+    if (calibrationState.autoAdvance) {
+      calibrationState.autoAdvanceTimer = setTimeout(() => {
+        if (calibrationState) calibrationNextStep();
+      }, 900);
+    }
   }
-  // switch/knob steps are verification-only — Force Capture is hidden for them
 }
 
 function calibrationNextStep() {
@@ -2024,7 +2124,7 @@ function updatePWMDisplay(matrixVal, modeVal, btn, mode) {
 
   // Live highlight on the SVG — clear previous, then mark current
   document.querySelectorAll('.btn-zone.live-active').forEach(el => el.classList.remove('live-active'));
-  if (effectiveBtn > 0 && effectiveBtn <= 19) {
+  if (effectiveBtn > 0 && effectiveBtn <= RC_VISIBLE_BUTTONS) {
     const el = document.querySelector(`.btn-zone[data-btn="${effectiveBtn}"]`);
     if (el) el.classList.add('live-active');
   }
@@ -2050,6 +2150,7 @@ function renderThresholds() {
   const tbody = document.querySelector('#thresh-table tbody');
   tbody.innerHTML = '';
   config.thresholds.forEach((t, i) => {
+    if (i >= RC_VISIBLE_BUTTONS) return;   // hide inert slot 19 ("Unassigned")
     const row = document.createElement('tr');
     // Inputs show values in the currently-selected unit; parseVal converts
     // back to SBUS on save so storage stays in raw SBUS.
@@ -2111,7 +2212,7 @@ function actionSummary(a) {
 }
 
 function updateButtonHighlights() {
-  for (let btn = 1; btn <= 19; btn++) {
+  for (let btn = 1; btn <= RC_VISIBLE_BUTTONS; btn++) {
     const key   = String(currentMode * 100 + btn);
     const m     = config.mappings[key];
     const group = document.querySelector(`.btn-zone[data-btn="${btn}"]`);
@@ -3224,24 +3325,25 @@ function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 
 function defaultThresholds() {
   // Order matches BC firmware's rc_config.h defaultThresholds() bands.
-  const labels = ['B1','B2','B3','B4','B5','B6',
-                  'T4 Left','T4 Right','T5 Left','T5 Right',
-                  'T3 Left','T3 Right','T2 Left','T2 Right',
-                  'T6 Left','T6 Right',
-                  'T1 Left','T1 Right','Unassigned'];
-  return labels.map((label, i) => ({
+  // Measured SBUS values from the live X18 (same physical transmitter as
+  // RC), center ±12 → ~17-count neutral deadband between buttons (SBUS
+  // noise is only ±1-2; well clear of SBUS_CENTER 992 = button release).
+  // T3/T2 are vertical trim buttons → Up/Down. Slot 19 is inert (0/0 never
+  // matches) and hidden from the UI; kept only so the 19-slot mapping/NVS
+  // index math is unchanged.
+  const bands = [
+    ['B1',       1811], ['B2',       1770], ['B3',      1730], ['B4', 1688],
+    ['B5',       1646], ['B6',       1606], ['T4 Left', 1565], ['T4 Right', 1524],
+    ['T5 Left',  1483], ['T5 Right', 1442], ['T3 Up',     1401], ['T3 Down', 1360],
+    ['T2 Up',      1320], ['T2 Down',      1278], ['T6 Left', 1237], ['T6 Right', 1196],
+    ['T1 Left',  1155], ['T1 Right', 1115], ['Unassigned', 0],
+  ];
+  return bands.map(([label, c], i) => ({
     id:     i + 1,
     label,
-    minPwm: 1850 - (i + 1) * 50,
-    maxPwm: 1850 - i * 50 - 1,
-  })).map((t, i) => {
-    // Bands intentionally avoid 962-1022 so SBUS_CENTER (992 — what
-    // controllers send on button release) doesn't match any button.
-    if (i === 16) return { ...t, minPwm: 1023, maxPwm: 1049 };  // T1 Left
-    if (i === 17) return { ...t, minPwm: 850,  maxPwm: 960  };  // T1 Right
-    if (i === 18) return { ...t, minPwm: 800,  maxPwm: 849  };  // Unassigned
-    return t;
-  });
+    minPwm: c ? c - 12 : 0,
+    maxPwm: c ? c + 12 : 0,
+  }));
 }
 
 // ── WebSerial availability check ──────────────────────────────────────────

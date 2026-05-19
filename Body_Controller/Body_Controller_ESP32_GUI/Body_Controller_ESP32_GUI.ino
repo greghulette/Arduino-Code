@@ -176,6 +176,12 @@ Adafruit_NeoPixel ESP_LED = Adafruit_NeoPixel(STATUS_LED_COUNT, STAUS_LED_PIN, N
 //////////////////////////////////////////////////////////////////////
 bool          wsMonitorActive   = false;
 unsigned long wsMonitorLastSent = 0;
+// While the config tool's calibration wizard is open the operator deliberately
+// wiggles every stick/knob/switch/button. Suppress ALL action dispatch while
+// this is set so nothing fires during cal. Set/cleared via
+// {"type":"CALIB","on":bool}; also force-cleared by STOP_MONITOR and a fresh
+// PING so a crashed/closed page can never leave the board permanently muted.
+bool          calibrationActive = false;
 #define WS_MONITOR_INTERVAL_MS  50
 
 // Small queue for delayed config-driven actions (avoids lambda-capture problem)
@@ -734,6 +740,10 @@ static void scheduleAction(const RcAction& action, unsigned long delayMs) {
 }
 
 void rcExecuteAction(const RcAction& a) {
+  // Calibration mode: the operator is intentionally moving every control to
+  // set thresholds — drop every action (including delayed/scheduled ones, so
+  // nothing queues up to fire the instant calibration ends).
+  if (calibrationActive) return;
   if (a.delayMs > 0) {
     scheduleAction(a, a.delayMs);
     return;
@@ -1153,6 +1163,9 @@ void handleWebSerialMessage(const String& line) {
 
   // ── PING ──────────────────────────────────────────────────────────────────
   if (strcmp(type, "PING") == 0 || strcmp(type, "ping") == 0) {
+    // A fresh page connect pings first — clear any stale calibration mute
+    // left behind by a previously crashed/closed calibration page.
+    calibrationActive = false;
     Serial.println("{\"type\":\"PONG\"}");
     return;
   }
@@ -1206,6 +1219,18 @@ void handleWebSerialMessage(const String& line) {
   // ── STOP_MONITOR ──────────────────────────────────────────────────────────
   if (strcmp(type, "STOP_MONITOR") == 0) {
     wsMonitorActive = false;
+    // Calibration always runs with the monitor on; stopping it is a reliable
+    // "calibration is over" signal even if CALIB-off is lost.
+    calibrationActive = false;
+    Serial.println("{\"type\":\"ACK\",\"ok\":true}");
+    return;
+  }
+
+  // ── CALIB — mute all action dispatch while the calibration wizard runs ─────
+  if (strcmp(type, "CALIB") == 0) {
+    calibrationActive = doc["on"] | false;
+    Serial.printf("[CALIB] action dispatch %s\n",
+                  calibrationActive ? "SUPPRESSED (calibrating)" : "resumed");
     Serial.println("{\"type\":\"ACK\",\"ok\":true}");
     return;
   }
