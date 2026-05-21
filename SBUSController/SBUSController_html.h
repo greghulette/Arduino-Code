@@ -252,7 +252,7 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .lua-btn:not(.unassigned):hover{filter:brightness(1.15);}
 
   /* X18-style matrix button layout:
-       RB1  |  S1/S2/S3 col  |  S4/S5/S6 col  |  RB2                       */
+       S1/S2/S3 col  |  S4/S5/S6 col   (RB1/RB2 promoted to SI/SJ switches)*/
   .btn-bank{
     display:flex;gap:24px;justify-content:center;align-items:center;width:100%;flex-wrap:wrap;
   }
@@ -561,6 +561,20 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     <text x="775" y="358" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SC</text>
   </g>
 
+  <!-- SI / SJ button caps (cycle through positions on click — defaults to 3-pos
+       switch but reflects sw[i].t at runtime).  Positions match the RC Controller
+       config tool so the controller graphic stays consistent across the two apps. -->
+  <g class="svg-sw" data-i="8" data-pos="0" data-px="265" data-py="359" onclick="svgSwCycle(8)" style="cursor:pointer">
+    <rect x="254" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+    <circle cx="265" cy="359" r="7" fill="url(#tx-cap-grad)" stroke="#1a1a1a"/>
+    <text x="265" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SI</text>
+  </g>
+  <g class="svg-sw" data-i="9" data-pos="0" data-px="735" data-py="359" onclick="svgSwCycle(9)" style="cursor:pointer">
+    <rect x="724" y="348" width="22" height="22" rx="5" fill="#1a1a2e" stroke="#3a3a6a"/>
+    <circle cx="735" cy="359" r="7" fill="url(#tx-cap-grad)" stroke="#1a1a1a"/>
+    <text x="735" y="384" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">SJ</text>
+  </g>
+
   <!-- S1, S2 knobs (draggable — vertical drag = value).
        cfg.sl index: S1=2, S2=3.  Drag up = increase, down = decrease.        -->
   <g class="svg-knob" data-i="2"
@@ -638,25 +652,31 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
           onpointercancel="svgStickUp(event,'R')"/>
   </g>
 
-  <!-- ── LS / RS edge sliders (draggable, vertical) ── -->
-  <!-- LS at far-left, cfg.sl index 0.  RS at far-right, cfg.sl index 1. -->
-  <g class="svg-slider" data-i="0" data-x="20" data-top="395" data-bot="575"
+  <!-- ── LS / RS edge sliders (draggable, vertical) ──
+       Styling matches the RC Controller config tool: short rail (10×120) set
+       slightly inboard from the body edge, with a wider knob (22×16) straddling
+       the rail and a horizontal centre indicator line.  cfg.sl index 0 = LS
+       (left rail), 1 = RS (right rail).  The JS constants _sliderTop/_sliderBot
+       in the slider section below must stay in sync with these coordinates. -->
+  <g class="svg-slider" data-i="0" data-x="81" data-top="430" data-bot="550"
      onpointerdown="svgSliderDown(event,0)"
      onpointermove="svgSliderMove(event,0)"
      onpointerup="svgSliderUp(event,0)"
      onpointercancel="svgSliderUp(event,0)">
-    <rect x="14" y="395" width="14" height="180" rx="6" fill="#08101e" stroke="#1a2a4a"/>
-    <rect x="16" y="478" width="10" height="14" rx="2" id="sliderThumbLS" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.4"/>
-    <text x="21" y="592" text-anchor="middle" fill="#cdd6e8" font-size="10" font-weight="700">LS</text>
+    <rect x="76" y="430" width="10" height="120" rx="5" fill="#08101e" stroke="#1a2a4a"/>
+    <line x1="73" y1="490" x2="89" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+    <rect x="70" y="482" width="22" height="16" rx="4" id="sliderThumbLS" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.6"/>
+    <text x="81" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">LS</text>
   </g>
-  <g class="svg-slider" data-i="1" data-x="980" data-top="395" data-bot="575"
+  <g class="svg-slider" data-i="1" data-x="919" data-top="430" data-bot="550"
      onpointerdown="svgSliderDown(event,1)"
      onpointermove="svgSliderMove(event,1)"
      onpointerup="svgSliderUp(event,1)"
      onpointercancel="svgSliderUp(event,1)">
-    <rect x="974" y="395" width="14" height="180" rx="6" fill="#08101e" stroke="#1a2a4a"/>
-    <rect x="976" y="478" width="10" height="14" rx="2" id="sliderThumbRS" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.4"/>
-    <text x="981" y="592" text-anchor="middle" fill="#cdd6e8" font-size="10" font-weight="700">RS</text>
+    <rect x="914" y="430" width="10" height="120" rx="5" fill="#08101e" stroke="#1a2a4a"/>
+    <line x1="911" y1="490" x2="927" y2="490" stroke="#2a3a5a" stroke-width="1.5"/>
+    <rect x="908" y="482" width="22" height="16" rx="4" id="sliderThumbRS" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.6"/>
+    <text x="919" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">RS</text>
   </g>
 
   <!-- Trim button zones — press/release fires {t:'tr', i, d, p}.
@@ -787,16 +807,9 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     <text x="680" y="725" text-anchor="middle" fill="#a0a8b8" font-size="9" font-weight="700">S6</text>
   </g>
 
-  <!-- RB1, RB2 — rear buttons.  Real X18 has them on the back of the unit;
-       rendered here as small chips on the lower flanks of the body face. -->
-  <g class="svg-btn" data-i="6" onpointerdown="svgBtnPress(event,6)" onpointerup="svgBtnRelease(event,6)" onpointerleave="svgBtnRelease(event,6)">
-    <rect x="60" y="755" width="50" height="22" rx="6" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="1.5"/>
-    <text x="85" y="770" text-anchor="middle" fill="#a0a8b8" font-size="10" font-weight="700">RB1</text>
-  </g>
-  <g class="svg-btn" data-i="7" onpointerdown="svgBtnPress(event,7)" onpointerup="svgBtnRelease(event,7)" onpointerleave="svgBtnRelease(event,7)">
-    <rect x="890" y="755" width="50" height="22" rx="6" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="1.5"/>
-    <text x="915" y="770" text-anchor="middle" fill="#a0a8b8" font-size="10" font-weight="700">RB2</text>
-  </g>
+  <!-- Former rear buttons RB1/RB2 have been promoted to switches SI/SJ — they now
+       live in the bottom of the switch pyramids (left/right) and in the Switches
+       config section, with low/mid/high values like SA-SH. -->
 </svg>
 </div>
 
@@ -884,14 +897,14 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       <div>
         <div class="sec-title">Joystick Channels &amp; Range</div>
         <table class="cfg-table" style="min-width:480px;">
-          <thead><tr><th>Axis</th><th>Channel</th><th>Min <span class="unit-label">(SBUS)</span></th><th>Max <span class="unit-label">(SBUS)</span></th><th style="font-size:.55rem;color:var(--muted)">swap min/max to reverse</th></tr></thead>
+          <thead><tr><th>Axis</th><th>Channel</th><th>Min <span class="unit-label">(SBUS)</span></th><th>Max <span class="unit-label">(SBUS)</span></th><th title="Flip stick direction for this axis">Reverse</th></tr></thead>
           <tbody>
-            <!-- XYXY ordering: Right X, Right Y, Left X, Left Y.  Internal aMin/aMax
+            <!-- XYXY ordering: Right X, Right Y, Left X, Left Y.  Internal aMin/aMax/aRev
                  array indices kept the same (0/1=R, 2=LY, 3=LX) — only display row order swapped. -->
-            <tr><td>Right X (AIL)</td><td><select id="selRX"></select></td><td><input type="number" id="axMin0" min="1" max="2047" value="172"  data-axis-min="0" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax0" min="1" max="2047" value="1811" data-axis-max="0" class="axis-input" style="width:70px"></td><td></td></tr>
-            <tr><td>Right Y (ELE)</td><td><select id="selRY"></select></td><td><input type="number" id="axMin1" min="1" max="2047" value="172"  data-axis-min="1" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax1" min="1" max="2047" value="1811" data-axis-max="1" class="axis-input" style="width:70px"></td><td></td></tr>
-            <tr><td>Left X (RUD)</td> <td><select id="selLX"></select></td><td><input type="number" id="axMin3" min="1" max="2047" value="172"  data-axis-min="3" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax3" min="1" max="2047" value="1811" data-axis-max="3" class="axis-input" style="width:70px"></td><td></td></tr>
-            <tr><td>Left Y (THR)</td> <td><select id="selLY"></select></td><td><input type="number" id="axMin2" min="1" max="2047" value="172"  data-axis-min="2" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax2" min="1" max="2047" value="1811" data-axis-max="2" class="axis-input" style="width:70px"></td><td></td></tr>
+            <tr><td>Right X (AIL)</td><td><select id="selRX"></select></td><td><input type="number" id="axMin0" min="1" max="2047" value="172"  data-axis-min="0" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax0" min="1" max="2047" value="1811" data-axis-max="0" class="axis-input" style="width:70px"></td><td style="text-align:center"><input type="checkbox" id="axRev0" data-axis-rev="0"></td></tr>
+            <tr><td>Right Y (ELE)</td><td><select id="selRY"></select></td><td><input type="number" id="axMin1" min="1" max="2047" value="172"  data-axis-min="1" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax1" min="1" max="2047" value="1811" data-axis-max="1" class="axis-input" style="width:70px"></td><td style="text-align:center"><input type="checkbox" id="axRev1" data-axis-rev="1"></td></tr>
+            <tr><td>Left X (RUD)</td> <td><select id="selLX"></select></td><td><input type="number" id="axMin3" min="1" max="2047" value="172"  data-axis-min="3" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax3" min="1" max="2047" value="1811" data-axis-max="3" class="axis-input" style="width:70px"></td><td style="text-align:center"><input type="checkbox" id="axRev3" data-axis-rev="3"></td></tr>
+            <tr><td>Left Y (THR)</td> <td><select id="selLY"></select></td><td><input type="number" id="axMin2" min="1" max="2047" value="172"  data-axis-min="2" class="axis-input" style="width:70px"></td><td><input type="number" id="axMax2" min="1" max="2047" value="1811" data-axis-max="2" class="axis-input" style="width:70px"></td><td style="text-align:center"><input type="checkbox" id="axRev2" data-axis-rev="2"></td></tr>
           </tbody>
         </table>
       </div>
@@ -899,7 +912,7 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       <div>
         <div class="sec-title">Switches</div>
         <table class="cfg-table">
-          <thead><tr><th>Name</th><th>Channel</th><th>Low Val</th><th>Mid Val</th><th>High Val</th><th>Default Pos</th></tr></thead>
+          <thead><tr><th>Name</th><th>Type</th><th>Channel</th><th>Low Val</th><th>Mid Val</th><th>High Val</th><th>Default Pos</th></tr></thead>
           <tbody id="swCfgBody"></tbody>
         </table>
       </div>
@@ -924,7 +937,7 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       </div>
 
       <div>
-        <div class="sec-title">Physical Buttons (S1–S6, RB1, RB2)</div>
+        <div class="sec-title">Physical Buttons (S1–S6)</div>
         <table class="cfg-table">
           <thead><tr><th>Name</th><th>Label</th><th>Channel</th><th>Pressed Value</th></tr></thead>
           <tbody id="btnCfgBody"></tbody>
@@ -1021,12 +1034,13 @@ let cfg = {
   rx:1, ry:2, ly:3, lx:4, sbus24:true,
   aMin: [172, 172, 172, 172],
   aMax: [1811,1811,1811,1811],
+  aRev: [false,false,false,false],
   pwm: Array.from({length:4}, (_,i)=>({c:i+1})),
   pwmExt: false,
-  sw:  Array.from({length:8},  (_,i)=>({l:`S${i}`, c:0, t:0, v:[172,992,1811], pos:1})),
+  sw:  Array.from({length:10}, (_,i)=>({l:`S${i}`, c:0, t:0, v:[172,992,1811], pos:1})),
   sl:  Array.from({length:4},  (_,i)=>({l:['LS','RS','S1','S2'][i]||`SL${i}`, c:0, pct:50})),
   tr:  Array.from({length:6},  (_,i)=>({l:`T${i+1}`, c:0, s:10, cur:992})),
-  btn: Array.from({length:8},  (_,i)=>({l:`Btn${i+1}`, c:0, v:1811})),
+  btn: Array.from({length:6},  (_,i)=>({l:`Btn${i+1}`, c:0, v:1811})),
   lua: Array.from({length:15}, (_,i)=>({l:`Button ${i+1}`, c:0, v:1811}))
 };
 let g_dbgOn = false;
@@ -1257,9 +1271,16 @@ const svgStickUp = (ev, side) => {
 };
 
 // ─── LS / RS vertical sliders (Phase 2) ───────────────────────────────────
+// Geometry MUST match the SVG rect dims above:
+//   Rail:  x = 76 (LS) / 914 (RS), y = 430, w = 10, h = 120
+//   Thumb: w = 22, h = 16, centred on rail (LS x=70, RS x=908)
+//   Usable thumb y travel: top=430 (pct 100), bottom=534 (pct 0)  → range 104 px
 const _sliderState = {};   // idx → { active, ptrId, pct }
-const _sliderRange = { 0:{thumb:'sliderThumbLS', y0:478}, 1:{thumb:'sliderThumbRS', y0:478} };
-const _sliderTop = 395, _sliderBot = 575, _sliderRangePx = 165;  // 575-395-15(thumb)
+const _sliderRange = { 0:{thumb:'sliderThumbLS', y0:482}, 1:{thumb:'sliderThumbRS', y0:482} };
+const _sliderTop = 430, _sliderBot = 550, _sliderThumbH = 16;
+const _sliderUsableTop = _sliderTop;                              // 430 — thumb-y when pct=100
+const _sliderUsableBot = _sliderBot - _sliderThumbH;              // 534 — thumb-y when pct=0
+const _sliderRangePx   = _sliderUsableBot - _sliderUsableTop;     // 104
 
 const _sliderPctFromEv = (ev) => {
   const svg = _getTxSvg(ev);
@@ -1269,16 +1290,17 @@ const _sliderPctFromEv = (ev) => {
   const m   = svg.getScreenCTM();
   if (!m) return null;
   const lp = pt.matrixTransform(m.inverse());
-  // Slider area is from y=395 to y=575 (180px) — but thumb height is 14, so usable range is 395..561.
-  // pct 0 = bottom, pct 100 = top.
-  let v = (575 - lp.y) / (575 - 395);
+  // Map the pointer's y into 0..100 using the FULL rail height (430..550) so
+  // dragging anywhere on the rail feels right; the thumb itself is then clamped
+  // into the usable range during render.  pct 0 = bottom of rail, 100 = top.
+  let v = (_sliderBot - lp.y) / (_sliderBot - _sliderTop);
   return Math.max(0, Math.min(100, Math.round(v * 100)));
 };
 const _sliderRenderThumb = (idx) => {
   const r = _sliderRange[idx];
   const pct = (_sliderState[idx] && _sliderState[idx].pct !== undefined) ? _sliderState[idx].pct : 50;
-  // pct 100 → y = 395, pct 0 → y = 561
-  const y  = 561 - (pct / 100) * 166;
+  // pct 100 → y = _sliderUsableTop (430);  pct 0 → y = _sliderUsableBot (534)
+  const y  = _sliderUsableBot - (pct / 100) * _sliderRangePx;
   const thumb = document.getElementById(r.thumb);
   if (thumb) thumb.setAttribute('y', y);
 };
@@ -1482,26 +1504,74 @@ const renderScreenLuaButtons = () => {
   });
 };
 
-// Momentary switches (SH): press → pos 2, release → pos 0.
+// Momentary switches: press → "active" position, release → back to default.
+//   defaultPos 0 (low)  → active = 2 (high)
+//   defaultPos 1 (mid)  → active = 2 (high)   — mid isn't a sensible momentary idle
+//   defaultPos 2 (high) → active = 0 (low)
+const _swActivePos = (sw) => ((sw && sw.d === 2) ? 0 : 2);
+const _swDefaultPos = (sw) => (sw && sw.d != null ? sw.d : 0);
+
 const svgSwMomentaryPress = (ev, i) => {
   if (ev) ev.preventDefault();
   const el = document.querySelector('.svg-sw[data-i="'+i+'"]');
-  if (!el) return;
+  if (!el || !cfg || !cfg.sw || !cfg.sw[i]) return;
   if (el.dataset.held === '1') return;       // already held — ignore re-entry
   el.dataset.held = '1';
-  el.dataset.pos  = 2;
-  applySvgSwRotation(el, 2);
-  send({t:'sw', i, p:2});
+  const active = _swActivePos(cfg.sw[i]);
+  el.dataset.pos = active;
+  applySvgSwRotation(el, active);
+  send({t:'sw', i, p:active});
 };
 const svgSwMomentaryRelease = (ev, i) => {
   if (ev) ev.preventDefault();
   const el = document.querySelector('.svg-sw[data-i="'+i+'"]');
-  if (!el || el.dataset.held !== '1') return;
+  if (!el || !cfg || !cfg.sw || !cfg.sw[i]) return;
+  if (el.dataset.held !== '1') return;
   el.dataset.held = '0';
-  el.dataset.pos  = 0;
-  applySvgSwRotation(el, 0);
-  send({t:'sw', i, p:0});
+  const def = _swDefaultPos(cfg.sw[i]);
+  el.dataset.pos = def;
+  applySvgSwRotation(el, def);
+  send({t:'sw', i, p:def});
 };
+
+// ── Unified SVG switch event dispatcher ──────────────────────────────────────
+// Every .svg-sw element gets the same handlers; behavior is decided at runtime
+// from cfg.sw[i].t so the Type dropdown (3-way / 2-way / Momentary) takes effect
+// without needing to re-render the SVG.
+//   Non-momentary:  pointerup cycles through valid positions for the type.
+//   Momentary:      pointerdown → active value, release/leave/cancel → default.
+const svgSwOnDown = (ev, i) => {
+  if (!cfg || !cfg.sw || !cfg.sw[i]) return;
+  if (cfg.sw[i].t === 2) svgSwMomentaryPress(ev, i);
+};
+const svgSwOnUp = (ev, i) => {
+  if (!cfg || !cfg.sw || !cfg.sw[i]) return;
+  if (cfg.sw[i].t === 2) svgSwMomentaryRelease(ev, i);
+  else                    svgSwCycle(i);
+};
+const svgSwOnLeave = (ev, i) => {
+  if (!cfg || !cfg.sw || !cfg.sw[i]) return;
+  if (cfg.sw[i].t === 2) svgSwMomentaryRelease(ev, i);
+};
+
+// Strip the static inline handlers from every .svg-sw and rewire them to the
+// unified dispatcher above.  Called once at startup; safe to call again later.
+function wireSvgSwitchHandlers() {
+  document.querySelectorAll('.svg-sw').forEach(el => {
+    if (el.dataset.unified === '1') return;     // already wired
+    const i = +el.dataset.i;
+    ['click','pointerdown','pointerup','pointerleave','pointercancel'].forEach(evt => {
+      el['on' + evt] = null;
+      el.removeAttribute('on' + evt);
+    });
+    el.addEventListener('pointerdown',  (ev) => svgSwOnDown(ev, i));
+    el.addEventListener('pointerup',    (ev) => svgSwOnUp(ev, i));
+    el.addEventListener('pointerleave', (ev) => svgSwOnLeave(ev, i));
+    el.addEventListener('pointercancel',(ev) => svgSwOnLeave(ev, i));
+    el.style.cursor = 'pointer';
+    el.dataset.unified = '1';
+  });
+}
 
 function setBadge(on) {
   const b = document.getElementById('connBadge');
@@ -1521,6 +1591,7 @@ function applyCfg(msg) {
   g_dbgOn    = msg.dbg   || false;
   if (Array.isArray(msg.aMin)) cfg.aMin = msg.aMin;
   if (Array.isArray(msg.aMax)) cfg.aMax = msg.aMax;
+  if (Array.isArray(msg.aRev)) cfg.aRev = msg.aRev.map(v => !!v);
   if (Array.isArray(msg.sw))  cfg.sw  = msg.sw;
   if (Array.isArray(msg.sl))  cfg.sl  = msg.sl;
   if (Array.isArray(msg.tr))  {
@@ -1615,7 +1686,7 @@ function renderAll() {
   renderSliders();      // LS beside left stick, RS beside right stick
   renderPots();         // S1/S2 in pot row above sticks
   renderTrimBank();     // all 6 trims in a row below sticks
-  renderButtons();      // physical S1-S6, RB1-RB2
+  renderButtons();      // physical S1-S6 (RB1/RB2 are now switches SI/SJ)
   renderLuaButtons();        // 15 configurable virtual buttons (HTML row above)
   renderScreenLuaButtons();  // same buttons mirrored inside the SVG screen pod
   renderSettings();
@@ -1628,14 +1699,15 @@ function updateStickLabels() {
     `RIGHT  RX:CH${cfg.rx}  RY:CH${cfg.ry}`;
 }
 function updateReadouts() {
-  // Use per-axis range so readout reflects actual SBUS output
+  // Use per-axis range + reverse so readout reflects actual SBUS output
+  const rev = (i) => (cfg.aRev && cfg.aRev[i]) ? -1 : 1;
   // Live readouts respect the unit toggle (SBUS or µs).
   document.getElementById('readL').innerHTML =
-    `LX:&nbsp;${fmtVal(axisToSbusRange(sticks.L.x,  cfg.aMin[3],cfg.aMax[3]))}&nbsp;&nbsp;` +
-    `LY:&nbsp;${fmtVal(axisToSbusRange(-sticks.L.y, cfg.aMin[2],cfg.aMax[2]))}`;
+    `LX:&nbsp;${fmtVal(axisToSbusRange(rev(3)* sticks.L.x,  cfg.aMin[3],cfg.aMax[3]))}&nbsp;&nbsp;` +
+    `LY:&nbsp;${fmtVal(axisToSbusRange(rev(2)*-sticks.L.y, cfg.aMin[2],cfg.aMax[2]))}`;
   document.getElementById('readR').innerHTML =
-    `RX:&nbsp;${fmtVal(axisToSbusRange(sticks.R.x,  cfg.aMin[0],cfg.aMax[0]))}&nbsp;&nbsp;` +
-    `RY:&nbsp;${fmtVal(axisToSbusRange(-sticks.R.y, cfg.aMin[1],cfg.aMax[1]))}`;
+    `RX:&nbsp;${fmtVal(axisToSbusRange(rev(0)* sticks.R.x,  cfg.aMin[0],cfg.aMax[0]))}&nbsp;&nbsp;` +
+    `RY:&nbsp;${fmtVal(axisToSbusRange(rev(1)*-sticks.R.y, cfg.aMin[1],cfg.aMax[1]))}`;
 }
 
 // ── Switches ──────────────────────────────────────────────────────────────────
@@ -1651,11 +1723,14 @@ function makeSwitchCard(i) {
   card.appendChild(nm); card.appendChild(ch);
 
   if (sw.t === 2) {
-    // Momentary
+    // Momentary — press jumps to the "active" pos (opposite extreme from
+    // defaultPos); release returns to defaultPos (not hard-coded 0).
     const btn = document.createElement('button');
     btn.className = 'sw-mom'; btn.textContent = sw.l;
-    const press = () => { btn.classList.add('held');    send({t:'sw',i,p:1}); };
-    const rel   = () => { btn.classList.remove('held'); send({t:'sw',i,p:0}); };
+    const active = _swActivePos(sw);
+    const def    = _swDefaultPos(sw);
+    const press = () => { btn.classList.add('held');    send({t:'sw',i,p:active}); };
+    const rel   = () => { btn.classList.remove('held'); send({t:'sw',i,p:def}); };
     btn.addEventListener('mousedown',  press);
     btn.addEventListener('mouseup',    rel);
     btn.addEventListener('mouseleave', rel);
@@ -1685,11 +1760,12 @@ function makeSwitchCard(i) {
   return card;
 }
 
-// Build a switch pyramid:  topIdx single card, midIdx single card, then pair side-by-side
-//   Left:  SF(5) top, SE(4) mid, SA(0)+SB(1) bottom pair
-//   Right: SH(7) top, SG(6) mid, SC(2)+SD(3) bottom pair
+// Build a switch pyramid:  topIdx single card, midIdx single card, then pair
+// side-by-side, then optional bottomIdx single card under the pair.
+//   Left:  SF(5) top, SE(4) mid, SA(0)+SB(1) pair, SI(8) bottom
+//   Right: SH(7) top, SG(6) mid, SC(2)+SD(3) pair, SJ(9) bottom
 function renderSwitchCols() {
-  function buildPyramid(id, topIdx, midIdx, pairA, pairB) {
+  function buildPyramid(id, topIdx, midIdx, pairA, pairB, bottomIdx) {
     const root = document.getElementById(id);
     root.innerHTML = '';
     root.appendChild(makeSwitchCard(topIdx));   // SF or SH
@@ -1699,9 +1775,12 @@ function renderSwitchCols() {
     pair.appendChild(makeSwitchCard(pairA));    // SA or SC
     pair.appendChild(makeSwitchCard(pairB));    // SB or SD
     root.appendChild(pair);
+    if (bottomIdx != null && cfg.sw[bottomIdx]) {
+      root.appendChild(makeSwitchCard(bottomIdx));  // SI or SJ
+    }
   }
-  buildPyramid('swPyramidLeft',  5, 4, 0, 1);  // SF SE | SA SB
-  buildPyramid('swPyramidRight', 7, 6, 2, 3);  // SH SG | SC SD
+  buildPyramid('swPyramidLeft',  5, 4, 0, 1, 8);  // SF SE | SA SB | SI
+  buildPyramid('swPyramidRight', 7, 6, 2, 3, 9);  // SH SG | SC SD | SJ
 }
 
 // ── Trim widget ──────────────────────────────────────────────────────────────
@@ -1912,8 +1991,9 @@ function renderTrimBank() {
   bank.appendChild(bot);
 }
 
-// ── Buttons S1-S6, RB1-RB2 ───────────────────────────────────────────────────
-// X18-style: RB1 far left | S1/S2/S3 col | S4/S5/S6 col | RB2 far right
+// ── Buttons S1-S6 ────────────────────────────────────────────────────────────
+// X18-style matrix:  S1/S2/S3 column  |  S4/S5/S6 column
+// (Former rear buttons RB1/RB2 are now switches SI/SJ; see the switch pyramids.)
 function renderButtons() {
   const bank = document.getElementById('btnBank');
   bank.innerHTML = '';
@@ -1936,9 +2016,8 @@ function renderButtons() {
     return el;
   }
 
-  // cfg.btn ordering: 0=S1, 1=S2, 2=S3, 3=S4, 4=S5, 5=S6, 6=RB1, 7=RB2
-  if (cfg.btn.length >= 8) {
-    bank.appendChild(makeBtn(6));                               // RB1 far left
+  // cfg.btn ordering: 0=S1, 1=S2, 2=S3, 3=S4, 4=S5, 5=S6
+  if (cfg.btn.length >= 6) {
     const sCol = document.createElement('div'); sCol.className = 'btn-col';
     sCol.appendChild(makeBtn(0));                                // S1
     sCol.appendChild(makeBtn(1));                                // S2
@@ -1949,9 +2028,8 @@ function renderButtons() {
     sCol2.appendChild(makeBtn(4));                               // S5
     sCol2.appendChild(makeBtn(5));                               // S6
     bank.appendChild(sCol2);
-    bank.appendChild(makeBtn(7));                                // RB2 far right
   } else {
-    // Fallback if the cfg has fewer than 8 buttons
+    // Fallback for unexpected smaller config
     cfg.btn.forEach((_, i) => bank.appendChild(makeBtn(i)));
   }
 }
@@ -1992,16 +2070,38 @@ function renderSettings() {
   [0,1,2,3].forEach(i=>{
     const mnEl=document.getElementById(`axMin${i}`);
     const mxEl=document.getElementById(`axMax${i}`);
+    const rvEl=document.getElementById(`axRev${i}`);
     if(mnEl){ mnEl.value=fmtVal(cfg.aMin[i]??172);  mnEl.title=altLbl(cfg.aMin[i]??172); }
     if(mxEl){ mxEl.value=fmtVal(cfg.aMax[i]??1811); mxEl.title=altLbl(cfg.aMax[i]??1811); }
+    if(rvEl){ rvEl.checked = !!(cfg.aRev && cfg.aRev[i]); }
   });
 
-  // Switch table
+  // Switch table — Type dropdown (cell 1) drives which positions exist and
+  // whether the switch is momentary; the Default Pos dropdown's labels update
+  // live when Type changes so users see sensible choices for each mode.
   const swTb = document.getElementById('swCfgBody'); swTb.innerHTML='';
+  const swSelStyle = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:.74rem;';
   cfg.sw.forEach((sw, i)=>{
     const tr=document.createElement('tr');
     tr.innerHTML=`<td>${sw.l}</td>`;
+
+    // Type dropdown (3-way / 2-way / Momentary).  Matches SwType enum in firmware:
+    //   0 = SW_3POS, 1 = SW_2POS, 2 = SW_MOMENT
+    const tdT=document.createElement('td');
+    const tSel=document.createElement('select');
+    tSel.style.cssText=swSelStyle;
+    [['0','3-way'],['1','2-way'],['2','Momentary']].forEach(([v,lbl])=>{
+      const opt=document.createElement('option'); opt.value=v; opt.textContent=lbl;
+      if((+v)===(sw.t??0)) opt.selected=true;
+      tSel.appendChild(opt);
+    });
+    tdT.appendChild(tSel); tr.appendChild(tdT);
+
+    // Channel
     const tdCh=document.createElement('td'); tdCh.appendChild(buildChSel(sw.c,true)); tr.appendChild(tdCh);
+
+    // Low / Mid / High value inputs
+    const valInputs=[];
     for(let j=0;j<3;j++){
       const td=document.createElement('td');
       const inp=document.createElement('input'); inp.type='number';
@@ -2009,18 +2109,38 @@ function renderSettings() {
       inp.value=fmtVal(raw); inp.title=altLbl(raw);
       inp.classList.add('sbus-val');  // mark so saveConfig() knows to parseVal()
       td.appendChild(inp); tr.appendChild(td);
+      valInputs.push(inp);
     }
-    // Default position dropdown
+
+    // Default Position dropdown — labels depend on Type
     const tdD=document.createElement('td');
     const dSel=document.createElement('select');
-    dSel.style.cssText='background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:.74rem;';
-    const posLabels = sw.t===1 || sw.t===2 ? ['▲ Up','▼ Down','—'] : ['▲ Up','Center','▼ Down'];
-    posLabels.forEach((lbl,idx)=>{
-      const opt=document.createElement('option'); opt.value=idx; opt.textContent=lbl;
-      if(idx===(sw.d??0)) opt.selected=true;
-      dSel.appendChild(opt);
-    });
+    dSel.style.cssText=swSelStyle;
+    const buildDefaultOptions = (curType) => {
+      const cur = parseInt(dSel.value);   // remember current selection across rebuild
+      dSel.innerHTML='';
+      // 3-way: low / center / high  ·  2-way and momentary: low / — / high (mid unused)
+      const labels = (curType === 0)
+        ? ['▼ Down','Center','▲ Up']
+        : ['▼ Down','—','▲ Up'];
+      labels.forEach((lbl,idx)=>{
+        if (curType !== 0 && idx === 1) return;  // hide unused mid for 2-way/momentary
+        const opt=document.createElement('option'); opt.value=idx; opt.textContent=lbl;
+        dSel.appendChild(opt);
+      });
+      // Restore selection if it's still valid for this type; else fall back to sw.d / 0
+      const fallback = (sw.d ?? 0);
+      const want = Number.isNaN(cur) ? fallback : cur;
+      dSel.value = String([...dSel.options].some(o=>+o.value===want) ? want : fallback);
+      // For momentary: also grey the Mid Val input since it's unused
+      const isMom = curType === 2;
+      valInputs[1].disabled = isMom;
+      valInputs[1].style.opacity = isMom ? .35 : 1;
+    };
+    buildDefaultOptions(sw.t ?? 0);
+    tSel.addEventListener('change', () => buildDefaultOptions(parseInt(tSel.value)));
     tdD.appendChild(dSel); tr.appendChild(tdD);
+
     swTb.appendChild(tr);
   });
 
@@ -2282,6 +2402,7 @@ function importConfig(input) {
       if (data.lx    != null) payload.lx = data.lx;
       if (data.aMin  != null) payload.aMin = data.aMin;
       if (data.aMax  != null) payload.aMax = data.aMax;
+      if (data.aRev  != null) payload.aRev = data.aRev;
       if (data.sw    != null) payload.sw   = data.sw;
       if (data.sl    != null) payload.sl   = data.sl;
       if (data.tr    != null) payload.tr   = data.tr;
@@ -2309,14 +2430,17 @@ function saveConfig() {
   // Axis min/max — input values are in the current display unit; parseVal converts back to raw SBUS.
   payload.aMin = [0,1,2,3].map(i => parseVal(document.getElementById(`axMin${i}`).value) ?? 172);
   payload.aMax = [0,1,2,3].map(i => parseVal(document.getElementById(`axMax${i}`).value) ?? 1811);
+  payload.aRev = [0,1,2,3].map(i => !!document.getElementById(`axRev${i}`).checked);
 
   const swRows = document.getElementById('swCfgBody').rows;
   payload.sw = cfg.sw.map((sw, i) => {
     const row = swRows[i];
-    const ch = parseInt(row.cells[1].querySelector('select').value);
-    const v = [0,1,2].map(j=>parseVal(row.cells[2+j].querySelector('input').value));
-    const d = parseInt(row.cells[5].querySelector('select').value);
-    return {l:sw.l, c:ch, t:sw.t, d, v};
+    // cells: 0=Name(td), 1=Type(select), 2=Channel(select), 3-5=Low/Mid/High(input), 6=DefaultPos(select)
+    const t  = parseInt(row.cells[1].querySelector('select').value);
+    const ch = parseInt(row.cells[2].querySelector('select').value);
+    const v  = [0,1,2].map(j=>parseVal(row.cells[3+j].querySelector('input').value));
+    const d  = parseInt(row.cells[6].querySelector('select').value);
+    return {l:sw.l, c:ch, t, d, v};
   });
 
   const slRows = document.getElementById('slCfgBody').rows;
@@ -2513,6 +2637,7 @@ initStick('R');
 renderAll();
 renderWifiPanel();
 initSvgSwitchPositions();
+wireSvgSwitchHandlers();   // strip static inline handlers, rewire to type-aware dispatcher
 initSvgAnalogs();
 applyUnitToggle();   // pick up persisted unit preference on first paint
 connect();

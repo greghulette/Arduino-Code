@@ -12,11 +12,11 @@
 //  ─── Overview ───────────────────────────────────────────────────────────────
 //   Browser controls → WebSocket → ESP32-S3 → SBUS stream → Kyber
 //   Controls modelled on FrSky TANDEM X18:
-//     4 joystick axes  (Mode 2: RX=AIL, RY=ELE, LY=THR, LX=RUD)
-//     8 switches       SA-SH  (3-pos / 2-pos / momentary)
+//     4 joystick axes  (Mode 2: RX=AIL, RY=ELE, LY=THR, LX=RUD; per-axis reverse)
+//     10 switches      SA-SJ  (3-pos / 2-pos / momentary; SI/SJ replace former RB1/RB2)
 //     2 sliders        LS, RS
 //     6 trim rockers   T1-T6  (hold-to-repeat)
-//     8 buttons        S1-S6, RB1, RB2
+//     6 buttons        S1-S6  (matrix; former RB1/RB2 are now switches SI/SJ)
 //
 //  ─── Hardware Wiring ────────────────────────────────────────────────────────
 //   Kyber SBUS input  ←  GPIO 9  (Serial5 TX on WCB v3.x, inverted 100 kbaud 8E2)
@@ -31,7 +31,7 @@
 //   CH5=SA  CH6=SB  CH7=SC  CH8=SD  CH9=SE  CH10=SF  CH11=SG  CH12=SH
 //   CH13=LS  CH14=RS
 //   CH15=T1  CH16=T2  CH17=T3  CH18=T4  CH19=T5  CH20=T6
-//   CH21=S1  CH22=S2  CH23=S3  CH24=S4   S5/S6/RB1/RB2=unassigned
+//   CH21=S1  CH22=S2  CH23=S3  CH24=S4   S5/S6/SI/SJ=unassigned by default
 //
 //  ─── WiFi ───────────────────────────────────────────────────────────────────
 //   Cascading: tries RHN-COMM → HelloEverybody → AP fallback (SBUSCtrl)
@@ -95,11 +95,11 @@ bool g_serialDebug = false;   // verbose serial dump — off by default; toggle 
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 #define CONFIG_FILE   "/config.json"
-#define CFG_VER       2
-#define MAX_SWITCHES  8    // SA SB SC SD SE SF SG SH
+#define CFG_VER       3
+#define MAX_SWITCHES  10   // SA SB SC SD SE SF SG SH SI SJ  (SI/SJ promoted from former rear buttons RB1/RB2)
 #define MAX_SLIDERS   4    // LS RS S1 S2  (S1/S2 are the centre pots)
 #define MAX_TRIMS     6    // T1-T6
-#define MAX_BUTTONS   8    // S1-S6 + RB1 RB2  (physical momentary switches)
+#define MAX_BUTTONS   6    // S1-S6  (physical momentary matrix buttons; RB1/RB2 promoted to SI/SJ switches)
 #define MAX_LUA_BTNS  15   // configurable Lua / virtual buttons
 
 enum SwType : uint8_t { SW_3POS=0, SW_2POS=1, SW_MOMENT=2 };
@@ -165,6 +165,8 @@ struct Config {
   // Per-axis output range (SBUS units).  axisMin[0]=RX, [1]=RY, [2]=LY, [3]=LX
   uint16_t  axisMin[4];
   uint16_t  axisMax[4];
+  // Per-axis reverse flag (flips stick direction).  Same index order as axisMin/axisMax.
+  bool      axisReverse[4];
   // WiFi networks (tried in order; 0=auto cascade)
   WifiNetCfg wifiNets[MAX_WIFI_NETS];
   uint8_t    wifiCount;  // number of configured networks
@@ -197,12 +199,13 @@ void applyConfigDefaults() {
   cfg.joyRX = 1;  cfg.joyRY = 2;  cfg.joyLY = 3;  cfg.joyLX = 4;
   cfg.sbus24 = true;
 
-  // Switches SA-SH
-  const char* swLbls[]   = {"SA","SB","SC","SD","SE","SF","SG","SH"};
-  SwType      swTypes[]  = {SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_2POS,SW_3POS,SW_MOMENT};
+  // Switches SA-SJ.  SA-SH live on CH5-CH12; SI/SJ (formerly rear buttons RB1/RB2)
+  // are unassigned by default — user picks a channel in the config UI.
+  const char* swLbls[]   = {"SA","SB","SC","SD","SE","SF","SG","SH","SI","SJ"};
+  SwType      swTypes[]  = {SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_3POS,SW_2POS,SW_3POS,SW_MOMENT,SW_3POS,SW_3POS};
   for (int i = 0; i < MAX_SWITCHES; i++) {
     strlcpy(cfg.sw[i].label, swLbls[i], 4);
-    cfg.sw[i].ch   = 5 + i;   // CH5..CH12
+    cfg.sw[i].ch   = (i < 8) ? (5 + i) : 0;   // SA..SH = CH5..CH12; SI/SJ unassigned
     cfg.sw[i].type = swTypes[i];
     // 3-pos: low/center/high; 2-pos & momentary: low/high/(unused)
     cfg.sw[i].val[0] = SBUS_MIN;
@@ -228,8 +231,10 @@ void applyConfigDefaults() {
     cfg.trim[i].valR = SBUS_MAX;
   }
 
-  // Axis output range — full range by default; swap min/max to reverse
+  // Axis output range — full range by default
   for (int i = 0; i < 4; i++) { cfg.axisMin[i] = SBUS_MIN; cfg.axisMax[i] = SBUS_MAX; }
+  // Axis reverse — off by default; user toggles per-axis in the joystick config UI
+  for (int i = 0; i < 4; i++) cfg.axisReverse[i] = false;
 
   // Lua / virtual buttons (configurable, restored from original design)
   for (int i = 0; i < MAX_LUA_BTNS; i++) {
@@ -239,8 +244,9 @@ void applyConfigDefaults() {
     strlcpy(cfg.luaBtn[i].color, "#4fc3f7", sizeof(cfg.luaBtn[i].color));
   }
 
-  // Physical momentary buttons S1-S4 assigned, S5/S6/RB1/RB2 unassigned
-  const char* btnLbls[] = {"S1","S2","S3","S4","S5","S6","RB1","RB2"};
+  // Physical momentary matrix buttons S1-S6.  S1-S4 mapped to CH21-CH24 by default;
+  // S5/S6 unassigned.  Former rear buttons RB1/RB2 have been promoted to switches SI/SJ.
+  const char* btnLbls[] = {"S1","S2","S3","S4","S5","S6"};
   for (int i = 0; i < MAX_BUTTONS; i++) {
     strlcpy(cfg.btn[i].label, btnLbls[i], sizeof(cfg.btn[i].label));
     cfg.btn[i].ch  = (i < 4) ? 21 + i : 0;  // S1=CH21..S4=CH24
@@ -440,6 +446,11 @@ void loadConfig() {
     JsonArray mx = doc["aMax"].as<JsonArray>();
     for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
   }
+  // Axis reverse (per-axis bool flag) — absent in old configs, treat as false
+  if (doc["aRev"].is<JsonArray>()) {
+    JsonArray rv = doc["aRev"].as<JsonArray>();
+    for (int i = 0; i < 4; i++) cfg.axisReverse[i] = rv[i] | false;
+  }
 
   // WiFi networks
   cfg.wifiPref = doc["wifiPref"] | cfg.wifiPref;
@@ -534,6 +545,8 @@ void saveConfig() {
   JsonArray mnArr = doc.createNestedArray("aMin");
   JsonArray mxArr = doc.createNestedArray("aMax");
   for (int i = 0; i < 4; i++) { mnArr.add(cfg.axisMin[i]); mxArr.add(cfg.axisMax[i]); }
+  JsonArray rvArr = doc.createNestedArray("aRev");
+  for (int i = 0; i < 4; i++) rvArr.add(cfg.axisReverse[i]);
 
   doc["wifiPref"] = cfg.wifiPref;
   JsonArray wArr = doc.createNestedArray("wifiNets");
@@ -622,6 +635,8 @@ String buildCfgJson() {
   JsonArray mnArr2 = doc.createNestedArray("aMin");
   JsonArray mxArr2 = doc.createNestedArray("aMax");
   for (int i = 0; i < 4; i++) { mnArr2.add(cfg.axisMin[i]); mxArr2.add(cfg.axisMax[i]); }
+  JsonArray rvArr2 = doc.createNestedArray("aRev");
+  for (int i = 0; i < 4; i++) rvArr2.add(cfg.axisReverse[i]);
 
   // WiFi status + configured networks
   doc["wifiPref"] = cfg.wifiPref;
@@ -803,11 +818,22 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
 
   // ── Joystick axes ────────────────────────────────────────────────────────
   // { "t":"a", "lx":f, "ly":f, "rx":f, "ry":f }
+  // RY/LY are negated so "stick up" → positive value; per-axis cfg.axisReverse
+  // flips the final sign so the user can correct a downstream device whose
+  // direction is opposite of what the X18 model expects.
   if (!strcmp(t, "a")) {
-    sbusChannels[cfg.joyRX - 1] = axisToSbusRange( (doc["rx"] | 0.0f),  cfg.axisMin[0], cfg.axisMax[0]);
-    sbusChannels[cfg.joyRY - 1] = axisToSbusRange(-(doc["ry"] | 0.0f),  cfg.axisMin[1], cfg.axisMax[1]);
-    sbusChannels[cfg.joyLY - 1] = axisToSbusRange(-(doc["ly"] | 0.0f),  cfg.axisMin[2], cfg.axisMax[2]);
-    sbusChannels[cfg.joyLX - 1] = axisToSbusRange( (doc["lx"] | 0.0f),  cfg.axisMin[3], cfg.axisMax[3]);
+    float rx = (doc["rx"] | 0.0f);
+    float ry = -(doc["ry"] | 0.0f);
+    float ly = -(doc["ly"] | 0.0f);
+    float lx = (doc["lx"] | 0.0f);
+    if (cfg.axisReverse[0]) rx = -rx;
+    if (cfg.axisReverse[1]) ry = -ry;
+    if (cfg.axisReverse[2]) ly = -ly;
+    if (cfg.axisReverse[3]) lx = -lx;
+    sbusChannels[cfg.joyRX - 1] = axisToSbusRange(rx, cfg.axisMin[0], cfg.axisMax[0]);
+    sbusChannels[cfg.joyRY - 1] = axisToSbusRange(ry, cfg.axisMin[1], cfg.axisMax[1]);
+    sbusChannels[cfg.joyLY - 1] = axisToSbusRange(ly, cfg.axisMin[2], cfg.axisMax[2]);
+    sbusChannels[cfg.joyLX - 1] = axisToSbusRange(lx, cfg.axisMin[3], cfg.axisMax[3]);
   }
 
   // ── Switch position ───────────────────────────────────────────────────────
@@ -931,15 +957,23 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     cfg.joyLY = constrain((int)(doc["ly"] | cfg.joyLY), 1, SBUS_CH_COUNT_24);
     cfg.joyLX = constrain((int)(doc["lx"] | cfg.joyLX), 1, SBUS_CH_COUNT_24);
 
-    // Optional switch channel updates
+    // Optional switch updates — type is editable per-switch from the UI
+    // (SwType: 0=3POS, 1=2POS, 2=MOMENT).  When the type changes we also clamp
+    // the saved defaultPos to a position that is valid for the new type so a
+    // momentary/2-pos switch can't carry a stale "1" (center) selection that
+    // would never be reachable.
     if (doc["sw"].is<JsonArray>()) {
       JsonArray arr = doc["sw"].as<JsonArray>();
       int i = 0;
       for (JsonObject o : arr) {
         if (i >= MAX_SWITCHES) break;
         strlcpy(cfg.sw[i].label, o["l"] | cfg.sw[i].label, 4);
-        cfg.sw[i].ch         = constrain((int)(o["c"] | cfg.sw[i].ch), 0, SBUS_CH_COUNT_24);
-        cfg.sw[i].defaultPos = constrain((int)(o["d"] | cfg.sw[i].defaultPos), 0, 2);
+        cfg.sw[i].ch   = constrain((int)(o["c"] | cfg.sw[i].ch), 0, SBUS_CH_COUNT_24);
+        cfg.sw[i].type = (SwType)constrain((int)(o["t"] | (int)cfg.sw[i].type), 0, 2);
+        int dRaw = constrain((int)(o["d"] | cfg.sw[i].defaultPos), 0, 2);
+        // 2-pos and momentary only have positions 0 and 2; snap a stray 1 to 0.
+        if (cfg.sw[i].type != SW_3POS && dRaw == 1) dRaw = 0;
+        cfg.sw[i].defaultPos = (uint8_t)dRaw;
         if (o["v"].is<JsonArray>()) {
           JsonArray va = o["v"].as<JsonArray>();
           for (int j = 0; j < 3; j++)
@@ -1005,6 +1039,11 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     if (doc["aMax"].is<JsonArray>()) {
       JsonArray mx = doc["aMax"].as<JsonArray>();
       for (int i = 0; i < 4; i++) cfg.axisMax[i] = constrain((int)(mx[i] | SBUS_MAX), SBUS_USER_MIN, SBUS_USER_MAX);
+    }
+    // Axis reverse flags
+    if (doc["aRev"].is<JsonArray>()) {
+      JsonArray rv = doc["aRev"].as<JsonArray>();
+      for (int i = 0; i < 4; i++) cfg.axisReverse[i] = rv[i] | false;
     }
     // PWM channel assignments
     if (doc["pwm"].is<JsonArray>()) {
