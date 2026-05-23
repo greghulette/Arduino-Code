@@ -1,8 +1,8 @@
 #include "WCBStream.h"
-#include "WCBClient.h"
+#include "WCB_Client.h"
 #include <stdarg.h>
 
-// Non-blocking debug line. tick() runs from WCBClient::update() on the caller's
+// Non-blocking debug line. tick() runs from WCB_Client::update() on the caller's
 // hot path; a plain Serial.printf() there freezes the entire sketch whenever
 // no host is draining the USB serial port (the controller stops sending ESP-NOW
 // heartbeats and the WCBs declare it offline). This formats into a small stack
@@ -22,7 +22,7 @@ static void wcbStreamLog(const char* fmt, ...) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
 //
-// Stores configuration and self-registers with the WCBClient so that
+// Stores configuration and self-registers with the WCB_Client so that
 // wcb.update() will automatically call tick() on every loop iteration.
 // ─────────────────────────────────────────────────────────────────────────────
 WCBStream::WCBStream(uint8_t target_wcb, uint8_t target_port, uint16_t gap_ms)
@@ -32,11 +32,11 @@ WCBStream::WCBStream(uint8_t target_wcb, uint8_t target_port, uint16_t gap_ms)
       _len(0),
       _lastWriteMs(0)
 {
-    // Self-register with the singleton so WCBClient::update() drives tick().
-    // WCBClient must be declared before WCBStream at global scope — its
+    // Self-register with the singleton so WCB_Client::update() drives tick().
+    // WCB_Client must be declared before WCBStream at global scope — its
     // constructor sets _instance, which is guaranteed to be non-null here.
-    if (WCBClient::instance())
-        WCBClient::instance()->_registerWCBStream(this);
+    if (WCB_Client::instance())
+        WCB_Client::instance()->_registerWCBStream(this);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ size_t WCBStream::write(uint8_t byte) {
 // ─────────────────────────────────────────────────────────────────────────────
 // tick
 //
-// Called by WCBClient::update() on every loop iteration. Checks whether the
+// Called by WCB_Client::update() on every loop iteration. Checks whether the
 // inter-frame gap has elapsed since the last byte was written. If so, the
 // accumulated buffer represents a complete Maestro command (or sequence of
 // commands) and is forwarded to the target WCB via sendRaw().
@@ -74,7 +74,7 @@ size_t WCBStream::write(uint8_t byte) {
 // ─────────────────────────────────────────────────────────────────────────────
 void WCBStream::tick() {
     if (_len > 0 && (millis() - _lastWriteMs) >= _gapMs) {
-        WCBClient* wcb = WCBClient::instance();
+        WCB_Client* wcb = WCB_Client::instance();
         if (!wcb) { _len = 0; return; }
         bool ok;
         if (_target == 0) {

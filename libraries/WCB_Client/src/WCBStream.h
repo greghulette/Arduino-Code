@@ -31,7 +31,7 @@
 //   void setup() { wcb.begin(); }
 //   void loop()  { wcb.update(); maestro.setTarget(0, 6000); }
 //
-// WCBStream self-registers with the WCBClient instance so wcb.update() drives
+// WCBStream self-registers with the WCB_Client instance so wcb.update() drives
 // the flush automatically — no extra calls needed in loop().
 //
 // ── gap_ms ───────────────────────────────────────────────────────────────────
@@ -40,15 +40,15 @@
 // rather than mid-command. Increase it only if you observe partial packets.
 // =============================================================================
 
-// Forward declaration — avoids a circular include with WCBClient.h
-class WCBClient;
+// Forward declaration — avoids a circular include with WCB_Client.h
+class WCB_Client;
 
 class WCBStream : public Stream {
 public:
 
     // ── Construction ──────────────────────────────────────────────────────────
 
-    // Create a WCBStream. Automatically registers with the WCBClient singleton
+    // Create a WCBStream. Automatically registers with the WCB_Client singleton
     // so wcb.update() drives the flush — no reference to wcb needed here.
     //
     // target_wcb  : WCB number to unicast to (1–WCB_MAX_BOARDS), OR
@@ -78,7 +78,7 @@ public:
 
     // ── Internal flush ────────────────────────────────────────────────────────
 
-    // Called automatically by WCBClient::update() on every loop iteration.
+    // Called automatically by WCB_Client::update() on every loop iteration.
     // Checks whether the inter-frame gap has elapsed since the last write().
     // If so, sends the buffered bytes via wcb.sendRaw() and resets the buffer.
     // You do not need to call this manually.

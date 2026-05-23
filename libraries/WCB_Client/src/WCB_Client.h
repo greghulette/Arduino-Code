@@ -9,7 +9,7 @@
 class WCBStream;
 
 // =============================================================================
-// WCBClient Library
+// WCB_Client Library
 //
 // Allows any ESP32-based device to join a Wireless Communication Board (WCB)
 // ESP-NOW network as a first-class peer — sending commands, receiving commands,
@@ -164,13 +164,13 @@ typedef void (*WCBStatusCallback)(uint8_t wcbID, bool online);
 
 
 // =============================================================================
-// WCBClient
+// WCB_Client
 //
 // One instance per sketch. Declare it at global scope so it persists for the
 // lifetime of the program. Pass all configuration in the constructor, then
 // call begin() once from setup() to start ESP-NOW.
 // =============================================================================
-class WCBClient {
+class WCB_Client {
 public:
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ public:
     //                       on the WCBs, does not consume a WCB slot)
     // commandCb   : optional — called when a command is received from the network
     // statusCb    : optional — called when a WCB comes online or goes offline
-    WCBClient(uint8_t mac_oct2, uint8_t mac_oct3,
+    WCB_Client(uint8_t mac_oct2, uint8_t mac_oct3,
               const char* password, uint8_t wcb_quantity, uint8_t device_id,
               WCBCommandCallback commandCb = nullptr,
               WCBStatusCallback  statusCb  = nullptr);
@@ -470,12 +470,12 @@ private:
 
     // Singleton pointer — set in the constructor so WCBStream can reach the
     // client without needing an explicit reference passed in by the user.
-    // Only one WCBClient instance is supported per sketch.
-    static WCBClient* _instance;
+    // Only one WCB_Client instance is supported per sketch.
+    static WCB_Client* _instance;
 
 public:
-    // Returns the single WCBClient instance. Used internally by WCBStream.
-    static WCBClient* instance() { return _instance; }
+    // Returns the single WCB_Client instance. Used internally by WCBStream.
+    static WCB_Client* instance() { return _instance; }
 
 private:
 

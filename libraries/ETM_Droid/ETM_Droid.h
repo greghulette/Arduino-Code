@@ -36,7 +36,8 @@
 #define ETM_BOARD_DC   3   // Dome Controller
 #define ETM_BOARD_DP   4   // Dome Plate Controller
 #define ETM_BOARD_HP   5   // HP Controller
-#define ETM_NUM_BOARDS 6
+#define ETM_BOARD_SL   6   // Sled (ESP32-S3, WCB 3.2)
+#define ETM_NUM_BOARDS 7
 
 // ---------------------------------------------------------------------------
 // Packet Type Constants
@@ -80,10 +81,11 @@ static const uint8_t ETM_BOARD_MACS[ETM_NUM_BOARDS][6] = {
   {0x02, 0x00, 0x00, 0x00, 0x00, 0x04},  // DC — Dome Controller
   {0x02, 0x00, 0x00, 0x00, 0x00, 0x05},  // DP — Dome Plate Controller
   {0x02, 0x00, 0x00, 0x00, 0x00, 0x06},  // HP — HP Controller
+  {0x02, 0x00, 0x00, 0x00, 0x00, 0x07},  // SL — Sled
 };
 
 static const char* const ETM_BOARD_IDS[ETM_NUM_BOARDS] = {
-  "DG", "BC", "BS", "DC", "DP", "HP"
+  "DG", "BC", "BS", "DC", "DP", "HP", "SL"
 };
 
 static const uint8_t ETM_BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};

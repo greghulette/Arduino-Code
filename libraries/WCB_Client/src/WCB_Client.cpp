@@ -1,21 +1,21 @@
-#include "WCBClient.h"
+#include "WCB_Client.h"
 #include "WCBStream.h"
 #include <esp_wifi.h>
 
 // Singleton instance pointer — allows the static ESP-NOW callback to route
-// received packets back to the active WCBClient object. Only one WCBClient
+// received packets back to the active WCB_Client object. Only one WCB_Client
 // instance is supported per sketch.
-WCBClient* WCBClient::_instance = nullptr;
+WCB_Client* WCB_Client::_instance = nullptr;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
 //
 // Stores all network credentials and optional callbacks into private members.
 // No hardware is touched here — ESP-NOW and WiFi are not initialised until
-// begin() is called. This makes it safe to declare a WCBClient at global scope
+// begin() is called. This makes it safe to declare a WCB_Client at global scope
 // before the Arduino runtime has started.
 // ─────────────────────────────────────────────────────────────────────────────
-WCBClient::WCBClient(uint8_t mac_oct2, uint8_t mac_oct3,
+WCB_Client::WCB_Client(uint8_t mac_oct2, uint8_t mac_oct3,
                      const char* password, uint8_t wcb_quantity, uint8_t device_id,
                      WCBCommandCallback commandCb, WCBStatusCallback statusCb) {
     _oct2     = mac_oct2;
@@ -27,7 +27,7 @@ WCBClient::WCBClient(uint8_t mac_oct2, uint8_t mac_oct3,
     _commandCallback = commandCb;
     _statusCallback  = statusCb;
     // Set singleton immediately so WCBStream objects declared at global scope
-    // (after this WCBClient) can self-register without needing a reference passed in.
+    // (after this WCB_Client) can self-register without needing a reference passed in.
     _instance = this;
 }
 
@@ -47,19 +47,19 @@ WCBClient::WCBClient(uint8_t mac_oct2, uint8_t mac_oct3,
 //   scheme (02:oct2:oct3:00:00:ID) makes this device look identical to a real
 //   WCB at the hardware level.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::begin() {
+bool WCB_Client::begin() {
 
     // ── Validate device_id ───────────────────────────────────────────────────
     // device_id must be 1–WCB_MAX_BOARDS. If it's not the special slot (20)
     // it must also be within the declared network size so the WCBs already have
     // this MAC pre-registered in their peer tables.
     if (_deviceID == 0 || _deviceID > WCB_MAX_BOARDS) {
-        Serial.printf("[WCBClient] ERROR: device_id %d is out of range (1–%d)\n",
+        Serial.printf("[WCB_Client] ERROR: device_id %d is out of range (1–%d)\n",
                       _deviceID, WCB_MAX_BOARDS);
         return false;
     }
     if (_deviceID != WCB_SPECIAL_ID && _deviceID > _quantity) {
-        Serial.printf("[WCBClient] ERROR: device_id %d exceeds wcb_quantity %d. "
+        Serial.printf("[WCB_Client] ERROR: device_id %d exceeds wcb_quantity %d. "
                       "Use device_id <= quantity or device_id = %d for the special slot.\n",
                       _deviceID, _quantity, WCB_SPECIAL_ID);
         return false;
@@ -89,10 +89,10 @@ bool WCBClient::begin() {
     if (esp_wifi_set_mac(WIFI_IF_STA, _wcbMACs[_deviceID - 1]) != ESP_OK) {
         // Non-fatal — some ESP32 variants restrict MAC changes. Packets may
         // still be received, but WCBs will not accept incoming packets from us.
-        Serial.printf("[WCBClient] WARNING: could not set custom MAC for device ID %d\n",
+        Serial.printf("[WCB_Client] WARNING: could not set custom MAC for device ID %d\n",
                       _deviceID);
     } else {
-        Serial.printf("[WCBClient] MAC set to %02X:%02X:%02X:%02X:%02X:%02X\n",
+        Serial.printf("[WCB_Client] MAC set to %02X:%02X:%02X:%02X:%02X:%02X\n",
                       _wcbMACs[_deviceID-1][0], _wcbMACs[_deviceID-1][1],
                       _wcbMACs[_deviceID-1][2], _wcbMACs[_deviceID-1][3],
                       _wcbMACs[_deviceID-1][4], _wcbMACs[_deviceID-1][5]);
@@ -100,7 +100,7 @@ bool WCBClient::begin() {
 
     // ── Initialise ESP-NOW ───────────────────────────────────────────────────
     if (esp_now_init() != ESP_OK) {
-        Serial.println("[WCBClient] ERROR: esp_now_init() failed");
+        Serial.println("[WCB_Client] ERROR: esp_now_init() failed");
         return false;
     }
 
@@ -115,7 +115,7 @@ bool WCBClient::begin() {
     // ESP-NOW requires a peer to be registered before you can send to it.
     _registerPeers();
 
-    Serial.printf("[WCBClient] Joined WCB network as device ID %d "
+    Serial.printf("[WCB_Client] Joined WCB network as device ID %d "
                   "(quantity=%d, oct2=0x%02X, oct3=0x%02X)\n",
                   _deviceID, _quantity, _oct2, _oct3);
 
@@ -137,7 +137,7 @@ bool WCBClient::begin() {
 //                          (heartbeatIntervalSec * missedBeforeOffline) seconds.
 //                          Fires the status callback when a transition occurs.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::update() {
+void WCB_Client::update() {
     unsigned long now = millis();
 
     if (now >= _nextHeartbeatMs) {
@@ -155,7 +155,7 @@ void WCBClient::update() {
 // Send a text command to one specific WCB.
 // Internally calls _sendPacket() which handles CRC appending and ACK tracking.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::send(uint8_t target_wcb, const char* command) {
+bool WCB_Client::send(uint8_t target_wcb, const char* command) {
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
     return _sendPacket(target_wcb, command);
 }
@@ -166,7 +166,7 @@ bool WCBClient::send(uint8_t target_wcb, const char* command) {
 // Send a text command to ALL WCBs simultaneously via the shared broadcast MAC.
 // Every WCB on the network receives and processes the same packet.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::broadcast(const char* command) {
+bool WCB_Client::broadcast(const char* command) {
     return _sendPacket(WCB_TARGET_BROADCAST, command);
 }
 
@@ -193,7 +193,7 @@ bool WCBClient::broadcast(const char* command) {
 //
 // See also: sendKyber() for broadcasting to ALL WCBs with Maestros at once.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::sendRaw(uint8_t target_wcb, uint8_t target_port,
+bool WCB_Client::sendRaw(uint8_t target_wcb, uint8_t target_port,
                         const uint8_t* data, size_t len) {
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
     if (target_port < 1 || target_port > 5) return false;
@@ -261,7 +261,7 @@ bool WCBClient::sendRaw(uint8_t target_wcb, uint8_t target_port,
 // len  : number of bytes (max 178 — 180 structCommand bytes minus 2-byte header)
 // Returns true if ESP-NOW accepted the packet for transmission.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::sendKyber(const uint8_t* data, size_t len) {
+bool WCB_Client::sendKyber(const uint8_t* data, size_t len) {
     if (len == 0) return false;
     // Firmware caps Kyber chunks at 178 bytes (structCommand[180] - 2-byte header)
     if (len > 178) len = 178;
@@ -308,7 +308,7 @@ bool WCBClient::sendKyber(const uint8_t* data, size_t len) {
 // arrive, buffers them, and sends via sendRaw() when the inter-frame gap
 // (gap_ms of silence) signals a packet boundary.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::monitorRaw(HardwareSerial& port, uint8_t target_wcb,
+void WCB_Client::monitorRaw(HardwareSerial& port, uint8_t target_wcb,
                            uint8_t target_port, uint16_t gap_ms) {
     _monitorRawPort   = &port;
     _monitorRawTarget = target_wcb;
@@ -325,7 +325,7 @@ void WCBClient::monitorRaw(HardwareSerial& port, uint8_t target_wcb,
 // device. Each line terminated by 'terminator' is forwarded to target_wcb
 // via send() (or broadcast() if target_wcb == WCB_TARGET_BROADCAST).
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::monitorSerial(HardwareSerial& port, uint8_t target_wcb, char terminator) {
+void WCB_Client::monitorSerial(HardwareSerial& port, uint8_t target_wcb, char terminator) {
     _monitorSerialPort   = &port;
     _monitorSerialTarget = target_wcb;
     _monitorSerialTerm   = terminator;
@@ -349,7 +349,7 @@ void WCBClient::monitorSerial(HardwareSerial& port, uint8_t target_wcb, char ter
 //   accumulated string is dispatched via send() or broadcast() and the
 //   buffer resets. Lines longer than 199 chars are silently truncated.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_processMonitors() {
+void WCB_Client::_processMonitors() {
     unsigned long now = millis();
 
     // ── WCBStream flush ───────────────────────────────────────────────────────
@@ -406,7 +406,7 @@ void WCBClient::_processMonitors() {
 // be considered online. Useful for guarding send() calls so you don't fire
 // commands at a board that has dropped off the network.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::isOnline(uint8_t wcb_number) {
+bool WCB_Client::isOnline(uint8_t wcb_number) {
     if (wcb_number < 1 || wcb_number > WCB_MAX_BOARDS) return false;
     return _boards[wcb_number - 1].online;
 }
@@ -415,16 +415,16 @@ bool WCBClient::isOnline(uint8_t wcb_number) {
 // onCommand / onStatusChange / setChecksum
 // ─────────────────────────────────────────────────────────────────────────────
 
-void WCBClient::onCommand(WCBCommandCallback callback) {
+void WCB_Client::onCommand(WCBCommandCallback callback) {
     _commandCallback = callback;
 }
 
-void WCBClient::onStatusChange(WCBStatusCallback callback) {
+void WCB_Client::onStatusChange(WCBStatusCallback callback) {
     _statusCallback = callback;
 }
 
 // Enable or disable CRC32 checksum. Must match the WCB network's ?ETM,CHKSM setting.
-void WCBClient::setChecksum(bool enabled) {
+void WCB_Client::setChecksum(bool enabled) {
     _checksumEnabled = enabled;
 }
 
@@ -450,7 +450,7 @@ void WCBClient::setChecksum(bool enabled) {
 //   to this network's oct2/oct3, so different WCB networks on the same channel
 //   don't interfere with each other.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_buildMACs() {
+void WCB_Client::_buildMACs() {
     for (int i = 0; i < WCB_MAX_BOARDS; i++) {
         _wcbMACs[i][0] = 0x02;
         _wcbMACs[i][1] = _oct2;
@@ -480,7 +480,7 @@ void WCBClient::_buildMACs() {
 // because WCBs with specialPeerEnabled already have that MAC registered on
 // their side, allowing bidirectional communication.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_registerPeers() {
+void WCB_Client::_registerPeers() {
     for (int i = 0; i < _quantity; i++) {
         if ((i + 1) == _deviceID) continue;  // Skip our own slot
 
@@ -507,7 +507,7 @@ void WCBClient::_registerPeers() {
 // WCB "I am alive." WCBs that don't see a heartbeat within the expected window
 // will mark this device offline and may stop routing messages to it.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_sendHeartbeat() {
+void WCB_Client::_sendHeartbeat() {
     wcb_packet_etm_t hb;
     memset(&hb, 0, sizeof(hb));
 
@@ -530,7 +530,7 @@ void WCBClient::_sendHeartbeat() {
 //
 // ACKs have no command payload (structCommandIncluded = 0).
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_sendAck(uint8_t targetID, uint16_t seqNum) {
+void WCB_Client::_sendAck(uint8_t targetID, uint16_t seqNum) {
     if (targetID < 1 || targetID > WCB_MAX_BOARDS) return;
 
     wcb_packet_etm_t ack;
@@ -558,7 +558,7 @@ void WCBClient::_sendAck(uint8_t targetID, uint16_t seqNum) {
 //   the packet is transmitted. WCBs with CHKSM ON will reject any COMMAND
 //   packet that is missing this suffix, so the setting must match.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCBClient::_sendPacket(uint8_t targetID, const char* command) {
+bool WCB_Client::_sendPacket(uint8_t targetID, const char* command) {
     wcb_packet_etm_t pkt;
     memset(&pkt, 0, sizeof(pkt));
 
@@ -610,7 +610,7 @@ bool WCBClient::_sendPacket(uint8_t targetID, const char* command) {
 // The threshold matches the WCB firmware's own ETM offline detection logic so
 // both sides agree on when a board should be considered gone.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_checkOfflineBoards() {
+void WCB_Client::_checkOfflineBoards() {
     unsigned long now       = millis();
     unsigned long threshold = (unsigned long)_heartbeatIntervalSec
                               * _missedBeforeOffline * 1000UL;
@@ -631,7 +631,7 @@ void WCBClient::_checkOfflineBoards() {
 // WCB_PENDING_MAX slots are occupied. Callers still send the packet on -1;
 // it just won't be tracked for ACK confirmation.
 // ─────────────────────────────────────────────────────────────────────────────
-int WCBClient::_findFreePending() {
+int WCB_Client::_findFreePending() {
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
         if (!_pending[i].active) return i;
     }
@@ -654,7 +654,7 @@ int WCBClient::_findFreePending() {
 //   - They are not addressed to this device or broadcast
 //   - The CRC32 is wrong or missing (when _checksumEnabled is true)
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_handleReceive(const uint8_t* mac, const uint8_t* data, int len) {
+void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len) {
 
     // Ignore undersized packets — they can't be a valid wcb_packet_etm_t
     if (len < (int)sizeof(wcb_packet_etm_t)) return;
@@ -730,7 +730,7 @@ void WCBClient::_handleReceive(const uint8_t* mac, const uint8_t* data, int len)
                     uint32_t rxCRC   = (uint32_t)strtoul(crcTag + 4, nullptr, 16);
                     uint32_t calcCRC = _crc32(cmd, (size_t)(crcTag - cmd));
                     if (rxCRC != calcCRC) {
-                        Serial.printf("[WCBClient] CRC mismatch from WCB%d — packet rejected\n",
+                        Serial.printf("[WCB_Client] CRC mismatch from WCB%d — packet rejected\n",
                                       senderID);
                         break;
                     }
@@ -738,7 +738,7 @@ void WCBClient::_handleReceive(const uint8_t* mac, const uint8_t* data, int len)
                 } else if (_checksumEnabled) {
                     // We expect a checksum but none was present — likely a mismatch
                     // in ?ETM,CHKSM settings between this device and the sender.
-                    Serial.printf("[WCBClient] Missing CRC from WCB%d — packet rejected\n",
+                    Serial.printf("[WCB_Client] Missing CRC from WCB%d — packet rejected\n",
                                   senderID);
                     break;
                 }
@@ -762,7 +762,7 @@ void WCBClient::_handleReceive(const uint8_t* mac, const uint8_t* data, int len)
 //
 // This is the same algorithm used by zlib, PNG, and most Ethernet stacks.
 // ─────────────────────────────────────────────────────────────────────────────
-uint32_t WCBClient::_crc32(const char* data, size_t len) {
+uint32_t WCB_Client::_crc32(const char* data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < len; i++) {
         crc ^= (uint8_t)data[i];
@@ -781,7 +781,7 @@ uint32_t WCBClient::_crc32(const char* data, size_t len) {
 // pointer, so it is declared static. It simply delegates to the non-static
 // _handleReceive() on the stored _instance pointer.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBClient::_espNowReceiveCB(const esp_now_recv_info_t* info,
+void WCB_Client::_espNowReceiveCB(const esp_now_recv_info_t* info,
                                   const uint8_t* data, int len) {
     if (_instance) _instance->_handleReceive(info->src_addr, data, len);
 }

@@ -951,6 +951,7 @@ typedef struct LoRa_Struct{
   bool struct_bodyLEDControllerStatus;
   bool struct_bodyServoControllerStatus;
   bool struct_domePlateControllerStatus;
+  
   bool struct_domeControllerStatus ;
   bool struct_droidRemoteStatus;
   bool struct_hpControllerStatus;

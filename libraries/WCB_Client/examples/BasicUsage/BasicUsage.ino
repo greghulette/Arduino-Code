@@ -1,5 +1,5 @@
 /*
-  BasicUsage.ino — WCBClient Library Example
+  BasicUsage.ino — WCB_Client Library Example
 
   Demonstrates how to join a WCB ESP-NOW network as a custom ESP32 device,
   send commands to individual WCBs or broadcast to all of them, and receive
@@ -11,7 +11,7 @@
     3. Flash to any ESP32 board — no wiring required, everything is wireless.
 */
 
-#include <WCBClient.h>
+#include <WCB_Client.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Network credentials
@@ -44,7 +44,7 @@ const uint8_t DEVICE_ID    = 4;
 //
 // You only need this if your device needs to RECEIVE commands from WCBs.
 // If this device only sends and never needs to receive, remove this function
-// and remove onCommandReceived from the WCBClient constructor below.
+// and remove onCommandReceived from the WCB_Client constructor below.
 // ─────────────────────────────────────────────────────────────────────────────
 void onCommandReceived(uint8_t senderID, const char* command) {
     Serial.printf("[RX] Command from WCB%d: %s\n", senderID, command);
@@ -76,7 +76,7 @@ void onStatusChanged(uint8_t wcbID, bool online) {
 // Pass your credentials and callbacks here. The callbacks are optional —
 // omit either one (or both) if you don't need them.
 // ─────────────────────────────────────────────────────────────────────────────
-WCBClient wcb(MAC_OCT2, MAC_OCT3, PASSWORD, WCB_QUANTITY, DEVICE_ID,
+WCB_Client wcb(MAC_OCT2, MAC_OCT3, PASSWORD, WCB_QUANTITY, DEVICE_ID,
                onCommandReceived, onStatusChanged);
 
 unsigned long lastSendMs = 0;
