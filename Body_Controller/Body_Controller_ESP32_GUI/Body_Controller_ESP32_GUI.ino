@@ -205,6 +205,27 @@ bool    incomingCommandIncluded;
 String  incomingPassword;
 String  success;
 
+// ── Chunked-config reassembly state ─────────────────────────────────────────
+// ESP-NOW caps the command field at 100 bytes (see espnow_struct_message),
+// so a 3-4 KB SET_CONFIG payload arrives as N small chunks and gets stitched
+// back together here before being fed to the existing JSON SET_CONFIG path.
+//
+//   Wire protocol (handled in the main-loop '#' parser):
+//     #CB <seq> <total>            — Begin a transaction
+//     #CC <seq> <idx>:<rawBytes>   — One chunk; raw JSON after the colon
+//     #CE <seq>                    — Commit; parse buffer + apply
+//
+// Stale transactions auto-abort after CFG_REASM_TIMEOUT_MS so a dropped
+// END or lost connectivity doesn't lock the slot forever. A new #CB always
+// resets state regardless of any active transaction.
+#define CFG_REASM_MAX        6144     // bytes — bigger than any expected config payload
+#define CFG_REASM_TIMEOUT_MS 10000    // ms of silence before stale buffer is dropped
+String   cfgReasmBuf;
+uint16_t cfgReasmSeq      = 0;        // 0 = no active transaction
+uint16_t cfgReasmTotal    = 0;
+uint16_t cfgReasmReceived = 0;
+unsigned long cfgReasmLastMs = 0;
+
 typedef struct bodyControllerStatus_struct_message {
   char   structPassword[25];
   char   structSenderID[15];
@@ -1466,6 +1487,83 @@ void loop() {
             for (int i = 3; i <= commandLength - 1; i++) eepromCommandString += inputBuffer[i];
             writeBlSerial(eepromCommandString);
             eepromCommandString = "";
+          }
+        } else if (inputBuffer[1]=='C' || inputBuffer[1]=='c') {
+          // ── Chunked config transmission (SET_CONFIG over ESP-NOW / LoRa) ──
+          //  Reassembles a multi-packet config payload that's too large to fit
+          //  in a single ESP-NOW frame (100-byte command limit).  See the
+          //  cfgReasm* state block for the wire protocol summary.
+          //
+          //  Format strings INSIDE inputBuffer (after the leading '#'):
+          //    CB <seq> <total>             — Begin
+          //    CC <seq> <idx>:<rawBytes>    — Chunk (raw JSON after the ':')
+          //    CE <seq>                     — End: parse + apply
+          char sub = inputBuffer[2];
+          unsigned long nowMs = millis();
+          // Drop any stale transaction that timed out before completing.
+          if (cfgReasmSeq != 0 && (nowMs - cfgReasmLastMs) > CFG_REASM_TIMEOUT_MS) {
+            Debug.LOOP("[CFG] timeout — abandoning seq %u\n", cfgReasmSeq);
+            cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
+          }
+          if (sub == 'B' || sub == 'b') {
+            // "#CB <seq> <total>"
+            String payload = String(inputBuffer + 4);  // skip "#CB "
+            int sp = payload.indexOf(' ');
+            if (sp < 0) { Debug.LOOP("[CFG] bad BEGIN: %s\n", inputBuffer); }
+            else {
+              uint16_t seq   = payload.substring(0, sp).toInt();
+              uint16_t total = payload.substring(sp + 1).toInt();
+              if (seq == 0 || total == 0) {
+                Debug.LOOP("[CFG] BEGIN with zero seq/total\n");
+              } else {
+                cfgReasmSeq      = seq;
+                cfgReasmTotal    = total;
+                cfgReasmReceived = 0;
+                cfgReasmBuf      = "";
+                int reserve = total * 90; if (reserve > CFG_REASM_MAX) reserve = CFG_REASM_MAX;
+                cfgReasmBuf.reserve(reserve);
+                cfgReasmLastMs   = nowMs;
+                Debug.LOOP("[CFG] BEGIN seq=%u total=%u\n", seq, total);
+              }
+            }
+          } else if (sub == 'C' || sub == 'c') {
+            // "#CC <seq> <idx>:<raw bytes...>"
+            String payload = String(inputBuffer + 4);  // skip "#CC "
+            int sp = payload.indexOf(' ');
+            int co = (sp >= 0) ? payload.indexOf(':', sp + 1) : -1;
+            if (sp < 0 || co < 0) {
+              Debug.LOOP("[CFG] malformed CHUNK\n");
+            } else {
+              uint16_t seq = payload.substring(0, sp).toInt();
+              if (seq != cfgReasmSeq || cfgReasmSeq == 0) {
+                Debug.LOOP("[CFG] CHUNK seq=%u rejected (active=%u)\n", seq, cfgReasmSeq);
+              } else if (cfgReasmBuf.length() + (payload.length() - co - 1) > CFG_REASM_MAX) {
+                Debug.LOOP("[CFG] CHUNK would overflow reassembly buffer — aborting\n");
+                cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
+              } else {
+                cfgReasmBuf += payload.substring(co + 1);
+                cfgReasmReceived++;
+                cfgReasmLastMs = nowMs;
+              }
+            }
+          } else if (sub == 'E' || sub == 'e') {
+            // "#CE <seq>"
+            String payload = String(inputBuffer + 4);
+            uint16_t seq = payload.toInt();
+            if (seq != cfgReasmSeq || cfgReasmSeq == 0) {
+              Debug.LOOP("[CFG] END seq=%u rejected (active=%u)\n", seq, cfgReasmSeq);
+            } else if (cfgReasmReceived != cfgReasmTotal) {
+              Debug.LOOP("[CFG] END seq=%u incomplete (got %u of %u chunks) — discarding\n",
+                         seq, cfgReasmReceived, cfgReasmTotal);
+              cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
+            } else {
+              Debug.LOOP("[CFG] END seq=%u — assembling %u bytes, applying...\n",
+                         seq, cfgReasmBuf.length());
+              // Route into the same JSON path as a direct USB SET_CONFIG.
+              // handleWebSerialMessage prints its own ACK/NACK to Serial.
+              handleWebSerialMessage(cfgReasmBuf);
+              cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
+            }
           }
         }
         if (Internal_Command[0]) {

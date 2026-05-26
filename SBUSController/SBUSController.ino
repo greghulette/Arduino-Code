@@ -33,6 +33,17 @@
 //   CH15=T1  CH16=T2  CH17=T3  CH18=T4  CH19=T5  CH20=T6
 //   CH21=S1  CH22=S2  CH23=S3  CH24=S4   S5/S6/SI/SJ=unassigned by default
 //
+//   X20 additions (channels CONFLICT with T6/S1/S2 above — when testing
+//   the FrSky Twin X20 model on a real RC-Controller you'll need to
+//   reassign T6/S1/S2 or remap MS/J5/J6 in the SBUSController settings
+//   to match):
+//     CH20=MS (X20 middle slider; collides with T6)
+//     CH21=J5 (X20 L-stick twist;   collides with S1)
+//     CH22=J6 (X20 R-stick twist;   collides with S2)
+//     L-Stick Click / R-Stick Click — momentary buttons that ride the
+//     matrix channel (CH7 by default) with PWM tier values matching the
+//     RC-Controller's bands[] for slots 19/20 (1074 / 1033).
+//
 //  ─── WiFi ───────────────────────────────────────────────────────────────────
 //   Cascading: tries RHN-COMM → HelloEverybody → AP fallback (SBUSCtrl)
 // =============================================================================
@@ -97,9 +108,9 @@ bool g_serialDebug = false;   // verbose serial dump — off by default; toggle 
 #define CONFIG_FILE   "/config.json"
 #define CFG_VER       3
 #define MAX_SWITCHES  10   // SA SB SC SD SE SF SG SH SI SJ  (SI/SJ promoted from former rear buttons RB1/RB2)
-#define MAX_SLIDERS   4    // LS RS S1 S2  (S1/S2 are the centre pots)
+#define MAX_SLIDERS   7    // LS RS S1 S2 + X20 additions (MS middle slider, J5/J6 stick twist axes)
 #define MAX_TRIMS     6    // T1-T6
-#define MAX_BUTTONS   6    // S1-S6  (physical momentary matrix buttons; RB1/RB2 promoted to SI/SJ switches)
+#define MAX_BUTTONS   8    // S1-S6  + X20 additions (L-Stick Click / R-Stick Click — matrix momentary buttons that come with the 3-axis gimbal upgrade)
 #define MAX_LUA_BTNS  15   // configurable Lua / virtual buttons
 
 enum SwType : uint8_t { SW_3POS=0, SW_2POS=1, SW_MOMENT=2 };
@@ -214,11 +225,19 @@ void applyConfigDefaults() {
     cfg.sw[i].defaultPos = 0;
   }
 
-  // Sliders: LS, RS (sides of sticks), S1 & S2 (centre pots)
+  // Sliders: LS, RS (sides of sticks), S1 & S2 (centre pots).
+  // X20 additions (slots 4-6): MS = middle slider that sits between
+  // the B1-B6 face buttons; J5/J6 = twist axes on each gimbal stick
+  // that come with the optional 3-axis upgrade.  Default channels
+  // match the X20 model defaults in RC-Controller's TX_MODELS entry
+  // (config_tool/index.html): MS=CH20, J5=CH21, J6=CH22.
   strlcpy(cfg.slider[0].label, "LS", 4);  cfg.slider[0].ch = 13;
   strlcpy(cfg.slider[1].label, "RS", 4);  cfg.slider[1].ch = 14;
   strlcpy(cfg.slider[2].label, "S1", 4);  cfg.slider[2].ch = 0;  // unassigned — user sets channel
   strlcpy(cfg.slider[3].label, "S2", 4);  cfg.slider[3].ch = 0;
+  strlcpy(cfg.slider[4].label, "S3", 4);  cfg.slider[4].ch = 20; // X20 middle slider (was "MS")
+  strlcpy(cfg.slider[5].label, "J5", 4);  cfg.slider[5].ch = 21; // X20 L-stick twist (3-axis)
+  strlcpy(cfg.slider[6].label, "J6", 4);  cfg.slider[6].ch = 22; // X20 R-stick twist (3-axis)
 
   // Trims T1-T6
   for (int i = 0; i < MAX_TRIMS; i++) {
@@ -244,14 +263,24 @@ void applyConfigDefaults() {
     strlcpy(cfg.luaBtn[i].color, "#4fc3f7", sizeof(cfg.luaBtn[i].color));
   }
 
-  // Physical momentary matrix buttons S1-S6.  S1-S4 mapped to CH21-CH24 by default;
-  // S5/S6 unassigned.  Former rear buttons RB1/RB2 have been promoted to switches SI/SJ.
-  const char* btnLbls[] = {"S1","S2","S3","S4","S5","S6"};
+  // Physical momentary matrix buttons.
+  //   Slots 0-5 (S1-S6): X18-style face buttons.  S1-S4 mapped to CH21-CH24
+  //     by default; S5/S6 unassigned.  Former rear buttons RB1/RB2 have been
+  //     promoted to switches SI/SJ.
+  //   Slots 6-7 (L-Stick Click / R-Stick Click): X20 3-axis-gimbal
+  //     momentaries.  Default to the matrix channel (CH7) with the X20
+  //     band centres so they decode as slots 19/20 on the RC-Controller
+  //     without any extra setup (see rc_config.h bands[] for the source
+  //     of these PWM values).
+  const char* btnLbls[] = {"S1","S2","S3","S4","S5","S6","SK","SL"};  // SK/SL = X20 L/R stick-click momentaries
   for (int i = 0; i < MAX_BUTTONS; i++) {
     strlcpy(cfg.btn[i].label, btnLbls[i], sizeof(cfg.btn[i].label));
     cfg.btn[i].ch  = (i < 4) ? 21 + i : 0;  // S1=CH21..S4=CH24
     cfg.btn[i].val = SBUS_MAX;
   }
+  // X20 stick-click momentaries — channel + matrix-tier PWM defaults.
+  cfg.btn[6].ch = 7;  cfg.btn[6].val = 1074;   // L-Stick Click (RC-Controller slot 19, band 1062-1086)
+  cfg.btn[7].ch = 7;  cfg.btn[7].val = 1033;   // R-Stick Click (RC-Controller slot 20, band 1021-1045)
 
   // WiFi networks — three defaults, tried in order
   cfg.wifiCount = 3;

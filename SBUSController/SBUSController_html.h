@@ -679,6 +679,47 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     <text x="919" y="570" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">RS</text>
   </g>
 
+  <!-- ── J5 / J6 horizontal sliders (X20 3-axis stick twist) ──────────────────
+       Slim spring-loaded rails just below the joystick block bottoms (y=575).
+       Pulled up tight against the sticks so the SK/SL labels can sit beside
+       the buttons without overlapping the T4-T5-T6-T1 trim row (y=600).
+       Geometry MUST match _sliderGeom entries for indices 5/6 in JS below. -->
+  <g class="svg-slider" data-i="5" data-orient="h" data-left="140" data-right="335"
+     onpointerdown="svgSliderDown(event,5)"
+     onpointermove="svgSliderMove(event,5)"
+     onpointerup="svgSliderUp(event,5)"
+     onpointercancel="svgSliderUp(event,5)">
+    <rect x="140" y="580" width="195" height="6" rx="3" fill="#08101e" stroke="#1a2a4a"/>
+    <line x1="237" y1="575" x2="237" y2="591" stroke="#2a3a5a" stroke-width="1.5"/>
+    <rect x="230" y="575" width="14" height="16" rx="3" id="sliderThumbJ5" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.6"/>
+    <text x="132" y="587" text-anchor="end" fill="#cdd6e8" font-size="11" font-weight="700">J5</text>
+  </g>
+  <g class="svg-slider" data-i="6" data-orient="h" data-left="665" data-right="860"
+     onpointerdown="svgSliderDown(event,6)"
+     onpointermove="svgSliderMove(event,6)"
+     onpointerup="svgSliderUp(event,6)"
+     onpointercancel="svgSliderUp(event,6)">
+    <rect x="665" y="580" width="195" height="6" rx="3" fill="#08101e" stroke="#1a2a4a"/>
+    <line x1="762" y1="575" x2="762" y2="591" stroke="#2a3a5a" stroke-width="1.5"/>
+    <rect x="755" y="575" width="14" height="16" rx="3" id="sliderThumbJ6" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.6"/>
+    <text x="868" y="587" text-anchor="start" fill="#cdd6e8" font-size="11" font-weight="700">J6</text>
+  </g>
+
+  <!-- SK / SL stick-click momentaries (X20 3-axis gimbal upgrade).
+       cfg.btn[6]=SK, cfg.btn[7]=SL.  Same press/release path as S1-S6.
+       Labels sit on the INBOARD side (toward the centre power button) so they
+       don't overlap the trim row immediately below the buttons. -->
+  <g class="svg-btn" data-i="6" onpointerdown="svgBtnPress(event,6)" onpointerup="svgBtnRelease(event,6)" onpointerleave="svgBtnRelease(event,6)">
+    <circle cx="360" cy="583" r="9" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+    <circle cx="360" cy="583" r="5" fill="#1a1a1a"/>
+    <text x="375" y="587" text-anchor="start" fill="#cdd6e8" font-size="10" font-weight="700">SK</text>
+  </g>
+  <g class="svg-btn" data-i="7" onpointerdown="svgBtnPress(event,7)" onpointerup="svgBtnRelease(event,7)" onpointerleave="svgBtnRelease(event,7)">
+    <circle cx="640" cy="583" r="9" fill="#0a0a0a" stroke="#4a4a4a" stroke-width="2"/>
+    <circle cx="640" cy="583" r="5" fill="#1a1a1a"/>
+    <text x="625" y="587" text-anchor="end" fill="#cdd6e8" font-size="10" font-weight="700">SL</text>
+  </g>
+
   <!-- Trim button zones — press/release fires {t:'tr', i, d, p}.
        trim idx: T1=0 T2=1 T3=2 T4=3 T5=4 T6=5 -->
   <g class="svg-tr" data-i="2" data-d="1"  onpointerdown="svgTrPress(event,2,1)"  onpointerup="svgTrRelease(event,2)"  onpointerleave="svgTrRelease(event,2)">
@@ -810,6 +851,20 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   <!-- Former rear buttons RB1/RB2 have been promoted to switches SI/SJ — they now
        live in the bottom of the switch pyramids (left/right) and in the Switches
        config section, with low/mid/high values like SA-SH. -->
+
+  <!-- ── S3 vertical slider (X20 middle slider, was MS) ─────────────────────────
+       Sits in the bottom-centre between the L/R nav dials, below the X18 logo.
+       Geometry MUST match _sliderGeom[4] in the JS section. -->
+  <g class="svg-slider" data-i="4" data-orient="v" data-top="710" data-bot="790"
+     onpointerdown="svgSliderDown(event,4)"
+     onpointermove="svgSliderMove(event,4)"
+     onpointerup="svgSliderUp(event,4)"
+     onpointercancel="svgSliderUp(event,4)">
+    <rect x="494" y="710" width="10" height="80" rx="5" fill="#08101e" stroke="#1a2a4a"/>
+    <line x1="491" y1="750" x2="507" y2="750" stroke="#2a3a5a" stroke-width="1.5"/>
+    <rect x="488" y="743" width="22" height="14" rx="3" id="sliderThumbS3" fill="url(#tx-knob-grad)" stroke="#fff" stroke-width="0.6"/>
+    <text x="499" y="807" text-anchor="middle" fill="#cdd6e8" font-size="11" font-weight="700">S3</text>
+  </g>
 </svg>
 </div>
 
@@ -1272,17 +1327,33 @@ const svgStickUp = (ev, side) => {
 
 // ─── LS / RS vertical sliders (Phase 2) ───────────────────────────────────
 // Geometry MUST match the SVG rect dims above:
-//   Rail:  x = 76 (LS) / 914 (RS), y = 430, w = 10, h = 120
-//   Thumb: w = 22, h = 16, centred on rail (LS x=70, RS x=908)
-//   Usable thumb y travel: top=430 (pct 100), bottom=534 (pct 0)  → range 104 px
+//   LS / RS (vertical, sides):       rail x=76/914  y=430  w=10  h=120,  thumb 22×16
+//   S3    (vertical, bottom-centre): rail x=494     y=710  w=10  h=80,   thumb 22×14
+//   J5/J6 (horizontal, below sticks): rail x=140/665 y=587 w=195 h=6,    thumb 14×16
+//
+// Geometry is per-slider so vertical and horizontal rails share the same handler
+// path.  thumbExtent = thumb length along the drag axis (h for vertical sliders,
+// w for horizontal); used to clamp the rendered thumb so it doesn't run off the
+// rail end.  pct convention: 100 = top (vertical) or right (horizontal); 0 = the
+// opposite end.
 const _sliderState = {};   // idx → { active, ptrId, pct }
-const _sliderRange = { 0:{thumb:'sliderThumbLS', y0:482}, 1:{thumb:'sliderThumbRS', y0:482} };
-const _sliderTop = 430, _sliderBot = 550, _sliderThumbH = 16;
-const _sliderUsableTop = _sliderTop;                              // 430 — thumb-y when pct=100
-const _sliderUsableBot = _sliderBot - _sliderThumbH;              // 534 — thumb-y when pct=0
-const _sliderRangePx   = _sliderUsableBot - _sliderUsableTop;     // 104
+const _sliderGeom  = {
+  // LS — left rail (cfg.sl[0])
+  0: { orient:'v', thumb:'sliderThumbLS', top:430, bot:550, thumbExtent:16 },
+  // RS — right rail (cfg.sl[1])
+  1: { orient:'v', thumb:'sliderThumbRS', top:430, bot:550, thumbExtent:16 },
+  // S3 — bottom-centre vertical (cfg.sl[4]; X20 middle slider, was MS)
+  4: { orient:'v', thumb:'sliderThumbS3', top:710, bot:790, thumbExtent:14 },
+  // J5 — horizontal below left stick (cfg.sl[5]; X20 L-stick twist).
+  // spring:true → snaps back to centre (pct=50) on release, like a stick axis.
+  5: { orient:'h', thumb:'sliderThumbJ5', left:140, right:335, thumbExtent:14, spring:true },
+  // J6 — horizontal below right stick (cfg.sl[6]; X20 R-stick twist).  Spring-back.
+  6: { orient:'h', thumb:'sliderThumbJ6', left:665, right:860, thumbExtent:14, spring:true },
+};
 
-const _sliderPctFromEv = (ev) => {
+const _sliderPctFromEv = (ev, idx) => {
+  const g = _sliderGeom[idx];
+  if (!g) return null;
   const svg = _getTxSvg(ev);
   if (!svg) return null;
   const pt  = svg.createSVGPoint();
@@ -1290,19 +1361,30 @@ const _sliderPctFromEv = (ev) => {
   const m   = svg.getScreenCTM();
   if (!m) return null;
   const lp = pt.matrixTransform(m.inverse());
-  // Map the pointer's y into 0..100 using the FULL rail height (430..550) so
-  // dragging anywhere on the rail feels right; the thumb itself is then clamped
-  // into the usable range during render.  pct 0 = bottom of rail, 100 = top.
-  let v = (_sliderBot - lp.y) / (_sliderBot - _sliderTop);
+  // Use the FULL rail length for input mapping so dragging anywhere on the rail
+  // feels right; thumb position is clamped to the usable range during render.
+  const v = (g.orient === 'v')
+    ? (g.bot - lp.y) / (g.bot - g.top)
+    : (lp.x - g.left) / (g.right - g.left);
   return Math.max(0, Math.min(100, Math.round(v * 100)));
 };
 const _sliderRenderThumb = (idx) => {
-  const r = _sliderRange[idx];
-  const pct = (_sliderState[idx] && _sliderState[idx].pct !== undefined) ? _sliderState[idx].pct : 50;
-  // pct 100 → y = _sliderUsableTop (430);  pct 0 → y = _sliderUsableBot (534)
-  const y  = _sliderUsableBot - (pct / 100) * _sliderRangePx;
-  const thumb = document.getElementById(r.thumb);
-  if (thumb) thumb.setAttribute('y', y);
+  const g = _sliderGeom[idx];
+  if (!g) return;
+  const pct   = (_sliderState[idx] && _sliderState[idx].pct !== undefined) ? _sliderState[idx].pct : 50;
+  const thumb = document.getElementById(g.thumb);
+  if (!thumb) return;
+  if (g.orient === 'v') {
+    const usableTop = g.top;
+    const usableBot = g.bot - g.thumbExtent;
+    const y = usableBot - (pct / 100) * (usableBot - usableTop);
+    thumb.setAttribute('y', y);
+  } else {
+    const usableLeft  = g.left;
+    const usableRight = g.right - g.thumbExtent;
+    const x = usableLeft + (pct / 100) * (usableRight - usableLeft);
+    thumb.setAttribute('x', x);
+  }
 };
 // Window-level fallback listeners (same pattern as the sticks).
 const _sliderWinHandlers = {};
@@ -1320,7 +1402,7 @@ const svgSliderDown = (ev, idx) => {
   _sliderState[idx].active = true;
   _sliderState[idx].ptrId  = ev.pointerId;
   try { ev.target.setPointerCapture(ev.pointerId); } catch(e) {}
-  const pct = _sliderPctFromEv(ev);
+  const pct = _sliderPctFromEv(ev, idx);
   if (pct !== null) {
     _sliderState[idx].pct = pct;
     _sliderRenderThumb(idx);
@@ -1339,7 +1421,7 @@ const svgSliderMove = (ev, idx) => {
   const s = _sliderState[idx];
   if (!s || !s.active || ev.pointerId !== s.ptrId) return;
   ev.preventDefault();
-  const pct = _sliderPctFromEv(ev);
+  const pct = _sliderPctFromEv(ev, idx);
   if (pct !== null && pct !== s.pct) {
     s.pct = pct;
     _sliderRenderThumb(idx);
@@ -1355,6 +1437,16 @@ const svgSliderUp = (ev, idx) => {
   s.ptrId  = null;
   try { ev.target && ev.target.releasePointerCapture && ev.target.releasePointerCapture(pid); } catch(e) {}
   _sliderDetachWin(idx);
+
+  // Spring-back sliders (J5/J6) snap their thumb to centre on release and
+  // immediately push a centred SBUS value, same idea as joystick axes
+  // springing back to neutral when you let go.
+  const g = _sliderGeom[idx];
+  if (g && g.spring && s.pct !== 50) {
+    s.pct = 50;
+    _sliderRenderThumb(idx);
+    send({t:'sl', i:idx, v:50});
+  }
 };
 
 // ─── S1 / S2 rotary knobs (Phase 2) ────────────────────────────────────────
@@ -1426,8 +1518,9 @@ const svgKnobUp = (ev, idx) => {
 };
 
 const initSvgAnalogs = () => {
-  _sliderRenderThumb(0);
-  _sliderRenderThumb(1);
+  // Slider indices match _sliderGeom keys: 0=LS, 1=RS, 4=S3, 5=J5, 6=J6.
+  // (cfg.sl[2]/[3] are the S1/S2 knobs — rendered via _knobRender instead.)
+  Object.keys(_sliderGeom).forEach(k => _sliderRenderThumb(+k));
   _knobRender(2);
   _knobRender(3);
 };
@@ -1684,9 +1777,9 @@ function renderAll() {
   updateReadouts();
   renderSwitchCols();
   renderSliders();      // LS beside left stick, RS beside right stick
-  renderPots();         // S1/S2 in pot row above sticks
-  renderTrimBank();     // all 6 trims in a row below sticks
-  renderButtons();      // physical S1-S6 (RB1/RB2 are now switches SI/SJ)
+  renderPots();         // S1/S2 in pot row above sticks (hidden — SVG is the real UI)
+  renderTrimBank();     // all 6 trims in a row below sticks (hidden — SVG)
+  renderButtons();      // physical S1-S6 (hidden — SVG); RB1/RB2 → switches SI/SJ
   renderLuaButtons();        // 15 configurable virtual buttons (HTML row above)
   renderScreenLuaButtons();  // same buttons mirrored inside the SVG screen pod
   renderSettings();
@@ -1922,12 +2015,21 @@ function renderSliders() {
   rsCol.appendChild(makeSliderWidget(1));
 }
 
-// ── S1/S2 pots: horizontal sliders in their own row ──────────────────────────
+// ── S1/S2 pots + X20 extras (S3/J5/J6): horizontal sliders in their own row ──
+// This entire row is HIDDEN by the .ctrl-area { display:none } rule — the SVG
+// is the real UI.  Kept in the DOM so legacy state-tracking (slv# ids) still
+// has something to read/write, and so the slider config table behind it can
+// look up element ids if needed.
 function renderPots() {
   const row = document.getElementById('potRow');
   row.innerHTML = '';
-  // cfg.sl[2] = S1, cfg.sl[3] = S2
-  for (let i = 2; i < Math.min(cfg.sl.length, 4); i++) {
+  // cfg.sl[0/1] = LS/RS (rendered as vertical sliders elsewhere);
+  // cfg.sl[2] = S1, cfg.sl[3] = S2 (centre pots / knobs in the SVG);
+  // cfg.sl[4] = S3 (X20 middle slider, was "MS");
+  // cfg.sl[5/6] = J5/J6 (X20 stick-twist 3rd axes — meaningful only on an X20
+  //   with the 3-axis gimbal upgrade, but always present so the SVG controls
+  //   work without a model-specific toggle).
+  for (let i = 2; i < cfg.sl.length; i++) {
     const sl  = cfg.sl[i];
     const div = document.createElement('div'); div.className='pot-widget';
 
@@ -2016,7 +2118,11 @@ function renderButtons() {
     return el;
   }
 
-  // cfg.btn ordering: 0=S1, 1=S2, 2=S3, 3=S4, 4=S5, 5=S6
+  // cfg.btn ordering: 0=S1, 1=S2, 2=S3, 3=S4, 4=S5, 5=S6, 6=L-Stick Click, 7=R-Stick Click
+  // X18-style layout: two 3-row columns for S1-S6.  X20 adds a third
+  // column with the two stick-click momentaries (slots 19/20 on the
+  // RC-Controller matrix), rendered alongside the regular face buttons
+  // so the user can press them to test the X20's 3-axis features.
   if (cfg.btn.length >= 6) {
     const sCol = document.createElement('div'); sCol.className = 'btn-col';
     sCol.appendChild(makeBtn(0));                                // S1
@@ -2028,6 +2134,12 @@ function renderButtons() {
     sCol2.appendChild(makeBtn(4));                               // S5
     sCol2.appendChild(makeBtn(5));                               // S6
     bank.appendChild(sCol2);
+    if (cfg.btn.length >= 8) {
+      const sCol3 = document.createElement('div'); sCol3.className = 'btn-col';
+      sCol3.appendChild(makeBtn(6));                             // L-Stick Click (X20 slot 19)
+      sCol3.appendChild(makeBtn(7));                             // R-Stick Click (X20 slot 20)
+      bank.appendChild(sCol3);
+    }
   } else {
     // Fallback for unexpected smaller config
     cfg.btn.forEach((_, i) => bank.appendChild(makeBtn(i)));
@@ -2144,7 +2256,11 @@ function renderSettings() {
     swTb.appendChild(tr);
   });
 
-  // Slider/pot table (all 4: LS, RS, S1, S2)
+  // Slider/pot table — all sliders in cfg.sl:
+  //   0=LS, 1=RS (X18 side sliders)
+  //   2=S1, 3=S2 (X18 centre pots)
+  //   4=MS    (X20 middle slider)
+  //   5=J5, 6=J6 (X20 stick-twist 3rd axes — 3-axis gimbal upgrade)
   const slTb = document.getElementById('slCfgBody'); slTb.innerHTML='';
   cfg.sl.forEach((sl,i)=>{
     const tr=document.createElement('tr');
