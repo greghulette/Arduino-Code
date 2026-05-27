@@ -262,14 +262,18 @@ public:
     
     // ===== Matrix layout helpers (serpentine 3x9) =====
     // Returns the pixel index for (row, col), or 0xFFFF if out of range.
+    //
+    // The strip IS wired serpentine — bottom and top rows run one direction,
+    // middle row runs the opposite direction so the data line snakes through
+    // all 27 pixels in one continuous chain.
     uint16_t pixelAt(uint8_t row, uint8_t col)
     {
         if (row >= MATRIX_ROWS || col >= MATRIX_COLS) return 0xFFFF;
         switch (row)
         {
-            case 0: return col;                                  // bottom:  0..8
-            case 1: return (uint16_t)(2 * MATRIX_COLS - 1) - col; // middle: 17..9
-            case 2: return (uint16_t)(2 * MATRIX_COLS) + col;     // top:    18..26
+            case 0: return col;                                  // bottom:  0..8  (left → right)
+            case 1: return (uint16_t)(2 * MATRIX_COLS - 1) - col; // middle: 17..9  (right → left)
+            case 2: return (uint16_t)(2 * MATRIX_COLS) + col;     // top:    18..26 (left → right)
         }
         return 0xFFFF;
     }
@@ -302,13 +306,22 @@ public:
         Index = 0;
     }
     
-    // Update the Scanner Pattern (column-based — bounces a lit column across the matrix)
+    // Update the Scanner Pattern (column-based — bounces a lit column across
+    // the matrix, leaving a fading trail).
+    //
+    // TotalSteps is (MATRIX_COLS - 1) * 2 = 16, covering 0..N-1 forward then
+    // N-2..1 backward before wrapping. The previous "mirror = TotalSteps-col"
+    // trick had a fixed point at col=N-1 that lit ALWAYS regardless of Index,
+    // which is why one column was permanently stuck on. The cleaner form
+    // computes the single bright column directly from Index.
     void ScannerUpdate()
     {
+        uint8_t scanCol = (Index < MATRIX_COLS)
+            ? (uint8_t)Index                        // forward sweep:  0..MATRIX_COLS-1
+            : (uint8_t)(TotalSteps - Index);        // backward sweep: MATRIX_COLS-2 .. 1
         for (uint8_t col = 0; col < MATRIX_COLS; col++)
         {
-            uint16_t mirror = (uint16_t)TotalSteps - col;
-            bool isBright = ((uint16_t)col == Index) || ((uint16_t)col == mirror);
+            bool isBright = (col == scanCol);
             for (uint8_t row = 0; row < MATRIX_ROWS; row++)
             {
                 uint16_t p = pixelAt(row, col);
@@ -531,7 +544,7 @@ void applyFade(uint32_t c1, uint32_t c2)
 // ==================== MODE CYCLE ====================
 // Single source of truth for "next animation" — used by the local button AND
 // by the :NEXT / :PREV ESP-NOW commands so all paths produce identical results.
-#define SLED_MODE_COUNT  6
+#define SLED_MODE_COUNT  8
 
 void applyModeByIndex(int n)
 {
@@ -543,6 +556,8 @@ void applyModeByIndex(int n)
         case 3: Serial.println("[MODE 3] COLOR_WIPE (Red)");        applyWipe(red);         break;
         case 4: Serial.println("[MODE 4] COLOR_WIPE (Blue)");       applyWipe(blue);        break;
         case 5: Serial.println("[MODE 5] THEATER_CHASE (Blue/Red)");applyChase(blue, red);  break;
+        case 6: Serial.println("[MODE 6] SCANNER (Blue)");          applyScanner(blue);     break;
+        case 7: Serial.println("[MODE 7] SCANNER (Red)");           applyScanner(red);      break;
         default: return;
     }
 }
@@ -721,9 +736,11 @@ void setup()
     // Initialize strip pointer for callback
     stripPtr = &strip;
     
-    // Initialize NeoPixel strip
+    // Initialize NeoPixel strip — boot into a slow blue breathing pulse so
+    // there's clear visual confirmation the firmware came up cleanly. This
+    // also leaves `mode` consistent with the cycle (mode 0 = PULSE blue).
     strip.begin();
-    strip.ColorWipe(blue, 25);
+    applyPulse(blue);
     
     // Initialize button pin
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -773,10 +790,59 @@ void setup()
 }
 
 // ==================== MAIN LOOP ====================
+// ==================== USB SERIAL COMMAND INPUT ====================
+// Accumulates characters from USB Serial into a line buffer, then dispatches
+// the complete line through runSledCommand() — same parser the ESP-NOW
+// callback uses. Lets you drive the Sled directly from a USB serial monitor
+// at 115200 baud for bench testing:
+//
+//   :PULSE,BLUE
+//   :CHASE,GREEN,WHITE
+//   :OFF
+//   :MODE,3
+//
+// Lines may end in CR ('\r'), LF ('\n'), or CRLF. Empty lines and lines
+// longer than the buffer are silently dropped (buffer is reset on overflow).
+// The leading ':' is optional — runSledCommand() strips it if present.
+static char     serialCmdBuf[100];
+static uint8_t  serialCmdLen = 0;
+
+static void serialPoll()
+{
+    while (Serial.available() > 0)
+    {
+        char c = (char)Serial.read();
+        if (c == '\r' || c == '\n')
+        {
+            if (serialCmdLen > 0)
+            {
+                serialCmdBuf[serialCmdLen] = '\0';
+                Serial.printf("[USB] received: %s\n", serialCmdBuf);
+                bool ok = runSledCommand(serialCmdBuf);
+                if (!ok) Serial.printf("[USB] command rejected\n");
+                serialCmdLen = 0;
+            }
+        }
+        else if (serialCmdLen < sizeof(serialCmdBuf) - 1)
+        {
+            serialCmdBuf[serialCmdLen++] = c;
+        }
+        else
+        {
+            // Overflow — drop the partial line so we resync on the next CR/LF.
+            Serial.println("[USB] line too long, discarded");
+            serialCmdLen = 0;
+        }
+    }
+}
+
 void loop()
 {
     // Drive ETM heartbeats / retries / offline detection
     etmProcess();
+
+    // Drain any pending USB serial commands (bench-testing convenience)
+    serialPoll();
 
     // Update NeoPixel animation
     strip.Update();
