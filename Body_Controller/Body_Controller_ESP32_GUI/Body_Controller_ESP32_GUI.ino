@@ -30,6 +30,12 @@
 #include "esp_wifi.h"
 #include <esp_now.h>
 #define ETM_MY_BOARD_INDEX ETM_BOARD_BC
+// 2026-05 (v6): bumped from default 8 → 16 to give more in-flight slots
+// for the GET_CONFIG chunked-response burst (~98 chunks @ 1Hz). With
+// only 8 slots and 500ms ETM timeout × 3 retries, the pending table
+// could fill up and `etmAddToPending` would silently start returning -1
+// (chunk sent but untracked → not retried if lost over the air).
+#define ETM_PENDING_MAX 16
 #include <ETM_Droid.h>
 #include <Adafruit_NeoPixel.h>
 #include "body_controller_esp32_pin_map.h"
@@ -232,20 +238,47 @@ unsigned long cfgReasmLastMs = 0;
 // reset; the handler reads it when emitting sendBcConfigAck().
 uint16_t lastChunkSeqForAck = 0;
 
+// 2026-05 GET_CONFIG return path. When the GUI sends GET_CONFIG, the BC
+// captures rcConfigToJSON() output here and dribbles it out as 100-byte
+// chunks (riding the periodic BC→DG status struct) at ~50ms cadence
+// until pendingCfgIdx == pendingCfgTotal. While idle, pendingCfgTotal=0
+// and the cfg-chunk fields in the outgoing struct stay zeroed so the
+// chunk doesn't replay on keepalive frames.
+String        pendingCfgJson    = "";
+uint16_t      pendingCfgSeq     = 0;
+uint16_t      pendingCfgIdx     = 0;
+uint16_t      pendingCfgTotal   = 0;
+unsigned long pendingCfgLastMs  = 0;
+// 2026-05 (v4): chunks now ride the ETM-tracked command path
+// (sendESPNOWCommand("DG", text) → outgoingMsg.structCommand[100], packed
+// as "#C <seq> <idx> <total>:<payload>"). Header overhead is at most
+// "#C 65535 999 999:" = 18 bytes, so payload max = 100 - 18 = 82 bytes;
+// rounding down to 80 leaves comfortable margin.
+#define BC_CFG_CHUNK_BYTES 80
+// 2026-05 (v6): bumped from 700ms → 1000ms.
+// Per E2E review: the real Gateway LoRa drain rate is ~1 chunk/sec
+// because of (a) 600ms inter-chunk throttle, (b) 200ms LoRa airtime per
+// chunk, (c) 1Hz telemetry frame stealing ~250ms airtime, and (d) the
+// Gateway's previously-inline LoRa-ACK-from-onReceive eating another
+// ~250ms (now deferred to main loop, see Gateway fix). 1000ms gives BC
+// a comfortable steady-state below the Gateway drain rate so the
+// chunk queue stays near-empty even under bursty telemetry.
+// Tradeoff: ~98 chunks × 1000ms = 98 seconds for a 7800-byte config.
+// Slow, but reliable end-to-end. Acceptable for a one-time config load.
+#define BC_CFG_CHUNK_INTERVAL_MS 1000
+
 // MUST match the Droid_Gateway.ino struct of the same name EXACTLY —
 // both sides share this layout for the ESP-NOW packet between BC and DG.
 //
-// 2026-05 addition (reverse-channel ACK): the three structBcAck* fields
-// carry SET_CONFIG / GET_CONFIG / NACK results from the BC back to the
-// Gateway, which forwards them in the LoRa telemetry struct so the web
-// GUI sees push results without needing a USB serial monitor.
-//   structBcAckSeq — sequence number echoed back from the request
-//                    (BC fills with the chunked-push seq, or 0 for
-//                    non-chunked replies). Wraps around uint16; web side
-//                    matches against state.lastSentSeq.
-//   structBcAckOk  — true for success, false for a NACK.
-//   structBcAckMsg — short status string ("applied", "incomplete",
-//                    "out_of_order", "parse_fail", etc.).
+// 2026-05 NOTE: The reverse-channel ACK and GET_CONFIG cfg-chunk fields
+// USED TO live in this struct. They were briefly moved into a separate
+// BcEvent_struct_message and dispatched by len, but that path used raw
+// esp_now_send() with no retries — 10-20% of chunks dropped silently.
+// 2026-05 (v4): ACKs and chunks now ride the ETM-tracked command path
+// (sendESPNOWCommand("DG", text) packs them as "#A ..." / "#C ..." TEXT
+// commands inside outgoingMsg.structCommand). ETM provides sequence
+// numbers, ACK tracking, and 3 retries with 500ms timeout. The
+// BcEvent_struct_message typedef is gone.
 typedef struct bodyControllerStatus_struct_message {
   char   structPassword[25];
   char   structSenderID[15];
@@ -265,11 +298,14 @@ typedef struct bodyControllerStatus_struct_message {
   uint32_t etmBoardAckd[ETM_NUM_BOARDS];
   uint32_t etmBoardRetries[ETM_NUM_BOARDS];
   uint32_t etmBoardFailed[ETM_NUM_BOARDS];
-  // Reverse-channel ACK from BC → GUI (see comment above).
-  uint16_t structBcAckSeq;
-  bool     structBcAckOk;
-  char     structBcAckMsg[24];
 } bodyControllerStatus_struct_message;
+
+// 2026-05 (v4): BcEvent_struct_message removed. ACKs and GET_CONFIG
+// chunks now ride the ETM-tracked command path as text-encoded payloads
+// inside outgoingMsg.structCommand. See sendBcConfigAck() /
+// sendBcCfgChunk() below — they build "#A ..." / "#C ..." strings and
+// hand them to sendESPNOWCommand("DG", s), which uses ETM's sequence /
+// ACK / 3-retry machinery instead of raw esp_now_send().
 
 bodyControllerStatus_struct_message commandsToSendtoDroidLoRa;
 espnow_struct_message outgoingMsg, incomingMsg;
@@ -277,6 +313,9 @@ esp_now_peer_info_t peerInfo;
 
 void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   if (status == 0) SuccessCounter++; else FailureCounter++;
+  // 2026-05 (v4): chunk in-flight tracking removed — ETM handles
+  // delivery, ACK matching, and retries for the chunk/ACK text frames
+  // now. OnDataSent is back to just counting outcomes.
 }
 
 void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
@@ -506,52 +545,66 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
   }
 }
 
-// 2026-05 addition: reverse-channel ACK from BC → GUI. Called from the
-// config-handling sites (handleWebSerialMessage SET_CONFIG/GET_CONFIG/
-// RESET_DEFAULTS results, plus the chunked NACK sites). Fills the
-// outbound DG status struct with the normal periodic-status fields
-// AND overlays the ACK fields, then fires ESP-NOW immediately so the
-// GUI sees the ACK on the next telemetry frame (~1 Hz).
+// 2026-05 (v4): reverse-channel ACK from BC → GUI, now routed through
+// ETM. Packs the ACK as a TEXT command "#A <seq> <ok> <msg>" and hands
+// it to sendESPNOWCommand("DG", s) — which carries it as an
+// ETM-tracked command frame (sequence number, gateway ACK, 3 retries
+// with 500ms timeout). The Gateway recognizes the "#A " prefix in
+// processESPNOWIncomingMessage() and copies seq/ok/msg into the same
+// BC_bcAck* globals the LoRa telemetry relay already uses.
 //
 // `seq`  — the chunked-push sequence number this ACK corresponds to,
 //          OR 0 for non-chunked replies (direct USB SET_CONFIG, GET_CONFIG,
 //          RESET_DEFAULTS). Web side filters by matching state.lastSentSeq.
 // `ok`   — true for success, false for NACK.
-// `msg`  — short status string (≤23 chars + null); examples:
+// `msg`  — short status string (≤23 chars); examples:
 //          "applied", "parse_fail", "incomplete", "out_of_order",
 //          "wrong_seq", "overflow", "missing_data", "apply_failed".
 void sendBcConfigAck(uint16_t seq, bool ok, const char *msg) {
-  // Pack standard status fields first (overwrites struct entirely).
-  setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, "BC", "DG", false, "");
-  // Then overlay the ACK fields so they ride along on this frame.
-  commandsToSendtoDroidLoRa.structBcAckSeq = seq;
-  commandsToSendtoDroidLoRa.structBcAckOk  = ok;
-  if (msg) {
-    strncpy(commandsToSendtoDroidLoRa.structBcAckMsg, msg,
-            sizeof(commandsToSendtoDroidLoRa.structBcAckMsg) - 1);
-    commandsToSendtoDroidLoRa.structBcAckMsg[sizeof(commandsToSendtoDroidLoRa.structBcAckMsg) - 1] = '\0';
-  } else {
-    commandsToSendtoDroidLoRa.structBcAckMsg[0] = '\0';
-  }
-  esp_now_send(ETM_BOARD_MACS[ETM_BOARD_DG],
-               (uint8_t*)&commandsToSendtoDroidLoRa,
-               sizeof(commandsToSendtoDroidLoRa));
+  String s = "#A ";
+  s += String(seq);
+  s += " ";
+  s += (ok ? "1" : "0");
+  s += " ";
+  s += (msg ? msg : "");
+  sendESPNOWCommand("DG", s);
   // Also print on USB for direct-cable debugging.
   Serial.printf("{\"type\":\"%s\",\"seq\":%u,\"ok\":%s,\"msg\":\"%s\"}\n",
                 ok ? "ACK" : "NACK", seq, ok ? "true" : "false", msg ? msg : "");
 }
 
+// 2026-05 (v4): GET_CONFIG chunk send, also routed through ETM. Packs the
+// chunk as "#C <seq> <idx> <total>:<payload>" inside outgoingMsg.structCommand
+// (max 100 bytes). Header overhead is at most "#C 65535 999 999:" = 18
+// bytes, leaving room for BC_CFG_CHUNK_BYTES (80) of payload.
+// ETM's sequence/ACK/retry handle reliable delivery — no in-flight flag,
+// no manual retry loop, no OnDataSent inspection.
+void sendBcCfgChunk(uint16_t seq, uint16_t idx, uint16_t total,
+                    uint8_t len, const char *payload) {
+  String s = "#C ";
+  s += String(seq);
+  s += " ";
+  s += String(idx);
+  s += " ";
+  s += String(total);
+  s += ":";
+  for (uint8_t i = 0; i < len; i++) s += payload[i];
+  sendESPNOWCommand("DG", s);
+  Serial.printf("[CFG] SEND chunk seq=%u idx=%u/%u len=%u (ETM)\n",
+                seq, idx, total, len);
+}
+
 void sendESPNOWCommand(String starget, String scomm) {
   bool hasCommand = (scomm.length() > 0);
-  if (starget == "DG") {
+  // 2026-05 (v4): only the *heartbeat* path (empty scomm) still uses the
+  // big bodyControllerStatus_struct_message — that struct carries
+  // periodic telemetry (battery, LED-controller status, ETM stats, etc.)
+  // and is dispatched by len on the Gateway side. Non-empty commands to
+  // "DG" (e.g. the "#A ..." ACKs and "#C ..." cfg chunks built by
+  // sendBcConfigAck/sendBcCfgChunk) fall through to the ETM-tracked
+  // path below so they get sequence numbers, gateway ACKs, and retries.
+  if (starget == "DG" && !hasCommand) {
     setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, "BC", starget, hasCommand, scomm);
-    // 2026-05: clear ACK fields on the periodic status frame so a stale
-    // ACK doesn't keep replaying for every keepalive after the GUI has
-    // already seen it. sendBcConfigAck() repopulates them just for its
-    // own send.
-    commandsToSendtoDroidLoRa.structBcAckSeq = 0;
-    commandsToSendtoDroidLoRa.structBcAckOk = false;
-    commandsToSendtoDroidLoRa.structBcAckMsg[0] = '\0';
     esp_now_send(ETM_BOARD_MACS[ETM_BOARD_DG], (uint8_t*)&commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
     return;
   }
@@ -1292,10 +1345,30 @@ void handleWebSerialMessage(const String& line) {
   // ── GET_CONFIG ─────────────────────────────────────────────────────────────
   if (strcmp(type, "GET_CONFIG") == 0) {
     String cfg = rcConfigToJSON();
-    // Send as a response envelope — split into two prints to keep RAM low
+    // Send as a response envelope — print to USB for direct-cable debug.
     Serial.print("{\"type\":\"CONFIG\",\"data\":");
     Serial.print(cfg);
     Serial.println("}");
+    // 2026-05 GET_CONFIG return path: stage the chunked send over the
+    // BC → DG → Remote → USB → Web pipeline. The main loop dribbles
+    // out one chunk per BC_CFG_CHUNK_INTERVAL_MS until done. We pack
+    // the OUTER envelope so the Web side sees the same shape as a
+    // direct-USB CONFIG reply, just split across chunks.
+    pendingCfgJson  = String("{\"type\":\"CONFIG\",\"data\":") + cfg + String("}");
+    uint32_t jsonLen = pendingCfgJson.length();
+    pendingCfgTotal = (uint16_t)((jsonLen + BC_CFG_CHUNK_BYTES - 1) / BC_CFG_CHUNK_BYTES);
+    pendingCfgIdx   = 0;
+    // seq: never zero (BC uses 0 as "no active chunk"); wrap millis().
+    uint16_t seq = (uint16_t)(millis() & 0xFFFF);
+    if (seq == 0) seq = 1;
+    pendingCfgSeq = seq;
+    // Fire first chunk immediately on next loop tick by backdating.
+    pendingCfgLastMs = millis() - BC_CFG_CHUNK_INTERVAL_MS;
+    // 2026-05 unconditional print so we can see chunk staging without
+    // enabling LOOP debug. Reports the seq, total chunks, and total
+    // bytes about to be chunked out.
+    Serial.printf("[CFG] STAGED seq=%u total=%u jsonLen=%u\n",
+                  pendingCfgSeq, pendingCfgTotal, (unsigned)jsonLen);
     return;
   }
 
@@ -1469,6 +1542,14 @@ void setup() {
   Serial.begin(115200);
   delay(2000);                              // give serial monitor time to attach
   Serial.println("\n[S0] Serial up");
+  // 2026-05 diagnostic: print struct sizes at boot. The BC's periodic
+  // heartbeat is sent as a `bodyControllerStatus_struct_message` to the
+  // Gateway; the Gateway dispatches by len. If BC's size != Gateway's
+  // size, the Gateway silently ignores the heartbeat and marks BC offline.
+  // Compare this number to the matching print in Droid_Gateway.ino — they
+  // MUST be identical for ESP-NOW to deliver heartbeats.
+  Serial.printf("[S0] sizeof(bodyControllerStatus_struct_message) = %u bytes\n",
+                (unsigned)sizeof(bodyControllerStatus_struct_message));
   Serial.flush();
 
   // rdSerial = hardware Serial1, remapped to SERIAL_RX_RD_PIN/SERIAL_TX_RD_PIN
@@ -1528,10 +1609,61 @@ void setup() {
 //////////////////////////////////////////////////////////////////////
 //  MAIN LOOP
 //////////////////////////////////////////////////////////////////////
+// 2026-05 GET_CONFIG return path. Dribbles pendingCfgJson out as
+// BC_CFG_CHUNK_BYTES-sized chunks over ESP-NOW at BC_CFG_CHUNK_INTERVAL_MS
+// cadence. The Gateway forwards each chunk over LoRa as a separate
+// CfgChunk_LoRa_Struct packet (disambiguated by size from the periodic
+// telemetry struct). Resets state when finished.
+void tickPendingCfgChunks() {
+  if (pendingCfgTotal == 0) return;
+  if (pendingCfgIdx >= pendingCfgTotal) {
+    // Done — clear state.
+    pendingCfgJson   = "";
+    pendingCfgSeq    = 0;
+    pendingCfgIdx    = 0;
+    pendingCfgTotal  = 0;
+    pendingCfgLastMs = 0;
+    return;
+  }
+  // 2026-05 (v4): ETM handles per-chunk reliability now (sequence
+  // numbers, gateway ACK, 3 retries with 500ms timeout). The BC's job
+  // here is just to pace chunks at BC_CFG_CHUNK_INTERVAL_MS — no
+  // in-flight tracking, no manual retry loop.
+  if (millis() - pendingCfgLastMs < BC_CFG_CHUNK_INTERVAL_MS) return;
+
+  // 2026-05 (v6): backpressure on ETM pending table. If pending is more
+  // than half full, defer the next chunk to give ETM time to drain
+  // ACKs/retries. Without this, when pending fills up,
+  // `etmAddToPending` returns -1 and the chunk is sent but NEVER tracked
+  // for retry — if it's lost over the air, it's gone forever, and the
+  // GUI's reassembler aborts on the resulting idx gap.
+  {
+    int pendingCount = 0;
+    for (int i = 0; i < ETM_PENDING_MAX; i++) {
+      if (etmPendingTable[i].active) pendingCount++;
+    }
+    if (pendingCount >= ETM_PENDING_MAX / 2) {
+      // ETM is busy — try again next tick. Don't advance pendingCfgLastMs.
+      return;
+    }
+  }
+
+  int start = (int)pendingCfgIdx * BC_CFG_CHUNK_BYTES;
+  int end   = start + BC_CFG_CHUNK_BYTES;
+  int total = (int)pendingCfgJson.length();
+  if (end > total) end = total;
+  String slice = pendingCfgJson.substring(start, end);
+  uint8_t len = (uint8_t)slice.length();
+  sendBcCfgChunk(pendingCfgSeq, pendingCfgIdx, pendingCfgTotal, len, slice.c_str());
+  pendingCfgIdx++;
+  pendingCfgLastMs = millis();
+}
+
 void loop() {
   etmProcess();
   keepAlive();
   checkAgeofkeepAlive();
+  tickPendingCfgChunks();
 
 #ifdef SBUS
   processSbus();

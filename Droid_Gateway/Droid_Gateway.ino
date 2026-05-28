@@ -373,6 +373,24 @@ String debugInputIdentifier ="";
   uint16_t BC_bcAckSeq      = 0;
   bool     BC_bcAckOk       = false;
   char     BC_bcAckMsg[24]  = {0};
+  // 2026-05 GET_CONFIG return path: most-recent cfg chunk captured from
+  // the BC status struct. When BC_cfgSeq>0 we immediately ship the chunk
+  // out over LoRa via sendCfgChunkLoRa() and then zero these so they
+  // don't replay on the next telemetry tick.
+  uint16_t BC_cfgSeq        = 0;
+  uint16_t BC_cfgIdx        = 0;
+  uint16_t BC_cfgTotal      = 0;
+  uint8_t  BC_cfgLen        = 0;
+  char     BC_cfgPayload[100] = {0};
+  // 2026-05 (v4): defer the LoRa ACK from inside onReceive to the main
+  // loop. The old code called sendACK() (which does a full LoRa.endPacket
+  // taking ~250ms) directly inside the onReceive callback path. During
+  // a config burst, this starved tickCfgChunkQueue and caused the chunk
+  // queue to overflow. Now onReceive just sets pendingLoRaAck=true and
+  // the main loop fires sendACK AFTER tickCfgChunkQueue has had a chance
+  // to drain any pending cfg chunks.
+  volatile bool pendingLoRaAck   = false;
+  volatile int  pendingLoRaAckId = 0;
   // BC's ETM per-board delivery stats (received via bodyControllerStatus_struct_message)
   // Indexed by ETM_BOARD_* constants
   bool     BC_etmBoardOnline[ETM_NUM_BOARDS]  = {};
@@ -390,9 +408,15 @@ String debugInputIdentifier ="";
 // ESP-NOW link share this layout. If you add a field, add it in BOTH files
 // in the SAME order or the receive-side memcpy will corrupt the payload.
 //
-// 2026-05 addition (reverse-channel ACK): the three structBcAck* fields
-// carry SET_CONFIG / GET_CONFIG / NACK results from BC → GUI. See the
-// matching comment in Body_Controller_ESP32_GUI.ino.
+// 2026-05 NOTE: The reverse-channel ACK and GET_CONFIG cfg-chunk fields
+// USED TO live in this struct. They were briefly moved into a separate
+// BcEvent_struct_message dispatched by len, but that path used raw
+// esp_now_send() with no retries — 10-20% of chunks dropped silently.
+// 2026-05 (v4): ACKs and chunks now ride the ETM-tracked command path
+// from BC as TEXT commands ("#A ..." for ACKs, "#C ..." for chunks)
+// inside the standard espnow_struct_message.structCommand. They are
+// detected by prefix in processESPNOWIncomingMessage(). The
+// BcEvent_struct_message typedef is gone.
 typedef struct bodyControllerStatus_struct_message{
       char structPassword[25];
       char structSenderID[15];
@@ -420,11 +444,14 @@ typedef struct bodyControllerStatus_struct_message{
       uint32_t etmBoardAckd[ETM_NUM_BOARDS];
       uint32_t etmBoardRetries[ETM_NUM_BOARDS];
       uint32_t etmBoardFailed[ETM_NUM_BOARDS];
-      // Reverse-channel ACK from BC → GUI (see header comment).
-      uint16_t structBcAckSeq;
-      bool     structBcAckOk;
-      char     structBcAckMsg[24];
   } bodyControllerStatus_struct_message;
+
+// 2026-05 (v4): BcEvent_struct_message removed. ACKs and GET_CONFIG
+// chunks now arrive via the ETM-tracked command path (espnow_struct_message
+// PACKET_TYPE_COMMAND with the text "#A <seq> <ok> <msg>" or
+// "#C <seq> <idx> <total>:<payload>" in structCommand). They're handled
+// inline in processESPNOWIncomingMessage() — see the prefix dispatch
+// there.
 
 // Create a espnow_struct_message called commandsTosendto****** to hold variables that will be sent
   espnow_struct_message commandsToSendtoBroadcast;
@@ -454,12 +481,29 @@ void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   }
 }
 
+// Forward decl: defined alongside LoRa_Struct below; called from OnDataRecv
+// to immediately forward a BC cfg chunk over LoRa as a separate packet.
+void sendCfgChunkLoRa();
+
 // Callback when data is received
 void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
   colorWipeStatus("ES", orange, 255);
 
   int senderIdx = etmBoardIndexFromMAC(esp_now_info->src_addr);
   Debug.ESPNOW("Received ESP-NOW packet from board index %d, len %d\n", senderIdx, len);
+  // 2026-05 (v4) diagnostic: BC now sends only two sizes —
+  //   sizeof(bodyControllerStatus_struct_message) — periodic heartbeat
+  //   sizeof(espnow_struct_message)               — ETM command frames
+  //     (PACKET_TYPE_COMMAND text "#A ..." ACK / "#C ..." chunk arrive here)
+  // Anything else is unexpected.
+  if (senderIdx == ETM_BOARD_BC &&
+      len != (int)sizeof(bodyControllerStatus_struct_message) &&
+      len != (int)sizeof(espnow_struct_message)) {
+    Serial.printf("[DG] BC packet size mismatch: got %d, expected %u (status) or %u (etm)\n",
+                  len,
+                  (unsigned)sizeof(bodyControllerStatus_struct_message),
+                  (unsigned)sizeof(espnow_struct_message));
+  }
 
   // Body Controller sends a custom status struct with a different size —
   // handle it separately before the ETM path.
@@ -496,20 +540,20 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
         BC_etmBoardRetries[i] = commandsToReceiveFromBodyController.etmBoardRetries[i];
         BC_etmBoardFailed[i]  = commandsToReceiveFromBodyController.etmBoardFailed[i];
       }
-      // 2026-05: capture BC's reverse-channel ACK fields. The BC sends
-      // these only when reporting a SET_CONFIG / GET_CONFIG / NACK
-      // result; on periodic keepalive frames seq=0 and the GUI ignores
-      // them. We forward whatever the BC sent — see setupLoRaSendStruct.
-      BC_bcAckSeq = commandsToReceiveFromBodyController.structBcAckSeq;
-      BC_bcAckOk  = commandsToReceiveFromBodyController.structBcAckOk;
-      strncpy(BC_bcAckMsg, commandsToReceiveFromBodyController.structBcAckMsg, sizeof(BC_bcAckMsg) - 1);
-      BC_bcAckMsg[sizeof(BC_bcAckMsg) - 1] = '\0';
+      // 2026-05 (v4): ACK and cfg-chunk fields are NOT in this struct.
+      // They arrive as ETM PACKET_TYPE_COMMAND text frames ("#A ..." /
+      // "#C ...") and are dispatched in processESPNOWIncomingMessage().
       etmHandleHeartbeat(ETM_BOARD_BC);
       processESPNOWIncomingMessage();
     }
     colorWipeStatus("ES", blue, 10);
     return;
   }
+
+  // 2026-05 (v4): the BcEvent receive branch is gone. BC's ACKs and
+  // GET_CONFIG chunks now arrive as ETM PACKET_TYPE_COMMAND frames
+  // (text "#A ..." / "#C ..." in structCommand) and are dispatched
+  // inline at the top of processESPNOWIncomingMessage().
 
   // All other messages use the standard ETM struct
   if (len < (int)sizeof(espnow_struct_message)) {
@@ -570,6 +614,49 @@ void processESPNOWIncomingMessage(){
   Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
   Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
   Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
+
+  // 2026-05 (v4): BC's reverse-channel ACKs and GET_CONFIG chunks now
+  // arrive as ordinary ETM PACKET_TYPE_COMMAND frames addressed to "DG"
+  // (or "BR" on a broadcast), with the payload text-encoded inside
+  // incomingCommand:
+  //     "#A <seq> <ok> <msg>"          — config ACK / NACK
+  //     "#C <seq> <idx> <total>:<payload>" — GET_CONFIG chunk
+  // Detect by prefix and copy fields into the same downstream globals
+  // (BC_bcAck* / enqueueCfgChunk) the rest of the pipeline already uses.
+  // ETM provides the reliability (sequence numbers, ACK, 3 retries with
+  // 500ms timeout) so the dedicated BcEvent_struct_message frame is gone.
+  if (incomingSenderID == "BC" && (incomingTargetID == "DG" || incomingTargetID == "BR")) {
+    if (incomingCommand.startsWith("#A ")) {
+      String rest = incomingCommand.substring(3);
+      int sp1 = rest.indexOf(' ');
+      int sp2 = (sp1 > 0) ? rest.indexOf(' ', sp1 + 1) : -1;
+      if (sp1 > 0 && sp2 > 0) {
+        uint16_t seq = (uint16_t)rest.substring(0, sp1).toInt();
+        bool ok = rest.substring(sp1 + 1, sp2) == "1";
+        String msg = rest.substring(sp2 + 1);
+        BC_bcAckSeq = seq;
+        BC_bcAckOk  = ok;
+        strncpy(BC_bcAckMsg, msg.c_str(), sizeof(BC_bcAckMsg) - 1);
+        BC_bcAckMsg[sizeof(BC_bcAckMsg) - 1] = '\0';
+      }
+      return;
+    }
+    if (incomingCommand.startsWith("#C ")) {
+      int spaceA = incomingCommand.indexOf(' ', 3);
+      int spaceB = (spaceA > 0) ? incomingCommand.indexOf(' ', spaceA + 1) : -1;
+      int colon  = (spaceB > 0) ? incomingCommand.indexOf(':', spaceB + 1) : -1;
+      if (spaceA > 0 && spaceB > 0 && colon > 0) {
+        uint16_t seq   = (uint16_t)incomingCommand.substring(3, spaceA).toInt();
+        uint16_t idx   = (uint16_t)incomingCommand.substring(spaceA + 1, spaceB).toInt();
+        uint16_t total = (uint16_t)incomingCommand.substring(spaceB + 1, colon).toInt();
+        String payload = incomingCommand.substring(colon + 1);
+        uint8_t len = (uint8_t)payload.length();
+        enqueueCfgChunk(seq, idx, total, len, payload.c_str());
+      }
+      return;
+    }
+  }
+
     if (incomingTargetID == "DG" || incomingTargetID == "BR"){
       if (incomingSenderID == "BC"){
         bodyControllerStatus = 1;
@@ -955,11 +1042,19 @@ void sendESPNOWCommand(String starget, String scomm) {
 //////////////////////////////////////////////////////////////////////
 void sendStatusToRemote(){
   if (sendUpdateStatus){
+    // 2026-05 (v4): give cfg-chunk drain priority on the LoRa radio.
+    // The 1Hz telemetry frame eats ~250ms of LoRa airtime; if it fires
+    // while cfg chunks are queued, every chunk after it has to wait an
+    // extra ~250ms and Gateway's chunk queue can overflow. Skip telemetry
+    // entirely while a config transfer is in progress — status icons
+    // will go stale for ~100 seconds during a GET_CONFIG, then refresh
+    // when the queue empties.
+    if (!cfgChunkQueueEmpty()) return;
     if (millis() - sendStatusMillis >= 1000) {
       sendStatusMillis = millis();
       // sendStatusMessage("Status Update");
       sendStatusMessage();
-    } 
+    }
   }
 }
 
@@ -1020,6 +1115,149 @@ typedef struct LoRa_Struct{
   } LoRa_Struct;
 
 LoRa_Struct commandstoSendtoRemote;
+
+// 2026-05 GET_CONFIG return path. Separate LoRa packet carrying one
+// 100-byte chunk of the BC's rcConfigToJSON() reply. The Remote
+// dispatches by packetSize: this struct MUST be smaller than
+// sizeof(LoRa_Struct) so size-based disambiguation is reliable.
+//   struct_LoraPasscode = 12345678 (same as telemetry)
+//   struct_magic        = 0xC6     (extra paranoid guard)
+//   struct_cfgSeq       = >0 always (BC never emits seq=0 chunks)
+// MUST match Droid_Remote.ino's CfgChunk_LoRa_Struct exactly.
+typedef struct CfgChunk_LoRa_Struct {
+  uint32_t struct_LoraPasscode;
+  uint8_t  struct_magic;
+  uint16_t struct_cfgSeq;
+  uint16_t struct_cfgIdx;
+  uint16_t struct_cfgTotal;
+  uint8_t  struct_cfgLen;
+  char     struct_cfgPayload[100];
+} CfgChunk_LoRa_Struct;
+
+// 2026-05: queue of pending cfg chunks awaiting LoRa transmission.
+//   Previously we called sendCfgChunkLoRa() synchronously from OnDataRecv
+//   (the ESP-NOW receive callback context). That callback runs on the
+//   WiFi/lwIP system task; doing 50-200 ms blocking LoRa SPI writes there
+//   starves the WiFi driver and the Gateway hangs after a dozen chunks
+//   (user reported the DG needing a reboot mid-test).
+//   The new flow: OnDataRecv enqueues, the main loop calls
+//   tickCfgChunkQueue() to drain one chunk per iteration (no more often
+//   than CFG_CHUNK_LORA_MIN_GAP_MS).
+//   Queue capacity sized to comfortably absorb a full config burst
+//   (~78 chunks at 200 ms BC pacing vs. ~100-200 ms LoRa drain).
+#define CFG_CHUNK_QUEUE_SIZE      32
+// 2026-05 (v3): bumped from 400ms → 600ms.
+// Per E2E review: the previous 400ms gap was right at the edge of what
+// the Remote can process (its onReceive does a JSON escape + Serial1
+// emit, ~20-30ms; combined with periodic 1Hz telemetry transmits and
+// LoRa half-duplex collisions, ~400ms was insufficient). 600ms gives
+// reliable headroom even when the Gateway is also sending telemetry.
+#define CFG_CHUNK_LORA_MIN_GAP_MS 600
+struct PendingCfgChunk {
+  uint16_t seq;
+  uint16_t idx;
+  uint16_t total;
+  uint8_t  len;
+  char     payload[100];
+};
+volatile PendingCfgChunk cfgChunkQueue[CFG_CHUNK_QUEUE_SIZE];
+volatile uint8_t cfgChunkQueueHead = 0;   // next write slot
+volatile uint8_t cfgChunkQueueTail = 0;   // next read slot
+unsigned long    cfgChunkLastSendMs = 0;
+uint32_t         cfgChunkDroppedCount = 0;
+
+bool cfgChunkQueueEmpty()  { return cfgChunkQueueHead == cfgChunkQueueTail; }
+bool cfgChunkQueueFull()   {
+  return (uint8_t)((cfgChunkQueueHead + 1) % CFG_CHUNK_QUEUE_SIZE) == cfgChunkQueueTail;
+}
+
+void enqueueCfgChunk(uint16_t seq, uint16_t idx, uint16_t total,
+                     uint8_t len, const char *payload) {
+  if (cfgChunkQueueFull()) {
+    cfgChunkDroppedCount++;
+    // 2026-05 (v4): make overflow visible. Was silent before — operator
+    // had no way to see when the LoRa drain was falling behind BC's send
+    // rate. Each [CFG-DROP] line means BC must re-send this chunk (it
+    // won't, currently — see N5 in the E2E review).
+    Serial.printf("[CFG-DROP] queue full — dropped seq=%u idx=%u/%u total_dropped=%u\n",
+                  seq, idx, total, (unsigned)cfgChunkDroppedCount);
+    return;
+  }
+  volatile PendingCfgChunk *slot = &cfgChunkQueue[cfgChunkQueueHead];
+  slot->seq   = seq;
+  slot->idx   = idx;
+  slot->total = total;
+  slot->len   = len > sizeof(slot->payload) ? sizeof(slot->payload) : len;
+  for (uint8_t i = 0; i < slot->len; i++) slot->payload[i] = payload[i];
+  cfgChunkQueueHead = (cfgChunkQueueHead + 1) % CFG_CHUNK_QUEUE_SIZE;
+}
+
+CfgChunk_LoRa_Struct cfgChunkToSendtoRemote;
+
+// Sends a single cfg chunk to the Droid_Remote over LoRa. Called from
+// OnDataRecv() immediately on every chunk arrival from the BC so the
+// dribble cadence (~50ms / chunk) is preserved end-to-end without
+// piggybacking on the slow (1 Hz) periodic telemetry frame.
+// 2026-05: NOW CALLED FROM THE MAIN LOOP via tickCfgChunkQueue() — never
+// from the ESP-NOW receive callback. The LoRa SPI write loop below blocks
+// for 50-200 ms and would starve the WiFi driver if called from the
+// ESP-NOW system task.
+void sendCfgChunkLoRa() {
+  cfgChunkToSendtoRemote.struct_LoraPasscode = LoraPasscode;
+  cfgChunkToSendtoRemote.struct_magic        = 0xC6;
+  cfgChunkToSendtoRemote.struct_cfgSeq       = BC_cfgSeq;
+  cfgChunkToSendtoRemote.struct_cfgIdx       = BC_cfgIdx;
+  cfgChunkToSendtoRemote.struct_cfgTotal     = BC_cfgTotal;
+  uint8_t len = BC_cfgLen;
+  if (len > sizeof(cfgChunkToSendtoRemote.struct_cfgPayload)) {
+    len = sizeof(cfgChunkToSendtoRemote.struct_cfgPayload);
+  }
+  cfgChunkToSendtoRemote.struct_cfgLen = len;
+  memset(cfgChunkToSendtoRemote.struct_cfgPayload, 0,
+         sizeof(cfgChunkToSendtoRemote.struct_cfgPayload));
+  memcpy(cfgChunkToSendtoRemote.struct_cfgPayload, BC_cfgPayload, len);
+  // 2026-05 unconditional logs so we can see if LoRa transmits are
+  // actually happening even when Debug.LORA is off.
+  unsigned long tStart = millis();
+  Serial.printf("[CFG-LoRa] BEGIN tx seq=%u idx=%u/%u len=%u size=%u\n",
+                BC_cfgSeq, BC_cfgIdx, BC_cfgTotal, BC_cfgLen,
+                (unsigned)sizeof(cfgChunkToSendtoRemote));
+  LoRa.beginPacket();
+  for (unsigned int i = 0; i < sizeof(cfgChunkToSendtoRemote); i++) {
+    LoRa.write(((byte *) &cfgChunkToSendtoRemote)[i]);
+  }
+  int ok = LoRa.endPacket();
+  Serial.printf("[CFG-LoRa] END   tx seq=%u idx=%u/%u endPacket=%d duration=%lums\n",
+                BC_cfgSeq, BC_cfgIdx, BC_cfgTotal, ok, millis() - tStart);
+}
+
+// 2026-05: drain one queued cfg chunk per call (called from main loop).
+// Throttled to CFG_CHUNK_LORA_MIN_GAP_MS minimum spacing so we don't
+// hammer the LoRa radio if the queue is full. Pops the chunk, copies it
+// into the BC_cfg* globals, calls sendCfgChunkLoRa() which sends a single
+// LoRa packet. Safe to call every loop iteration — does nothing if the
+// queue is empty or the gap hasn't elapsed.
+void tickCfgChunkQueue() {
+  if (cfgChunkQueueEmpty()) return;
+  unsigned long now = millis();
+  if (now - cfgChunkLastSendMs < CFG_CHUNK_LORA_MIN_GAP_MS) return;
+
+  volatile PendingCfgChunk *slot = &cfgChunkQueue[cfgChunkQueueTail];
+  BC_cfgSeq   = slot->seq;
+  BC_cfgIdx   = slot->idx;
+  BC_cfgTotal = slot->total;
+  BC_cfgLen   = slot->len;
+  memset(BC_cfgPayload, 0, sizeof(BC_cfgPayload));
+  for (uint8_t i = 0; i < slot->len; i++) BC_cfgPayload[i] = slot->payload[i];
+  cfgChunkQueueTail = (cfgChunkQueueTail + 1) % CFG_CHUNK_QUEUE_SIZE;
+
+  sendCfgChunkLoRa();
+  cfgChunkLastSendMs = millis();
+
+  // Clear locals so a stale chunk doesn't get accidentally re-sent.
+  BC_cfgSeq = 0; BC_cfgIdx = 0; BC_cfgTotal = 0; BC_cfgLen = 0;
+  memset(BC_cfgPayload, 0, sizeof(BC_cfgPayload));
+}
 
 void setupLoRaSendStruct(){
     commandstoSendtoRemote.struct_LoraPasscode = LoraPasscode;
@@ -1219,13 +1457,18 @@ void onReceive(int packetSize) {
   }
   // Deduplication — if this is a retry of an already-processed command, ACK it but don't re-run it
   if (incomingMsgId == lastProcessedMsgId) {
-    Debug.LORA("Duplicate LoRa msg ID %d — ACKing without re-processing\n", incomingMsgId);
-    sendACK(incomingMsgId);
+    Debug.LORA("Duplicate LoRa msg ID %d — deferring ACK without re-processing\n", incomingMsgId);
+    // 2026-05 (v4): defer LoRa ACK to main loop so it doesn't compete
+    // with tickCfgChunkQueue for the LoRa radio during config receive.
+    pendingLoRaAck   = true;
+    pendingLoRaAckId = incomingMsgId;
     return;
   }
   lastProcessedMsgId = incomingMsgId;
   parseStrings(incoming);
-  sendACK(incomingMsgId);
+  // 2026-05 (v4): defer LoRa ACK to main loop (see comment above).
+  pendingLoRaAck   = true;
+  pendingLoRaAckId = incomingMsgId;
   if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
     colorWipeStatus("LS", green, 10);
   }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){
@@ -1392,6 +1635,15 @@ void setup() {
   Serial.println("\n\n----------------------------------------");
   Serial.print("Booting up the ");Serial.println(HOSTNAME);
   Serial.println("----------------------------------------");
+  // 2026-05 diagnostic: print struct sizes at boot. The Gateway dispatches
+  // incoming ESP-NOW packets from the BC by len — MUST match the BC's
+  // sizes exactly (compare to the matching print in Body_Controller_ESP32_GUI.ino).
+  Serial.printf("[DG] sizeof(bodyControllerStatus_struct_message) = %u bytes\n",
+                (unsigned)sizeof(bodyControllerStatus_struct_message));
+  Serial.printf("[DG] sizeof(LoRa_Struct)                         = %u bytes\n",
+                (unsigned)sizeof(LoRa_Struct));
+  Serial.printf("[DG] sizeof(CfgChunk_LoRa_Struct)                = %u bytes\n",
+                (unsigned)sizeof(CfgChunk_LoRa_Struct));
   
   //Button for relay setup
   pinMode(RELAY_BUTTON, INPUT);
@@ -1471,6 +1723,24 @@ void loop() {
   sendStatusToRemote();
   checkButton();
   onReceive(LoRa.parsePacket());
+  // 2026-05: drain pending cfg chunks (from BC's GET_CONFIG response).
+  // OnDataRecv enqueues each arriving chunk; this dequeues + LoRa-sends
+  // one per call, throttled to CFG_CHUNK_LORA_MIN_GAP_MS. Must run in
+  // main-loop context (not ESP-NOW callback) because the LoRa SPI write
+  // blocks 50-200ms which starves the WiFi driver if done in callback.
+  tickCfgChunkQueue();
+  // 2026-05 (v4): drain pending deferred LoRa ACKs. The onReceive path
+  // used to fire sendACK() inline — a ~250ms LoRa transmit — which
+  // starved tickCfgChunkQueue. Now we defer ACKs and only send them
+  // when the cfg chunk queue is empty AND the LoRa-gap throttle has
+  // elapsed, so cfg chunks get LoRa-radio priority during a config
+  // transfer.
+  if (pendingLoRaAck && cfgChunkQueueEmpty() &&
+      (millis() - cfgChunkLastSendMs >= CFG_CHUNK_LORA_MIN_GAP_MS)) {
+    int ackId = pendingLoRaAckId;
+    pendingLoRaAck = false;
+    sendACK(ackId);
+  }
   yield();
   oldState = newState;
 

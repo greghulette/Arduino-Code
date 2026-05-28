@@ -579,7 +579,112 @@ typedef struct LoRa_Struct{
 
 LoRa_Struct commandstoReceiveFromRemote;
 
+// 2026-05 GET_CONFIG return path. Separate LoRa packet carrying one
+// 100-byte chunk of the BC's rcConfigToJSON() reply. Dispatch by
+// packetSize in onReceive() — MUST be significantly smaller than
+// sizeof(LoRa_Struct) so the size check is unambiguous.
+// MUST match Droid_Gateway.ino's CfgChunk_LoRa_Struct exactly.
+typedef struct CfgChunk_LoRa_Struct {
+  uint32_t struct_LoraPasscode;
+  uint8_t  struct_magic;          // 0xC6
+  uint16_t struct_cfgSeq;
+  uint16_t struct_cfgIdx;
+  uint16_t struct_cfgTotal;
+  uint8_t  struct_cfgLen;
+  char     struct_cfgPayload[100];
+} CfgChunk_LoRa_Struct;
+
+CfgChunk_LoRa_Struct cfgChunkFromGateway;
+
 void onReceive(int packetSize){
+  // 2026-05 GET_CONFIG return path: a CfgChunk_LoRa_Struct packet from
+  // the Gateway carries a slice of rcConfigToJSON() output. Disambiguate
+  // from the regular telemetry struct by packetSize (must differ from
+  // sizeof(LoRa_Struct)). Emit one JSON line per chunk on USB Serial;
+  // the web GUI's parseSerialUpdate reassembles. Returns early — does
+  // NOT fall through to telemetry handling below.
+  // 2026-05 (v2): gated behind Debug.LORA. The previous version fired an
+  // unconditional Serial.printf on EVERY LoRa packet which added ~10ms
+  // of blocking USB CDC time to the onReceive critical path — enough
+  // that back-to-back chunks were missed during config receive.
+  if (packetSize > 0) {
+    Debug.LORA("[Rx] LoRa packet size=%d (chunk=%d, telemetry=%d)\n",
+               packetSize,
+               (int)sizeof(CfgChunk_LoRa_Struct),
+               (int)sizeof(commandstoReceiveFromRemote));
+  }
+  if (packetSize == (int)sizeof(CfgChunk_LoRa_Struct)) {
+    for (int i = 0; i < packetSize; i++) {
+      ((byte *) &cfgChunkFromGateway)[i] = LoRa.read();
+    }
+    if (cfgChunkFromGateway.struct_LoraPasscode != 12345678 ||
+        cfgChunkFromGateway.struct_magic != 0xC6) {
+      Serial.printf("[CFG] bad passcode/magic: pass=%u magic=0x%02X — dropping\n",
+                    (unsigned)cfgChunkFromGateway.struct_LoraPasscode,
+                    cfgChunkFromGateway.struct_magic);
+      return;
+    }
+    // 2026-05 (v2): gated behind Debug.LORA — was unconditional Serial.printf
+    // which added ~17ms USB CDC blocking time per chunk and was a major
+    // contributor to back-to-back chunk drops during config receive.
+    Debug.LORA("[CFG] RX chunk seq=%u idx=%u/%u len=%u — emitting JSON to %s\n",
+               (unsigned)cfgChunkFromGateway.struct_cfgSeq,
+               (unsigned)cfgChunkFromGateway.struct_cfgIdx,
+               (unsigned)cfgChunkFromGateway.struct_cfgTotal,
+               (unsigned)cfgChunkFromGateway.struct_cfgLen,
+               serial1Toggle ? "Serial1" : "Serial");
+    // Emit "{\"type\":\"CFG_CHUNK\",\"seq\":S,\"idx\":I,\"total\":T,\"payload\":\"...\"}\n"
+    // The payload contains raw JSON characters that MUST be escaped for
+    // valid outer-JSON. Build a stack buffer char-by-char.
+    char esc[256];
+    size_t ei = 0;
+    uint8_t srcLen = cfgChunkFromGateway.struct_cfgLen;
+    if (srcLen > sizeof(cfgChunkFromGateway.struct_cfgPayload)) {
+      srcLen = sizeof(cfgChunkFromGateway.struct_cfgPayload);
+    }
+    for (uint8_t i = 0; i < srcLen && ei < sizeof(esc) - 8; i++) {
+      char c = cfgChunkFromGateway.struct_cfgPayload[i];
+      if (c == '\\' || c == '"') {
+        esc[ei++] = '\\';
+        esc[ei++] = c;
+      } else if (c == '\n') {
+        esc[ei++] = '\\'; esc[ei++] = 'n';
+      } else if (c == '\r') {
+        esc[ei++] = '\\'; esc[ei++] = 'r';
+      } else if (c == '\t') {
+        esc[ei++] = '\\'; esc[ei++] = 't';
+      } else if ((unsigned char)c < 0x20) {
+        // Other control char — emit \u00XX form.
+        ei += snprintf(esc + ei, sizeof(esc) - ei, "\\u%04x", (unsigned char)c);
+      } else {
+        esc[ei++] = c;
+      }
+    }
+    esc[ei] = '\0';
+    // 2026-05 fix: route to the SAME serial port as sendUpdates() —
+    // serial1Toggle controls whether the GUI listens on Serial (USB) or
+    // Serial1. Previously this used Serial directly which dumped chunk
+    // JSON to USB when the GUI was actually listening on Serial1.
+    // Symptom was "garbage on Remote USB serial after Refresh" while the
+    // banner stayed at "waiting for chunks" because the GUI's port saw
+    // nothing.
+    if (serial1Toggle) {
+      Serial1.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\n",
+                     (unsigned)cfgChunkFromGateway.struct_cfgSeq,
+                     (unsigned)cfgChunkFromGateway.struct_cfgIdx,
+                     (unsigned)cfgChunkFromGateway.struct_cfgTotal,
+                     esc);
+    } else {
+      Serial.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\n",
+                    (unsigned)cfgChunkFromGateway.struct_cfgSeq,
+                    (unsigned)cfgChunkFromGateway.struct_cfgIdx,
+                    (unsigned)cfgChunkFromGateway.struct_cfgTotal,
+                    esc);
+    }
+    drkeepAliveAge = millis();
+    return;
+  }
+
 
   if (packetSize) {
     // Sanity check — ignore oversized packets to prevent buffer overflow
