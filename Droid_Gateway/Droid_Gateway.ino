@@ -1134,6 +1134,26 @@ typedef struct CfgChunk_LoRa_Struct {
   char     struct_cfgPayload[100];
 } CfgChunk_LoRa_Struct;
 
+// 2026-05 (v7): LoRa-level ACK for cfg chunks. ETM provides reliability
+// on the BC<->Gateway ESP-NOW hop, but the Gateway->Remote LoRa hop had
+// no equivalent — chunks dropped at the air interface were gone forever,
+// causing the GUI's reassembler to see gaps and either abort or produce
+// malformed JSON. This struct ports the ETM pattern to LoRa: Remote
+// sends one of these back for every chunk it successfully receives;
+// Gateway tracks the in-flight chunk and retries on timeout.
+//
+// MUST match Droid_Remote.ino's CfgChunkAck_LoRa_Struct exactly.
+// Size is deliberately small (and distinct from telemetry/chunk sizes)
+// so Remote's onReceive can dispatch by packetSize.
+typedef struct CfgChunkAck_LoRa_Struct {
+  uint32_t struct_LoraPasscode;   // 4  (same passcode as telemetry: 12345678)
+  uint8_t  struct_magic;          // 1  0xCA = "Chunk Ack"
+  uint8_t  struct_pad;            // 1  padding to align next uint16
+  uint16_t struct_cfgSeq;         // 2  identifies the GET_CONFIG transaction
+  uint16_t struct_cfgIdx;         // 2  identifies the specific chunk
+} CfgChunkAck_LoRa_Struct;
+// sizeof ≈ 12 bytes (distinct from 116 chunk and 252 telemetry).
+
 // 2026-05: queue of pending cfg chunks awaiting LoRa transmission.
 //   Previously we called sendCfgChunkLoRa() synchronously from OnDataRecv
 //   (the ESP-NOW receive callback context). That callback runs on the
@@ -1146,13 +1166,17 @@ typedef struct CfgChunk_LoRa_Struct {
 //   Queue capacity sized to comfortably absorb a full config burst
 //   (~78 chunks at 200 ms BC pacing vs. ~100-200 ms LoRa drain).
 #define CFG_CHUNK_QUEUE_SIZE      32
-// 2026-05 (v3): bumped from 400ms → 600ms.
-// Per E2E review: the previous 400ms gap was right at the edge of what
-// the Remote can process (its onReceive does a JSON escape + Serial1
-// emit, ~20-30ms; combined with periodic 1Hz telemetry transmits and
-// LoRa half-duplex collisions, ~400ms was insufficient). 600ms gives
-// reliable headroom even when the Gateway is also sending telemetry.
-#define CFG_CHUNK_LORA_MIN_GAP_MS 600
+// 2026-05 (v7): with LoRa-level ACK in place, the gap is mostly defined
+// by ACK round-trip time (which is naturally enforced). 100ms gives
+// the Remote a brief idle window after its ACK transmit to re-arm its
+// receiver before the next chunk hits the air. Smaller than the
+// previous 600ms because we no longer have to PRAY the Remote isn't
+// busy — we KNOW it's ready because we got its ACK.
+#define CFG_CHUNK_LORA_MIN_GAP_MS 100
+// 2026-05 (v7): LoRa-level reliability for cfg chunks. ETM-style
+// single-chunk-in-flight with timeout-based retry.
+#define CFG_CHUNK_ACK_TIMEOUT_MS  800   // wait this long for Remote ACK
+#define CFG_CHUNK_LORA_MAX_RETRY  3     // before giving up on a chunk
 struct PendingCfgChunk {
   uint16_t seq;
   uint16_t idx;
@@ -1165,6 +1189,16 @@ volatile uint8_t cfgChunkQueueHead = 0;   // next write slot
 volatile uint8_t cfgChunkQueueTail = 0;   // next read slot
 unsigned long    cfgChunkLastSendMs = 0;
 uint32_t         cfgChunkDroppedCount = 0;
+// 2026-05 (v7): in-flight chunk tracking for LoRa-level ACK/retry.
+// Only one chunk is in flight at a time — simpler than a pending table
+// and the ACK latency (~250-400ms total round trip) is small relative to
+// the transfer duration. tickCfgChunkQueue() owns this state machine.
+volatile bool     cfgChunkInFlight        = false;
+volatile bool     cfgChunkAcked           = false;
+uint16_t          cfgChunkInFlightSeq     = 0;
+uint16_t          cfgChunkInFlightIdx     = 0;
+unsigned long     cfgChunkInFlightStartMs = 0;
+uint8_t           cfgChunkInFlightRetries = 0;
 
 bool cfgChunkQueueEmpty()  { return cfgChunkQueueHead == cfgChunkQueueTail; }
 bool cfgChunkQueueFull()   {
@@ -1231,17 +1265,78 @@ void sendCfgChunkLoRa() {
                 BC_cfgSeq, BC_cfgIdx, BC_cfgTotal, ok, millis() - tStart);
 }
 
-// 2026-05: drain one queued cfg chunk per call (called from main loop).
-// Throttled to CFG_CHUNK_LORA_MIN_GAP_MS minimum spacing so we don't
-// hammer the LoRa radio if the queue is full. Pops the chunk, copies it
-// into the BC_cfg* globals, calls sendCfgChunkLoRa() which sends a single
-// LoRa packet. Safe to call every loop iteration — does nothing if the
-// queue is empty or the gap hasn't elapsed.
+// 2026-05 (v7): LoRa-level reliable delivery for cfg chunks.
+//
+// Single-chunk-in-flight pattern (ETM-style, applied to LoRa):
+//   1. Peek at head of queue, populate BC_cfg* globals, fire LoRa send.
+//   2. Set cfgChunkInFlight=true, record seq/idx, start timer.
+//   3. Wait for Remote's CfgChunkAck_LoRa_Struct response with matching
+//      seq+idx — set by `onReceive` in the size-based dispatch.
+//   4. On ACK: dequeue the slot, clear in-flight, ready for next chunk.
+//   5. On timeout: re-send same chunk (up to CFG_CHUNK_LORA_MAX_RETRY).
+//   6. On retry exhaustion: log, dequeue, give up on that chunk (the
+//      GUI's reassembler will see the gap; with the v6 soft-tolerate
+//      fix it limps along and attempts JSON parse anyway).
+//
+// Why single-chunk: ACK round trip is ~250-400ms (chunk airtime + ACK
+// airtime + main-loop latency). Pipelining multiple in-flight chunks
+// would require a pending table and complicate the retry logic. Single
+// in-flight at ~1 chunk/sec wall-clock easily delivers all 98 chunks
+// reliably in ~100 seconds.
 void tickCfgChunkQueue() {
-  if (cfgChunkQueueEmpty()) return;
   unsigned long now = millis();
+
+  // ── Step 1: handle an in-flight chunk first (ACK or timeout) ─────────
+  if (cfgChunkInFlight) {
+    if (cfgChunkAcked) {
+      // Remote ACK'd — dequeue and move on.
+      Serial.printf("[CFG-LoRa] ACK seq=%u idx=%u (retries=%u)\n",
+                    cfgChunkInFlightSeq, cfgChunkInFlightIdx,
+                    cfgChunkInFlightRetries);
+      cfgChunkQueueTail = (cfgChunkQueueTail + 1) % CFG_CHUNK_QUEUE_SIZE;
+      cfgChunkInFlight        = false;
+      cfgChunkAcked           = false;
+      cfgChunkInFlightRetries = 0;
+      cfgChunkLastSendMs      = now;
+      return;
+    }
+    if (now - cfgChunkInFlightStartMs > CFG_CHUNK_ACK_TIMEOUT_MS) {
+      cfgChunkInFlightRetries++;
+      if (cfgChunkInFlightRetries > CFG_CHUNK_LORA_MAX_RETRY) {
+        // Give up on this chunk. Move on to the next.
+        Serial.printf("[CFG-LoRa] GIVE UP seq=%u idx=%u after %u retries\n",
+                      cfgChunkInFlightSeq, cfgChunkInFlightIdx,
+                      (unsigned)CFG_CHUNK_LORA_MAX_RETRY);
+        cfgChunkQueueTail = (cfgChunkQueueTail + 1) % CFG_CHUNK_QUEUE_SIZE;
+        cfgChunkInFlight        = false;
+        cfgChunkAcked           = false;
+        cfgChunkInFlightRetries = 0;
+        cfgChunkLastSendMs      = now;
+        return;
+      }
+      // Retry: re-send the same chunk (still at head of queue).
+      Serial.printf("[CFG-LoRa] TIMEOUT seq=%u idx=%u — retry %u/%u\n",
+                    cfgChunkInFlightSeq, cfgChunkInFlightIdx,
+                    cfgChunkInFlightRetries, (unsigned)CFG_CHUNK_LORA_MAX_RETRY);
+      volatile PendingCfgChunk *slot = &cfgChunkQueue[cfgChunkQueueTail];
+      BC_cfgSeq   = slot->seq;
+      BC_cfgIdx   = slot->idx;
+      BC_cfgTotal = slot->total;
+      BC_cfgLen   = slot->len;
+      memset(BC_cfgPayload, 0, sizeof(BC_cfgPayload));
+      for (uint8_t i = 0; i < slot->len; i++) BC_cfgPayload[i] = slot->payload[i];
+      sendCfgChunkLoRa();
+      cfgChunkInFlightStartMs = millis();
+      return;
+    }
+    return;  // Still waiting for ACK or timeout — keep waiting
+  }
+
+  // ── Step 2: no in-flight chunk — try to send the next one ────────────
+  if (cfgChunkQueueEmpty()) return;
   if (now - cfgChunkLastSendMs < CFG_CHUNK_LORA_MIN_GAP_MS) return;
 
+  // Peek at the head of the queue (do NOT dequeue until ACK arrives).
   volatile PendingCfgChunk *slot = &cfgChunkQueue[cfgChunkQueueTail];
   BC_cfgSeq   = slot->seq;
   BC_cfgIdx   = slot->idx;
@@ -1249,14 +1344,15 @@ void tickCfgChunkQueue() {
   BC_cfgLen   = slot->len;
   memset(BC_cfgPayload, 0, sizeof(BC_cfgPayload));
   for (uint8_t i = 0; i < slot->len; i++) BC_cfgPayload[i] = slot->payload[i];
-  cfgChunkQueueTail = (cfgChunkQueueTail + 1) % CFG_CHUNK_QUEUE_SIZE;
+
+  cfgChunkInFlight        = true;
+  cfgChunkAcked           = false;
+  cfgChunkInFlightSeq     = slot->seq;
+  cfgChunkInFlightIdx     = slot->idx;
+  cfgChunkInFlightStartMs = millis();
+  cfgChunkInFlightRetries = 0;
 
   sendCfgChunkLoRa();
-  cfgChunkLastSendMs = millis();
-
-  // Clear locals so a stale chunk doesn't get accidentally re-sent.
-  BC_cfgSeq = 0; BC_cfgIdx = 0; BC_cfgTotal = 0; BC_cfgLen = 0;
-  memset(BC_cfgPayload, 0, sizeof(BC_cfgPayload));
 }
 
 void setupLoRaSendStruct(){
@@ -1420,6 +1516,35 @@ void sendACK(int msgAckID){
 
 void onReceive(int packetSize) {
   if (packetSize == 0) return;          // if there's no packet, return
+
+  // 2026-05 (v7): LoRa-level cfg-chunk ACK from Remote. Dispatched by
+  // exact packetSize so it doesn't collide with the text-based Remote→
+  // Gateway command protocol (which starts with recipient/sender/msgId/
+  // length header bytes — significantly larger packet). Returns early
+  // without falling through to the text parser.
+  if (packetSize == (int)sizeof(CfgChunkAck_LoRa_Struct)) {
+    CfgChunkAck_LoRa_Struct ack;
+    for (int i = 0; i < packetSize; i++) {
+      ((byte *) &ack)[i] = LoRa.read();
+    }
+    if (ack.struct_LoraPasscode != 12345678 || ack.struct_magic != 0xCA) {
+      Debug.LORA("[CFG-ACK] bad passcode/magic — dropping\n");
+      return;
+    }
+    // Only set cfgChunkAcked if it matches the chunk we're waiting for.
+    if (cfgChunkInFlight &&
+        ack.struct_cfgSeq == cfgChunkInFlightSeq &&
+        ack.struct_cfgIdx == cfgChunkInFlightIdx) {
+      cfgChunkAcked = true;
+    } else {
+      Debug.LORA("[CFG-ACK] mismatch — got seq=%u idx=%u, in-flight seq=%u idx=%u\n",
+                 (unsigned)ack.struct_cfgSeq, (unsigned)ack.struct_cfgIdx,
+                 (unsigned)cfgChunkInFlightSeq, (unsigned)cfgChunkInFlightIdx);
+    }
+    drkeepAliveAge = millis();
+    return;
+  }
+
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address

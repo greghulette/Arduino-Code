@@ -596,6 +596,38 @@ typedef struct CfgChunk_LoRa_Struct {
 
 CfgChunk_LoRa_Struct cfgChunkFromGateway;
 
+// 2026-05 (v7): LoRa-level ACK for cfg chunks. Sent BACK to Gateway
+// after a chunk arrives and validates, so the Gateway can mark it
+// delivered and move on to the next chunk. Without this, dropped LoRa
+// packets had no recovery mechanism. MUST match Droid_Gateway.ino's
+// CfgChunkAck_LoRa_Struct exactly.
+typedef struct CfgChunkAck_LoRa_Struct {
+  uint32_t struct_LoraPasscode;
+  uint8_t  struct_magic;          // 0xCA
+  uint8_t  struct_pad;
+  uint16_t struct_cfgSeq;
+  uint16_t struct_cfgIdx;
+} CfgChunkAck_LoRa_Struct;
+
+CfgChunkAck_LoRa_Struct cfgChunkAckToGateway;
+
+// Send a CfgChunkAck_LoRa_Struct LoRa packet back to the Gateway,
+// confirming receipt of the chunk identified by (seq, idx). The Gateway
+// is single-chunk-in-flight, so this ACK gates its release of the next
+// chunk. ~50ms LoRa airtime per ACK.
+inline void sendCfgChunkAck(uint16_t seq, uint16_t idx) {
+  memset(&cfgChunkAckToGateway, 0, sizeof(cfgChunkAckToGateway));
+  cfgChunkAckToGateway.struct_LoraPasscode = 12345678;
+  cfgChunkAckToGateway.struct_magic        = 0xCA;
+  cfgChunkAckToGateway.struct_cfgSeq       = seq;
+  cfgChunkAckToGateway.struct_cfgIdx       = idx;
+  LoRa.beginPacket();
+  for (unsigned int i = 0; i < sizeof(cfgChunkAckToGateway); i++) {
+    LoRa.write(((byte *) &cfgChunkAckToGateway)[i]);
+  }
+  LoRa.endPacket();
+}
+
 void onReceive(int packetSize){
   // 2026-05 GET_CONFIG return path: a CfgChunk_LoRa_Struct packet from
   // the Gateway carries a slice of rcConfigToJSON() output. Disambiguate
@@ -624,6 +656,14 @@ void onReceive(int packetSize){
                     cfgChunkFromGateway.struct_magic);
       return;
     }
+    // 2026-05 (v7): immediately ACK the chunk back to the Gateway so it
+    // can release the next one. ~50ms LoRa airtime — fast enough that
+    // the Gateway gets the ACK before the Gateway's ACK-timeout expires
+    // (default 800ms). LoRa is half-duplex: during this ACK transmit
+    // the Remote can't receive, but the Gateway is single-chunk-in-flight
+    // and waiting for THIS ACK, so it won't send anything new yet.
+    sendCfgChunkAck(cfgChunkFromGateway.struct_cfgSeq,
+                    cfgChunkFromGateway.struct_cfgIdx);
     // 2026-05 (v2): gated behind Debug.LORA — was unconditional Serial.printf
     // which added ~17ms USB CDC blocking time per chunk and was a major
     // contributor to back-to-back chunk drops during config receive.
