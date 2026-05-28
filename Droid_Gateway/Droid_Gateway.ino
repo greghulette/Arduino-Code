@@ -366,6 +366,13 @@ String debugInputIdentifier ="";
   uint32_t DCFailureCounter;
   uint32_t HPSuccessCounter;
   uint32_t HPFailureCounter;
+  // BC's reverse-channel ACK fields (received from BC, forwarded to GUI).
+  // See the matching block in Body_Controller_ESP32_GUI.ino. The Gateway
+  // just relays — no interpretation. Web GUI matches against its
+  // state.lastSentSeq to know whether the ACK is for its own push.
+  uint16_t BC_bcAckSeq      = 0;
+  bool     BC_bcAckOk       = false;
+  char     BC_bcAckMsg[24]  = {0};
   // BC's ETM per-board delivery stats (received via bodyControllerStatus_struct_message)
   // Indexed by ETM_BOARD_* constants
   bool     BC_etmBoardOnline[ETM_NUM_BOARDS]  = {};
@@ -379,7 +386,13 @@ String debugInputIdentifier ="";
 
 // espnow_struct_message is defined in ETM_Droid.h
 
-// NOTE: must match Body_Controller_ESP32.ino exactly — both sides of the ESP-NOW link
+// NOTE: must match Body_Controller_ESP32_GUI.ino exactly — both sides of the
+// ESP-NOW link share this layout. If you add a field, add it in BOTH files
+// in the SAME order or the receive-side memcpy will corrupt the payload.
+//
+// 2026-05 addition (reverse-channel ACK): the three structBcAck* fields
+// carry SET_CONFIG / GET_CONFIG / NACK results from BC → GUI. See the
+// matching comment in Body_Controller_ESP32_GUI.ino.
 typedef struct bodyControllerStatus_struct_message{
       char structPassword[25];
       char structSenderID[15];
@@ -407,6 +420,10 @@ typedef struct bodyControllerStatus_struct_message{
       uint32_t etmBoardAckd[ETM_NUM_BOARDS];
       uint32_t etmBoardRetries[ETM_NUM_BOARDS];
       uint32_t etmBoardFailed[ETM_NUM_BOARDS];
+      // Reverse-channel ACK from BC → GUI (see header comment).
+      uint16_t structBcAckSeq;
+      bool     structBcAckOk;
+      char     structBcAckMsg[24];
   } bodyControllerStatus_struct_message;
 
 // Create a espnow_struct_message called commandsTosendto****** to hold variables that will be sent
@@ -479,6 +496,14 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
         BC_etmBoardRetries[i] = commandsToReceiveFromBodyController.etmBoardRetries[i];
         BC_etmBoardFailed[i]  = commandsToReceiveFromBodyController.etmBoardFailed[i];
       }
+      // 2026-05: capture BC's reverse-channel ACK fields. The BC sends
+      // these only when reporting a SET_CONFIG / GET_CONFIG / NACK
+      // result; on periodic keepalive frames seq=0 and the GUI ignores
+      // them. We forward whatever the BC sent — see setupLoRaSendStruct.
+      BC_bcAckSeq = commandsToReceiveFromBodyController.structBcAckSeq;
+      BC_bcAckOk  = commandsToReceiveFromBodyController.structBcAckOk;
+      strncpy(BC_bcAckMsg, commandsToReceiveFromBodyController.structBcAckMsg, sizeof(BC_bcAckMsg) - 1);
+      BC_bcAckMsg[sizeof(BC_bcAckMsg) - 1] = '\0';
       etmHandleHeartbeat(ETM_BOARD_BC);
       processESPNOWIncomingMessage();
     }
@@ -986,6 +1011,12 @@ typedef struct LoRa_Struct{
   uint32_t struct_etmBoardAckd[6];
   uint32_t struct_etmBoardRetries[6];
   uint32_t struct_etmBoardFailed[6];
+  // 2026-05 addition: reverse-channel ACK from BC → GUI (relayed from
+  // the BC's status struct). MUST match the Remote's LoRa_Struct
+  // exactly. See bodyControllerStatus_struct_message above.
+  uint16_t struct_bcAckSeq;
+  bool     struct_bcAckOk;
+  char     struct_bcAckMsg[24];
   } LoRa_Struct;
 
 LoRa_Struct commandstoSendtoRemote;
@@ -1049,6 +1080,15 @@ void setupLoRaSendStruct(){
         commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
       }
     }
+    // 2026-05: relay BC's reverse-channel ACK. The BC clears these on its
+    // periodic keepalive frames (so seq=0 most of the time); we forward
+    // whatever the most recent BC packet contained. The web GUI matches
+    // seq against state.lastSentSeq and ignores anything that doesn't
+    // match — so stale/zero values are harmless.
+    commandstoSendtoRemote.struct_bcAckSeq = BC_bcAckSeq;
+    commandstoSendtoRemote.struct_bcAckOk  = BC_bcAckOk;
+    strncpy(commandstoSendtoRemote.struct_bcAckMsg, BC_bcAckMsg, sizeof(commandstoSendtoRemote.struct_bcAckMsg) - 1);
+    commandstoSendtoRemote.struct_bcAckMsg[sizeof(commandstoSendtoRemote.struct_bcAckMsg) - 1] = '\0';
 };
 
 void setupLoRaSendStructNow(){
@@ -1106,6 +1146,11 @@ void setupLoRaSendStructNow(){
         commandstoSendtoRemote.struct_etmBoardFailed[i]  = etmBoardTable[i].totalFailed;
       }
     }
+    // 2026-05: same BC ACK relay as in setupLoRaSendStruct().
+    commandstoSendtoRemote.struct_bcAckSeq = BC_bcAckSeq;
+    commandstoSendtoRemote.struct_bcAckOk  = BC_bcAckOk;
+    strncpy(commandstoSendtoRemote.struct_bcAckMsg, BC_bcAckMsg, sizeof(commandstoSendtoRemote.struct_bcAckMsg) - 1);
+    commandstoSendtoRemote.struct_bcAckMsg[sizeof(commandstoSendtoRemote.struct_bcAckMsg) - 1] = '\0';
 };
 
 
@@ -1194,30 +1239,18 @@ void onReceive(int packetSize) {
 // String LoRaStringReceived = "";
 String queuecommand ="";
 void parseStrings(String data){
-// Convert from String Object to String.
-    char buf[100];
-    data.toCharArray(buf, sizeof(buf));
-    // char *p = buf;
-    // char *str;
-    // while ((str = strtok(p, ".", &p)) != NULL) // delimiter is the period
-    //   // Serial.println(str);
-    //    queuecommand = String(str);
-    //   Serial.println(queuecommand);
-      // enqueueCommand(queuecommand);
-
-      char *token;
-      const char *delimiter =".";
-
-
-   token = strtok(buf, delimiter);
-
-   while (token != NULL) {
-      Serial.println(token);
-      enqueueCommand(token);
-      token=strtok(NULL, delimiter);
-   }
-
-
+    // 2026-05 fix: previously tokenized LoRa payload on '.' which broke
+    // any payload containing a period — including the chunked-JSON BC
+    // config push when a note string had a literal "." in it, and any
+    // delay-style float values. The Remote sends exactly ONE command per
+    // LoRa packet, so no in-payload splitting is needed.
+    //
+    // Also dropped the toCharArray(buf, 100) bottleneck: the buffer was
+    // capped at 100 bytes which silently truncated anything close to the
+    // ESP-NOW limit. Forwarding the Arduino String straight through has
+    // no such cap.
+    Serial.println(data);
+    enqueueCommand(data);
   }
 
 
@@ -1522,21 +1555,30 @@ void loop() {
               if(commandLength >= 3) {
                 if(inputBuffer[1]=='E' || inputBuffer[1]=='e') {
 
-                  for (int i=2; i<=commandLength; i++){
+                  // 2026-05 fix: was `i<=commandLength` which read one
+                  // past strlen() — that index holds the NUL terminator.
+                  // Appending '\0' into an Arduino String corrupts the
+                  // internal length tracking and silently truncates
+                  // downstream substring() calls. Now stops at the last
+                  // actual character.
+                  for (int i=2; i<commandLength; i++){
                     char inCharRead = inputBuffer[i];
                     ESPNOWStringCommand += inCharRead;                   // add it to the inputString:
                   }
                   Debug.LOOP("\nFull Command Recieved: %s \n",ESPNOWStringCommand.c_str());
                   ESPNOWTarget = ESPNOWStringCommand.substring(0,2);
                   Debug.LOOP("ESP NOW Target: %s\n", ESPNOWTarget.c_str());
-                  ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2,commandLength+1);
+                  // substring(2) → from index 2 to end; no need to
+                  // compute commandLength+1 (which used to overflow by
+                  // one matching the loop bug above).
+                  ESPNOWSubStringCommand = ESPNOWStringCommand.substring(2);
                   Debug.LOOP("Command to Forward: %s\n", ESPNOWSubStringCommand.c_str());
                   sendESPNOWCommand(ESPNOWTarget, ESPNOWSubStringCommand);
                   // reset ESP-NOW Variables
                   ESPNOWStringCommand = "";
                   ESPNOWSubStringCommand = "";
-                  ESPNOWTarget = "";                 
-                  }  
+                  ESPNOWTarget = "";
+                  }
                   if(inputBuffer[1]=='S' || inputBuffer[1]=='s') {
                     for (int i=2; i<commandLength-1;i++ ){
                       char inCharRead = inputBuffer[i];

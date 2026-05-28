@@ -225,7 +225,27 @@ uint16_t cfgReasmSeq      = 0;        // 0 = no active transaction
 uint16_t cfgReasmTotal    = 0;
 uint16_t cfgReasmReceived = 0;
 unsigned long cfgReasmLastMs = 0;
+// 2026-05: when the chunked END handler hands the assembled JSON to
+// handleWebSerialMessage(), cfgReasmSeq gets reset to 0 — but the
+// SET_CONFIG handler still needs to echo that seq back in its ACK so
+// the GUI can match the ACK to its push. Stash it here just before the
+// reset; the handler reads it when emitting sendBcConfigAck().
+uint16_t lastChunkSeqForAck = 0;
 
+// MUST match the Droid_Gateway.ino struct of the same name EXACTLY —
+// both sides share this layout for the ESP-NOW packet between BC and DG.
+//
+// 2026-05 addition (reverse-channel ACK): the three structBcAck* fields
+// carry SET_CONFIG / GET_CONFIG / NACK results from the BC back to the
+// Gateway, which forwards them in the LoRa telemetry struct so the web
+// GUI sees push results without needing a USB serial monitor.
+//   structBcAckSeq — sequence number echoed back from the request
+//                    (BC fills with the chunked-push seq, or 0 for
+//                    non-chunked replies). Wraps around uint16; web side
+//                    matches against state.lastSentSeq.
+//   structBcAckOk  — true for success, false for a NACK.
+//   structBcAckMsg — short status string ("applied", "incomplete",
+//                    "out_of_order", "parse_fail", etc.).
 typedef struct bodyControllerStatus_struct_message {
   char   structPassword[25];
   char   structSenderID[15];
@@ -245,6 +265,10 @@ typedef struct bodyControllerStatus_struct_message {
   uint32_t etmBoardAckd[ETM_NUM_BOARDS];
   uint32_t etmBoardRetries[ETM_NUM_BOARDS];
   uint32_t etmBoardFailed[ETM_NUM_BOARDS];
+  // Reverse-channel ACK from BC → GUI (see comment above).
+  uint16_t structBcAckSeq;
+  bool     structBcAckOk;
+  char     structBcAckMsg[24];
 } bodyControllerStatus_struct_message;
 
 bodyControllerStatus_struct_message commandsToSendtoDroidLoRa;
@@ -326,22 +350,54 @@ void checkAgeofkeepAlive() {
 //////////////////////////////////////////////////////////////////////
 //  Serial events
 //////////////////////////////////////////////////////////////////////
+// 2026-05 fix (BUG #4): the previous implementation did `inputString += inChar`
+// per byte. Arduino String reallocates on every concatenation, so a multi-KB
+// line over direct USB caused O(N²) heap thrash. Accumulate into a fixed
+// static buffer and hand the full line over only once it's complete.
+//
+// Buffer size: 2 KB is plenty for the realistic direct-USB use cases:
+//   - Typed commands (`#L00`, `#DETM`, etc.) — tens of bytes
+//   - Pasted single-line JSON for testing — hundreds of bytes to a couple KB
+// LARGE SET_CONFIG payloads (~25 KB) DO NOT come in via direct USB; the web
+// GUI sends them as a chunked sequence (`#CB`/`#CC`/`#CE`) which is
+// reassembled in the separate `cfgReasmBuf` String (capacity 6 KB). So
+// lineBuf doesn't need to hold a full SET_CONFIG.
+//
+// Bumping the size above ~2 KB pushes `.dram0.bss` past the ESP32's DRAM
+// segment limit and the firmware won't link. If you ever need to test
+// pasting a multi-KB SET_CONFIG via direct USB, use the chunked path
+// instead (or move this buffer to PSRAM with `ps_malloc()` in setup()).
+static char lineBuf[2048];
+static size_t lineLen = 0;
 void serialEvent() {
   while (Serial.available() > 0) {
     char inChar = (char)Serial.read();
-    inputString += inChar;
     if (inChar == '\r' || inChar == '\n') {
-      inputString.trim();
-      if (inputString.length() > 0) {
-        if (inputString[0] == '{') {
-          // WebSerial JSON protocol line
-          handleWebSerialMessage(inputString);
-          inputString = "";
+      if (lineLen > 0) {
+        lineBuf[lineLen] = '\0';
+        if (lineBuf[0] == '{') {
+          // WebSerial JSON protocol line — hand directly to the JSON handler
+          // without paying String += cost.
+          handleWebSerialMessage(String(lineBuf));
         } else {
+          // Non-JSON line goes through the existing stringComplete path.
+          inputString = lineBuf;
           stringComplete = true;
         }
-      } else {
-        inputString = "";
+        lineLen = 0;
+      }
+    } else if (lineLen < sizeof(lineBuf) - 1) {
+      lineBuf[lineLen++] = inChar;
+    } else {
+      // Buffer full — drop the line so we don't silently truncate JSON.
+      // (Realistic SET_CONFIG fits comfortably; this only fires on a
+      // genuine pathological line.)
+      Serial.println("{\"type\":\"NACK\",\"reason\":\"serial_line_overflow\"}");
+      lineLen = 0;
+      // Drain remaining chars of this line so we resync on the next \r/\n.
+      while (Serial.available() > 0) {
+        char c = (char)Serial.read();
+        if (c == '\r' || c == '\n') break;
       }
     }
   }
@@ -450,10 +506,52 @@ void setupSendStatusStruct(bodyControllerStatus_struct_message* msg, String pass
   }
 }
 
+// 2026-05 addition: reverse-channel ACK from BC → GUI. Called from the
+// config-handling sites (handleWebSerialMessage SET_CONFIG/GET_CONFIG/
+// RESET_DEFAULTS results, plus the chunked NACK sites). Fills the
+// outbound DG status struct with the normal periodic-status fields
+// AND overlays the ACK fields, then fires ESP-NOW immediately so the
+// GUI sees the ACK on the next telemetry frame (~1 Hz).
+//
+// `seq`  — the chunked-push sequence number this ACK corresponds to,
+//          OR 0 for non-chunked replies (direct USB SET_CONFIG, GET_CONFIG,
+//          RESET_DEFAULTS). Web side filters by matching state.lastSentSeq.
+// `ok`   — true for success, false for NACK.
+// `msg`  — short status string (≤23 chars + null); examples:
+//          "applied", "parse_fail", "incomplete", "out_of_order",
+//          "wrong_seq", "overflow", "missing_data", "apply_failed".
+void sendBcConfigAck(uint16_t seq, bool ok, const char *msg) {
+  // Pack standard status fields first (overwrites struct entirely).
+  setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, "BC", "DG", false, "");
+  // Then overlay the ACK fields so they ride along on this frame.
+  commandsToSendtoDroidLoRa.structBcAckSeq = seq;
+  commandsToSendtoDroidLoRa.structBcAckOk  = ok;
+  if (msg) {
+    strncpy(commandsToSendtoDroidLoRa.structBcAckMsg, msg,
+            sizeof(commandsToSendtoDroidLoRa.structBcAckMsg) - 1);
+    commandsToSendtoDroidLoRa.structBcAckMsg[sizeof(commandsToSendtoDroidLoRa.structBcAckMsg) - 1] = '\0';
+  } else {
+    commandsToSendtoDroidLoRa.structBcAckMsg[0] = '\0';
+  }
+  esp_now_send(ETM_BOARD_MACS[ETM_BOARD_DG],
+               (uint8_t*)&commandsToSendtoDroidLoRa,
+               sizeof(commandsToSendtoDroidLoRa));
+  // Also print on USB for direct-cable debugging.
+  Serial.printf("{\"type\":\"%s\",\"seq\":%u,\"ok\":%s,\"msg\":\"%s\"}\n",
+                ok ? "ACK" : "NACK", seq, ok ? "true" : "false", msg ? msg : "");
+}
+
 void sendESPNOWCommand(String starget, String scomm) {
   bool hasCommand = (scomm.length() > 0);
   if (starget == "DG") {
     setupSendStatusStruct(&commandsToSendtoDroidLoRa, ESPNOWPASSWORD, "BC", starget, hasCommand, scomm);
+    // 2026-05: clear ACK fields on the periodic status frame so a stale
+    // ACK doesn't keep replaying for every keepalive after the GUI has
+    // already seen it. sendBcConfigAck() repopulates them just for its
+    // own send.
+    commandsToSendtoDroidLoRa.structBcAckSeq = 0;
+    commandsToSendtoDroidLoRa.structBcAckOk = false;
+    commandsToSendtoDroidLoRa.structBcAckMsg[0] = '\0';
     esp_now_send(ETM_BOARD_MACS[ETM_BOARD_DG], (uint8_t*)&commandsToSendtoDroidLoRa, sizeof(commandsToSendtoDroidLoRa));
     return;
   }
@@ -1203,28 +1301,32 @@ void handleWebSerialMessage(const String& line) {
 
   // ── SET_CONFIG ─────────────────────────────────────────────────────────────
   if (strcmp(type, "SET_CONFIG") == 0) {
-    // Larger doc (~96 KB) to handle the full config envelope.  Worst case is
-    // 3 modes × 19 buttons × 5 actions plus 8 switches × 3 pos × 5 actions
-    // plus thresholds/bindings/knobs ≈ 25 KB.  96 KB gives stronger headroom
-    // for bigger editor payloads and future config additions.
-    DynamicJsonDocument bigDoc(98304);
+    // 2026-05 fix: was DynamicJsonDocument(98304) = 96 KB on the heap per
+    // push. ESP32 typical free heap during runtime is ~150-180 KB (after
+    // Wi-Fi/ESP-NOW/LoRa stacks initialise), so allocating 96 KB in one
+    // shot fragmented the heap badly and risked OOM on repeated pushes.
+    // Worst-case config payload is ~25 KB; 32 KB capacity plus ArduinoJson's
+    // ~1.5× overhead headroom is plenty. NoMemory now returns an explicit
+    // ACK so the failure is visible instead of silent.
+    DynamicJsonDocument bigDoc(32768);
     DeserializationError err = deserializeJson(bigDoc, line);
     if (err != DeserializationError::Ok) {
-      Serial.printf("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"parse failed: %s\"}\n", err.c_str());
+      char buf[24];
+      snprintf(buf, sizeof(buf), "parse_%s", err.c_str());
+      sendBcConfigAck(lastChunkSeqForAck, false, buf);
       return;
     }
     if (!bigDoc.containsKey("data")) {
-      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"missing data\"}");
-      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"missing data\"}");
+      sendBcConfigAck(lastChunkSeqForAck, false, "missing_data");
       return;
     }
     JsonObject data = bigDoc["data"].as<JsonObject>();
     bool ok = rcConfigFromJSON(data);
     if (ok) {
       rcConfigSaveNVS();
-      Serial.println("{\"type\":\"ACK\",\"ok\":true}");
+      sendBcConfigAck(lastChunkSeqForAck, true, "applied");
     } else {
-      Serial.println("{\"type\":\"ACK\",\"ok\":false,\"msg\":\"config apply failed\"}");
+      sendBcConfigAck(lastChunkSeqForAck, false, "apply_failed");
     }
     return;
   }
@@ -1258,8 +1360,13 @@ void handleWebSerialMessage(const String& line) {
 
   // ── RESET_DEFAULTS ─────────────────────────────────────────────────────────
   if (strcmp(type, "RESET_DEFAULTS") == 0) {
+    // 2026-05 fix: was loading defaults into RAM only — NVS still held the
+    // previous config, so a reboot brought back the old config. The GUI's
+    // confirm prompt explicitly says "this will overwrite the BC's NVS",
+    // so save() must persist the reset.
     rcConfigLoadDefaults();
-    Serial.println("{\"type\":\"ACK\",\"ok\":true}");
+    rcConfigSaveNVS();
+    sendBcConfigAck(0, true, "defaults_reset");
     return;
   }
 
@@ -1462,7 +1569,17 @@ void loop() {
       if (stringComplete) { inputString.toCharArray(inputBuffer, 200); inputString = ""; }
       else { autoInputString.toCharArray(inputBuffer, 200); autoInputString = ""; }
 
-      if (inputBuffer[0] == '#') {
+      // 2026-05 fix (BUG #6): processESPNOWIncomingMessage puts the
+      // payload directly into inputString without going through
+      // serialEvent's '{'-branch routing. That meant a SET_CONFIG /
+      // GET_CONFIG / RESET_DEFAULTS arriving over LoRa/ESP-NOW would fall
+      // through (no branch matched) and be silently ignored. Detect a
+      // leading '{' here and route to handleWebSerialMessage just like
+      // direct-USB JSON does. Note: chunked-config flow uses '#CC/E/B'
+      // which lands in the '#' branch below and routes through there.
+      if (inputBuffer[0] == '{') {
+        handleWebSerialMessage(String(inputBuffer));
+      } else if (inputBuffer[0] == '#') {
         commandLength = strlen(inputBuffer);
         if (inputBuffer[1]=='D' || inputBuffer[1]=='d') {
           debugInputIdentifier = "";
@@ -1528,16 +1645,34 @@ void loop() {
             }
           } else if (sub == 'C' || sub == 'c') {
             // "#CC <seq> <idx>:<raw bytes...>"
+            //
+            // 2026-05 fix (BUG #8): previously we appended in arrival order
+            // and ignored <idx>. With HTTP transport the gateway may
+            // deliver chunks out of order; with LoRa transport an ESP-NOW
+            // retry can also flip order. Out-of-order arrival silently
+            // corrupted the reassembled JSON. Now we parse <idx>, require
+            // it to match the next-expected slot, and abort the transaction
+            // (with a Serial NACK so it's visible on the BC's USB monitor)
+            // if anything is off.
             String payload = String(inputBuffer + 4);  // skip "#CC "
             int sp = payload.indexOf(' ');
             int co = (sp >= 0) ? payload.indexOf(':', sp + 1) : -1;
             if (sp < 0 || co < 0) {
+              sendBcConfigAck(0, false, "malformed");
               Debug.LOOP("[CFG] malformed CHUNK\n");
             } else {
               uint16_t seq = payload.substring(0, sp).toInt();
+              uint16_t idx = payload.substring(sp + 1, co).toInt();
               if (seq != cfgReasmSeq || cfgReasmSeq == 0) {
+                sendBcConfigAck(seq, false, "wrong_seq");
                 Debug.LOOP("[CFG] CHUNK seq=%u rejected (active=%u)\n", seq, cfgReasmSeq);
+              } else if (idx != cfgReasmReceived) {
+                sendBcConfigAck(seq, false, "out_of_order");
+                Debug.LOOP("[CFG] CHUNK seq=%u idx=%u out-of-order (expected %u) — aborting\n",
+                           seq, idx, cfgReasmReceived);
+                cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
               } else if (cfgReasmBuf.length() + (payload.length() - co - 1) > CFG_REASM_MAX) {
+                sendBcConfigAck(seq, false, "overflow");
                 Debug.LOOP("[CFG] CHUNK would overflow reassembly buffer — aborting\n");
                 cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
               } else {
@@ -1548,20 +1683,30 @@ void loop() {
             }
           } else if (sub == 'E' || sub == 'e') {
             // "#CE <seq>"
+            //
+            // 2026-05 fix (BLOCKER #5): on incomplete CE we used to
+            // silently log to Debug only — the JS would never know the
+            // push failed and would set "synced" anyway. Now we emit a
+            // Serial NACK that the GUI can see (and a USB monitor can
+            // catch).
             String payload = String(inputBuffer + 4);
             uint16_t seq = payload.toInt();
             if (seq != cfgReasmSeq || cfgReasmSeq == 0) {
+              sendBcConfigAck(seq, false, "wrong_seq_end");
               Debug.LOOP("[CFG] END seq=%u rejected (active=%u)\n", seq, cfgReasmSeq);
             } else if (cfgReasmReceived != cfgReasmTotal) {
+              sendBcConfigAck(seq, false, "incomplete");
               Debug.LOOP("[CFG] END seq=%u incomplete (got %u of %u chunks) — discarding\n",
                          seq, cfgReasmReceived, cfgReasmTotal);
               cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
             } else {
               Debug.LOOP("[CFG] END seq=%u — assembling %u bytes, applying...\n",
                          seq, cfgReasmBuf.length());
-              // Route into the same JSON path as a direct USB SET_CONFIG.
-              // handleWebSerialMessage prints its own ACK/NACK to Serial.
+              // Stash the seq so handleWebSerialMessage can echo it in its
+              // own ACK (it doesn't know about cfgReasmSeq otherwise).
+              lastChunkSeqForAck = seq;
               handleWebSerialMessage(cfgReasmBuf);
+              lastChunkSeqForAck = 0;
               cfgReasmSeq = 0; cfgReasmBuf = ""; cfgReasmReceived = 0;
             }
           }
@@ -1581,9 +1726,13 @@ void loop() {
         commandLength = strlen(inputBuffer);
         if (commandLength >= 3) {
           if (inputBuffer[1]=='E' || inputBuffer[1]=='e') {
-            for (int i=2; i<=commandLength; i++) ESPNOWCommandString += inputBuffer[i];
+            // 2026-05 fix: was i<=commandLength which reads one past
+            // strlen() into the NUL terminator. Arduino String += '\0'
+            // corrupts internal length tracking, silently truncating
+            // downstream substring() calls. Same bug fixed in Gateway.
+            for (int i=2; i<commandLength; i++) ESPNOWCommandString += inputBuffer[i];
             ESPNOWTarget       = ESPNOWCommandString.substring(0,2);
-            ESPNOWTargetCommand= ESPNOWCommandString.substring(2,commandLength+1);
+            ESPNOWTargetCommand= ESPNOWCommandString.substring(2);
             sendESPNOWCommand(ESPNOWTarget, ESPNOWTargetCommand);
             ESPNOWCommandString = ESPNOWTargetCommand = ESPNOWTarget = "";
           }

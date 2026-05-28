@@ -137,6 +137,12 @@ String debugInputIdentifier ="";
   uint32_t etmBoardAckd[6]    = {};
   uint32_t etmBoardRetries[6] = {};
   uint32_t etmBoardFailed[6]  = {};
+  // 2026-05 addition: BC reverse-channel ACK relayed by the Gateway. The
+  // Remote just passes these through to the web GUI via sendUpdates()
+  // JSON. seq=0 means "no fresh ACK"; web side filters on seq match.
+  uint16_t bcAckSeq      = 0;
+  bool     bcAckOk       = false;
+  char     bcAckMsg[24]  = {0};
 
   
   String outgoing;
@@ -310,13 +316,13 @@ AsyncWebServer server(80);
 void serialEvent() {
   if (readLine() > 0) //Did we receive something?
   {
-    char *token = strtok(buffer, " "); //Start tokenization
-    while (token) //While a token is available
-    {
-      // Serial.println(token); //Print current token
-      enqueueCommand(token);
-      token = strtok(NULL, ","); //Fetch next token
-    }
+    // 2026-05 fix: previously this tokenized on SPACE then COMMA, which
+    // SHREDDED any multi-token command (e.g. ":L:EBC#CB 1 47" got split
+    // into ":L:EBC#CB" and "1 47" — chunked-JSON config push was broken
+    // at the very first hop). One line in = one command out, no in-line
+    // splitting. Callers that need multi-command-per-line can send them
+    // separated by '\r' instead.
+    enqueueCommand(buffer);
   }
 };
 
@@ -338,13 +344,9 @@ int readLine()
 void serial1Event() {
   if (readLine1() > 0) //Did we receive something?
   {
-    char *token = strtok(buffer, " "); //Start tokenization
-    while (token) //While a token is available
-    {
-      // Serial.println(token); //Print current token
-      enqueueCommand(token);
-      token = strtok(NULL, ","); //Fetch next token
-    }
+    // Same fix as serialEvent — one line in = one command out, no in-line
+    // strtok splitting (was corrupting any payload with spaces in it).
+    enqueueCommand(buffer);
   }
 };
 
@@ -567,6 +569,11 @@ typedef struct LoRa_Struct{
   uint32_t struct_etmBoardAckd[6];
   uint32_t struct_etmBoardRetries[6];
   uint32_t struct_etmBoardFailed[6];
+  // 2026-05 addition: reverse-channel ACK from BC → GUI relayed by the
+  // Gateway. MUST match Droid_Gateway.ino's LoRa_Struct exactly.
+  uint16_t struct_bcAckSeq;
+  bool     struct_bcAckOk;
+  char     struct_bcAckMsg[24];
   } LoRa_Struct;
 
 
@@ -640,6 +647,12 @@ void onReceive(int packetSize){
       etmBoardRetries[i] = commandstoReceiveFromRemote.struct_etmBoardRetries[i];
       etmBoardFailed[i]  = commandstoReceiveFromRemote.struct_etmBoardFailed[i];
     }
+    // 2026-05: BC reverse-channel ACK. Pass straight through to sendUpdates
+    // which serializes it into the JSON line the web GUI reads.
+    bcAckSeq = commandstoReceiveFromRemote.struct_bcAckSeq;
+    bcAckOk  = commandstoReceiveFromRemote.struct_bcAckOk;
+    strncpy(bcAckMsg, commandstoReceiveFromRemote.struct_bcAckMsg, sizeof(bcAckMsg) - 1);
+    bcAckMsg[sizeof(bcAckMsg) - 1] = '\0';
 
     
   if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
@@ -808,6 +821,11 @@ void sendUpdates(){
     jaRetries.add(etmBoardRetries[i]);
     jaFailed.add(etmBoardFailed[i]);
   }
+  // 2026-05: BC reverse-channel ACK. Web GUI reads `bcAckSeq` and
+  // ignores anything with seq=0 (= no fresh ACK from BC).
+  doc["bcAckSeq"] = bcAckSeq;
+  doc["bcAckOk"]  = bcAckOk;
+  doc["bcAckMsg"] = (const char*)bcAckMsg;
   doc["JSONDone"] = true;
   
   if(serial1Toggle == true){                  // I use Serial 1 in the remote, but use Serial in testing.  This allows me to swap them in runtime to test with.
@@ -875,7 +893,11 @@ String getValue(String data, char separator, int index){
 // <-- code from Mimir for queueing incoming commands from GET params-->
 ////////////////////////////////////////////////////
 
-#define MAX_QUEUE_DEPTH 5
+// 2026-05: bumped from 5 → 64 to absorb a chunked-JSON BC-config push.
+// A full SET_CONFIG can be ~47 chunks (#CB + 45×#CC + #CE) plus normal
+// command traffic. At depth=5 the BC-config HTTP path silently dropped
+// ~42/47 chunks — the queue overflowed faster than LoRa drained it.
+#define MAX_QUEUE_DEPTH 64
 
 ////////////////////////////////////////////////////
 
@@ -1084,14 +1106,21 @@ void setup(){
         if ((p->name())== "param0"){
             Debug.PARAM("Skipping param 0 in the Lora Message\n");
           } 
-          else {      
+          else {
             enqueueCommand(p->value());
 
           // inputString = (p->value());
-          // stringComplete = true;  
+          // stringComplete = true;
 
           Debug.PARAM("sent to loop: %s \n", inputString.c_str());
-          delay(75);
+          // 2026-05: removed delay(75). This `delay()` inside an
+          // AsyncWebServer callback blocked the AsyncTCP task and
+          // serialized HTTP request handling, causing the chunked
+          // BC-config push to backpressure into browser request
+          // queuing — out-of-order arrival at the Gateway, and
+          // queue overflow at MAX_QUEUE_DEPTH. The LoRa send queue
+          // already handles its own pacing in the main loop, so
+          // this delay served no purpose besides slowing things down.
           };
     }
 
