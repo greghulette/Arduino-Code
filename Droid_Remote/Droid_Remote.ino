@@ -520,6 +520,44 @@ String lastCommand;
 byte lastSentMsgId = 0;           // msg ID of the most recently sent command (for ACK verification)
 uint8_t retryCount = 0;           // number of retries for current in-flight command
 const uint8_t LORA_MAX_RETRIES = 5; // give up after this many retries
+
+// ── Forward LoRa TX queue ───────────────────────────────────────────────────
+// The forward config-push path (web → ":L:E..." commands) can arrive far faster
+// than LoRa can carry: sendLoRaMessage() keeps ONE command in flight and waits
+// up to AckDuration (750ms) for the Gateway's ACK, with up to LORA_MAX_RETRIES
+// retries. Previously every incoming ":L" called sendLoRaMessage() immediately,
+// clobbering the command still awaiting its ACK (or its retry) — so during a
+// config push almost every chunk was lost and the BC NACKed "wrong_seq" /
+// "out_of_order". Now forward commands are ENQUEUED here and drained one at a
+// time, only sending the next once the previous is fully ACKed (or gave up).
+// This is the forward-path equivalent of the reverse path's single-chunk-in-
+// flight reliability. A retry (in MonitorAck) still re-sends the in-flight
+// command directly — the queue only feeds NEW commands when nothing's pending.
+#define LORA_TXQ_MAX   32          // max queued forward commands (32 * 120B = ~3.8KB)
+#define LORA_TXQ_LEN  120          // max chars per queued command (chunk ≈ 95)
+char    loRaTxQueue[LORA_TXQ_MAX][LORA_TXQ_LEN];
+uint8_t loRaTxqHead  = 0;          // next slot to send
+uint8_t loRaTxqTail  = 0;          // next free slot
+uint8_t loRaTxqCount = 0;          // number of queued commands
+
+inline bool loRaTxqEnqueue(const String& cmd) {
+  if (loRaTxqCount >= LORA_TXQ_MAX) return false;       // full — caller logs/drops
+  strlcpy(loRaTxQueue[loRaTxqTail], cmd.c_str(), LORA_TXQ_LEN);
+  loRaTxqTail  = (loRaTxqTail + 1) % LORA_TXQ_MAX;
+  loRaTxqCount++;
+  return true;
+}
+
+// Feed the next queued command into the (reliable, ACK'd, retrying) LoRa sender
+// only when nothing is currently in flight. Call this every loop.
+inline void loRaTxqDrain() {
+  if (commandSent || loRaTxqCount == 0) return;
+  String next = String(loRaTxQueue[loRaTxqHead]);
+  loRaTxqHead = (loRaTxqHead + 1) % LORA_TXQ_MAX;
+  loRaTxqCount--;
+  sendLoRaMessage(next);
+}
+
 bool incomingMsgAck;
 uint32_t msgAckID;
 uint32_t  LoraPasscode = 12345678;
@@ -709,13 +747,13 @@ void onReceive(int packetSize){
     // banner stayed at "waiting for chunks" because the GUI's port saw
     // nothing.
     if (serial1Toggle) {
-      Serial1.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\n",
+      Serial1.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\r\n",
                      (unsigned)cfgChunkFromGateway.struct_cfgSeq,
                      (unsigned)cfgChunkFromGateway.struct_cfgIdx,
                      (unsigned)cfgChunkFromGateway.struct_cfgTotal,
                      esc);
     } else {
-      Serial.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\n",
+      Serial.printf("{\"type\":\"CFG_CHUNK\",\"seq\":%u,\"idx\":%u,\"total\":%u,\"payload\":\"%s\"}\r\n",
                     (unsigned)cfgChunkFromGateway.struct_cfgSeq,
                     (unsigned)cfgChunkFromGateway.struct_cfgIdx,
                     (unsigned)cfgChunkFromGateway.struct_cfgTotal,
@@ -1355,6 +1393,7 @@ void loop(){
   updateStatus();
   checkAgeofkeepAlive();
   onReceive(LoRa.parsePacket());
+  loRaTxqDrain();            // feed next queued forward command if LoRa is idle
   yield();
 button.poll();
 if (button.onPress()) {
@@ -1454,7 +1493,12 @@ if (button.onPress()) {
               }
               Debug.LOOP("L Command Proccessing: %s \n", loRaCommandString.c_str());
               loRaCommandSubString = loRaCommandString.substring(0,commandLength+1);
-              sendLoRaMessage(loRaCommandString);
+              // Enqueue rather than send immediately, so a fast burst of config
+              // chunks doesn't clobber the command currently awaiting its LoRa
+              // ACK. loRaTxqDrain() in loop() feeds them out one at a time.
+              if (!loRaTxqEnqueue(loRaCommandString)) {
+                Debug.LORA("[LoRa] TX queue FULL — dropping: %s\n", loRaCommandString.c_str());
+              }
               loRaCommandString="";
             }     
           }

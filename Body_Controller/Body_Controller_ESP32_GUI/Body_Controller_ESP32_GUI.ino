@@ -402,11 +402,14 @@ void checkAgeofkeepAlive() {
 // reassembled in the separate `cfgReasmBuf` String (capacity 6 KB). So
 // lineBuf doesn't need to hold a full SET_CONFIG.
 //
-// Bumping the size above ~2 KB pushes `.dram0.bss` past the ESP32's DRAM
-// segment limit and the firmware won't link. If you ever need to test
-// pasting a multi-KB SET_CONFIG via direct USB, use the chunked path
-// instead (or move this buffer to PSRAM with `ps_malloc()` in setup()).
-static char lineBuf[2048];
+// Sized for the chunked-config path: every config line that arrives here is a
+// single #CB/#CC/#CE chunk (~90 chars) or a normal command, never a full
+// multi-KB config blob — so 1 KB is plenty and overflow simply NACKs the line.
+// (Was 2 KB, but DRAM `.dram0.bss` overflowed the ESP32 segment by 552 bytes
+// once the rest of the GUI firmware grew; 1 KB frees ~1 KB and links cleanly.)
+// If you ever need to paste a multi-KB SET_CONFIG via direct USB, use the
+// chunked path instead (or move this buffer to PSRAM with `ps_malloc()`).
+static char lineBuf[1024];
 static size_t lineLen = 0;
 void serialEvent() {
   while (Serial.available() > 0) {
