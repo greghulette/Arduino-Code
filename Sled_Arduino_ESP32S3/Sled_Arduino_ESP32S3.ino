@@ -115,7 +115,7 @@ Preferences sledPrefs;
 // Live matrix mirror to the WebSerial editor (on-screen preview, no LEDs needed)
 bool          mirrorOn       = false;
 unsigned long mirrorLastMs   = 0;
-const uint16_t MIRROR_INTERVAL_MS = 100;   // ~10 fps (fits the 115200 baud budget)
+const uint16_t MIRROR_INTERVAL_MS = 33;    // ~30 fps (USB-CDC / 921600 has the bandwidth)
 
 // Active matrix mask: false = SLED bordered region, true = FULL 8x32 panel.
 bool maskFull = false;
@@ -680,7 +680,7 @@ void OnDataRecv(const esp_now_recv_info_t* info, const uint8_t* incomingData, in
 // ==================== SETUP ====================
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(921600);   // high baud for a smooth editor preview (USB-CDC ignores it; a UART bridge uses it)
     delay(500);
     Serial.println("\n\n=== Sled Controller (ESP32-S3 / 8x32 Matrix) Starting ===");
 

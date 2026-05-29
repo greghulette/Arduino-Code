@@ -182,7 +182,7 @@ if (!("serial" in navigator)) { $("unsupported").hidden=false; }
 async function connect(){
   try {
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate:115200 });
+    await port.open({ baudRate:921600 });   // must match the sled's Serial.begin()
     const enc=new TextEncoderStream(); enc.readable.pipeTo(port.writable); writer=enc.writable.getWriter();
     readLoop();
     setStatus("connected"); $("btnConnect").textContent="Disconnect";
