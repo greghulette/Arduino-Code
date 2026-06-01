@@ -144,7 +144,7 @@ String debugInputIdentifier ="";
   bool     bcAckOk       = false;
   char     bcAckMsg[24]  = {0};
 
-  
+
   String outgoing;
   String LoRaOutgoing;
 
@@ -316,6 +316,12 @@ AsyncWebServer server(80);
 void serialEvent() {
   if (readLine() > 0) //Did we receive something?
   {
+    // 2026-05 (v8): auto-route replies to whoever is talking. A command on
+    // USB Serial means the GUI is on USB (laptop) — send telemetry / CFG_CHUNK
+    // / SERVO_INFO back out USB, not Serial1. Fixes "config pulls on the laptop
+    // but not the Pi" caused by a stale manual serial1Toggle left over from the
+    // other transport. (serial1Event() does the mirror for the Pi.)
+    serial1Toggle = false;
     // 2026-05 fix: previously this tokenized on SPACE then COMMA, which
     // SHREDDED any multi-token command (e.g. ":L:EBC#CB 1 47" got split
     // into ":L:EBC#CB" and "1 47" — chunked-JSON config push was broken
@@ -344,6 +350,11 @@ int readLine()
 void serial1Event() {
   if (readLine1() > 0) //Did we receive something?
   {
+    // 2026-05 (v8): a command on Serial1 means the GUI is on Serial1 (the
+    // Raspberry Pi on the UART pins) — route telemetry / CFG_CHUNK / SERVO_INFO
+    // back out Serial1 so config pulls and servo reads reach the Pi even if the
+    // toggle was last left on USB. Mirror of serialEvent().
+    serial1Toggle = true;
     // Same fix as serialEvent — one line in = one command out, no in-line
     // strtok splitting (was corrupting any payload with spaces in it).
     enqueueCommand(buffer);
@@ -649,6 +660,16 @@ typedef struct CfgChunkAck_LoRa_Struct {
 
 CfgChunkAck_LoRa_Struct cfgChunkAckToGateway;
 
+// 2026-05 servo read-back: dedicated LoRa packet carrying one "#LI..."/"#LV..."
+// reply from a controller. Disambiguated from telemetry/chunk by packetSize.
+// sizeof = 104 bytes. MUST match Droid_Gateway.ino's ServoInfo_LoRa_Struct.
+typedef struct ServoInfo_LoRa_Struct {
+  uint32_t struct_LoraPasscode;   // 12345678
+  uint8_t  struct_magic;          // 0xC7
+  char     struct_payload[96];    // the "#LI..." reply text, NUL-terminated
+} ServoInfo_LoRa_Struct;
+ServoInfo_LoRa_Struct servoInfoFromGateway;
+
 // Send a CfgChunkAck_LoRa_Struct LoRa packet back to the Gateway,
 // confirming receipt of the chunk identified by (seq, idx). The Gateway
 // is single-chunk-in-flight, so this ACK gates its release of the next
@@ -763,6 +784,34 @@ void onReceive(int packetSize){
     return;
   }
 
+
+  // 2026-05 servo read-back: a ServoInfo_LoRa_Struct (104 bytes) carries one
+  // "#LI..." reply. Distinct size from telemetry (252) and cfg chunk (116).
+  // Emit it to the GUI serial as {"type":"SERVO_INFO","payload":"..."} so the
+  // web GUI can build its servo list. Returns early (not telemetry).
+  if (packetSize == (int)sizeof(ServoInfo_LoRa_Struct)) {
+    for (int i = 0; i < packetSize; i++) {
+      ((byte *) &servoInfoFromGateway)[i] = LoRa.read();
+    }
+    if (servoInfoFromGateway.struct_LoraPasscode != 12345678 ||
+        servoInfoFromGateway.struct_magic != 0xC7) {
+      return;   // not ours / corrupt — drop
+    }
+    servoInfoFromGateway.struct_payload[sizeof(servoInfoFromGateway.struct_payload) - 1] = '\0';
+    // Escape for valid JSON (payload is ASCII but a name could contain " or \).
+    char esc[200]; size_t ei = 0;
+    for (size_t i = 0; servoInfoFromGateway.struct_payload[i] && ei < sizeof(esc) - 8; i++) {
+      char c = servoInfoFromGateway.struct_payload[i];
+      if (c == '\\' || c == '"') { esc[ei++] = '\\'; esc[ei++] = c; }
+      else if ((unsigned char)c < 0x20) { ei += snprintf(esc + ei, sizeof(esc) - ei, "\\u%04x", (unsigned char)c); }
+      else esc[ei++] = c;
+    }
+    esc[ei] = '\0';
+    if (serial1Toggle) Serial1.printf("{\"type\":\"SERVO_INFO\",\"payload\":\"%s\"}\r\n", esc);
+    else               Serial.printf("{\"type\":\"SERVO_INFO\",\"payload\":\"%s\"}\r\n", esc);
+    drkeepAliveAge = millis();
+    return;
+  }
 
   if (packetSize) {
     // Sanity check — ignore oversized packets to prevent buffer overflow

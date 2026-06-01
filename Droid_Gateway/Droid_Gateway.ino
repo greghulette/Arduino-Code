@@ -373,6 +373,14 @@ String debugInputIdentifier ="";
   uint16_t BC_bcAckSeq      = 0;
   bool     BC_bcAckOk       = false;
   char     BC_bcAckMsg[24]  = {0};
+  // 2026-05 servo read-back: most-recent "#LI..."/"#LV..." reply captured from
+  // a DC/BS/DP ESP-NOW frame. Sent to the Remote in its OWN small LoRa packet
+  // (ServoInfo_LoRa_Struct) — NOT the telemetry struct, which is already 252 of
+  // the 255-byte LoRa limit. servoInfoPending flags a buffered reply that the
+  // main loop ships out when the LoRa radio is free. Loss is fine: the web GUI
+  // retries each "describe" request, so a dropped packet just gets re-sent.
+  volatile bool servoInfoPending = false;
+  char     servoInfoPayload[96]  = {0};
   // 2026-05 GET_CONFIG return path: most-recent cfg chunk captured from
   // the BC status struct. When BC_cfgSeq>0 we immediately ship the chunk
   // out over LoRa via sendCfgChunkLoRa() and then zero these so they
@@ -655,6 +663,21 @@ void processESPNOWIncomingMessage(){
       }
       return;
     }
+  }
+
+  // 2026-05 servo-limit read-back: a DC/BS/DP controller replies to the GUI's
+  // requests with "#LV..." (page values, from #LG) or "#LI..." (one servo's
+  // name + values, from #LD) addressed to DG. Capture it; the main loop ships
+  // it to the Remote in its own ServoInfo LoRa packet (NOT the telemetry
+  // struct, which is already at the 255-byte LoRa limit).
+  if ((incomingSenderID == "DC" || incomingSenderID == "BS" || incomingSenderID == "DP") &&
+      (incomingTargetID == "DG" || incomingTargetID == "BR") &&
+      (incomingCommand.startsWith("#LV") || incomingCommand.startsWith("#LI"))) {
+    strncpy(servoInfoPayload, incomingCommand.c_str(), sizeof(servoInfoPayload) - 1);
+    servoInfoPayload[sizeof(servoInfoPayload) - 1] = '\0';
+    servoInfoPending = true;          // main loop ships it out over LoRa
+    Debug.ESPNOW("Servo reply captured: %s\n", servoInfoPayload);
+    return;
   }
 
     if (incomingTargetID == "DG" || incomingTargetID == "BR"){
@@ -1153,6 +1176,34 @@ typedef struct CfgChunkAck_LoRa_Struct {
   uint16_t struct_cfgIdx;         // 2  identifies the specific chunk
 } CfgChunkAck_LoRa_Struct;
 // sizeof ≈ 12 bytes (distinct from 116 chunk and 252 telemetry).
+
+// 2026-05 servo read-back: dedicated LoRa packet carrying one "#LI..."/"#LV..."
+// reply from a controller to the web GUI. Kept OFF the telemetry struct (which
+// is already 252 of the 255-byte LoRa limit) and disambiguated by packetSize.
+// sizeof = 104 bytes (distinct from 12 ack / 116 chunk / 252 telemetry).
+// MUST match Droid_Remote.ino's ServoInfo_LoRa_Struct exactly.
+typedef struct ServoInfo_LoRa_Struct {
+  uint32_t struct_LoraPasscode;   // 12345678 (same passcode as telemetry)
+  uint8_t  struct_magic;          // 0xC7 = "serVo info"
+  char     struct_payload[96];    // the "#LI..." reply text, NUL-terminated
+} ServoInfo_LoRa_Struct;
+ServoInfo_LoRa_Struct servoInfoToSendtoRemote;
+
+// Ship the buffered servo reply to the Remote as its own LoRa packet. No ACK:
+// if it drops, the web GUI's per-request retry simply asks again. Call only
+// from the main loop (LoRa SPI write blocks ~50ms) and not mid cfg-chunk.
+void sendServoInfoLoRa() {
+  memset(&servoInfoToSendtoRemote, 0, sizeof(servoInfoToSendtoRemote));
+  servoInfoToSendtoRemote.struct_LoraPasscode = 12345678;
+  servoInfoToSendtoRemote.struct_magic        = 0xC7;
+  strncpy(servoInfoToSendtoRemote.struct_payload, servoInfoPayload,
+          sizeof(servoInfoToSendtoRemote.struct_payload) - 1);
+  LoRa.beginPacket();
+  for (unsigned int i = 0; i < sizeof(servoInfoToSendtoRemote); i++) {
+    LoRa.write(((byte *) &servoInfoToSendtoRemote)[i]);
+  }
+  LoRa.endPacket();
+}
 
 // 2026-05: queue of pending cfg chunks awaiting LoRa transmission.
 //   Previously we called sendCfgChunkLoRa() synchronously from OnDataRecv
@@ -1865,6 +1916,15 @@ void loop() {
     int ackId = pendingLoRaAckId;
     pendingLoRaAck = false;
     sendACK(ackId);
+  }
+  // 2026-05 servo read-back: ship a buffered controller reply to the Remote as
+  // its own LoRa packet, but only when no cfg-chunk transfer is using the radio
+  // (cfg config-pull gets priority) and the LoRa gap has elapsed.
+  if (servoInfoPending && !cfgChunkInFlight && cfgChunkQueueEmpty() &&
+      (millis() - cfgChunkLastSendMs >= CFG_CHUNK_LORA_MIN_GAP_MS)) {
+    servoInfoPending = false;
+    sendServoInfoLoRa();
+    cfgChunkLastSendMs = millis();   // share the LoRa-gap throttle with cfg chunks
   }
   yield();
   oldState = newState;

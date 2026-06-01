@@ -528,6 +528,22 @@ const ServoSettings servoSettings[] PROGMEM = {
     { 10,  1400, 2000, PIE_PANEL_FOUR }         /* 9: door 10 Pie Panel clockwise-3 from Periscope (Rubber Saber) */
 };
 
+// Per-servo display names reported to the web GUI's Servo Calibration page.
+// Index-aligned with servoSettings[] above — edit to match your droid. Keep
+// each under ~58 chars so it fits the read-back relay frame.
+static const char* const servoNames[] = {
+  "Small Panel 1 (radar L)",
+  "Small Panel 2 (radar M)",
+  "Small Panel 3 (radar R)",
+  "Medium Panel (painted)",
+  "Medium Panel (silver)",
+  "Big Panel (lower)",
+  "Pie Panel 1 (smoker)",
+  "Pie Panel 2 (plunger)",
+  "Pie Panel 3 (saber)",
+  "Pie Panel 4 (rubber saber)"
+};
+
 ServoDispatchPCA9685<SizeOfArray(servoSettings)> servoDispatch(servoSettings);
 ServoSequencer servoSequencer(servoDispatch);
 
@@ -1440,8 +1456,10 @@ void loadServoLimits() {
     snprintf(keyO, sizeof(keyO), "o%02d", i);
     uint16_t cv = servoPrefs.getUShort(keyC, 0);
     uint16_t ov = servoPrefs.getUShort(keyO, 0);
-    if (cv >= 500 && cv <= 2500) { servoDispatch.setStart(i, cv); Serial.printf("[SERVO] NVS close %02d = %u\n", i, cv); }
-    if (ov >= 500 && ov <= 2500) { servoDispatch.setEnd(i, ov);   Serial.printf("[SERVO] NVS open  %02d = %u\n", i, ov); }
+    // Restore NVS override if present, else the compiled default. (Setting the
+    // compiled default explicitly also undoes a live-move widen on #LZ.)
+    servoDispatch.setStart(i, (cv >= 500 && cv <= 2500) ? cv : getCompiledStart(i));
+    servoDispatch.setEnd(i,   (ov >= 500 && ov <= 2500) ? ov : getCompiledEnd(i));
   }
   servoPrefs.end();
 }
@@ -1495,20 +1513,102 @@ void listServoLimits() {
   servoPrefs.end();
 }
 
+// Live-move servo to an arbitrary pulse for slider calibration (no save).
+// Widen the working range first so ReelTwo's moveToPulse() — which clamps to
+// [min,max] of the current start/end — can reach any pulse 500-2500. The real
+// limits get restored as you set each end (#LO/#LC) or via #LZ (reload all).
+void liveMoveServo(uint8_t num, uint16_t pulse) {
+  if (num >= SizeOfArray(servoSettings)) { Serial.printf("[SERVO] Invalid servo %d\n", num); return; }
+  if (pulse < 500 || pulse > 2500) return;
+  servoDispatch.setStart(num, 500);
+  servoDispatch.setEnd(num, 2500);
+  servoDispatch.moveToPulse(num, pulse);
+  Serial.printf("[SERVO] live move %02d -> %u us\n", num, pulse);
+}
+
+// Reply to a GUI "get limits" request (#LGsscc) by sending the currently
+// effective close/open for servos [start, start+count) back to the Gateway
+// ("DG"), which relays it to the Remote → web GUI. Compact fixed-width text:
+//   #LV<board2><start2><count2><close4><open4>...   (one 8-digit pair/servo)
+// count is capped so the whole string fits the 100-char ESP-NOW command field.
+void replyServoLimits(uint8_t start, uint8_t count) {
+  uint8_t total = SizeOfArray(servoSettings);
+  if (start >= total) return;
+  if (count == 0 || start + count > total) count = total - start;
+  if (count > 8) count = 8;                 // 3+2+2+2 + 8*8 = 75 chars < 100
+  char hdr[10];
+  snprintf(hdr, sizeof(hdr), "#LVDC%02u%02u", start, count);
+  String reply = hdr;
+  servoPrefs.begin("srvlim", true);
+  for (uint8_t i = start; i < start + count; i++) {
+    char keyC[6], keyO[6];
+    snprintf(keyC, sizeof(keyC), "c%02d", i);
+    snprintf(keyO, sizeof(keyO), "o%02d", i);
+    uint16_t cv = servoPrefs.getUShort(keyC, 0);
+    uint16_t ov = servoPrefs.getUShort(keyO, 0);
+    uint16_t cl = (cv >= 500 && cv <= 2500) ? cv : getCompiledStart(i);
+    uint16_t op = (ov >= 500 && ov <= 2500) ? ov : getCompiledEnd(i);
+    char pair[10]; snprintf(pair, sizeof(pair), "%04u%04u", cl, op);
+    reply += pair;
+  }
+  servoPrefs.end();
+  sendESPNOWCommand("DG", reply);
+  Serial.printf("[SERVO] reply -> DG: %s\n", reply.c_str());
+}
+
+// Describe one servo to the web GUI: index, total count, current close/open and
+// its display name. Reply: "#LIDC<idx2><count2><close4><open4><name>". The web
+// GUI builds its servo list (count + names) entirely from these replies.
+void replyServoInfo(uint8_t idx) {
+  uint8_t total = SizeOfArray(servoSettings);
+  if (idx >= total) return;
+  servoPrefs.begin("srvlim", true);
+  char keyC[6], keyO[6];
+  snprintf(keyC, sizeof(keyC), "c%02d", idx);
+  snprintf(keyO, sizeof(keyO), "o%02d", idx);
+  uint16_t cv = servoPrefs.getUShort(keyC, 0);
+  uint16_t ov = servoPrefs.getUShort(keyO, 0);
+  servoPrefs.end();
+  uint16_t cl = (cv >= 500 && cv <= 2500) ? cv : getCompiledStart(idx);
+  uint16_t op = (ov >= 500 && ov <= 2500) ? ov : getCompiledEnd(idx);
+  char hdr[20];
+  snprintf(hdr, sizeof(hdr), "#LIDC%02u%02u%04u%04u", idx, total, cl, op);
+  String reply = hdr;
+  reply += servoNames[idx];
+  if (reply.length() > 78) reply = reply.substring(0, 78);   // keep within relay buffer
+  sendESPNOWCommand("DG", reply);
+  Serial.printf("[SERVO] info -> DG: %s\n", reply.c_str());
+}
+
 void handleServoLimitCommand(const char* cmd) {
   char sub = toupper(cmd[2]);
   if (sub == 'L') { listServoLimits(); return; }
+  if (sub == 'Z') { loadServoLimits(); Serial.println("[SERVO] limits restored from NVS"); return; }
+  if (sub == 'D') {                          // #LDxx   describe servo (name + limits)
+    if (strlen(cmd) >= 5) replyServoInfo((cmd[3]-'0')*10 + (cmd[4]-'0'));
+    return;
+  }
+  if (sub == 'G') {                          // #LGsscc  get limits for a page
+    int glen = strlen(cmd);
+    if (glen >= 7) {
+      uint8_t start = (cmd[3]-'0')*10 + (cmd[4]-'0');
+      uint8_t count = (cmd[5]-'0')*10 + (cmd[6]-'0');
+      replyServoLimits(start, count);
+    }
+    return;
+  }
   int len = strlen(cmd);
   if (sub == 'R' && len >= 5) {
     resetServoLimit((cmd[3]-'0')*10 + (cmd[4]-'0'));
-  } else if ((sub == 'O' || sub == 'C') && len >= 9) {
+  } else if ((sub == 'O' || sub == 'C' || sub == 'M') && len >= 9) {
     uint8_t  num  = (cmd[3]-'0')*10 + (cmd[4]-'0');
     uint16_t val  = (cmd[5]-'0')*1000 + (cmd[6]-'0')*100 + (cmd[7]-'0')*10 + (cmd[8]-'0');
     if (val >= 500 && val <= 2500) {
-      if (sub == 'O') setServoOpenLimit(num, val);
-      else            setServoCloseLimit(num, val);
+      if      (sub == 'O') setServoOpenLimit(num, val);
+      else if (sub == 'C') setServoCloseLimit(num, val);
+      else                 liveMoveServo(num, val);     // 'M' = live move (no save)
     } else { Serial.printf("[SERVO] Value %u out of range (500-2500)\n", val); }
-  } else { Serial.println("[SERVO] Usage: #LOxxyyyy / #LCxxyyyy / #LRxx / #LL"); }
+  } else { Serial.println("[SERVO] Usage: #LMxxyyyy / #LOxxyyyy / #LCxxyyyy / #LRxx / #LL / #LZ"); }
 }
 
 
@@ -1645,8 +1745,8 @@ if (millis() - MLMillis >= mainLoopDelayVar){
               debugInputIdentifier = "";                             // flush the string
               } else if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
                 char lSub = toupper(inputBuffer[2]);
-                if (lSub == 'O' || lSub == 'C' || lSub == 'R' || lSub == 'L') {
-                  // Servo limit command: #LOxx / #LCxx / #LRxx / #LL
+                if (lSub == 'O' || lSub == 'C' || lSub == 'R' || lSub == 'L' || lSub == 'M' || lSub == 'Z' || lSub == 'G' || lSub == 'D') {
+                  // Servo limit command: #LMxx / #LOxx / #LCxx / #LRxx / #LL / #LZ / #LGsscc / #LDxx
                   handleServoLimitCommand(inputBuffer);
                 } else {
                   localCommandFunction = (inputBuffer[2]-'0')*10+(inputBuffer[3]-'0');
