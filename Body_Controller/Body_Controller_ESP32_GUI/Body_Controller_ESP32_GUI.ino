@@ -255,17 +255,20 @@ unsigned long pendingCfgLastMs  = 0;
 // "#C 65535 999 999:" = 18 bytes, so payload max = 100 - 18 = 82 bytes;
 // rounding down to 80 leaves comfortable margin.
 #define BC_CFG_CHUNK_BYTES 80
-// 2026-05 (v6): bumped from 700ms → 1000ms.
-// Per E2E review: the real Gateway LoRa drain rate is ~1 chunk/sec
-// because of (a) 600ms inter-chunk throttle, (b) 200ms LoRa airtime per
-// chunk, (c) 1Hz telemetry frame stealing ~250ms airtime, and (d) the
-// Gateway's previously-inline LoRa-ACK-from-onReceive eating another
-// ~250ms (now deferred to main loop, see Gateway fix). 1000ms gives BC
-// a comfortable steady-state below the Gateway drain rate so the
-// chunk queue stays near-empty even under bursty telemetry.
-// Tradeoff: ~98 chunks × 1000ms = 98 seconds for a 7800-byte config.
-// Slow, but reliable end-to-end. Acceptable for a one-time config load.
-#define BC_CFG_CHUNK_INTERVAL_MS 1000
+// 2026-05 (v6): was 1000ms, tuned for the OLD slow Gateway LoRa drain — the
+// four factors that forced 1000ms were (a) 600ms inter-chunk throttle, (b)
+// 200ms LoRa airtime/chunk, (c) 1Hz telemetry stealing ~250ms, (d) inline
+// LoRa-ACK eating ~250ms.
+// 2026-06: every one of those collapsed — (a) Gateway gap now 45ms, (b) 500kHz
+// → ~48ms airtime/chunk, (c) telemetry shrank 252→52B AND 500kHz → ~13ms steal
+// (and telemetry is suppressed entirely during a transfer anyway), (d) already
+// deferred. The Gateway now drains a chunk every ~85ms (ACK-gated), so the BC
+// can feed much faster. 175ms keeps the BC comfortably SLOWER than the Gateway
+// drain (~2× margin) so the Gateway's 32-slot queue stays shallow — feeding
+// faster than the drain would overflow it and corrupt the config.
+// Result: ~98 chunks × 175ms ≈ ~17s (was ~98s). If hardware shows the queue
+// staying near-empty (no "[CFG] queue full"), this can be pushed toward ~120ms.
+#define BC_CFG_CHUNK_INTERVAL_MS 175
 
 // MUST match the Droid_Gateway.ino struct of the same name EXACTLY —
 // both sides share this layout for the ESP-NOW packet between BC and DG.

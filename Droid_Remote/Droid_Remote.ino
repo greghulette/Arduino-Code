@@ -614,60 +614,79 @@ bool incomingMsgAck;
 uint32_t msgAckID;
 uint32_t  LoraPasscode = 12345678;
   
+// ── LoRa packet structs (binary wire format) ───────────────────────────────
+// Disambiguated by packetSize in onReceive, so EVERY struct below MUST have a
+// size unique vs the others AND byte-for-byte identical to Droid_Gateway.ino.
+// Sizes (verify at boot): Ack 8, LoRa_Struct(telemetry) 52, ServoInfo 104,
+// CfgChunk 116, Diag 152. Fields right-sized + ordered big→small to de-pad;
+// readable values reconstructed here in JSON (bitmask→bools, centivolts→float).
+//
+// 2026-06: slimmed from the old 252-byte frame — diagnostics (counters + ETM
+// stats) moved to the on-demand Diag_LoRa_Struct, the command ACK moved to the
+// tiny Ack_LoRa_Struct.
+
+// struct_statusFlags bit positions (board-online bitmask). Must match Gateway.
+#define DGS_GATEWAY     0
+#define DGS_BODY        1
+#define DGS_BODYLED     2
+#define DGS_BODYSERVO   3
+#define DGS_DOMEPLATE   4
+#define DGS_DOME        5
+#define DGS_HP          6
+#define DGS_DOMELOGICS  7
+#define DGS_REMOTECONN  8
+
 // NOTE: must match Droid_Gateway.ino exactly — both sides of the LoRa link
 typedef struct LoRa_Struct{
-  uint32_t struct_LoraPasscode;
-  bool struct_incomingMsgAck;
-  uint32_t struct_msgAckID;
-  bool struct_droidGatewayStatus;
-  bool struct_bodyControllerStatus;
-  bool struct_bodyLEDControllerStatus;
-  bool struct_bodyServoControllerStatus;
-  bool struct_domePlateControllerStatus;
-  bool struct_domeControllerStatus;
-  bool struct_droidRemoteStatus;
-  bool struct_hpControllerStatus;
-  bool struct_domeLogicsControllerStatus;
-  int struct_BL_LDP_Bright;
-  int struct_BL_MAINT_Bright;
-  int struct_BL_VU_Bright;
-  int struct_BL_CS_Bright;
-  int struct_BL_vuOffsetInt;
-  int struct_BL_vuBaselineInt;
-  int struct_BL_vuOffsetExt;
-  int struct_BL_vuBaselineExt;
-  float struct_BL_BatteryVoltage;
-  int struct_BL_BatteryPercentage;
-  int struct_FunctionSWState;
-  bool struct_remoteConnected;
-  uint32_t struct_DGSuccessCounter;
-  uint32_t struct_DGFailureCounter;
-  uint32_t struct_BSSuccessCounter;
-  uint32_t struct_BSFailureCounter;
-  uint32_t struct_BCSuccessCounter;
-  uint32_t struct_BCFailureCounter;
-  uint32_t struct_DPSuccessCounter;
-  uint32_t struct_DPFailureCounter;
-  uint32_t struct_DCSuccessCounter;
-  uint32_t struct_DCFailureCounter;
-  uint32_t struct_HPSuccessCounter;
-  uint32_t struct_HPFailureCounter;
-  // ETM delivery stats from DG's perspective — 6 entries indexed by board order:
-  // 0=DG, 1=BC, 2=BS, 3=DC, 4=DP, 5=HP
-  bool     struct_etmBoardOnline[6];
-  uint32_t struct_etmBoardSent[6];
-  uint32_t struct_etmBoardAckd[6];
-  uint32_t struct_etmBoardRetries[6];
-  uint32_t struct_etmBoardFailed[6];
-  // 2026-05 addition: reverse-channel ACK from BC → GUI relayed by the
-  // Gateway. MUST match Droid_Gateway.ino's LoRa_Struct exactly.
+  uint32_t struct_LoraPasscode;          // validation + implicit telemetry tag
+  uint16_t struct_statusFlags;           // board-online bitmask (DGS_* bits)
+  uint16_t struct_BatteryCentivolts;     // battery volts * 100 (÷100 → float)
+  int16_t  struct_BL_vuOffsetInt;
+  int16_t  struct_BL_vuBaselineInt;
+  int16_t  struct_BL_vuOffsetExt;
+  int16_t  struct_BL_vuBaselineExt;
   uint16_t struct_bcAckSeq;
+  uint8_t  struct_BL_LDP_Bright;
+  uint8_t  struct_BL_MAINT_Bright;
+  uint8_t  struct_BL_VU_Bright;
+  uint8_t  struct_BL_CS_Bright;
+  uint8_t  struct_BL_BatteryPercentage;
+  uint8_t  struct_FunctionSWState;
   bool     struct_bcAckOk;
   char     struct_bcAckMsg[24];
   } LoRa_Struct;
 
+// Tiny dedicated command-ACK packet. magic = 0xA5.
+typedef struct Ack_LoRa_Struct{
+  uint32_t struct_msgAckID;
+  uint8_t  struct_magic;
+} Ack_LoRa_Struct;
+
+// On-demand diagnostics packet (only arrives after the web GUI clicks Refresh).
+// counters[] idx: 0 DGsucc,1 DGfail,2 BCsucc,3 BCfail,4 BSsucc,5 BSfail,
+//   6 DPsucc,7 DPfail,8 DCsucc,9 DCfail,10 HPsucc,11 HPfail.
+// etm*[] idx: 0=DG,1=BC,2=BS,3=DC,4=DP,5=HP.  magic = 0xD1.
+typedef struct Diag_LoRa_Struct{
+  uint32_t struct_counters[12];
+  uint32_t struct_etmSent[6];
+  uint32_t struct_etmAckd[6];
+  uint32_t struct_etmRetries[6];
+  uint32_t struct_etmFailed[6];
+  bool     struct_etmOnline[6];
+  uint8_t  struct_magic;
+} Diag_LoRa_Struct;
+
 
 LoRa_Struct commandstoReceiveFromRemote;
+Ack_LoRa_Struct  ackFromGateway;
+Diag_LoRa_Struct diagFromGateway;
+
+// Compile-time wire-format guards. MUST match Droid_Gateway.ino and stay
+// mutually unique vs ServoInfo (104) / CfgChunk (116) so onReceive's size-based
+// routing is unambiguous. If a struct edit trips one, fix BOTH ends together.
+static_assert(sizeof(Ack_LoRa_Struct)  == 8,   "Ack_LoRa_Struct size drift — sync Gateway+Remote");
+static_assert(sizeof(LoRa_Struct)      == 52,  "LoRa_Struct (telemetry) size drift — sync Gateway+Remote");
+static_assert(sizeof(Diag_LoRa_Struct) == 152, "Diag_LoRa_Struct size drift — sync Gateway+Remote");
 
 // 2026-05 GET_CONFIG return path. Separate LoRa packet carrying one
 // 100-byte chunk of the BC's rcConfigToJSON() reply. Dispatch by
@@ -854,6 +873,56 @@ void onReceive(int packetSize){
     return;
   }
 
+  // 2026-06: tiny dedicated command-ACK packet (8 bytes). MUST be checked before
+  // the telemetry catch-all below, which would otherwise misread its 8 bytes as
+  // a truncated telemetry frame.
+  if (packetSize == (int)sizeof(Ack_LoRa_Struct)) {
+    for (int i = 0; i < packetSize; i++) ((byte*)&ackFromGateway)[i] = LoRa.read();
+    if (ackFromGateway.struct_magic == 0xA5) {
+      msgAckID = ackFromGateway.struct_msgAckID;
+      if (msgAckID == lastSentMsgId) {
+        Debug.LORA("LoRa ACK confirmed for msg ID %d\n", msgAckID);
+        commandSent = false;
+        retryCount  = 0;
+      } else {
+        Debug.LORA("LoRa ACK ID mismatch: got %d, expected %d\n", msgAckID, lastSentMsgId);
+      }
+    }
+    drkeepAliveAge = millis();
+    return;
+  }
+
+  // 2026-06: on-demand diagnostics packet (counters + ETM stats). Arrives only
+  // after the web GUI requests it (#L09). It is larger than telemetry, so it
+  // MUST be checked before the catch-all (whose oversize guard would drop it).
+  if (packetSize == (int)sizeof(Diag_LoRa_Struct)) {
+    for (int i = 0; i < packetSize; i++) ((byte*)&diagFromGateway)[i] = LoRa.read();
+    if (diagFromGateway.struct_magic == 0xD1) {
+      DGSuccessCounter = diagFromGateway.struct_counters[0];
+      DGFailureCounter = diagFromGateway.struct_counters[1];
+      BCSuccessCounter = diagFromGateway.struct_counters[2];
+      BCFailureCounter = diagFromGateway.struct_counters[3];
+      BSSuccessCounter = diagFromGateway.struct_counters[4];
+      BSFailureCounter = diagFromGateway.struct_counters[5];
+      DPSuccessCounter = diagFromGateway.struct_counters[6];
+      DPFailureCounter = diagFromGateway.struct_counters[7];
+      DCSuccessCounter = diagFromGateway.struct_counters[8];
+      DCFailureCounter = diagFromGateway.struct_counters[9];
+      HPSuccessCounter = diagFromGateway.struct_counters[10];
+      HPFailureCounter = diagFromGateway.struct_counters[11];
+      for (int i = 0; i < 6; i++) {
+        etmBoardOnline[i]  = diagFromGateway.struct_etmOnline[i];
+        etmBoardSent[i]    = diagFromGateway.struct_etmSent[i];
+        etmBoardAckd[i]    = diagFromGateway.struct_etmAckd[i];
+        etmBoardRetries[i] = diagFromGateway.struct_etmRetries[i];
+        etmBoardFailed[i]  = diagFromGateway.struct_etmFailed[i];
+      }
+      sendDiagUpdate();
+    }
+    drkeepAliveAge = millis();
+    return;
+  }
+
   if (packetSize) {
     // Sanity check — ignore oversized packets to prevent buffer overflow
     if (packetSize > (int)sizeof(commandstoReceiveFromRemote)) {
@@ -868,64 +937,38 @@ void onReceive(int packetSize){
     }
       LoraPasscode = commandstoReceiveFromRemote.struct_LoraPasscode;
       if (LoraPasscode == 12345678){
-        if (commandstoReceiveFromRemote.struct_incomingMsgAck == true) {
-          msgAckID = commandstoReceiveFromRemote.struct_msgAckID;
-          // Verify the ACK is for the command we actually sent
-          if (msgAckID == lastSentMsgId) {
-            Debug.LORA("LoRa ACK confirmed for msg ID %d\n", msgAckID);
-            commandSent = false;
-            retryCount  = 0;
-          } else {
-            Debug.LORA("LoRa ACK ID mismatch: got %d, expected %d\n", msgAckID, lastSentMsgId);
-          }
-        } 
-
-    droidGatewayStatus = commandstoReceiveFromRemote.struct_droidGatewayStatus;
-    bodyControllerStatus = commandstoReceiveFromRemote.struct_bodyControllerStatus ;
-    bodyLEDControllerStatus = commandstoReceiveFromRemote.struct_bodyLEDControllerStatus ;
-    bodyServoControllerStatus = commandstoReceiveFromRemote.struct_bodyServoControllerStatus  ;
-    domePlateControllerStatus =commandstoReceiveFromRemote.struct_domePlateControllerStatus  ;
-    domeControllerStatus= commandstoReceiveFromRemote.struct_domeControllerStatus ;
-    hpControllerStatus= commandstoReceiveFromRemote.struct_hpControllerStatus  ;
-    domeLogicsControllerStatus =commandstoReceiveFromRemote.struct_domeLogicsControllerStatus ;
-    BL_LDP_Bright = commandstoReceiveFromRemote.struct_BL_LDP_Bright;
-    BL_MAINT_Bright =commandstoReceiveFromRemote.struct_BL_MAINT_Bright;
-    BL_VU_Bright =commandstoReceiveFromRemote.struct_BL_VU_Bright;
-    BL_CS_Bright =commandstoReceiveFromRemote.struct_BL_CS_Bright;
-    BL_vuOffsetInt = commandstoReceiveFromRemote.struct_BL_vuOffsetInt;
-    BL_vuOffsetInt = commandstoReceiveFromRemote.struct_BL_vuBaselineInt;
-    BL_vuOffsetExt = commandstoReceiveFromRemote.struct_BL_vuOffsetExt;
-    BL_vuBaselineExt = commandstoReceiveFromRemote.struct_BL_vuBaselineExt;
-    BL_BatteryVoltage = commandstoReceiveFromRemote.struct_BL_BatteryVoltage;
-    BL_BatteryPercentage = commandstoReceiveFromRemote.struct_BL_BatteryPercentage;
-    FunctionSWState = commandstoReceiveFromRemote.struct_FunctionSWState;
-    remoteConnected = commandstoReceiveFromRemote.struct_remoteConnected;
-    DGSuccessCounter = commandstoReceiveFromRemote.struct_DGSuccessCounter;
-    DGFailureCounter = commandstoReceiveFromRemote.struct_DGFailureCounter;
-    BCSuccessCounter = commandstoReceiveFromRemote.struct_BCSuccessCounter;
-    BCFailureCounter = commandstoReceiveFromRemote.struct_BCFailureCounter;
-    BSSuccessCounter = commandstoReceiveFromRemote.struct_BSSuccessCounter;
-    BSFailureCounter = commandstoReceiveFromRemote.struct_BSFailureCounter;
-    DPSuccessCounter = commandstoReceiveFromRemote.struct_DPSuccessCounter;
-    DPFailureCounter = commandstoReceiveFromRemote.struct_DPFailureCounter;
-    DCSuccessCounter = commandstoReceiveFromRemote.struct_DCSuccessCounter;
-    DCFailureCounter = commandstoReceiveFromRemote.struct_DCFailureCounter;
-    HPSuccessCounter = commandstoReceiveFromRemote.struct_HPSuccessCounter;
-    HPFailureCounter = commandstoReceiveFromRemote.struct_HPFailureCounter;
-    // ETM delivery stats
-    for (int i = 0; i < 6; i++) {
-      etmBoardOnline[i]  = commandstoReceiveFromRemote.struct_etmBoardOnline[i];
-      etmBoardSent[i]    = commandstoReceiveFromRemote.struct_etmBoardSent[i];
-      etmBoardAckd[i]    = commandstoReceiveFromRemote.struct_etmBoardAckd[i];
-      etmBoardRetries[i] = commandstoReceiveFromRemote.struct_etmBoardRetries[i];
-      etmBoardFailed[i]  = commandstoReceiveFromRemote.struct_etmBoardFailed[i];
-    }
-    // 2026-05: BC reverse-channel ACK. Pass straight through to sendUpdates
-    // which serializes it into the JSON line the web GUI reads.
-    bcAckSeq = commandstoReceiveFromRemote.struct_bcAckSeq;
-    bcAckOk  = commandstoReceiveFromRemote.struct_bcAckOk;
-    strncpy(bcAckMsg, commandstoReceiveFromRemote.struct_bcAckMsg, sizeof(bcAckMsg) - 1);
-    bcAckMsg[sizeof(bcAckMsg) - 1] = '\0';
+        // 2026-06: command ACKs now arrive as their own tiny Ack_LoRa_Struct
+        // packet (handled in the size-branch above), no longer piggybacked here.
+        // Unpack the slim telemetry frame: bitmask → bools, centivolts → float.
+        uint16_t f = commandstoReceiveFromRemote.struct_statusFlags;
+        droidGatewayStatus         = (f >> DGS_GATEWAY)    & 1;
+        bodyControllerStatus       = (f >> DGS_BODY)       & 1;
+        bodyLEDControllerStatus    = (f >> DGS_BODYLED)    & 1;
+        bodyServoControllerStatus  = (f >> DGS_BODYSERVO)  & 1;
+        domePlateControllerStatus  = (f >> DGS_DOMEPLATE)  & 1;
+        domeControllerStatus       = (f >> DGS_DOME)       & 1;
+        hpControllerStatus         = (f >> DGS_HP)         & 1;
+        domeLogicsControllerStatus = (f >> DGS_DOMELOGICS) & 1;
+        remoteConnected            = (f >> DGS_REMOTECONN) & 1;
+        BL_LDP_Bright    = commandstoReceiveFromRemote.struct_BL_LDP_Bright;
+        BL_MAINT_Bright  = commandstoReceiveFromRemote.struct_BL_MAINT_Bright;
+        BL_VU_Bright     = commandstoReceiveFromRemote.struct_BL_VU_Bright;
+        BL_CS_Bright     = commandstoReceiveFromRemote.struct_BL_CS_Bright;
+        BL_vuOffsetInt   = commandstoReceiveFromRemote.struct_BL_vuOffsetInt;
+        BL_vuOffsetInt   = commandstoReceiveFromRemote.struct_BL_vuBaselineInt;  // preserve original behaviour
+        BL_vuOffsetExt   = commandstoReceiveFromRemote.struct_BL_vuOffsetExt;
+        BL_vuBaselineExt = commandstoReceiveFromRemote.struct_BL_vuBaselineExt;
+        BL_BatteryVoltage    = commandstoReceiveFromRemote.struct_BatteryCentivolts / 100.0;
+        BL_BatteryPercentage = commandstoReceiveFromRemote.struct_BL_BatteryPercentage;
+        FunctionSWState      = commandstoReceiveFromRemote.struct_FunctionSWState;
+        // 2026-06: per-board success/fail counters + ETM delivery stats no
+        // longer ride the 1 Hz telemetry — they arrive on demand in the
+        // Diag_LoRa_Struct branch (web GUI "Refresh stats" → #L09).
+        // 2026-05: BC reverse-channel ACK. Pass straight through to sendUpdates.
+        bcAckSeq = commandstoReceiveFromRemote.struct_bcAckSeq;
+        bcAckOk  = commandstoReceiveFromRemote.struct_bcAckOk;
+        strncpy(bcAckMsg, commandstoReceiveFromRemote.struct_bcAckMsg, sizeof(bcAckMsg) - 1);
+        bcAckMsg[sizeof(bcAckMsg) - 1] = '\0';
 
     
   if (droidGatewayStatus == true){  dgkeepAliveAge = millis();};
@@ -1085,31 +1128,9 @@ void sendUpdates(){
   doc["BatteryPercent"] = BL_BatteryPercentage;
   doc["FunctionSWState"] = FunctionSWState;
   doc["remoteConnected"] = remoteConnected;
-  doc["DGSuccessCounter"] = DGSuccessCounter;
-  doc["DGFailureCounter"] = DGFailureCounter;
-  doc["BCSuccessCounter"] = BCSuccessCounter;
-  doc["BCFailureCounter"] = BCFailureCounter;
-  doc["BSSuccessCounter"] = BSSuccessCounter;
-  doc["BSFailureCounter"] = BSFailureCounter;
-  doc["DPSuccessCounter"] = DPSuccessCounter;
-  doc["DPFailureCounter"] = DPFailureCounter;
-  doc["DCSuccessCounter"] = DCSuccessCounter;
-  doc["DCFailureCounter"] = DCFailureCounter;
-  doc["HPSuccessCounter"] = HPSuccessCounter;
-  doc["HPFailureCounter"] = HPFailureCounter;
-  // ETM delivery stats — arrays of 6: index 0=DG, 1=BC, 2=BS, 3=DC, 4=DP, 5=HP
-  JsonArray jaOnline  = doc.createNestedArray("etmOnline");
-  JsonArray jaSent    = doc.createNestedArray("etmSent");
-  JsonArray jaAckd    = doc.createNestedArray("etmAckd");
-  JsonArray jaRetries = doc.createNestedArray("etmRetries");
-  JsonArray jaFailed  = doc.createNestedArray("etmFailed");
-  for (int i = 0; i < 6; i++) {
-    jaOnline.add(etmBoardOnline[i]);
-    jaSent.add(etmBoardSent[i]);
-    jaAckd.add(etmBoardAckd[i]);
-    jaRetries.add(etmBoardRetries[i]);
-    jaFailed.add(etmBoardFailed[i]);
-  }
+  // 2026-06: per-board success/fail counters + ETM delivery stats removed from
+  // the periodic telemetry JSON — they're now pushed only on demand via
+  // sendDiagUpdate() ({"type":"DIAG",...}) when the web GUI clicks Refresh.
   // 2026-05: BC reverse-channel ACK. Web GUI reads `bcAckSeq` and
   // ignores anything with seq=0 (= no fresh ACK from BC).
   doc["bcAckSeq"] = bcAckSeq;
@@ -1126,8 +1147,45 @@ void sendUpdates(){
   Serial.println("");
   }
 
-  
 
+
+}
+
+// 2026-06: on-demand diagnostics JSON line. Emitted ONLY when a Diag_LoRa_Struct
+// arrives from the Gateway (i.e. the web GUI clicked "Refresh stats" → #L09).
+// Carries the per-board counters + ETM delivery stats that used to ride every
+// 1 Hz telemetry frame. The web parser routes type==="DIAG" into the existing
+// updateETMStats() + counter spans.
+void sendDiagUpdate(){
+  DynamicJsonDocument doc(2048);
+  doc["type"] = "DIAG";
+  doc["DGSuccessCounter"] = DGSuccessCounter;
+  doc["DGFailureCounter"] = DGFailureCounter;
+  doc["BCSuccessCounter"] = BCSuccessCounter;
+  doc["BCFailureCounter"] = BCFailureCounter;
+  doc["BSSuccessCounter"] = BSSuccessCounter;
+  doc["BSFailureCounter"] = BSFailureCounter;
+  doc["DPSuccessCounter"] = DPSuccessCounter;
+  doc["DPFailureCounter"] = DPFailureCounter;
+  doc["DCSuccessCounter"] = DCSuccessCounter;
+  doc["DCFailureCounter"] = DCFailureCounter;
+  doc["HPSuccessCounter"] = HPSuccessCounter;
+  doc["HPFailureCounter"] = HPFailureCounter;
+  JsonArray jaOnline  = doc.createNestedArray("etmOnline");
+  JsonArray jaSent    = doc.createNestedArray("etmSent");
+  JsonArray jaAckd    = doc.createNestedArray("etmAckd");
+  JsonArray jaRetries = doc.createNestedArray("etmRetries");
+  JsonArray jaFailed  = doc.createNestedArray("etmFailed");
+  for (int i = 0; i < 6; i++) {
+    jaOnline.add(etmBoardOnline[i]);
+    jaSent.add(etmBoardSent[i]);
+    jaAckd.add(etmBoardAckd[i]);
+    jaRetries.add(etmBoardRetries[i]);
+    jaFailed.add(etmBoardFailed[i]);
+  }
+  doc["JSONDone"] = true;
+  if (serial1Toggle == true) { serializeJson(doc, Serial1); Serial1.println(""); }
+  else                       { serializeJson(doc, Serial);  Serial.println(""); }
 }
 
 
@@ -1340,6 +1398,10 @@ void setup(){
     Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }
+  // 2026-06: 125 kHz → 500 kHz signal bandwidth = ~4× faster airtime per frame.
+  // MUST match Droid_Gateway.ino. Safe at ≤50 yd operating range. If the link is
+  // ever flaky here, drop BOTH ends to 250E3.
+  LoRa.setSignalBandwidth(500E3);
 
   Serial.println("LoRa init succeeded.");
   displayOLEDString("LoRa Ready");
