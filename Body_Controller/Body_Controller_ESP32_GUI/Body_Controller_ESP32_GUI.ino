@@ -1885,6 +1885,13 @@ void loop() {
           }
           if (inputBuffer[1]=='L' || inputBuffer[1]=='l') {
             for (int i=2; i<commandLength; i++) ledCommandString += inputBuffer[i];
+            // 2026-06 diag: the LED relay was silent, so "nothing happens" couldn't
+            // be told apart from "BC parsed + forwarded but the mega/link is dead".
+            // This prints exactly what's being pushed to the mega over blSerial @9600.
+            // If you SEE this line but the LEDs don't move → it's the BC→mega link
+            // (wiring/ground) or the mega itself. If you DON'T see it → the command
+            // never reached this branch (line-ending / wrong format / serial RX).
+            Serial.printf("[BL->mega @9600] forwarding: '%s'\n", ledCommandString.c_str());
             writeBlSerial(ledCommandString); ledCommandString = "";
           }
           if (inputBuffer[1]=='A' || inputBuffer[1]=='a') {
