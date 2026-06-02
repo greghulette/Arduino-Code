@@ -318,10 +318,12 @@ void serialEvent() {
   {
     // 2026-05 (v8): auto-route replies to whoever is talking. A command on
     // USB Serial means the GUI is on USB (laptop) — send telemetry / CFG_CHUNK
-    // / SERVO_INFO back out USB, not Serial1. Fixes "config pulls on the laptop
-    // but not the Pi" caused by a stale manual serial1Toggle left over from the
-    // other transport. (serial1Event() does the mirror for the Pi.)
-    serial1Toggle = false;
+    // / SERVO_INFO back out USB, not Serial1. (serial1Event() mirrors for Pi.)
+    // (v9) ONLY flip on a real GUI command — every command from the web app
+    // starts with ':'. This stops electrical NOISE on a floating/disconnected
+    // Serial1 RX from reading as a "command" and yanking all output (incl. the
+    // command ACKs) over to the Pi port, which stalled reliable commands.
+    if (buffer[0] == ':') serial1Toggle = false;
     // 2026-05 fix: previously this tokenized on SPACE then COMMA, which
     // SHREDDED any multi-token command (e.g. ":L:EBC#CB 1 47" got split
     // into ":L:EBC#CB" and "1 47" — chunked-JSON config push was broken
@@ -352,9 +354,9 @@ void serial1Event() {
   {
     // 2026-05 (v8): a command on Serial1 means the GUI is on Serial1 (the
     // Raspberry Pi on the UART pins) — route telemetry / CFG_CHUNK / SERVO_INFO
-    // back out Serial1 so config pulls and servo reads reach the Pi even if the
-    // toggle was last left on USB. Mirror of serialEvent().
-    serial1Toggle = true;
+    // back out Serial1. (v9) Only flip on a real GUI command (starts with ':')
+    // so noise on a floating Serial1 RX can't hijack the output port.
+    if (buffer[0] == ':') serial1Toggle = true;
     // Same fix as serialEvent — one line in = one command out, no in-line
     // strtok splitting (was corrupting any payload with spaces in it).
     enqueueCommand(buffer);
