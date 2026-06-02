@@ -1559,8 +1559,16 @@ void sendStatusMessage(){
 
 
 void sendACK(int msgAckID){
+  // 2026-05 fix: the ACK telemetry must report the id of the command it is
+  // acknowledging, NOT the most recent packet's id. sendStatusMessage() stamps
+  // struct_msgAckID from the global incomingMsgId, but fire-and-forget live-move
+  // (#LM) packets churn incomingMsgId between a reliable command and its
+  // deferred ACK — so without this the ACK carried a live-move's id, the
+  // Remote's (msgAckID == lastSentMsgId) check never matched, commandSent stuck
+  // true, and the whole reliable command queue jammed.
+  incomingMsgId = (byte)msgAckID;
   ACKBool = true;
- sendStatusMessage();
+  sendStatusMessage();
 }
 
 
