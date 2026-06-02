@@ -551,7 +551,31 @@ uint8_t loRaTxqHead  = 0;          // next slot to send
 uint8_t loRaTxqTail  = 0;          // next free slot
 uint8_t loRaTxqCount = 0;          // number of queued commands
 
+// 2026-05 live-move fast lane. Servo-calibration "#LM" (live move) commands
+// arrive as ":E<board>#LM<idx><val>" — '#LM' at index 4. They're ephemeral
+// (each new position supersedes the last, and Set Open/Close use the reliable
+// path), so we (a) COALESCE them — a new #LM for a servo replaces any queued
+// #LM for the same board+servo, so a fast drag never piles up stale targets —
+// and (b) send them FIRE-AND-FORGET (no 750ms ACK wait), so they flow at the
+// radio's airtime rate instead of the ~1-2/sec reliable rate.
+inline bool isLiveMoveCmd(const char* c) {
+  return c && c[0]==':' && (c[1]=='E'||c[1]=='e') &&
+         c[4]=='#' && (c[5]=='L'||c[5]=='l') && (c[6]=='M'||c[6]=='m');
+}
+unsigned long loRaLiveLastMs = 0;
+#define LORA_LIVE_GAP_MS 90        // min ms between fire-and-forget live moves
+
 inline bool loRaTxqEnqueue(const String& cmd) {
+  // Coalesce: replace an already-queued live-move for the SAME board+servo
+  // (matched on the ":EXX#LMYY" 9-char prefix) with this newer one.
+  if (cmd.length() >= 9 && isLiveMoveCmd(cmd.c_str())) {
+    for (uint8_t i = 0, idx = loRaTxqHead; i < loRaTxqCount; i++, idx = (idx + 1) % LORA_TXQ_MAX) {
+      if (isLiveMoveCmd(loRaTxQueue[idx]) && strncmp(loRaTxQueue[idx], cmd.c_str(), 9) == 0) {
+        strlcpy(loRaTxQueue[idx], cmd.c_str(), LORA_TXQ_LEN);   // overwrite with newest value
+        return true;
+      }
+    }
+  }
   if (loRaTxqCount >= LORA_TXQ_MAX) return false;       // full — caller logs/drops
   strlcpy(loRaTxQueue[loRaTxqTail], cmd.c_str(), LORA_TXQ_LEN);
   loRaTxqTail  = (loRaTxqTail + 1) % LORA_TXQ_MAX;
@@ -562,7 +586,22 @@ inline bool loRaTxqEnqueue(const String& cmd) {
 // Feed the next queued command into the (reliable, ACK'd, retrying) LoRa sender
 // only when nothing is currently in flight. Call this every loop.
 inline void loRaTxqDrain() {
-  if (commandSent || loRaTxqCount == 0) return;
+  if (loRaTxqCount == 0) return;
+  if (isLiveMoveCmd(loRaTxQueue[loRaTxqHead])) {
+    // Fast lane: never transmit while a reliable command is awaiting its ACK
+    // (we'd talk over the half-duplex radio and miss it), and keep a small gap
+    // so back-to-back live moves don't hog the channel from telemetry.
+    if (commandSent) return;
+    if (millis() - loRaLiveLastMs < LORA_LIVE_GAP_MS) return;
+    String next = String(loRaTxQueue[loRaTxqHead]);
+    loRaTxqHead = (loRaTxqHead + 1) % LORA_TXQ_MAX;
+    loRaTxqCount--;
+    sendLoRaMessageNoAck(next);          // fire-and-forget — no 750ms ACK wait
+    loRaLiveLastMs = millis();
+    return;
+  }
+  // Reliable path for everything else (config push, Set Open/Close, etc.)
+  if (commandSent) return;
   String next = String(loRaTxQueue[loRaTxqHead]);
   loRaTxqHead = (loRaTxqHead + 1) % LORA_TXQ_MAX;
   loRaTxqCount--;
@@ -967,6 +1006,22 @@ void sendLoRaMessage(String outgoing) {
   commandSent = true;
   AckKeepAliveAge = millis();
   msgCount++;                           // increment message ID
+}
+
+// Fire-and-forget LoRa send for ephemeral live-move (#LM) commands: identical
+// packet, but does NOT set commandSent — we never wait for or retry an ACK,
+// because the next live move supersedes this one. The Gateway also skips ACKing
+// #LM, so these don't trigger heavy telemetry-ACK packets that would flood the
+// half-duplex channel. Reliability for real commands is unaffected.
+void sendLoRaMessageNoAck(String outgoing) {
+  LoRa.beginPacket();
+  LoRa.write(destination);
+  LoRa.write(localAddress);
+  LoRa.write(msgCount);
+  LoRa.write(outgoing.length());
+  LoRa.print(outgoing);
+  LoRa.endPacket();
+  msgCount++;
 }
 
 int updateStatusDuration = 5000;

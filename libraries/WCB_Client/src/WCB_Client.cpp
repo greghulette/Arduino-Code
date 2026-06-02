@@ -147,6 +147,51 @@ void WCB_Client::update() {
 
     _checkOfflineBoards();
     _processMonitors();
+
+    // Service the pending table.
+    for (int i = 0; i < WCB_PENDING_MAX; i++) {
+        WCBPending& p = _pending[i];
+        if (!p.active) continue;
+
+        if (p.ensured) {
+            // ── Ensured delivery: PER-BOARD UNICAST retries ──────────────────
+            // Mirrors the WCB firmware's processETMAcksAndRetries() exactly:
+            // after the initial send, retry as a UNICAST to each expected board
+            // that hasn't ACK'd (reusing the original seq so it's deduped),
+            // up to ETM_MAX_RETRIES per board; drop a board that goes offline.
+            // (An ensured UNICAST is normally freed by the ACK handler the
+            //  instant its target ACKs; reaching here means it hasn't yet.)
+            if (_ensuredComplete(p)) {            // every expected board acked / offline
+                p.active = false;
+                continue;
+            }
+            if ((now - p.sentMs) >= ETM_RETRY_INTERVAL_MS) {
+                for (int b = 0; b < WCB_MAX_BOARDS; b++) {
+                    if (!p.expected[b] || p.ackReceived[b]) continue;
+                    if (!_boards[b].online) {     // board gone — stop waiting on it
+                        p.expected[b] = false;
+                        continue;
+                    }
+                    if (p.retryCount[b] < ETM_MAX_RETRIES) {
+                        _transmit((uint8_t)(b + 1), p.command, p.seqNum);  // unicast retry
+                        p.retryCount[b]++;
+                    } else {
+                        p.expected[b] = false;    // exhausted retries for this board
+                    }
+                }
+                p.sentMs = now;                   // reset the retry window
+                if (_ensuredComplete(p)) p.active = false;   // nothing left outstanding
+            }
+            continue;
+        }
+
+        // ── Best-effort unicast: reclaim backstop ────────────────────────────
+        // A best-effort (ensured=false) unicast is sent ONCE — there is no
+        // retransmit. The slot is normally freed by the ACK handler on the
+        // target's ACK; this just frees one whose ACK never arrived so the
+        // table can't leak. 1 s is well beyond a normal ETM ACK round-trip.
+        if ((now - p.sentMs) > 1000UL) p.active = false;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,9 +200,9 @@ void WCB_Client::update() {
 // Send a text command to one specific WCB.
 // Internally calls _sendPacket() which handles CRC appending and ACK tracking.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCB_Client::send(uint8_t target_wcb, const char* command) {
+bool WCB_Client::send(uint8_t target_wcb, const char* command, bool ensured) {
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
-    return _sendPacket(target_wcb, command);
+    return _sendPacket(target_wcb, command, ensured);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,8 +211,8 @@ bool WCB_Client::send(uint8_t target_wcb, const char* command) {
 // Send a text command to ALL WCBs simultaneously via the shared broadcast MAC.
 // Every WCB on the network receives and processes the same packet.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCB_Client::broadcast(const char* command) {
-    return _sendPacket(WCB_TARGET_BROADCAST, command);
+bool WCB_Client::broadcast(const char* command, bool ensured) {
+    return _sendPacket(WCB_TARGET_BROADCAST, command, ensured);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -549,16 +594,64 @@ void WCB_Client::_sendAck(uint8_t targetID, uint16_t seqNum) {
 // ─────────────────────────────────────────────────────────────────────────────
 // _sendPacket
 //
-// Builds and sends a WCB_PACKET_COMMAND packet. Used by both send() and
-// broadcast(). Also records the packet in the pending table for ACK tracking.
-//
-// Checksum handling:
-//   When _checksumEnabled is true, the CRC32 of the raw command string is
-//   computed and appended in the format "|CRC{8 uppercase hex digits}" before
-//   the packet is transmitted. WCBs with CHKSM ON will reject any COMMAND
-//   packet that is missing this suffix, so the setting must match.
+// Entry point for send() and broadcast(). Allocates the sequence number, sets
+// up pending-table tracking (and, for ensured sends, snapshots the expected
+// recipient set), then hands the actual packet build + transmit to _transmit().
+// The CRC suffix and wire framing live in _transmit() so retransmits reuse it.
 // ─────────────────────────────────────────────────────────────────────────────
-bool WCB_Client::_sendPacket(uint8_t targetID, const char* command) {
+bool WCB_Client::_sendPacket(uint8_t targetID, const char* command, bool ensured) {
+    uint16_t seq = ++_seqCounter;   // atomic; never reused by a retransmit
+
+    // Decide whether to record this packet in the pending table:
+    //   - unicast            → tracked (ACK info; freed on the target's ACK).
+    //   - ensured broadcast  → tracked (update() retransmits until complete).
+    //   - best-effort bcast  → NOT tracked. Its ACK slot would never free (the
+    //                          ACK handler keeps broadcast slots open to collect
+    //                          multi-board ACKs), so tracking an un-ensured one
+    //                          would just leak the small WCB_PENDING_MAX table.
+    bool track = ensured || (targetID != WCB_TARGET_BROADCAST);
+    int  slot  = track ? _findFreePending() : -1;
+    if (slot >= 0) {
+        WCBPending& p = _pending[slot];
+        p.active   = true;
+        p.seqNum   = seq;
+        p.sentMs   = millis();
+        p.targetID = targetID;
+        p.ensured  = ensured;
+        strncpy(p.command, command, sizeof(p.command) - 1);
+        p.command[sizeof(p.command) - 1] = '\0';   // strncpy may not NUL-terminate
+        memset(p.ackReceived, 0, sizeof(p.ackReceived));
+        memset(p.expected,    0, sizeof(p.expected));
+        memset(p.retryCount,  0, sizeof(p.retryCount));
+        if (ensured) {
+            // Snapshot who we'll wait for. For a broadcast that's every board we
+            // currently believe is online (except ourself); for a unicast it's
+            // just the target. A board that later drops offline stops blocking
+            // completion (see _ensuredComplete), so we never retry forever to a
+            // board that's simply gone.
+            if (targetID == WCB_TARGET_BROADCAST) {
+                for (int b = 0; b < WCB_MAX_BOARDS; b++)
+                    if (_boards[b].online && (b + 1) != _deviceID)
+                        p.expected[b] = true;
+            } else {
+                p.expected[targetID - 1] = true;
+            }
+        }
+    }
+
+    return _transmit(targetID, command, seq);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _transmit
+//
+// Build a COMMAND packet with the GIVEN sequence number and hand it to ESP-NOW.
+// No _seqCounter increment and no pending bookkeeping — this is the shared
+// transmit used by both the initial send (_sendPacket) and ensured retransmits
+// (update()), which must reuse the original seq so receivers dedup the resend
+// and their ACKs still match the pending slot.
+// ─────────────────────────────────────────────────────────────────────────────
+bool WCB_Client::_transmit(uint8_t targetID, const char* command, uint16_t seqNum) {
     wcb_packet_etm_t pkt;
     memset(&pkt, 0, sizeof(pkt));
 
@@ -568,7 +661,6 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command) {
     pkt.structCommandIncluded = 1;
 
     // Append CRC32 checksum if enabled — must match ?ETM,CHKSM setting on WCBs.
-    // Format: <command>|CRC<8 uppercase hex digits>
     if (_checksumEnabled) {
         uint32_t crc = _crc32(command, strlen(command));
         snprintf(pkt.structCommand, sizeof(pkt.structCommand),
@@ -579,25 +671,28 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command) {
     pkt.structCommand[sizeof(pkt.structCommand) - 1] = '\0';
 
     pkt.structPacketType     = WCB_PACKET_COMMAND;
-    pkt.structSequenceNumber = ++_seqCounter;
-
-    // Record in the pending table so we can match an incoming ACK back to this
-    // packet. If all slots are full the packet is still sent — just not tracked.
-    int slot = _findFreePending();
-    if (slot >= 0) {
-        _pending[slot].active   = true;
-        _pending[slot].seqNum   = pkt.structSequenceNumber;
-        _pending[slot].sentMs   = millis();
-        _pending[slot].targetID = targetID;
-        strncpy(_pending[slot].command, command, sizeof(_pending[slot].command) - 1);
-        memset(_pending[slot].ackReceived, 0, sizeof(_pending[slot].ackReceived));
-    }
+    pkt.structSequenceNumber = seqNum;
 
     uint8_t* mac = (targetID == WCB_TARGET_BROADCAST)
                    ? _broadcastMAC
                    : _wcbMACs[targetID - 1];
 
     return esp_now_send(mac, (uint8_t*)&pkt, sizeof(pkt)) == ESP_OK;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _ensuredComplete
+//
+// An ensured packet is "done" once nothing in its expected set is still
+// outstanding — i.e. every expected board has either ACK'd this sequence or
+// gone offline (so we stop waiting on a board that's simply no longer there).
+// ─────────────────────────────────────────────────────────────────────────────
+bool WCB_Client::_ensuredComplete(const WCBPending& p) const {
+    for (int b = 0; b < WCB_MAX_BOARDS; b++) {
+        if (p.expected[b] && !p.ackReceived[b] && _boards[b].online)
+            return false;
+    }
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

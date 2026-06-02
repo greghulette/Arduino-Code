@@ -1642,9 +1642,19 @@ void onReceive(int packetSize) {
   }
   lastProcessedMsgId = incomingMsgId;
   parseStrings(incoming);
-  // 2026-05 (v4): defer LoRa ACK to main loop (see comment above).
-  pendingLoRaAck   = true;
-  pendingLoRaAckId = incomingMsgId;
+  // 2026-05 live-move fast lane: don't ACK ephemeral servo "#LM" jog commands
+  // (":E<board>#LM..."). The ACK is a full telemetry packet (~380ms airtime),
+  // so ACKing a calibration drag would saturate the half-duplex channel. The
+  // Remote sends these fire-and-forget and doesn't expect an ACK. All other
+  // commands still get the normal deferred ACK.
+  bool isLiveMove = (incoming.length() >= 7 && incoming[0] == ':' &&
+                     (incoming[1] == 'E' || incoming[1] == 'e') && incoming[4] == '#' &&
+                     (incoming[5] == 'L' || incoming[5] == 'l') && (incoming[6] == 'M' || incoming[6] == 'm'));
+  if (!isLiveMove) {
+    // 2026-05 (v4): defer LoRa ACK to main loop (see comment above).
+    pendingLoRaAck   = true;
+    pendingLoRaAckId = incomingMsgId;
+  }
   if(LoRa.packetRssi() > -50 && LoRa.packetRssi() < 10){
     colorWipeStatus("LS", green, 10);
   }else if (LoRa.packetRssi() > -100 && LoRa.packetRssi()  <= -50){

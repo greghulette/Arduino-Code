@@ -89,6 +89,66 @@ const LogicAnimation CYCLE_ANIMS[] = {
 const int CYCLE_COUNT = sizeof(CYCLE_ANIMS) / sizeof(CYCLE_ANIMS[0]);
 int animIndex = 0;   // index into CYCLE_ANIMS for the button cycle
 
+// ── Per-animation DEFAULT speed (frame interval in ms; lower = faster) ───────
+// Every animation has its OWN default speed here. It's applied whenever that
+// animation is started by the button, :NEXT / :PREV / :MODE, or a bare verb
+// (e.g. :RAINBOW) that has no explicit speed token. Edit any one value and
+// reflash to retune just that animation. A runtime :SPEED command and saved
+// presets still override these at run time.
+uint16_t spdNormal     = 60;    // NORMAL        - R2 logic blink
+uint16_t spdAlarm      = 90;    // ALARM
+uint16_t spdFailure    = 50;    // FAILURE
+uint16_t spdSolid      = 50;    // SOLIDCOLOR    - static (speed has little effect)
+uint16_t spdFlash      = 250;   // FLASHCOLOR    - colour flash on/off
+uint16_t spdFlipFlop   = 600;   // FLIPFLOPCOLOR - alternating halves
+uint16_t spdColorSwap  = 650;   // COLORSWAP
+uint16_t spdRainbow    = 10;    // RAINBOW
+uint16_t spdRedAlert   = 120;   // REDALERT
+uint16_t spdFire       = 90;    // FIRE
+uint16_t spdScan       = 40;    // ROAMINGPIXEL  - Knight-Rider scanner
+uint16_t spdTwinkle    = 60;    // TWINKLE
+uint16_t spdPulse      = 20;    // PULSE
+uint16_t spdWipe       = 60;    // WIPE
+uint16_t spdChase      = 150;   // CHASE
+uint16_t spdSparkle    = 60;    // SPARKLE
+uint16_t spdHeartbeat  = 10;    // HEARTBEAT
+uint16_t spdRain       = 90;    // MATRIXRAIN
+uint16_t spdLightsOut  = 50;    // LIGHTSOUT     - off (unused)
+
+// Return the configured default speed for an animation type.
+uint16_t defaultSpeedFor(LogicAnimation a) {
+  switch (a) {
+    case LogicAnimation::NORMAL:        return spdNormal;
+    case LogicAnimation::ALARM:         return spdAlarm;
+    case LogicAnimation::FAILURE:       return spdFailure;
+    case LogicAnimation::SOLIDCOLOR:    return spdSolid;
+    case LogicAnimation::FLASHCOLOR:    return spdFlash;
+    case LogicAnimation::FLIPFLOPCOLOR: return spdFlipFlop;
+    case LogicAnimation::COLORSWAP:     return spdColorSwap;
+    case LogicAnimation::RAINBOW:       return spdRainbow;
+    case LogicAnimation::REDALERT:      return spdRedAlert;
+    case LogicAnimation::FIRE:          return spdFire;
+    case LogicAnimation::ROAMINGPIXEL:  return spdScan;
+    case LogicAnimation::TWINKLE:       return spdTwinkle;
+    case LogicAnimation::PULSE:         return spdPulse;
+    case LogicAnimation::WIPE:          return spdWipe;
+    case LogicAnimation::CHASE:         return spdChase;
+    case LogicAnimation::SPARKLE:       return spdSparkle;
+    case LogicAnimation::HEARTBEAT:     return spdHeartbeat;
+    case LogicAnimation::MATRIXRAIN:    return spdRain;
+    case LogicAnimation::LIGHTSOUT:     return spdLightsOut;
+    default:                            return 50;
+  }
+}
+
+// Start a base animation at its per-animation default speed (covers the button
+// cycle and the bare direct verbs that don't take a speed token).
+void startAnim(LogicAnimation a) {
+  sled.setAnimation(a);
+  sled.setSpeed(defaultSpeedFor(a));
+  sled.enable(true);
+}
+
 // ==================== USER PRESETS (NVS) ====================
 // A "preset" is a saved animation = a base animation TYPE plus its settings.
 // Authored over USB by the standalone WebSerial editor (sled_animation_studio.html),
@@ -166,8 +226,7 @@ void applyAnimIndex(int n)
 {
     if (n < 0 || n >= CYCLE_COUNT) return;
     animIndex = n;
-    sled.setAnimation(CYCLE_ANIMS[n]);
-    sled.enable(true);
+    startAnim(CYCLE_ANIMS[n]);   // applies this animation's per-animation default speed
     Serial.printf("[SLED] anim[%d] = %s\n", n, LogicAnimations::getAnimationName(CYCLE_ANIMS[n]));
 }
 
@@ -218,14 +277,17 @@ void sledSolid(const char* name)
     sled.setColor(1, name);
     sled.setWeight(1, 100); sled.setWeight(2, 0); sled.setWeight(3, 0); sled.setWeight(4, 0);
     sled.setAnimation(LogicAnimation::SOLIDCOLOR);
+    sled.setSpeed(defaultSpeedFor(LogicAnimation::SOLIDCOLOR));
     sled.enable(true);
 }
 
-// Set COLOR1 (if given) and run a specific animation (SCAN / FLASH / etc.).
+// Set COLOR1 (if given) and run a specific animation (SCAN / FLASH / etc.) at
+// that animation's per-animation default speed.
 void sledColorAnim(LogicAnimation anim, const char* name)
 {
     if (name && name[0]) sled.setColor(1, name);
     sled.setAnimation(anim);
+    sled.setSpeed(defaultSpeedFor(anim));
     sled.enable(true);
 }
 
@@ -389,8 +451,9 @@ static void sendBases()
     JsonArray arr = doc.createNestedArray("data");
     for (uint8_t k = 0; k < sizeof(list)/sizeof(list[0]); k++) {
         JsonObject o = arr.createNestedObject();
-        o["id"]   = (uint8_t)list[k];
-        o["name"] = LogicAnimations::getAnimationName(list[k]);
+        o["id"]    = (uint8_t)list[k];
+        o["name"]  = LogicAnimations::getAnimationName(list[k]);
+        o["speed"] = defaultSpeedFor(list[k]);   // this animation's firmware default speed
     }
     serializeJson(doc, Serial);
     Serial.println();
@@ -544,34 +607,34 @@ bool runSledCommand(const char* cmdIn)
     // ---- direct animation verbs ----
     if      (strcasecmp(verb, "OFF")      == 0) { sled.setAnimation(LogicAnimation::LIGHTSOUT); return true; }
     else if (strcasecmp(verb, "COLOR")    == 0) { sledSolid(a1 ? a1 : "WHITE"); return true; }
-    else if (strcasecmp(verb, "NORMAL")   == 0) { sled.setAnimation(LogicAnimation::NORMAL);   sled.enable(true); return true; }
-    else if (strcasecmp(verb, "ALARM")    == 0) { sled.setAnimation(LogicAnimation::ALARM);    sled.enable(true); return true; }
-    else if (strcasecmp(verb, "FAILURE")  == 0) { sled.setAnimation(LogicAnimation::FAILURE);  sled.enable(true); return true; }
-    else if (strcasecmp(verb, "RAINBOW")  == 0) { sled.setAnimation(LogicAnimation::RAINBOW);  sled.enable(true); return true; }
-    else if (strcasecmp(verb, "FIRE")     == 0) { sled.setAnimation(LogicAnimation::FIRE);     sled.enable(true); return true; }
-    else if (strcasecmp(verb, "ALERT")    == 0) { sled.setAnimation(LogicAnimation::REDALERT); sled.enable(true); return true; }
+    else if (strcasecmp(verb, "NORMAL")   == 0) { startAnim(LogicAnimation::NORMAL);   return true; }
+    else if (strcasecmp(verb, "ALARM")    == 0) { startAnim(LogicAnimation::ALARM);    return true; }
+    else if (strcasecmp(verb, "FAILURE")  == 0) { startAnim(LogicAnimation::FAILURE);  return true; }
+    else if (strcasecmp(verb, "RAINBOW")  == 0) { startAnim(LogicAnimation::RAINBOW);  return true; }
+    else if (strcasecmp(verb, "FIRE")     == 0) { startAnim(LogicAnimation::FIRE);     return true; }
+    else if (strcasecmp(verb, "ALERT")    == 0) { startAnim(LogicAnimation::REDALERT); return true; }
     else if (strcasecmp(verb, "FLASH")    == 0) { sledColorAnim(LogicAnimation::FLASHCOLOR, a1); return true; }
     else if (strcasecmp(verb, "SWAP")     == 0 ||
-             strcasecmp(verb, "COLORSWAP")== 0) { sled.setAnimation(LogicAnimation::COLORSWAP);    sled.enable(true); return true; }
-    else if (strcasecmp(verb, "FLIPFLOP") == 0) { sled.setAnimation(LogicAnimation::FLIPFLOPCOLOR); sled.enable(true); return true; }
+             strcasecmp(verb, "COLORSWAP")== 0) { startAnim(LogicAnimation::COLORSWAP);     return true; }
+    else if (strcasecmp(verb, "FLIPFLOP") == 0) { startAnim(LogicAnimation::FLIPFLOPCOLOR); return true; }
     else if (strcasecmp(verb, "SCAN")     == 0) { sledColorAnim(LogicAnimation::ROAMINGPIXEL, a1 ? a1 : "RED"); return true; }
 
     // ---- sled-ported animations (now real, remapped to 8x32) ----
     // TWINKLE is multicolour (ignores colour arg); a1 is an optional speed token.
-    else if (strcasecmp(verb, "TWINKLE")  == 0) { sled.setSpeed(sledSpeed(a1, 60));
+    else if (strcasecmp(verb, "TWINKLE")  == 0) { sled.setSpeed(sledSpeed(a1, spdTwinkle));
                                                    sled.setAnimation(LogicAnimation::TWINKLE);   sled.enable(true); return true; }
-    else if (strcasecmp(verb, "PULSE")    == 0) { sled.setColor(1, a1 ? a1 : "BLUE");  sled.setSpeed(sledSpeed(a2, 20));
+    else if (strcasecmp(verb, "PULSE")    == 0) { sled.setColor(1, a1 ? a1 : "BLUE");  sled.setSpeed(sledSpeed(a2, spdPulse));
                                                    sled.setAnimation(LogicAnimation::PULSE);      sled.enable(true); return true; }
-    else if (strcasecmp(verb, "WIPE")     == 0) { sled.setColor(1, a1 ? a1 : "WHITE"); sled.setSpeed(sledSpeed(a2, 60));
+    else if (strcasecmp(verb, "WIPE")     == 0) { sled.setColor(1, a1 ? a1 : "WHITE"); sled.setSpeed(sledSpeed(a2, spdWipe));
                                                    sled.setAnimation(LogicAnimation::WIPE);       sled.enable(true); return true; }
     else if (strcasecmp(verb, "CHASE")    == 0) { sled.setColor(1, a1 ? a1 : "BLUE");  sled.setColor(2, a2 ? a2 : "RED");
-                                                   sled.setSpeed(sledSpeed(a3, 120));
+                                                   sled.setSpeed(sledSpeed(a3, spdChase));
                                                    sled.setAnimation(LogicAnimation::CHASE);      sled.enable(true); return true; }
-    else if (strcasecmp(verb, "SPARKLE")  == 0) { sled.setColor(1, a1 ? a1 : "WHITE"); sled.setSpeed(sledSpeed(a2, 40));
+    else if (strcasecmp(verb, "SPARKLE")  == 0) { sled.setColor(1, a1 ? a1 : "WHITE"); sled.setSpeed(sledSpeed(a2, spdSparkle));
                                                    sled.setAnimation(LogicAnimation::SPARKLE);    sled.enable(true); return true; }
-    else if (strcasecmp(verb, "HEARTBEAT")== 0) { sled.setColor(1, a1 ? a1 : "RED");   sled.setSpeed(sledSpeed(a2, 10));
+    else if (strcasecmp(verb, "HEARTBEAT")== 0) { sled.setColor(1, a1 ? a1 : "RED");   sled.setSpeed(sledSpeed(a2, spdHeartbeat));
                                                    sled.setAnimation(LogicAnimation::HEARTBEAT);  sled.enable(true); return true; }
-    else if (strcasecmp(verb, "RAIN")     == 0) { sled.setColor(1, a1 ? a1 : "GREEN"); sled.setSpeed(sledSpeed(a2, 90));
+    else if (strcasecmp(verb, "RAIN")     == 0) { sled.setColor(1, a1 ? a1 : "GREEN"); sled.setSpeed(sledSpeed(a2, spdRain));
                                                    sled.setAnimation(LogicAnimation::MATRIXRAIN); sled.enable(true); return true; }
 
     // ---- generic passthrough + tuning ----

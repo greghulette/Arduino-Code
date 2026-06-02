@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8765", "--directory", "C:/Users/ghulette/Documents/GitHub/Astromech-Control"],
       "port": 8765
+    },
+    {
+      "name": "sled",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8770", "--directory", "C:/Users/ghulette/Documents/GitHub/Arduino-Code/Sled_Arduino_ESP32S3"],
+      "port": 8770
     }
   ]
 }

@@ -39,6 +39,71 @@ This library lets any ESP32 — a Kyber controller, a custom prop brain, a stage
 
 ---
 
+## Limitations & Coexistence (WiFi / other ESP-NOW)
+
+This library takes over the ESP32's radio to join the WCB ESP-NOW network. Read
+this before combining it with WiFi or another ESP-NOW stack.
+
+### It takes over WiFi
+
+`begin()` calls `WiFi.mode(WIFI_STA)` followed by `WiFi.disconnect()`. **It will
+drop any existing connection to a WiFi router/AP**, and ESP-NOW timing assumes no
+AP association. You generally **cannot run a normal WiFi workload (web server,
+MQTT, cloud, HTTP/OTA-over-WiFi) on the same ESP32** while using this library.
+
+If you genuinely need both, you must keep everything on a **single fixed WiFi
+channel** (see below) and accept the MAC override — in practice it's far simpler
+to dedicate this ESP32 to the WCB network and use a second board for WiFi tasks.
+
+### Shared radio channel
+
+ESP-NOW operates on whatever channel the WiFi radio is currently on. **Every WCB
+and every client must be on the same channel.** If something in your sketch
+associates with an access point, the channel is locked to that AP's channel and
+ESP-NOW only works if all peers happen to be on it too. Mismatched channels =
+packets silently dropped, no error.
+
+### The WiFi MAC is overwritten
+
+`begin()` calls `esp_wifi_set_mac()` to force the station MAC to the WCB scheme
+`02:oct2:oct3:00:00:<deviceID>` so the WCBs recognize this device as a peer.
+Consequences:
+
+- Anything that depends on the factory/default MAC (licensing, MAC-based
+  device identity, router MAC filtering, DHCP reservations) **will not see the
+  real MAC**.
+- **Two devices with the same `deviceID` + `oct2`/`oct3` get an identical MAC.**
+  Never reuse a device ID on the same network — use the special slot (`20`) for
+  an extra out-of-band device.
+
+### Only one ESP-NOW stack, one instance
+
+- ESP-NOW is global ESP-IDF state. `begin()` calls `esp_now_init()` and
+  registers **the** single receive callback via `esp_now_register_recv_cb()`.
+  **You cannot run a second, independent ESP-NOW network/library alongside this
+  one** — whichever registers its receive callback last wins, and the other
+  stack stops receiving.
+- **Only one `WCB_Client` instance is supported per sketch** (it's a singleton).
+  Declare it once at global scope.
+
+### WiFi power save
+
+If you do bring up WiFi for any reason, modem sleep can cause this device to
+miss ESP-NOW packets. Disable it with `esp_wifi_set_ps(WIFI_PS_NONE)` (or
+`WiFi.setSleep(false)`) after `begin()`.
+
+### Quick reference
+
+| If you need… | Result with this library |
+|---|---|
+| WCB ESP-NOW only | ✅ Intended use — works out of the box |
+| WiFi STA + WCB on the same board | ⚠️ Only if all peers share the AP's fixed channel; `begin()` still disconnects WiFi |
+| A second, separate ESP-NOW network | ❌ Not supported — single global receive callback |
+| Multiple `WCB_Client` objects | ❌ Not supported — singleton |
+| Factory MAC preserved | ❌ MAC is overwritten by design |
+
+---
+
 ## Network Credentials
 
 All devices on the same WCB network must share four values. Find them by querying any WCB over serial or using the WCB Config Tool:
@@ -378,6 +443,66 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 | `MaestroUnicast` | Forward Maestro commands to a specific WCB:port (unicast) |
 | `MaestroBroadcast` | Broadcast Maestro commands to all WCBs with Maestros configured |
 | `CombinedUsage` | Text commands and Maestro forwarding running simultaneously |
+
+---
+
+## Changelog
+
+### 1.2.0
+
+Adds optional **ensured delivery**. Backward compatible — existing `send()` /
+`broadcast()` calls are unchanged (they default to the previous best-effort
+behavior).
+
+- **New: `send(target, cmd, ensured=true)` and `broadcast(cmd, ensured=true)`.**
+  Mirrors the WCB firmware's own ETM retry engine so client-originated ensured
+  traffic behaves identically to WCB-to-WCB ETM: after the initial send, the
+  packet is retried as a **per-board unicast** (reusing the original sequence
+  number, so receivers dedup it) to each expected board that hasn't ACK'd —
+  up to `ETM_MAX_RETRIES` per board. For a unicast the expected recipient is the
+  target; for a broadcast it's every board that was online at send time. A board
+  that drops offline mid-flight is dropped from the expected set rather than
+  retried forever.
+- Tuning via `ETM_RETRY_INTERVAL_MS` (default 500 ms) and `ETM_MAX_RETRIES`
+  (default 3) — matched to the firmware's `etmTimeoutMs` and retry count.
+- Reserve ensured mode for traffic that must land (e.g. a "command all boards"
+  action). Periodic telemetry should stay best-effort (`ensured=false`) — it
+  doesn't need per-recipient ACKs and would otherwise burn a pending slot and
+  airtime on every send.
+
+### 1.1.0
+
+Reliability fixes for the ETM acknowledgement layer. No API changes — existing
+sketches compile and run unchanged.
+
+- **Fixed: duplicate sequence numbers under concurrent sends.** The per-command
+  sequence counter is now atomic. It is incremented from both the main loop
+  (`send()` / `broadcast()`) and the ESP-NOW receive callback (when a command
+  callback replies with `send()`). A non-atomic increment could hand the same
+  sequence number to two packets, causing the receiving WCB's duplicate
+  detection to silently drop one of them.
+- **Fixed: heavy broadcasting could starve unicast ACK tracking.** Broadcasts
+  are fire-and-forget and are no longer recorded in the small in-flight ACK
+  table (`WCB_PENDING_MAX` = 3 slots). Previously, broadcasting filled all
+  tracking slots within seconds and left no room to match unicast ACKs.
+- **Improved: stale ACK-pending slots are reclaimed automatically.** A unicast
+  whose ACK never arrives no longer holds its slot indefinitely; slots older
+  than 1 second are freed for reuse. (Reclaim only — at 1.1.0 the library does
+  not retransmit at all; a lost packet is simply missed. Application-layer ETM
+  retransmission arrives in 1.2.0.)
+- **Fixed: pending-table command copy is now always null-terminated.**
+
+### 1.0.0
+
+Initial release.
+
+- Join a WCB ESP-NOW network as a first-class peer
+- Unicast and broadcast text commands (`send()` / `broadcast()`)
+- Raw byte forwarding to Pololu Maestro controllers via `WCBStream`
+  (unicast and Kyber broadcast)
+- UART monitors (`monitorRaw()` / `monitorSerial()`) for transparent passthrough
+- ETM heartbeat tracking with online/offline status callbacks
+- Optional CRC32 checksums matching WCB firmware
 
 ---
 
