@@ -224,8 +224,8 @@ void loop() {
 | `WCB_Client(oct2, oct3, password, quantity, deviceID, [cmdCb], [statusCb])` | Constructor. `deviceID` must match your WCB system (1–`quantity` for a standard slot, or `20` for the out-of-band special slot). |
 | `begin()` | Initialize WiFi and ESP-NOW, set custom MAC, register peers. Call once from `setup()`. |
 | `update()` | Call every `loop()`. Drives heartbeats, offline detection, and WCBStream flushing. |
-| `send(wcbID, command)` | Unicast a text command to one WCB. |
-| `broadcast(command)` | Broadcast a text command to all WCBs simultaneously. |
+| `send(wcbID, command, [ensured=true])` | Unicast a text command to one WCB. Ensured by default (retransmits until ACK'd, like WCB-to-WCB ETM); pass `false` for fire-and-forget. |
+| `broadcast(command, [ensured=true])` | Broadcast a text command to all WCBs simultaneously. Ensured by default (retransmits per-board until every online board ACKs); pass `false` for fire-and-forget telemetry. |
 | `sendRaw(wcbID, port, data, len)` | Unicast raw bytes to a specific WCB's serial port. |
 | `sendKyber(data, len)` | Broadcast raw bytes to all WCBs — any with `?KYBER,REMOTE` will forward to their Maestro. |
 | `monitorRaw(serial, target, port, [gap_ms])` | Watch a UART; flush buffered bytes via `sendRaw()` or `sendKyber()` (pass `broadcast` as target) when silent for `gap_ms`. |
@@ -448,27 +448,63 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 
 ## Changelog
 
+### 1.3.0
+
+**Automatic fragmentation for long unicast commands** — `send()` now transparently
+handles commands longer than a single ESP-NOW packet (199 chars, or 187 with
+checksum enabled). Previously they were **silently truncated**: a long
+`?SEQ,SAVE,...` arrived cut short and a corrupt sequence got stored on the board
+(or, with checksum on, was rejected entirely after burning the retries).
+
+- **`send()` auto-fragments** oversized commands using the WCB firmware's MGMT
+  fragmentation protocol (the same one the web config tool uses): the command is
+  split into 179-char chunks, the target board reassembles them and executes the
+  whole command through its normal parser. Works up to ~2.8 KB — comfortably
+  covering the firmware's 1800-char stored-sequence limit.
+- **Reliability:** the MGMT layer has no per-chunk ACK, so the full chunk set is
+  transmitted in multiple passes (3 when `ensured`, 2 otherwise). Duplicates are
+  harmless — the board stores each chunk once and discards retransmits of
+  completed sessions. A fragmented send blocks ~10 ms per chunk per pass
+  (a maximal ensured send ≈ 0.5 s).
+- **`broadcast()` does NOT fragment** — fragmentation is unicast-only (the
+  reassembly session on the board is per-target). An oversized broadcast now
+  **fails loudly** (error log + `return false`) instead of silently truncating;
+  `send()` the long command to each board individually.
+- No API changes — existing sketches gain this automatically.
+
+> Requires WCB firmware with the MGMT fragmentation handler (present in all
+> 6.x firmware this library targets).
+
 ### 1.2.0
 
-Adds optional **ensured delivery**. Backward compatible — existing `send()` /
-`broadcast()` calls are unchanged (they default to the previous best-effort
-behavior).
+Adds **ensured delivery**, and makes it the default for text commands so the
+library is **reliable by default** — matching the WCB firmware, which transmits
+with ETM ON by default. (Earlier 1.x releases never retransmitted, so
+client→WCB text was always best-effort regardless of the WCBs' ETM setting.)
 
-- **New: `send(target, cmd, ensured=true)` and `broadcast(cmd, ensured=true)`.**
-  Mirrors the WCB firmware's own ETM retry engine so client-originated ensured
-  traffic behaves identically to WCB-to-WCB ETM: after the initial send, the
-  packet is retried as a **per-board unicast** (reusing the original sequence
-  number, so receivers dedup it) to each expected board that hasn't ACK'd —
-  up to `ETM_MAX_RETRIES` per board. For a unicast the expected recipient is the
+- **`send()` and `broadcast()` now default to `ensured=true`.** A lost packet or
+  ACK is retransmitted instead of silently missed, just like WCB-to-WCB ETM.
+  Mirrors the firmware's retry engine: after the initial send, the packet is
+  retried as a **per-board unicast** (reusing the original sequence number, so
+  receivers dedup it) to each expected board that hasn't ACK'd — up to
+  `ETM_MAX_RETRIES` per board. For a unicast the expected recipient is the
   target; for a broadcast it's every board that was online at send time. A board
   that drops offline mid-flight is dropped from the expected set rather than
   retried forever.
+- **Opt out with `ensured=false`** for high-rate telemetry / status spam where
+  the next update supersedes a lost one — it avoids spending a pending slot and
+  airtime per send. (For binary streaming use the raw helpers `sendRaw()` /
+  `sendKyber()` / `WCBStream`, which are best-effort and unaffected by this
+  default — exactly as the firmware keeps PWM/servo streaming out of ETM.)
 - Tuning via `ETM_RETRY_INTERVAL_MS` (default 500 ms) and `ETM_MAX_RETRIES`
   (default 3) — matched to the firmware's `etmTimeoutMs` and retry count.
-- Reserve ensured mode for traffic that must land (e.g. a "command all boards"
-  action). Periodic telemetry should stay best-effort (`ensured=false`) — it
-  doesn't need per-recipient ACKs and would otherwise burn a pending slot and
-  airtime on every send.
+- The in-flight tracking table grew from 3 to **10 slots** (`WCB_PENDING_MAX`),
+  matching the firmware's `ETM_PENDING_MAX`. When full it now evicts the oldest
+  entry rather than dropping the new send, so ensured commands always get tracked.
+
+**Upgrade note:** if you have a sketch that calls `broadcast()` or `send()` at a
+high rate for telemetry, add `, false` to those calls to keep them best-effort.
+Discrete commands need no change — they just became reliable.
 
 ### 1.1.0
 

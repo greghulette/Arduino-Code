@@ -143,11 +143,16 @@ bool remoteConnected = false;
 //////////////////////////////////////////////////////////////////////
 //  Serial ports
 //////////////////////////////////////////////////////////////////////
-// rdSerial = hardware UART1 (Serial1) — matches original BC firmware on
-// the production WROOM-32 board.  (On PICO-MINI-02 hardware the default
-// UART1 pins clash with flash; that variant must use SoftwareSerial.)
-#define rdSerial Serial1
-SoftwareSerial blSerial, stSerial, mpSerial, s1Serial, s2Serial;
+// 2026-06: blSerial (Body LED Controller / ATMEGA link) moved from bit-banged
+// SoftwareSerial → hardware UART1. The SoftwareSerial instance on GPIO15 was
+// dropping every byte under the GUI's WiFi/ESP-NOW load — the Mega received
+// nothing even though write() ran, while other SoftwareSerial peripherals on
+// this board kept working. Hardware UART has dedicated timing immune to that.
+// UART1 is remapped to the SAME pins (RX=16 / TX=15) in begin(), so NO PCB
+// change. To free UART1, rdSerial (RADH) drops to SoftwareSerial — it's
+// low-rate and tolerates it (per the working-SoftwareSerial evidence above).
+HardwareSerial blSerial(1);
+SoftwareSerial rdSerial, stSerial, mpSerial, s1Serial, s2Serial;
 HCRVocalizer HCR(&mpSerial, MP_BAUD_RATE);
 
 //////////////////////////////////////////////////////////////////////
@@ -516,7 +521,29 @@ void serial2Event() {
 //////////////////////////////////////////////////////////////////////
 void writeSerialString(String s) { Serial.print(s + '\r'); }
 void writeRdSerial(String s) { for (char c : (s + '\r')) rdSerial.write(c); }
-void writeBlSerial(String s) { for (char c : (s + '\r')) blSerial.write(c); }
+// 2026-06 FIX: the BC→ATMEGA LED-command TX is BIT-BANGED on GPIO15 as a plain
+// GPIO — NOT a hardware UART, NOT SoftwareSerial. On this board both of those got
+// silently killed: SBUS's UART2 detaches the UART1 TX pin in the GPIO matrix, and
+// any active EspSoftwareSerial instance corrupts it too (write() ran but nothing
+// left the pin). A direct digitalWrite bit-bang can't be detached or clobbered.
+// Interrupts are held off per byte (like EspSoftwareSerial does) so the 9600-baud
+// bit timing stays clean; this is on core 1, so WiFi/ESP-NOW (core 0) is unaffected.
+// blSerial (UART1) is kept RX-ONLY on GPIO16 to read the LED board's status JSON.
+static void blTxByte(uint8_t b) {
+  const uint32_t BIT_US = 104;            // 1,000,000 / 9600
+  noInterrupts();
+  digitalWrite(SERIAL_TX_BL_PIN, LOW);  delayMicroseconds(BIT_US);            // start bit
+  for (uint8_t i = 0; i < 8; i++) {
+    digitalWrite(SERIAL_TX_BL_PIN, (b >> i) & 1);
+    delayMicroseconds(BIT_US);
+  }
+  digitalWrite(SERIAL_TX_BL_PIN, HIGH); delayMicroseconds(BIT_US);            // stop bit
+  interrupts();
+}
+void writeBlSerial(String s) {
+  String out = s + '\r';
+  for (size_t i = 0; i < out.length(); i++) blTxByte((uint8_t)out[i]);
+}
 void writeStSerial(String s) { for (char c : (s + '\r')) stSerial.write(c); }
 void writeMpSerial(String s) { for (char c : (s + '\r')) mpSerial.write(c); }
 void writeS1Serial(String s) { for (char c : (s + '\r')) s1Serial.write(c); }
@@ -1558,16 +1585,35 @@ void setup() {
                 (unsigned)sizeof(bodyControllerStatus_struct_message));
   Serial.flush();
 
-  // rdSerial = hardware Serial1, remapped to SERIAL_RX_RD_PIN/SERIAL_TX_RD_PIN
-  rdSerial.begin(RD_BAUD_RATE,  SERIAL_8N1,    SERIAL_RX_RD_PIN, SERIAL_TX_RD_PIN);
-  blSerial.begin(BL_BAUD_RATE,  SWSERIAL_8N1,  SERIAL_RX_BL_PIN, SERIAL_TX_BL_PIN, false, 95);
+  // 2026-06: blSerial = hardware UART1 (reliable), remapped to the ATMEGA pins.
+  // rdSerial (RADH) demoted to SoftwareSerial to free UART1.
+  // 2026-06: blSerial = hardware UART1 RX-ONLY (GPIO16) for the LED board's status
+  // JSON. TX is bit-banged on GPIO15 (see writeBlSerial / blTxByte) because the
+  // UART1 TX pin gets killed by SBUS / SoftwareSerial peripheral conflicts.
+  blSerial.begin(BL_BAUD_RATE,  SERIAL_8N1,    SERIAL_RX_BL_PIN, -1 /* no UART TX */);
+  pinMode(SERIAL_TX_BL_PIN, OUTPUT);
+  digitalWrite(SERIAL_TX_BL_PIN, HIGH);          // UART line idles HIGH
+  // 2026-06: ONLY start SoftwareSerial ports that are physically wired. An unused
+  // port's RX pin floats and storms its EspSoftwareSerial edge interrupt, which
+  // corrupts the hardware UART1 TX (the ATMEGA LED link). Connected here: RADH +
+  // MP3/HCR. AUX1/AUX2 are not wired, so they stay unstarted.
+  rdSerial.begin(RD_BAUD_RATE,  SWSERIAL_8N1,  SERIAL_RX_RD_PIN, SERIAL_TX_RD_PIN, false, 95);  // RADH
+  mpSerial.begin(MP_BAUD_RATE,  SWSERIAL_8N1,  SERIAL_RX_MP_PIN, SERIAL_TX_MP_PIN, false, 95);  // MP3/HCR
+#ifndef SBUS
+  // stSerial (stealth) shares GPIO35 with SBUS RX — mutually exclusive. Only
+  // started on non-SBUS builds (its predecessor role, before SBUS was added).
   stSerial.begin(ST_BAUD_RATE,  SWSERIAL_8N1,  SERIAL_RX_ST_PIN, SERIAL_TX_ST_PIN, false, 95);
-  mpSerial.begin(MP_BAUD_RATE,  SWSERIAL_8N1,  SERIAL_RX_MP_PIN, SERIAL_TX_MP_PIN, false, 95);
-  s1Serial.begin(SERIAL1_BAUD_RATE, SWSERIAL_8N1, SERIAL1_RX_PIN, SERIAL1_TX_PIN,  false, 95);
-  s2Serial.begin(SERIAL2_BAUD_RATE, SWSERIAL_8N1, SERIAL2_RX_PIN, SERIAL2_TX_PIN,  false, 95);
+#endif
+  // s1Serial (AUX1) / s2Serial (AUX2) intentionally NOT started — nothing wired.
+  // Re-enable here only when a device is actually connected to that port.
+  // s1Serial.begin(SERIAL1_BAUD_RATE, SWSERIAL_8N1, SERIAL1_RX_PIN, SERIAL1_TX_PIN,  false, 95);
+  // s2Serial.begin(SERIAL2_BAUD_RATE, SWSERIAL_8N1, SERIAL2_RX_PIN, SERIAL2_TX_PIN,  false, 95);
 
 #ifdef SBUS
   // Custom SBUS reader handles both 16ch and 24ch frames on the same pins.
+  // NOTE: SBUS's UART2 activity (and active SoftwareSerials) kill the UART1 TX
+  // pin GPIO15 — which is why the LED-board TX is bit-banged on a plain GPIO
+  // instead of using a UART. See writeBlSerial() / blTxByte().
   sbus_rx.begin(&Serial2, SERIAL_RX_SB_PIN, SERIAL_TX_SB_PIN);
 #endif
 

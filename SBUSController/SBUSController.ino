@@ -55,9 +55,12 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <Adafruit_NeoPixel.h>
+#include "esp_timer.h"          // one-shot boot-guard timer (cold-boot auto-recovery)
+#include "esp_ota_ops.h"        // esp_ota_get_bootloader_description (boot banner)
 
 // ─── WiFi ─────────────────────────────────────────────────────────────────────
-#define MAX_WIFI_NETS       4
+#define MAX_WIFI_NETS       8    // CLI digit cap is '0'..'8' — keep ≤ 9 so single-char input still works
 #define WIFI_AP_SSID        "SBUSCtrl"
 #define WIFI_AP_PASS        "sbus1234"
 #define WIFI_STA_TIMEOUT_MS 5000
@@ -71,6 +74,19 @@
 #define PWM_PIN_2       15   // Serial3 TX → RC PWM CH output 3
 #define PWM_PIN_3       17   // Serial4 TX → RC PWM CH output 4
 #define PWM_CH_COUNT    4
+#define STATUS_LED_PIN  48   // ESP32-S3 onboard RGB NeoPixel (WCB HW 3.2)
+
+// ─── Status LED ───────────────────────────────────────────────────────────────
+// Onboard NeoPixel on GPIO 48 — doubles as a diagnostic for the "won't run
+// with serial monitor closed" boot-strap latch.  Lit RED as the very first
+// statement of setup(); if the LED never comes on, the chip isn't running
+// our code at all (boot-strap stuck or in download mode).  Turns BLUE in AP
+// mode, GREEN when joined to a STA network, RED briefly on any error.
+Adafruit_NeoPixel statusLed(1, STATUS_LED_PIN, NEO_GRB + NEO_KHZ800);
+static inline void statusSet(uint8_t r, uint8_t g, uint8_t b) {
+  statusLed.setPixelColor(0, statusLed.Color(r, g, b));
+  statusLed.show();
+}
 
 // ─── SBUS Protocol ────────────────────────────────────────────────────────────
 #define SBUS_BAUD           100000
@@ -283,15 +299,22 @@ void applyConfigDefaults() {
   cfg.btn[7].ch = 7;  cfg.btn[7].val = 1033;   // R-Stick Click (RC-Controller slot 20, band 1021-1045)
 
   // WiFi networks — three defaults, tried in order
-  cfg.wifiCount = 3;
+  // MAX_WIFI_NETS is 4 — these four fill the slot table. Slot 3 ("Virus-
+  // InfectedNetwork") is an OPEN network; an empty pass string makes
+  // WiFi.begin() connect without security. Order = cascade priority when
+  // wifiPref == 0 (auto).
+  cfg.wifiCount = 4;
   cfg.wifiPref  = 0;   // 0 = auto cascade
-  strlcpy(cfg.wifiNets[0].ssid, "RHN-COMM",        sizeof(cfg.wifiNets[0].ssid));
-  strlcpy(cfg.wifiNets[0].pass, "0o9i8u7y)O(I*U&Y",sizeof(cfg.wifiNets[0].pass));
-  strlcpy(cfg.wifiNets[1].ssid, "HelloEverybody",   sizeof(cfg.wifiNets[1].ssid));
-  strlcpy(cfg.wifiNets[1].pass, "thedeskisbrown",   sizeof(cfg.wifiNets[1].pass));
-  strlcpy(cfg.wifiNets[2].ssid, "KYBER_0908",       sizeof(cfg.wifiNets[2].ssid));
-  strlcpy(cfg.wifiNets[2].pass, "12345678",         sizeof(cfg.wifiNets[2].pass));
-  memset(&cfg.wifiNets[3], 0, sizeof(cfg.wifiNets[3]));
+  strlcpy(cfg.wifiNets[0].ssid, "RHN-COMM",             sizeof(cfg.wifiNets[0].ssid));
+  strlcpy(cfg.wifiNets[0].pass, "0o9i8u7y)O(I*U&Y",     sizeof(cfg.wifiNets[0].pass));
+  strlcpy(cfg.wifiNets[1].ssid, "HelloEverybody",        sizeof(cfg.wifiNets[1].ssid));
+  strlcpy(cfg.wifiNets[1].pass, "thedeskisbrown",        sizeof(cfg.wifiNets[1].pass));
+  strlcpy(cfg.wifiNets[2].ssid, "KYBER_0908",            sizeof(cfg.wifiNets[2].ssid));
+  strlcpy(cfg.wifiNets[2].pass, "12345678",              sizeof(cfg.wifiNets[2].pass));
+  strlcpy(cfg.wifiNets[3].ssid, "VirusInfectedNetwork",  sizeof(cfg.wifiNets[3].ssid));
+  cfg.wifiNets[3].pass[0] = '\0';   // open network — no password
+  // Clear unused slots 4..MAX_WIFI_NETS-1 so re-init never carries stale data.
+  for (int i = cfg.wifiCount; i < MAX_WIFI_NETS; i++) memset(&cfg.wifiNets[i], 0, sizeof(cfg.wifiNets[i]));
 
   // PWM outputs — default to mirroring the first 4 SBUS channels
   for (int i = 0; i < PWM_CH_COUNT; i++) cfg.pwm[i].ch = i + 1;
@@ -799,7 +822,11 @@ static void sendWsDebug(const uint8_t* frame, int flen, int chcnt) {
   msg += ",\"ch\":[";
   for (int i = 0; i < chcnt; i++) { msg += cur[i]; if (i < chcnt - 1) msg += ','; }
   msg += "]}";
-  ws.textAll(msg);
+  // Throttled to 10 Hz by the s_lastWsDbgMs gate above — safe to mirror to
+  // Serial too (≈1.5 KB/s with 24 channels, well under 115200-baud capacity).
+  // PING-gated inside broadcastJson() so it only fires over Serial when a
+  // Web Serial client has identified itself within the last 5 s.
+  broadcastJson(msg);
 }
 #endif  // SBUS_DEBUG
 
@@ -833,17 +860,107 @@ inline uint16_t axisToSbusRange(float v, uint16_t mn, uint16_t mx) {
 }
 
 // =============================================================================
-//  WEBSOCKET HANDLER
+//  COMMAND PROCESSOR  (transport-agnostic JSON message dispatch)
 // =============================================================================
 
 // Forward declarations (Arduino's auto-prototyper sometimes misses these
 // when the file contains a large raw string literal).
 void switchWifi(uint8_t pref);
 
-void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
+// JSON-over-Serial line accumulator.  Web Serial config tool writes one JSON
+// object per line; we accumulate the bytes until a newline, then hand off to
+// processCommandJson() — the SAME dispatcher used for WebSocket messages.
+//
+// A line that starts with '{' switches the input stream into JSON mode; any
+// other first character falls through to the existing one-char CLI ('m', 'd',
+// 'w', '?').  This way humans typing in the serial monitor and the config tool
+// dumping JSON can share the port without conflict.  Declared up here (rather
+// than next to handleSerialCommands) so setup() can call .reserve() on the
+// buffer before any data arrives.
+static String  g_serialJsonBuf;
+static bool    g_serialInJson      = false;
+static const   size_t MAX_JSON_LINE = 6144;   // cfg payload ≈ 5 KB; headroom for growth
+
+// ── Serial host liveness ────────────────────────────────────────────────────
+// When a JSON-aware host (Web Serial client / config tool) sends us a {t:"ping"}
+// we stamp the time here; broadcastJson() then mirrors WS broadcasts to Serial
+// while the stamp is fresh, so we don't dump JSON over Serial when only a human
+// is watching the serial monitor.
+static uint32_t g_serialHostLastSeenMs = 0;
+static const uint32_t SERIAL_HOST_TTL_MS = 5000;   // PING refresh window
+static inline bool serialHostAlive() {
+  return g_serialHostLastSeenMs && (millis() - g_serialHostLastSeenMs) < SERIAL_HOST_TTL_MS;
+}
+
+// Send a JSON message to every connected transport that has a live consumer:
+//   - all WebSocket clients (always)
+//   - the USB serial port (only if a Web Serial host has PINGed us recently)
+// Use this in place of ws.textAll() for anything that should reach BOTH
+// transports.  Replies to a specific Serial command (PONG, etc.) bypass this
+// and go straight to Serial.println() to avoid echoing back over WS.
+//
+// The serial write is CHUNKED — each chunk is sized to current TX free space,
+// no chunk ever blocks individually.  When the buffer fills we yield 1 ms for
+// the UART to drain, then continue.  Total send time is bounded by the wire
+// speed (~450 ms for a 5 KB cfg dump @ 115200 baud) regardless of buffer size,
+// so we can run a small TX buffer without losing big messages.  Hard 1 s
+// deadline drops the message rather than block the loop forever if the host
+// stops reading completely.
+static void broadcastJson(const String& msg) {
+  ws.textAll(msg);
+  if (!serialHostAlive()) return;
+  const uint8_t* data = (const uint8_t*)msg.c_str();
+  size_t   remaining = msg.length();
+  uint32_t deadline  = millis() + 1000;
+  while (remaining > 0) {
+    if ((int32_t)(millis() - deadline) > 0) return;     // host stalled — drop rest
+    int avail = Serial.availableForWrite();
+    if (avail <= 0) { delay(1); continue; }
+    size_t chunk = (size_t)avail < remaining ? (size_t)avail : remaining;
+    Serial.write(data, chunk);
+    data      += chunk;
+    remaining -= chunk;
+  }
+  // Newline terminator — short enough to fit any non-zero free space.
+  while (Serial.availableForWrite() <= 0 && (int32_t)(millis() - deadline) < 0) delay(1);
+  if (Serial.availableForWrite() > 0) Serial.write('\n');
+}
+
+void processCommandJson(const char* json) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) return;
   const char* t = doc["t"] | "";
+
+  // ── PING / PONG (Serial host liveness handshake) ─────────────────────────
+  // The Web Serial config tool sends {t:"ping"} on connect and then refreshes
+  // every few seconds.  We reply with {t:"pong",ver:N} so the client can see
+  // it's connected to the right firmware, and stamp g_serialHostLastSeenMs so
+  // broadcastJson() starts mirroring WS broadcasts to the serial port.
+  if (!strcmp(t, "ping")) {
+    g_serialHostLastSeenMs = millis();
+    String resp = "{\"t\":\"pong\",\"ver\":";
+    resp += CFG_VER;
+    resp += "}";
+    // Reply only over Serial — WS clients use the WebSocket open event for
+    // the same purpose, so echoing PONGs to all WS clients would be noise.
+    if (Serial.availableForWrite() >= (int)resp.length() + 1) {
+      Serial.write((const uint8_t*)resp.c_str(), resp.length());
+      Serial.write('\n');
+    }
+    return;
+  }
+
+  // ── GETCFG — explicit "send me the current config" request ────────────────
+  // WS clients receive a buildCfgJson() on WS_EVT_CONNECT automatically, but
+  // Serial has no equivalent open-event so the JS Web Serial client (and
+  // anyone wanting a guaranteed re-sync) sends {t:"getcfg"} to pull the live
+  // state.  importConfig / saveConfig in the UI also fire this right after
+  // their cfg payload, so the UI always reflects what's actually saved even
+  // if the implicit post-save broadcast was missed.
+  if (!strcmp(t, "getcfg")) {
+    broadcastJson(buildCfgJson());
+    return;
+  }
 
   // ── Joystick axes ────────────────────────────────────────────────────────
   // { "t":"a", "lx":f, "ly":f, "rx":f, "ry":f }
@@ -965,7 +1082,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
       applyAllControls();
       Serial.printf("[SBUS] Mode → SBUS-%d (%d bytes/frame)\n", sbusChCount(), sbusFrameLen());
     }
-    ws.textAll(buildCfgJson());
+    broadcastJson(buildCfgJson());
   }
 
   // ── Debug toggle ──────────────────────────────────────────────────────────
@@ -974,7 +1091,7 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
 #ifdef SBUS_DEBUG
     g_sbusDebug = doc["on"] | !g_sbusDebug;
     Serial.printf("[SBUS] Debug %s\n", g_sbusDebug ? "ENABLED" : "DISABLED");
-    ws.textAll(buildCfgJson());
+    broadcastJson(buildCfgJson());
 #endif
   }
 
@@ -1087,8 +1204,8 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     if (doc["pwmExt"].is<bool>()) cfg.pwmExtended = doc["pwmExt"].as<bool>();
     saveConfig();
     applyAllControls();
-    ws.textAll(buildCfgJson());
-    Serial.println("[SBUS] Config updated via WebSocket.");
+    broadcastJson(buildCfgJson());
+    Serial.println("[SBUS] Config updated.");
 
   // ── WiFi config + switch ───────────────────────────────────────────────────
   // { "t":"wificfg", "pref":N, "nets":[{"s":"SSID","p":"pass"},...] }
@@ -1116,11 +1233,16 @@ void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
     nd["ssid"] = targetSSID;
     nd["mdns"] = MDNS_HOST ".local";
     String ns; serializeJson(nd, ns);
-    ws.textAll(ns);
+    broadcastJson(ns);
     delay(300);   // let WS frame flush before IP changes
     switchWifi(pref);
-    ws.textAll(buildCfgJson());
+    broadcastJson(buildCfgJson());
   }
+}
+
+// Thin WebSocket wrapper — kept so the existing onWsEvent dispatch is unchanged.
+void handleWsMessage(AsyncWebSocketClient* client, const char* json) {
+  processCommandJson(json);
 }
 
 // Accumulation buffer for multi-frame WebSocket messages.
@@ -1197,6 +1319,7 @@ void switchWifi(uint8_t pref) {
   }
 
   if (g_wifiNet >= 0) {
+    statusSet(0, 40, 0);          // GREEN = STA connected
     Serial.printf("[SBUS] Connected to \"%s\"\n", cfg.wifiNets[g_wifiNet].ssid);
     Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.localIP().toString().c_str());
     if (MDNS.begin(MDNS_HOST))
@@ -1205,6 +1328,7 @@ void switchWifi(uint8_t pref) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+    statusSet(0, 0, 40);          // BLUE = AP fallback
     Serial.printf("[SBUS] AP mode  SSID: %s  Pass: %s\n", WIFI_AP_SSID, WIFI_AP_PASS);
     Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.softAPIP().toString().c_str());
   }
@@ -1212,16 +1336,99 @@ void switchWifi(uint8_t pref) {
 
 // =============================================================================
 
+// ── Cold-boot auto-recovery (boot guard) ───────────────────────────────────
+// The custom short-watchdog bootloader (RTC WDT 9000 → 3000 ms) auto-resets a
+// board that stalls in the pre-app boot window — but IDF disables that RTC WDT
+// right before setup() runs, so a stall INSIDE setup() (LittleFS, WiFi/web
+// bring-up current spike on a cold rail) would otherwise sit dark until someone
+// presses reset. This one-shot esp_timer fires if setup() hasn't finished
+// within BOOT_GUARD_TIMEOUT_MS and restarts the board, so a cold boot
+// auto-retries. The callback runs in the esp_timer task — independent of the
+// loop task running setup() — so a hung setup() can't stop it. Cancelled at the
+// end of a healthy setup(). Mirrors the WCB firmware's guard (same 16MB S3
+// board + short-WDT bootloader). 15 s (vs the WCB's 10 s) because SBUS's
+// switchWifi() blocks up to WIFI_STA_TIMEOUT_MS (5 s) on a failed connect, so the
+// guard must comfortably exceed the worst-case REAL setup() time (~7 s) or it
+// would false-fire into a boot loop. It only needs to beat a genuine *hang*.
+#define BOOT_GUARD_TIMEOUT_MS 15000
+static esp_timer_handle_t _bootGuardTimer = nullptr;
+static void _bootGuardFired(void*) { ESP.restart(); }
+
+static void bootGuardArm() {
+  esp_timer_create_args_t args = {};
+  args.callback        = &_bootGuardFired;
+  args.arg             = nullptr;
+  args.dispatch_method = ESP_TIMER_TASK;
+  args.name            = "bootguard";
+  if (esp_timer_create(&args, &_bootGuardTimer) == ESP_OK) {
+    esp_timer_start_once(_bootGuardTimer, (uint64_t)BOOT_GUARD_TIMEOUT_MS * 1000ULL);
+  }
+}
+
+static void bootGuardDisarm() {
+  if (_bootGuardTimer) {
+    esp_timer_stop(_bootGuardTimer);
+    esp_timer_delete(_bootGuardTimer);
+    _bootGuardTimer = nullptr;
+  }
+}
+
+// Report at boot which 2nd-stage bootloader is on the board (stock vs the custom
+// short-WDT one). Reads the esp_bootloader_desc_t in IDF 5.2+ bootloader images —
+// no flash dump. The custom bootloaders are identified by build timestamp; if
+// either is rebuilt, add its new date here (read it from this very banner).
+static void printBootloaderInfo() {
+  static const char *CUSTOM_BOOT_DATES[] = {
+    "Jun  8 2026 16:02:21",   // WCB_S3_custom_bootloader_16MB_wdt3s.bin
+    "Jun 10 2026 14:36:20",   // WCB_S3_custom_bootloader_8MB_wdt3s.bin
+  };
+  esp_bootloader_desc_t desc;
+  if (esp_ota_get_bootloader_description(NULL, &desc) == ESP_OK) {
+    bool custom = false;
+    for (size_t i = 0; i < sizeof(CUSTOM_BOOT_DATES) / sizeof(CUSTOM_BOOT_DATES[0]); i++)
+      if (strncmp(desc.date_time, CUSTOM_BOOT_DATES[i], sizeof(desc.date_time)) == 0) { custom = true; break; }
+    if (custom)
+      Serial.printf("Bootloader: CUSTOM short-WDT (cold-boot auto-retry) — built %s\n", desc.date_time);
+    else
+      Serial.printf("Bootloader: stock (IDF %s, built %s)\n", desc.idf_ver, desc.date_time);
+  } else {
+    Serial.println("Bootloader: unknown (no description block)");
+  }
+}
+
 void setup() {
-  // TX ring buffer so the boot prints below (and runtime vlogf) have headroom
-  // to write into when no host is draining the port. On WCB HW 3.2 the USB
-  // serial path back-pressures with no host attached; the default ~128 B TX
-  // buffer fills mid-setup() and a plain Serial.print() then blocks forever,
-  // so loop() is never reached and no SBUS goes out. Must precede begin().
-  Serial.setTxBufferSize(1024);
+  // Arm the boot guard FIRST so it covers all of setup() (LittleFS, WiFi/web
+  // bring-up). Disarmed at the very end once the board is confirmed healthy.
+  bootGuardArm();
+
+  // ── Status LED — light it BEFORE any Serial / WiFi work so it's a true
+  //    "I'm alive" signal even if a later step blocks.  If you flash and
+  //    don't see the LED at all, the chip never got out of the ROM bootloader. ──
+  statusLed.begin();
+  statusLed.setBrightness(40);   // dim — onboard LEDs are bright
+  statusSet(40, 0, 0);            // RED = booting
+  delay(20);                       // a tick for the pixel to latch
+
+  // TX ring buffer — modest size that comfortably fits boot prints + the
+  // throttled chdata stream.  broadcastJson() now CHUNKS large writes (config
+  // dumps etc.) so it no longer depends on the buffer being big enough to
+  // hold a whole message at once.  Keeping this small avoids the larger
+  // allocation that — in earlier sessions — appeared to correlate with the
+  // WCB HW 3.2 boot-strap latch ("only runs with serial monitor open").
+  // Must precede begin().
+  Serial.setTxBufferSize(4096);
+  // RX buffer big enough to absorb a full config payload (~5 KB import)
+  // arriving faster than loop() can drain byte-by-byte.  Default is ~256 B
+  // which would silently drop bytes mid-stream and corrupt the JSON.
+  // Must precede begin().
+  Serial.setRxBufferSize(4096);
   Serial.begin(115200);
+  // Reserve the JSON line accumulator once so per-byte += doesn't reallocate
+  // 13× while a 5 KB import streams in.  Hands-off after this.
+  g_serialJsonBuf.reserve(MAX_JSON_LINE);
   delay(400);
   Serial.println("\n[SBUS] SBUSController booting (X18 edition)...");
+  printBootloaderInfo();
 
   // SBUS output: 100 kbaud, 8E2, inverted (GPIO9 = Serial5 TX on WCB v3.x)
   Serial1.begin(SBUS_BAUD, SERIAL_8E2, -1, SBUS_TX_PIN, true);
@@ -1274,8 +1481,11 @@ void setup() {
 
   Serial.printf("[SBUS] Mode: SBUS-%d  (%d ch, %d bytes/frame)\n",
                 sbusChCount(), sbusChCount(), sbusFrameLen());
-  Serial.println("[SBUS] Serial cmds:  m=toggle mode  d=toggle debug  ?=status  w=wifi  w1-w4=switch net  wa=AP");
+  Serial.println("[SBUS] Serial cmds:  m=toggle mode  d=toggle debug  ?=status  w=wifi  w1-w8=switch net  wa=AP  wd=merge defaults");
   Serial.println("[SBUS] Ready.");
+
+  // setup() completed — cancel the boot guard so a healthy board never trips it.
+  bootGuardDisarm();
 }
 
 // =============================================================================
@@ -1285,6 +1495,32 @@ void setup() {
 static void handleSerialCommands() {
   while (Serial.available()) {
     char c = (char)Serial.read();
+
+    // ── JSON line in progress: keep collecting until newline ─────────────────
+    if (g_serialInJson) {
+      if (c == '\n' || c == '\r') {
+        if (g_serialJsonBuf.length() > 0) processCommandJson(g_serialJsonBuf.c_str());
+        g_serialJsonBuf = "";
+        g_serialInJson  = false;
+        continue;
+      }
+      if (g_serialJsonBuf.length() >= MAX_JSON_LINE) {
+        Serial.printf("[SBUS] JSON line >%u bytes — aborting.\n", (unsigned)MAX_JSON_LINE);
+        g_serialJsonBuf = "";
+        g_serialInJson  = false;
+        continue;
+      }
+      g_serialJsonBuf += c;
+      continue;
+    }
+
+    // ── Start of a JSON line ─────────────────────────────────────────────────
+    if (c == '{') {
+      g_serialJsonBuf = "{";
+      g_serialInJson  = true;
+      continue;
+    }
+
     if (c == '\n' || c == '\r' || c == ' ') continue;
 
     if (c == 'm') {
@@ -1294,7 +1530,7 @@ static void handleSerialCommands() {
       for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
       applyAllControls();
       Serial.printf("[SBUS] Mode -> SBUS-%d (%d bytes/frame)\n", sbusChCount(), sbusFrameLen());
-      ws.textAll(buildCfgJson());
+      broadcastJson(buildCfgJson());
 
     } else if (c == 'd') {
 #ifdef SBUS_DEBUG
@@ -1305,8 +1541,11 @@ static void handleSerialCommands() {
 #endif
 
     } else if (c == 'w') {
-      // WiFi switch: send 'w' then immediately '0'-'4' or 'a' (no Enter needed)
-      // w0=auto  w1..w4=specific net  wa=AP only  w alone=show status
+      // WiFi switch: send 'w' then immediately '0'-'8' or 'a' (no Enter needed)
+      // w0=auto  w1..w8=specific net (slot 1..MAX_WIFI_NETS)  wa=AP only
+      // w alone=show status.  Digit range tracks MAX_WIFI_NETS so users can
+      // pick any saved slot from the serial monitor without round-tripping
+      // through the web UI.
       delay(30);  // brief wait for the digit to arrive in the buffer
       // Drain whitespace/newlines so Enter alone doesn't trigger a switch
       while (Serial.available() && (Serial.peek() == '\r' || Serial.peek() == '\n' || Serial.peek() == ' '))
@@ -1315,14 +1554,52 @@ static void handleSerialCommands() {
         char nc = Serial.available() ? (char)Serial.read() : 0;
         bool doSwitch = false;
         uint8_t pref  = 255;
-        if      (nc >= '0' && nc <= '4') { pref = nc - '0'; doSwitch = true; }
+
+        // 'wd' — merge firmware-default networks into saved config. Idempotent.
+        // Useful when LittleFS still has an old config (missing newer defaults
+        // like VirusInfectedNetwork) but you don't want to wipe customisations.
+        if (nc == 'd' || nc == 'D') {
+          struct { const char* ssid; const char* pass; } defaults[] = {
+            { "RHN-COMM",             "0o9i8u7y)O(I*U&Y" },
+            { "HelloEverybody",       "thedeskisbrown"   },
+            { "KYBER_0908",           "12345678"         },
+            { "VirusInfectedNetwork", ""                 },
+          };
+          int added = 0;
+          for (auto& d : defaults) {
+            bool exists = false;
+            for (int i = 0; i < cfg.wifiCount; i++)
+              if (!strcmp(cfg.wifiNets[i].ssid, d.ssid)) { exists = true; break; }
+            if (exists) continue;
+            if (cfg.wifiCount >= MAX_WIFI_NETS) {
+              Serial.printf("[WiFi] Skipping \"%s\": slot table full (%d).\n", d.ssid, MAX_WIFI_NETS);
+              continue;
+            }
+            strlcpy(cfg.wifiNets[cfg.wifiCount].ssid, d.ssid, sizeof(cfg.wifiNets[0].ssid));
+            strlcpy(cfg.wifiNets[cfg.wifiCount].pass, d.pass, sizeof(cfg.wifiNets[0].pass));
+            cfg.wifiCount++;
+            added++;
+            Serial.printf("[WiFi] Added default \"%s\" → slot %d\n", d.ssid, cfg.wifiCount);
+          }
+          if (added) {
+            saveConfig();
+            broadcastJson(buildCfgJson());
+          } else {
+            Serial.println("[WiFi] All firmware-default networks already present — nothing to merge.");
+          }
+          for (int i = 0; i < cfg.wifiCount; i++)
+            Serial.printf("  [%d] %s\n", i + 1, cfg.wifiNets[i].ssid);
+          return;   // skip the normal switch path
+        }
+
+        if      (nc >= '0' && nc <= '8') { pref = nc - '0'; doSwitch = true; }
         else if (nc == 'a' || nc == 'A') { pref = 255;      doSwitch = true; }
         if (doSwitch) {
           Serial.printf("[WiFi] Switching (pref=%u)...\n", pref);
           switchWifi(pref);
           cfg.wifiPref = pref;
           saveConfig();
-          ws.textAll(buildCfgJson());
+          broadcastJson(buildCfgJson());
         } else {
           // Status only
           if (g_wifiNet >= 0)
@@ -1330,7 +1607,7 @@ static void handleSerialCommands() {
               cfg.wifiNets[g_wifiNet].ssid, WiFi.localIP().toString().c_str(), g_wifiNet + 1);
           else
             Serial.printf("[WiFi] AP mode  IP: %s\n", WiFi.softAPIP().toString().c_str());
-          Serial.println("[WiFi] Cmds: w0=auto  w1-w4=net  wa=AP");
+          Serial.println("[WiFi] Cmds: w0=auto  w1-w8=net  wa=AP  wd=merge firmware defaults");
           for (int i = 0; i < cfg.wifiCount; i++)
             Serial.printf("  [%d] %s\n", i + 1, cfg.wifiNets[i].ssid);
         }

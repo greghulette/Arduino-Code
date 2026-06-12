@@ -199,9 +199,16 @@ void WCB_Client::update() {
 //
 // Send a text command to one specific WCB.
 // Internally calls _sendPacket() which handles CRC appending and ACK tracking.
+// Commands longer than one packet are fragmented automatically (1.3.0) —
+// previously they were silently truncated by strncpy, so a long ?SEQ,SAVE
+// arrived cut short and a corrupt sequence got stored on the board.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::send(uint8_t target_wcb, const char* command, bool ensured) {
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
+    if (!command) return false;
+    if (strlen(command) > _maxSingleCommandLen()) {
+        return _sendFragmented(target_wcb, command, ensured);
+    }
     return _sendPacket(target_wcb, command, ensured);
 }
 
@@ -212,7 +219,104 @@ bool WCB_Client::send(uint8_t target_wcb, const char* command, bool ensured) {
 // Every WCB on the network receives and processes the same packet.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::broadcast(const char* command, bool ensured) {
+    if (!command) return false;
+    // Fragmentation is unicast-only (the target-side reassembly session is
+    // per-board) — an oversized broadcast must fail LOUDLY, never truncate.
+    if (strlen(command) > _maxSingleCommandLen()) {
+        Serial.printf("[WCB_Client] broadcast: command too long (%u > %u chars) — "
+                      "fragmentation is unicast-only. send() it to each board instead.\n",
+                      (unsigned)strlen(command), (unsigned)_maxSingleCommandLen());
+        return false;
+    }
     return _sendPacket(WCB_TARGET_BROADCAST, command, ensured);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _maxSingleCommandLen
+//
+// Longest command that fits ONE packet: structCommand is 200 bytes (199 + NUL);
+// when checksum is enabled the "|CRCxxxxxxxx" suffix (12 chars) shares it.
+// ─────────────────────────────────────────────────────────────────────────────
+size_t WCB_Client::_maxSingleCommandLen() const {
+    return _checksumEnabled ? (199 - 12) : 199;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _sendFragmented
+//
+// Deliver an oversized UNICAST command via the WCB firmware's MGMT
+// fragmentation protocol (the same one the web config tool uses):
+//   • split into WCB_MGMT_CHUNK_LEN-char chunks (max WCB_MGMT_MAX_CHUNKS)
+//   • broadcast each chunk as a wcb_packet_mgmt_t (226 bytes — the firmware
+//     dispatches by size); only the addressed targetWCB reassembles it
+//   • when all chunks arrive, the target executes the WHOLE command through
+//     its normal parser (chained ^ commands split correctly)
+//
+// Reliability: the MGMT layer has NO per-chunk ACK, so the full chunk set is
+// transmitted in multiple passes (3 when ensured, 2 otherwise). Duplicates
+// are harmless — the target stores each chunk once and remembers completed
+// sessionIds, so repeat passes after completion are silently discarded.
+//
+// Blocking: ~10 ms per chunk per pass (a full 16-chunk ensured send ≈ 0.5 s).
+// The target's reassembly window is 15 s — passes land well inside it.
+//
+// Returns true if every chunk of at least one full pass was accepted by
+// ESP-NOW for transmission. NOTE: this is acceptance, not delivery — there
+// is no ACK at this layer (use a short command for anything you must confirm).
+// ─────────────────────────────────────────────────────────────────────────────
+bool WCB_Client::_sendFragmented(uint8_t target_wcb, const char* command, bool ensured) {
+    size_t len = strlen(command);
+    uint8_t totalChunks = (uint8_t)((len + WCB_MGMT_CHUNK_LEN - 1) / WCB_MGMT_CHUNK_LEN);
+    if (totalChunks > WCB_MGMT_MAX_CHUNKS) {
+        Serial.printf("[WCB_Client] send: command too long even for fragmentation "
+                      "(%u chars > %u max). Not sent.\n",
+                      (unsigned)len, (unsigned)(WCB_MGMT_CHUNK_LEN * WCB_MGMT_MAX_CHUNKS));
+        return false;
+    }
+
+    // Fresh sessionId per command. 0xFFFF is reserved (the firmware's
+    // completed-session ring buffer initialises to 0xFFFF, which would make
+    // the very first session look like a duplicate and be discarded).
+    uint16_t sessionId = (uint16_t)esp_random();
+    if (sessionId == 0xFFFF) sessionId = 0xFFFE;
+
+    wcb_packet_mgmt_t pkt;
+    const int passes = ensured ? 3 : 2;
+    bool anyPassClean = false;
+
+    Serial.printf("[WCB_Client] send: %u chars > single-packet limit — fragmenting "
+                  "to WCB%d (%d chunks, session %04X, %d passes)\n",
+                  (unsigned)len, target_wcb, totalChunks, sessionId, passes);
+
+    for (int pass = 0; pass < passes; pass++) {
+        bool passClean = true;
+        for (uint8_t i = 0; i < totalChunks; i++) {
+            memset(&pkt, 0, sizeof(pkt));
+            strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
+            pkt.packetType  = WCB_MGMT_PACKET_TYPE_FRAG;
+            pkt.targetWCB   = target_wcb;
+            pkt.sessionId   = sessionId;
+            pkt.chunkIdx    = i;
+            pkt.totalChunks = totalChunks;
+
+            size_t off = (size_t)i * WCB_MGMT_CHUNK_LEN;
+            size_t n   = len - off;
+            if (n > WCB_MGMT_CHUNK_LEN) n = WCB_MGMT_CHUNK_LEN;
+            memcpy(pkt.payload, command + off, n);   // payload[180] zeroed above → NUL-safe
+
+            if (esp_now_send(_broadcastMAC, (uint8_t*)&pkt, sizeof(pkt)) != ESP_OK) {
+                passClean = false;
+            }
+            delay(10);   // pacing: don't flood the ESP-NOW TX queue
+        }
+        if (passClean) anyPassClean = true;
+    }
+
+    if (!anyPassClean) {
+        Serial.printf("[WCB_Client] send: fragmented send to WCB%d failed — "
+                      "no complete pass was accepted by ESP-NOW\n", target_wcb);
+    }
+    return anyPassClean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -722,15 +826,34 @@ void WCB_Client::_checkOfflineBoards() {
 // ─────────────────────────────────────────────────────────────────────────────
 // _findFreePending
 //
-// Returns the index of the first inactive slot in _pending[], or -1 if all
-// WCB_PENDING_MAX slots are occupied. Callers still send the packet on -1;
-// it just won't be tracked for ACK confirmation.
+// Returns the index of a usable slot in _pending[]. Prefers the first inactive
+// slot. If all WCB_PENDING_MAX slots are occupied, evicts the OLDEST one (by
+// sentMs) and returns it — same policy as the WCB firmware's pending table.
+//
+// Eviction (rather than the old "return -1, send untracked") matters now that
+// ensured delivery is the default: a brand-new ensured command must get a slot
+// so it can be retried, and the oldest outstanding entry is the safest to drop
+// (it has had the most time to be delivered + ACK'd at the MAC layer already).
+// Always returns a valid index in [0, WCB_PENDING_MAX).
 // ─────────────────────────────────────────────────────────────────────────────
 int WCB_Client::_findFreePending() {
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
         if (!_pending[i].active) return i;
     }
-    return -1;
+    // All slots busy — evict the one with the greatest age. Age is computed as
+    // (now - sentMs) with unsigned arithmetic, so it stays correct across a
+    // millis() rollover (entries only live for ms, far under the ~49.7-day
+    // wrap period). The oldest entry is the safest to drop: it has had the most
+    // time to be delivered and MAC-layer-retried already.
+    unsigned long now    = millis();
+    int           oldest = 0;
+    unsigned long maxAge = now - _pending[0].sentMs;
+    for (int i = 1; i < WCB_PENDING_MAX; i++) {
+        unsigned long age = now - _pending[i].sentMs;
+        if (age > maxAge) { maxAge = age; oldest = i; }
+    }
+    _pending[oldest].active = false;
+    return oldest;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

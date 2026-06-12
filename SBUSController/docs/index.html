@@ -1,10 +1,4 @@
-#pragma once
-// HTML for the SBUS Controller web UI.
-// Kept in a separate header so the Arduino preprocessor does not scan
-// the raw-string contents looking for function prototypes (which causes
-// false-positive matches on JS "function name() { ... }" patterns).
-
-static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -3046,4 +3040,4 @@ applyUnitToggle();   // pick up persisted unit preference on first paint
 connect();
 </script>
 </body>
-</html>)rawhtml";
+</html>

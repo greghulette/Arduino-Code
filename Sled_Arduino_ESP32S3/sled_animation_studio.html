@@ -311,6 +311,20 @@
       <h2 style="margin-top:20px">Colors <span class="hint">weight % · per-color brightness</span></h2>
       <div class="colors" id="colors"></div>
 
+      <!-- Per-preset scroll text — only shown when Base animation = SCROLLTEXT.
+           Lives INSIDE the editor so it's saved by the same "Save to NVS" button. -->
+      <div id="textEditRows" style="display:none">
+        <h2 style="margin-top:20px">Scroll Text <span class="hint">saved with this preset</span></h2>
+        <div class="row"><label>Message</label><input type="text" id="txtMsg" maxlength="60" placeholder="R2-D2"></div>
+        <div class="row">
+          <label>Font</label>
+          <select id="txtFont"><option value="latin">English</option><option value="aurebesh">Aurebesh</option></select>
+          <label class="toggle" style="flex:0 0 auto;margin-left:12px"><input type="checkbox" id="txtScroll" checked> scroll</label>
+        </div>
+        <div class="row"><label>Color</label><input type="color" id="txtColor" value="#00ff66" style="width:48px;height:32px;border:1px solid var(--line2);border-radius:6px;background:none;padding:0;cursor:pointer"></div>
+        <p class="hint" id="txtHint">This message + font is saved <b>with this preset</b> on Save. Scroll speed = the <b>Speed</b> slider above. Make one English preset and one Aurebesh preset to have both.</p>
+      </div>
+
       <div class="actions">
         <button id="btnPreview">Preview (live)</button>
         <button id="btnRun">Run on Sled</button>
@@ -321,23 +335,8 @@
       <p class="hint" id="editHint">Connect, then pick a preset or click + New. Edits auto-preview on the matrix; Save writes to the sled's NVS.</p>
     </div>
 
-    <!-- ===== Third column: Scroll Text + console ===== -->
+    <!-- ===== Third column: console ===== -->
     <div class="col3">
-      <div class="panel">
-        <h2>Scroll Text</h2>
-        <div class="row"><label>Message</label><input type="text" id="txtMsg" maxlength="60" placeholder="R2-D2"></div>
-        <div class="row">
-          <label>Font</label>
-          <select id="txtFont"><option value="latin">English</option><option value="aurebesh">Aurebesh</option></select>
-          <label class="toggle" style="flex:0 0 auto;margin-left:12px"><input type="checkbox" id="txtScroll" checked> scroll</label>
-        </div>
-        <div class="row"><label>Color</label><input type="color" id="txtColor" value="#00ff66" style="width:48px;height:32px;border:1px solid var(--line2);border-radius:6px;background:none;padding:0;cursor:pointer"></div>
-        <div class="row"><label>Speed (ms)</label><input type="range" id="txtSpeed" min="10" max="300" value="40"><span class="val" id="txtSpeedV">40</span></div>
-        <div class="actions">
-          <button id="btnText" class="primary">Show on sled</button>
-        </div>
-        <p class="hint" id="txtHint">Saved to NVS &amp; runs immediately. Aurebesh needs an <code>aurebesh.otf</code> (or .ttf) beside this file; English works as-is.</p>
-      </div>
       <div class="panel" style="padding:14px">
         <h2 style="margin-bottom:10px">Console</h2>
         <pre id="log"></pre>
@@ -573,13 +572,45 @@ function loadEditor(p){
     $("w"+i).value=p.weights[i];  $("wv"+i).textContent=p.weights[i]+"%";
     $("cb"+i).value=p.cbright[i]; $("cbv"+i).textContent=p.cbright[i];
   }
+  // 2026-06: per-preset scroll text — repopulate the Scroll Text panel so editing
+  // a saved text preset shows its own message / language / colour.
+  if (isScrollAnim(p.anim)) {
+    $("txtMsg").value      = p.textMsg || "";
+    $("txtFont").value     = (p.textFont===1) ? "aurebesh" : "latin";
+    if (p.textColor) $("txtColor").value = rgb2hex(p.textColor);
+    $("txtScroll").checked = (p.textScroll !== false);
+  }
+  reflectTextPanel();
   paintAllRanges();
 }
+// The scroll-text controls live inside the editor; reveal them only when the
+// editor's animation type is SCROLLTEXT so the message saves with this preset.
+function reflectTextPanel(){
+  const on = isScrollAnim(+$("fAnim").value);
+  const block = $("textEditRows");
+  if (block) block.style.display = on ? "block" : "none";
+}
+// True if the given base-animation id is the scroll-text type (name "SCROLLTEXT").
+function isScrollAnim(id){ const b=bases.find(x=>x.id==id); return !!(b && /scrolltext/i.test(b.name)); }
 function gatherEditor(){
   const colors=[],weights=[],cbright=[];
   for(let i=0;i<4;i++){ colors.push(hex2rgb($("c"+i).value)); weights.push(+$("w"+i).value); cbright.push(+$("cb"+i).value); }
-  return { name:$("fName").value||"preset", anim:+$("fAnim").value, speed:+$("fSpeed").value,
+  const o = { name:$("fName").value||"preset", anim:+$("fAnim").value, speed:+$("fSpeed").value,
            bright:+$("fBright").value, density:+$("fDensity").value, colors, weights, cbright };
+  // 2026-06: per-preset scroll text. When this preset IS a scroll-text animation,
+  // rasterize the Scroll Text panel (message + font) and bake it into the preset
+  // so each one keeps its own message/language (e.g. one English, one Aurebesh).
+  if (isScrollAnim(o.anim)) {
+    const fontSel = $("txtFont").value;
+    const r = rasterizeText($("txtMsg").value||" ", fontSel);
+    o.textMsg    = $("txtMsg").value || "";
+    o.textFont   = (fontSel==="aurebesh") ? 1 : 0;
+    o.textColor  = hex2rgb($("txtColor").value);
+    o.textScroll = $("txtScroll").checked;
+    o.textCols   = r.cols;
+    o.textBmp    = r.hex;
+  }
+  return o;
 }
 
 // default template for a brand-new preset
@@ -606,11 +637,15 @@ $("fAnim").addEventListener("change", ()=>{
   $("fSpeed").value = baseSpeed(+$("fAnim").value);
   $("vSpeed").textContent = $("fSpeed").value;
   paintRange($("fSpeed"));
+  reflectTextPanel();   // show/hide the "saved with preset" affordance
   schedulePreview();
 });
 // wire all editor inputs to live preview
 ["fAnim","fSpeed","fBright","fDensity","fName"].forEach(id=>$(id).addEventListener("input",schedulePreview));
 for(let i=0;i<4;i++){ ["c"+i,"w"+i,"cb"+i].forEach(id=>$(id).addEventListener("input",schedulePreview)); }
+// 2026-06: scroll-text fields feed the live preview too (they're baked into the
+// preset by gatherEditor when the animation type is SCROLLTEXT).
+["txtMsg","txtFont","txtColor","txtScroll"].forEach(id=>$(id).addEventListener("input",schedulePreview));
 
 // ----- buttons -----
 $("btnNew").onclick   =()=>{ curIndex=-1; loadEditor(blankPreset()); renderList(); schedulePreview(); };
@@ -630,8 +665,11 @@ function exportPresets(){
   const data={
     type:"sled-presets", version:1,
     cycleSrc:$("cycleSrc").value, maskFull:$("maskSel").value==="full",
-    presets:presets.map(p=>({ name:p.name, anim:p.anim, speed:p.speed, bright:p.bright,
-                              density:p.density, colors:p.colors, weights:p.weights, cbright:p.cbright }))
+    presets:presets.map(p=>{ const o={ name:p.name, anim:p.anim, speed:p.speed, bright:p.bright,
+                              density:p.density, colors:p.colors, weights:p.weights, cbright:p.cbright };
+                              if(p.textCols){ o.textCols=p.textCols; o.textColor=p.textColor; o.textScroll=p.textScroll;
+                                              o.textFont=p.textFont; o.textMsg=p.textMsg; o.textBmp=p.textBmp; }
+                              return o; })
   };
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");
@@ -648,9 +686,12 @@ async function importPresets(file){
   importing=true;
   send({cmd:"CLEAR"}); await sleep(150);
   for(const p of list){
-    send({cmd:"SAVE", i:-1, preset:{ name:(p.name||"preset").slice(0,19), anim:p.anim|0,
+    const sp={ name:(p.name||"preset").slice(0,19), anim:p.anim|0,
       speed:p.speed|0, bright:p.bright|0, density:p.density|0,
-      colors:p.colors, weights:p.weights, cbright:p.cbright }});
+      colors:p.colors, weights:p.weights, cbright:p.cbright };
+    if(p.textCols){ sp.textCols=p.textCols; sp.textColor=p.textColor; sp.textScroll=p.textScroll;
+                    sp.textFont=p.textFont; sp.textMsg=p.textMsg; sp.textBmp=p.textBmp; }
+    send({cmd:"SAVE", i:-1, preset:sp});
     await sleep(120);   // pace NVS writes
   }
   if(data.cycleSrc) send({cmd:"CYCLESRC", src:data.cycleSrc});
@@ -771,14 +812,6 @@ function rasterizeCanvas(str){
 function rasterizeText(str, font){
   return (font==="aurebesh") ? rasterizeCanvas(str) : packFontText(str);
 }
-function sendText(){
-  const r=rasterizeText($("txtMsg").value||" ", $("txtFont").value);
-  send({ cmd:"TEXT", cols:r.cols, color:hex2rgb($("txtColor").value),
-         scroll:$("txtScroll").checked, speed:+$("txtSpeed").value, bitmap:r.hex });
-}
-$("btnText").onclick=sendText;
-$("txtSpeed").addEventListener("input",()=>$("txtSpeedV").textContent=$("txtSpeed").value);
-
 // ----- console command line + quick prev/next -----
 $("btnPrev").onclick=()=>sendRaw(":PREV");
 $("btnNext").onclick=()=>sendRaw(":NEXT");

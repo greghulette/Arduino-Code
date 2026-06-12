@@ -193,6 +193,16 @@ void applyPreset(const SledPreset& p) {
     sled.setWeight(i + 1, p.weight[i]);
     sled.setColorBrightness(i + 1, p.cbright[i]);
   }
+  // 2026-06: per-preset scroll text — load THIS preset's own bitmap so each
+  // SCROLLTEXT preset shows its own message/language. Set after setAnimation()
+  // so it isn't cleared by the per-anim state reset.
+  if (p.anim == (uint8_t)LogicAnimation::SCROLLTEXT && p.textCols > 0) {
+    static uint8_t tbuf[TEXT_MAX_COLS];
+    uint16_t n = p.textCols; if (n > TEXT_MAX_COLS) n = TEXT_MAX_COLS;
+    memcpy(tbuf, p.textBmp, n);
+    uint32_t col = ((uint32_t)p.textRgb[0] << 16) | ((uint32_t)p.textRgb[1] << 8) | p.textRgb[2];
+    sled.setText(tbuf, n, col, p.textScroll != 0);
+  }
   sled.enable(true);
 }
 
@@ -314,7 +324,28 @@ void presetsLoadNVS()
     if (presetCount > MAX_PRESETS) presetCount = 0;
     if (presetCount > 0) {
         size_t want = (size_t)presetCount * sizeof(SledPreset);
-        sledPrefs.getBytes("presets", presets, want);
+        size_t have = sledPrefs.getBytesLength("presets");
+        if (have == want) {
+            sledPrefs.getBytes("presets", presets, want);
+        } else if (have > 0 && (have % presetCount) == 0 && (have / presetCount) <= sizeof(SledPreset)) {
+            // 2026-06 migration: SledPreset grew (per-preset scroll text appended).
+            // The old layout is the exact prefix of the new one, so copy each old
+            // record into the front of the new struct and leave the text fields 0.
+            size_t oldSize = have / presetCount;
+            uint8_t* blob = (uint8_t*)malloc(have);
+            if (blob) {
+                sledPrefs.getBytes("presets", blob, have);
+                for (uint8_t i = 0; i < presetCount; i++) {
+                    memset(&presets[i], 0, sizeof(SledPreset));
+                    memcpy(&presets[i], blob + (size_t)i * oldSize, oldSize);
+                }
+                free(blob);
+                Serial.printf("[SLED] migrated %u presets from %u-byte layout\n",
+                              presetCount, (unsigned)oldSize);
+            } else { presetCount = 0; }
+        } else {
+            presetCount = 0;   // unrecognizable blob — start clean rather than corrupt
+        }
     }
     cycleUsesPresets = sledPrefs.getUChar("cyclesrc", 1) != 0;
     maskFull = sledPrefs.getUChar("maskfull", 0) != 0;
@@ -384,6 +415,23 @@ static void presetFromJson(JsonObjectConst o, SledPreset& p)
         p.weight[i]  = o["weights"][i] | 0;
         p.cbright[i] = o["cbright"][i] | 255;
     }
+    // 2026-06: per-preset scroll text (present only for SCROLLTEXT presets).
+    p.textCols   = o["textCols"] | 0;
+    if (p.textCols > TEXT_MAX_COLS) p.textCols = TEXT_MAX_COLS;
+    p.textRgb[0] = o["textColor"][0] | 255;
+    p.textRgb[1] = o["textColor"][1] | 255;
+    p.textRgb[2] = o["textColor"][2] | 255;
+    p.textScroll = (o["textScroll"] | true) ? 1 : 0;
+    p.textFont   = o["textFont"] | 0;
+    strlcpy(p.textMsg, o["textMsg"] | "", sizeof(p.textMsg));
+    {
+        const char* hex = o["textBmp"] | "";
+        size_t hlen = strlen(hex);
+        for (uint16_t i = 0; i < p.textCols; i++) {
+            size_t off = (size_t)i * 2;
+            p.textBmp[i] = (off + 1 < hlen) ? ((hexNib(hex[off]) << 4) | hexNib(hex[off + 1])) : 0;
+        }
+    }
 }
 
 static void presetToJson(const SledPreset& p, JsonObject o, int idx)
@@ -403,6 +451,21 @@ static void presetToJson(const SledPreset& p, JsonObject o, int idx)
     for (uint8_t i = 0; i < 4; i++) w.add(p.weight[i]);
     JsonArray cb = o.createNestedArray("cbright");
     for (uint8_t i = 0; i < 4; i++) cb.add(p.cbright[i]);
+    // 2026-06: per-preset scroll text — echo it back so the editor can re-edit.
+    if (p.textCols > 0) {
+        o["textCols"]   = p.textCols;
+        o["textScroll"] = (p.textScroll != 0);
+        o["textFont"]   = p.textFont;
+        o["textMsg"]    = p.textMsg;
+        JsonArray tc = o.createNestedArray("textColor");
+        tc.add(p.textRgb[0]); tc.add(p.textRgb[1]); tc.add(p.textRgb[2]);
+        static char hexbuf[TEXT_MAX_COLS * 2 + 1];
+        static const char H[] = "0123456789abcdef";
+        uint16_t n = p.textCols; if (n > TEXT_MAX_COLS) n = TEXT_MAX_COLS;
+        for (uint16_t i = 0; i < n; i++) { hexbuf[i*2] = H[p.textBmp[i] >> 4]; hexbuf[i*2+1] = H[p.textBmp[i] & 0xF]; }
+        hexbuf[n*2] = '\0';
+        o["textBmp"] = hexbuf;
+    }
 }
 
 // Stream the preset list one object per line (BEGIN header, one PRESET per
@@ -424,7 +487,7 @@ static void sendPresetList()
         Serial.println();
     }
     for (int i = 0; i < presetCount; i++) {
-        DynamicJsonDocument doc(1024);
+        DynamicJsonDocument doc(2048);   // a SCROLLTEXT preset adds a ~512-char hex bitmap
         JsonObject o = doc.to<JsonObject>();
         o["type"] = "PRESET";
         presetToJson(presets[i], o, i);
