@@ -147,6 +147,7 @@ void WCB_Client::update() {
 
     _checkOfflineBoards();
     _processMonitors();
+    _processFragJob();   // drain a pending fragmented send, one chunk per tick
 
     // Service the pending table.
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
@@ -234,11 +235,16 @@ bool WCB_Client::broadcast(const char* command, bool ensured) {
 // ─────────────────────────────────────────────────────────────────────────────
 // _maxSingleCommandLen
 //
-// Longest command that fits ONE packet: structCommand is 200 bytes (199 + NUL);
-// when checksum is enabled the "|CRCxxxxxxxx" suffix (12 chars) shares it.
+// Longest command that fits ONE packet. Derived from the actual struct field
+// (not magic numbers) so this threshold can never drift from what _sendPacket
+// physically packs: structCommand holds N-1 chars + NUL; when checksum is
+// enabled the "|CRC%08X" suffix (12 chars) shares the same field.
 // ─────────────────────────────────────────────────────────────────────────────
+static const size_t kCmdFieldChars  = sizeof(((wcb_packet_etm_t*)0)->structCommand) - 1; // 199
+static const size_t kCrcSuffixChars = 12;  // strlen("|CRC") + 8 hex digits
+
 size_t WCB_Client::_maxSingleCommandLen() const {
-    return _checksumEnabled ? (199 - 12) : 199;
+    return _checksumEnabled ? (kCmdFieldChars - kCrcSuffixChars) : kCmdFieldChars;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,22 +263,40 @@ size_t WCB_Client::_maxSingleCommandLen() const {
 // are harmless — the target stores each chunk once and remembers completed
 // sessionIds, so repeat passes after completion are silently discarded.
 //
-// Blocking: ~10 ms per chunk per pass (a full 16-chunk ensured send ≈ 0.5 s).
-// The target's reassembly window is 15 s — passes land well inside it.
+// NON-BLOCKING (1.3.1): this only QUEUES the job — chunks are transmitted one
+// at a time from update() with ~10 ms pacing, so it is safe to call from
+// loop() or even the ESP-NOW receive callback (the old implementation ran
+// delay(10) loops in the caller, which could stall the WiFi task for ~0.5 s).
+// The target's 15 s reassembly window comfortably covers the spread passes.
 //
-// Returns true if every chunk of at least one full pass was accepted by
-// ESP-NOW for transmission. NOTE: this is acceptance, not delivery — there
-// is no ACK at this layer (use a short command for anything you must confirm).
+// Returns true = queued. The transmission result (every chunk accepted by
+// ESP-NOW at least once across the passes, or not) is logged on completion.
+// NOTE: acceptance is not delivery — there is no ACK at this layer.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::_sendFragmented(uint8_t target_wcb, const char* command, bool ensured) {
     size_t len = strlen(command);
-    uint8_t totalChunks = (uint8_t)((len + WCB_MGMT_CHUNK_LEN - 1) / WCB_MGMT_CHUNK_LEN);
-    if (totalChunks > WCB_MGMT_MAX_CHUNKS) {
+
+    // Bound-check on LENGTH before any narrow cast: computing a uint8_t chunk
+    // count first wraps at 256 chunks (~45.8 KB) and would bypass this guard —
+    // silently truncating or sending nothing.
+    if (len > WCB_MGMT_MAX_COMMAND_LEN) {
         Serial.printf("[WCB_Client] send: command too long even for fragmentation "
                       "(%u chars > %u max). Not sent.\n",
-                      (unsigned)len, (unsigned)(WCB_MGMT_CHUNK_LEN * WCB_MGMT_MAX_CHUNKS));
+                      (unsigned)len, (unsigned)WCB_MGMT_MAX_COMMAND_LEN);
         return false;
     }
+    if (_fragJob.active) {
+        Serial.println("[WCB_Client] send: a fragmented send is already in flight — "
+                       "wait for it to finish (max ~0.5 s) and retry.");
+        return false;
+    }
+
+    char* copy = (char*)malloc(len + 1);
+    if (!copy) {
+        Serial.println("[WCB_Client] send: out of memory for fragmented command.");
+        return false;
+    }
+    memcpy(copy, command, len + 1);
 
     // Fresh sessionId per command. 0xFFFF is reserved (the firmware's
     // completed-session ring buffer initialises to 0xFFFF, which would make
@@ -280,43 +304,78 @@ bool WCB_Client::_sendFragmented(uint8_t target_wcb, const char* command, bool e
     uint16_t sessionId = (uint16_t)esp_random();
     if (sessionId == 0xFFFF) sessionId = 0xFFFE;
 
-    wcb_packet_mgmt_t pkt;
-    const int passes = ensured ? 3 : 2;
-    bool anyPassClean = false;
+    _fragJob.targetWCB    = target_wcb;
+    _fragJob.sessionId    = sessionId;
+    _fragJob.totalChunks  = (uint8_t)((len + WCB_MGMT_CHUNK_LEN - 1) / WCB_MGMT_CHUNK_LEN);
+    _fragJob.passes       = ensured ? 3 : 2;
+    _fragJob.pass         = 0;
+    _fragJob.chunk        = 0;
+    _fragJob.acceptedMask = 0;
+    _fragJob.nextSendMs   = 0;       // first chunk goes out on the next update()
+    _fragJob.cmd          = copy;
+    _fragJob.len          = len;
+    _fragJob.active       = true;    // set LAST — update() may run on the other core
 
     Serial.printf("[WCB_Client] send: %u chars > single-packet limit — fragmenting "
-                  "to WCB%d (%d chunks, session %04X, %d passes)\n",
-                  (unsigned)len, target_wcb, totalChunks, sessionId, passes);
+                  "to WCB%d (%d chunks, session %04X, %d passes, via update())\n",
+                  (unsigned)len, target_wcb, _fragJob.totalChunks, sessionId,
+                  _fragJob.passes);
+    return true;
+}
 
-    for (int pass = 0; pass < passes; pass++) {
-        bool passClean = true;
-        for (uint8_t i = 0; i < totalChunks; i++) {
-            memset(&pkt, 0, sizeof(pkt));
-            strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
-            pkt.packetType  = WCB_MGMT_PACKET_TYPE_FRAG;
-            pkt.targetWCB   = target_wcb;
-            pkt.sessionId   = sessionId;
-            pkt.chunkIdx    = i;
-            pkt.totalChunks = totalChunks;
+// ─────────────────────────────────────────────────────────────────────────────
+// _processFragJob — transmit the next pending fragment. Called from update().
+// One chunk per call, ~10 ms apart: a maximal ensured job (16 chunks × 3
+// passes) completes in ~0.5 s of wall time without ever blocking loop().
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::_processFragJob() {
+    if (!_fragJob.active) return;
+    unsigned long now = millis();
+    if (now < _fragJob.nextSendMs) return;
 
-            size_t off = (size_t)i * WCB_MGMT_CHUNK_LEN;
-            size_t n   = len - off;
-            if (n > WCB_MGMT_CHUNK_LEN) n = WCB_MGMT_CHUNK_LEN;
-            memcpy(pkt.payload, command + off, n);   // payload[180] zeroed above → NUL-safe
+    wcb_packet_mgmt_t pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
+    pkt.packetType  = WCB_MGMT_PACKET_TYPE_FRAG_UNICAST;  // unicast semantics on 6.1.1+
+    pkt.targetWCB   = _fragJob.targetWCB;
+    pkt.sessionId   = _fragJob.sessionId;
+    pkt.chunkIdx    = _fragJob.chunk;
+    pkt.totalChunks = _fragJob.totalChunks;
 
-            if (esp_now_send(_broadcastMAC, (uint8_t*)&pkt, sizeof(pkt)) != ESP_OK) {
-                passClean = false;
+    size_t off = (size_t)_fragJob.chunk * WCB_MGMT_CHUNK_LEN;
+    size_t n   = _fragJob.len - off;
+    if (n > WCB_MGMT_CHUNK_LEN) n = WCB_MGMT_CHUNK_LEN;
+    memcpy(pkt.payload, _fragJob.cmd + off, n);   // payload[180] zeroed above → NUL-safe
+
+    if (esp_now_send(_broadcastMAC, (uint8_t*)&pkt, sizeof(pkt)) == ESP_OK) {
+        _fragJob.acceptedMask |= (uint16_t)(1u << _fragJob.chunk);
+    }
+    _fragJob.nextSendMs = now + 10;   // pacing: don't flood the ESP-NOW TX queue
+
+    // Advance chunk → pass → done.
+    if (++_fragJob.chunk >= _fragJob.totalChunks) {
+        _fragJob.chunk = 0;
+        if (++_fragJob.pass >= _fragJob.passes) {
+            // Success = every chunk accepted by ESP-NOW at least once across
+            // the passes (per-chunk, NOT per-pass: the target dedups chunks,
+            // so a union of clean chunks completes the session).
+            uint16_t fullMask = (uint16_t)((1u << _fragJob.totalChunks) - 1);
+            if (_fragJob.acceptedMask == fullMask) {
+                Serial.printf("[WCB_Client] fragmented send to WCB%d complete "
+                              "(session %04X, %d chunks x %d passes)\n",
+                              _fragJob.targetWCB, _fragJob.sessionId,
+                              _fragJob.totalChunks, _fragJob.passes);
+            } else {
+                Serial.printf("[WCB_Client] fragmented send to WCB%d INCOMPLETE — "
+                              "chunk mask %04X of %04X accepted; the command may "
+                              "not have executed\n",
+                              _fragJob.targetWCB, _fragJob.acceptedMask, fullMask);
             }
-            delay(10);   // pacing: don't flood the ESP-NOW TX queue
+            free(_fragJob.cmd);
+            _fragJob.cmd    = nullptr;
+            _fragJob.active = false;
         }
-        if (passClean) anyPassClean = true;
     }
-
-    if (!anyPassClean) {
-        Serial.printf("[WCB_Client] send: fragmented send to WCB%d failed — "
-                      "no complete pass was accepted by ESP-NOW\n", target_wcb);
-    }
-    return anyPassClean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -496,7 +555,8 @@ void WCB_Client::monitorSerial(HardwareSerial& port, uint8_t target_wcb, char te
 // Text monitor:
 //   Reads characters one by one. When the terminator is received the
 //   accumulated string is dispatched via send() or broadcast() and the
-//   buffer resets. Lines longer than 199 chars are silently truncated.
+//   buffer resets. Lines longer than the single-packet limit (199 chars,
+//   187 with checksum) are truncated to that limit before dispatch.
 // ─────────────────────────────────────────────────────────────────────────────
 void WCB_Client::_processMonitors() {
     unsigned long now = millis();
@@ -531,8 +591,15 @@ void WCB_Client::_processMonitors() {
         while (_monitorSerialPort->available()) {
             char c = (char)_monitorSerialPort->read();
             if (c == _monitorSerialTerm) {
-                // Terminator received — dispatch whatever is in the buffer
+                // Terminator received — dispatch whatever is in the buffer.
+                // CLAMP to the single-packet limit first: monitor lines are
+                // streaming spam, so an over-limit line is truncated (and
+                // delivered) rather than dropped by broadcast()'s oversize
+                // rejection or queued through the fragmented path — both of
+                // which are wrong for high-rate monitor traffic.
                 if (_monitorSerialLen > 0) {
+                    size_t maxLen = _maxSingleCommandLen();
+                    if (_monitorSerialLen > maxLen) _monitorSerialLen = maxLen;
                     _monitorSerialBuf[_monitorSerialLen] = '\0';
                     if (_monitorSerialTarget == WCB_TARGET_BROADCAST)
                         broadcast(_monitorSerialBuf);

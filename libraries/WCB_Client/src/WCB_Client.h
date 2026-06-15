@@ -147,9 +147,18 @@ typedef struct __attribute__((packed)) {
 // its normal parser. Duplicate chunks are idempotent; completed sessions are
 // remembered, so retransmitted passes are safely discarded.
 // ─────────────────────────────────────────────────────────────────────────────
-#define WCB_MGMT_PACKET_TYPE_FRAG  3     // firmware PACKET_TYPE_MGMT_FRAG
+#define WCB_MGMT_PACKET_TYPE_FRAG  3     // firmware PACKET_TYPE_MGMT_FRAG (wizard relay)
+#define WCB_MGMT_PACKET_TYPE_FRAG_UNICAST 5  // firmware PACKET_TYPE_MGMT_FRAG_UNICAST:
+                                         // chunk sent directly by this library. On
+                                         // firmware that knows the type (6.1.1+), the
+                                         // reassembled command keeps UNICAST semantics
+                                         // (no re-broadcast of broadcastable tokens).
+                                         // Older firmware ignores packetType and treats
+                                         // it as a normal FRAG — command still executes,
+                                         // but broadcastable tokens may propagate.
 #define WCB_MGMT_MAX_CHUNKS        16    // firmware MGMT_MAX_CHUNKS (uint16 mask)
 #define WCB_MGMT_CHUNK_LEN         179   // payload[180] minus NUL (firmware strncpy)
+#define WCB_MGMT_MAX_COMMAND_LEN   ((size_t)WCB_MGMT_CHUNK_LEN * WCB_MGMT_MAX_CHUNKS)
 
 typedef struct __attribute__((packed)) {
     char     structPassword[40];   // network password — must match all peers
@@ -280,7 +289,13 @@ public:
     //              layer; the library compensates by transmitting each chunk
     //              multiple times (3 passes when ensured, 2 otherwise —
     //              duplicates are harmless, the target dedups by session).
-    //              A fragmented send blocks for ~10 ms per chunk per pass.
+    //              Since 1.3.1 fragmented sends are NON-BLOCKING: the chunks
+    //              are queued and transmitted from update() (~10 ms apart), so
+    //              send() returns immediately — true means QUEUED, and the
+    //              transmission result is logged when the job completes. Keep
+    //              calling update() regularly (you must anyway). Only ONE
+    //              fragmented send may be in flight at a time; a second one
+    //              returns false until the first finishes (~0.5 s max).
     // ensured    : true (default) → application-layer ETM ensured delivery:
     //              retransmit (reusing the sequence number) until the target
     //              ACKs at the ETM layer, up to ETM_MAX_RETRIES. This matches
@@ -528,12 +543,38 @@ private:
     // transmits via _transmit().
     bool _sendPacket(uint8_t targetID, const char* command, bool ensured);
 
-    // Automatic fragmentation for unicast commands longer than the
-    // single-packet limit: splits into WCB_MGMT_CHUNK_LEN chunks, broadcasts
-    // them as wcb_packet_mgmt_t with a fresh sessionId, and repeats the full
-    // set (3 passes when ensured, 2 otherwise) to compensate for the lack of
-    // per-chunk ACKs. The target reassembles + executes the whole command.
+    // ── Fragmented send (non-blocking, drained from update()) ───────────────
+    // Oversized unicast commands are QUEUED here and transmitted one chunk at
+    // a time from update() (~10 ms pacing), never blocking the caller — safe
+    // to call from loop() or even the ESP-NOW receive callback. One
+    // fragmented send may be in flight at a time; a second call while busy
+    // returns false. The full chunk set is repeated (3 passes when ensured,
+    // 2 otherwise) to compensate for the lack of per-chunk ACKs; the target
+    // dedups chunks and completed sessions, so repeats are harmless.
+    struct FragJob {
+        bool      active     = false;
+        uint8_t   targetWCB  = 0;
+        uint16_t  sessionId  = 0;
+        uint8_t   totalChunks = 0;
+        uint8_t   passes     = 0;     // total passes to transmit
+        uint8_t   pass       = 0;     // current pass (0-based)
+        uint8_t   chunk      = 0;     // next chunk index within the pass
+        uint16_t  acceptedMask = 0;   // bit N set once chunk N was accepted by
+                                      // ESP-NOW at least once (any pass)
+        unsigned long nextSendMs = 0; // pacing
+        char*     cmd        = nullptr; // heap copy of the command
+        size_t    len        = 0;
+    };
+    FragJob _fragJob;
+
+    // Queue an oversized unicast for fragmented transmission. Returns false
+    // if the command exceeds WCB_MGMT_MAX_COMMAND_LEN or a fragmented send
+    // is already in flight. Returns true = queued (transmission happens in
+    // update(); completion/result is reported on Serial).
     bool _sendFragmented(uint8_t target_wcb, const char* command, bool ensured);
+
+    // Transmit the next pending fragment (called once per update()).
+    void _processFragJob();
 
     // Max command chars that fit a single packet given the checksum setting.
     size_t _maxSingleCommandLen() const;

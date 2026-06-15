@@ -55,9 +55,11 @@ static const char HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   .hdr-btn.active-16{border-color:var(--yellow);color:var(--yellow);}
   .hdr-btn.active-24{border-color:var(--accent);color:var(--accent);}
   .hdr-btn.dbg-on   {border-color:var(--green);color:var(--green);}
-  /* Transport picker (WiFi / USB Serial dropdown) — popover-style menu */
+  /* Transport picker (WiFi / USB Serial dropdown) — popover-style menu.
+     position:fixed because it's placed from getBoundingClientRect() viewport
+     coords; absolute would drift by the scroll offset on a scrolled page. */
   .tx-menu{
-    position:absolute;display:none;flex-direction:column;
+    position:fixed;display:none;flex-direction:column;
     background:var(--panel);border:1px solid var(--border);border-radius:8px;
     padding:4px;min-width:130px;z-index:300;box-shadow:0 6px 24px rgba(0,0,0,.5);
   }
@@ -1178,7 +1180,13 @@ class WsTransport extends Transport {
   }
   close() {
     if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
-    try { this.ws?.close(); } catch(_) {}
+    if (this.ws) {
+      // Detach handlers BEFORE closing: the close event fires async, and a
+      // stale onclose would call onstate(false) AFTER a newly-activated
+      // transport already reported connected — leaving the badge wrongly red.
+      this.ws.onopen = this.ws.onclose = this.ws.onerror = this.ws.onmessage = null;
+      try { this.ws.close(); } catch(_) {}
+    }
     this.ws = null;
   }
   send(obj) {
@@ -1272,7 +1280,13 @@ class SerialTransport extends Transport {
       if (!this._closing) console.error('[SerialTransport] read error:', err);
     } finally {
       this.connected = false;
-      this.onstate(false);
+      // Stop pinging a dead port (close() clears this for deliberate closes,
+      // but an unexpected unplug exits the loop without close() running).
+      if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+      // Only report disconnected if we're still the ACTIVE transport — this
+      // finally can run after the user has already switched transports, and a
+      // late onstate(false) would stomp the new transport's badge.
+      if (transport === this) this.onstate(false);
     }
   }
 
@@ -2802,13 +2816,26 @@ function importConfig(input) {
       if (data.btn   != null) payload.btn  = data.btn;
       if (data.lua   != null) payload.lua  = data.lua;
       if (data.pwm   != null) payload.pwm  = data.pwm;
+      if (data.pwmExt != null) payload.pwmExt = data.pwmExt;
       send(payload);
+      // WiFi networks live in a separate firmware message ('wificfg'), so an
+      // exported file's networks were silently dropped by import before.
+      // nosw:1 stores them without switching networks out from under the
+      // session doing the import.
+      if (Array.isArray(data.wifiNets) && data.wifiNets.length) {
+        const nets = data.wifiNets.map(n => ({s:(n.s||'').trim(), p:n.p||''})).filter(n => n.s);
+        if (nets.length) {
+          const pref = (data.wifiPref != null) ? data.wifiPref : cfg.wifiPref;
+          setTimeout(() => send({t:'wificfg', nosw:1, pref, nets}), 150);
+        }
+      }
       // Belt-and-suspenders: the firmware fires its own buildCfgJson broadcast
       // right after applying the import, but if that response is missed (TX
       // path busy, transport switch in flight, etc.) the UI would stay on the
-      // pre-import state.  An explicit getcfg shortly after guarantees the UI
-      // catches up to what's actually saved.
-      setTimeout(() => send({t:'getcfg'}), 250);
+      // pre-import state.  An explicit getcfg afterwards guarantees the UI
+      // catches up to what's actually saved (delay sits after the wificfg
+      // follow-up above so it reflects the networks too).
+      setTimeout(() => send({t:'getcfg'}), 450);
       status.style.color = 'var(--green)';
       status.textContent = '\u2713 Imported — config applied & saved.';
     } catch(err) {

@@ -448,6 +448,34 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 
 ## Changelog
 
+### 1.3.1
+
+Hardening release for the 1.3.0 fragmentation feature — fixes four review
+findings before wide adoption.
+
+- **Fragmented sends are now NON-BLOCKING.** 1.3.0 ran `delay(10)` loops inside
+  `send()` (up to ~0.5 s), freezing animation loops and — if called from the
+  command callback — stalling the WiFi task. Chunks are now queued and
+  transmitted from `update()` (~10 ms pacing); `send()` returns immediately
+  (true = queued) and the result is logged on completion. One fragmented send
+  in flight at a time; a second call while busy returns false.
+- **Unicast stays unicast.** Fragmented commands are now sent with a dedicated
+  packet type; on firmware 6.1.1+ the reassembled command keeps target-local
+  semantics — previously, broadcastable tokens in a fragmented unicast would
+  re-broadcast to every board on the network once the command crossed the
+  length threshold. (Older firmware still executes the command; it just keeps
+  the old broadcast behavior.)
+- **Oversize guard fixed.** The chunk count was bounds-checked after a uint8
+  cast, so absurdly long commands (~45 KB+) could wrap the counter and bypass
+  the rejection — silently truncating. The length is now checked first.
+- **Serial monitor lines are clamped, not dropped.** A monitored text line
+  longer than the single-packet limit (187 chars with checksum) is truncated
+  and delivered; 1.3.0 either dropped it entirely (broadcast target) or pushed
+  it through the fragmentation path inside `update()` (unicast target).
+- Success is now judged **per chunk across passes** (a chunk accepted in any
+  pass counts), and the single-packet limit is derived from the packet struct
+  instead of magic numbers.
+
 ### 1.3.0
 
 **Automatic fragmentation for long unicast commands** — `send()` now transparently

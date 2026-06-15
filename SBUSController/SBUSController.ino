@@ -8,6 +8,7 @@
 //    • ESPAsyncWebServer  (mathieucarbou fork or me-no-dev)
 //    • AsyncTCP           (mathieucarbou/AsyncTCP)
 //    • ArduinoJson        (Benoit Blanchon) v6.x
+//    • Adafruit NeoPixel  (status LED on GPIO 48)
 //
 //  ─── Overview ───────────────────────────────────────────────────────────────
 //   Browser controls → WebSocket → ESP32-S3 → SBUS stream → Kyber
@@ -58,6 +59,7 @@
 #include <Adafruit_NeoPixel.h>
 #include "esp_timer.h"          // one-shot boot-guard timer (cold-boot auto-recovery)
 #include "esp_ota_ops.h"        // esp_ota_get_bootloader_description (boot banner)
+#include "rom/rtc.h"            // rtc_get_reset_reason (low-level boot telemetry)
 
 // ─── WiFi ─────────────────────────────────────────────────────────────────────
 #define MAX_WIFI_NETS       8    // CLI digit cap is '0'..'8' — keep ≤ 9 so single-char input still works
@@ -322,8 +324,15 @@ void applyConfigDefaults() {
 
 void initRuntimeState() {
   for (int i = 0; i < SBUS_CH_COUNT_24; i++) sbusChannels[i] = SBUS_CENTER;
-  for (int i = 0; i < MAX_SWITCHES; i++)
-    swPos[i] = min(cfg.sw[i].defaultPos, (uint8_t)(cfg.sw[i].type == SW_3POS ? 2 : 1));
+  for (int i = 0; i < MAX_SWITCHES; i++) {
+    // 2-pos and momentary switches use positions {0, 2} — low and high; mid is
+    // invalid for them.  Snap a stray mid default to low.  (The old clamp of
+    // min(d, 1) re-routed a "high" default to the UNUSED mid value, so a 2-pos
+    // switch defaulted Up booted onto val[1] instead of val[2].)
+    uint8_t d = cfg.sw[i].defaultPos;
+    if (cfg.sw[i].type != SW_3POS && d == 1) d = 0;
+    swPos[i] = min(d, (uint8_t)2);
+  }
   for (int i = 0; i < MAX_SLIDERS; i++) sliderPct[i] = 50;
   for (int i = 0; i < MAX_TRIMS; i++)   trimVal[i]   = SBUS_CENTER;
 }
@@ -736,6 +745,88 @@ void buildSbusFrame(uint8_t* frame) {
 }
 
 // =============================================================================
+//  SERIAL TX OUTBOX  +  NON-BLOCKING LOGGING
+// =============================================================================
+// All JSON destined for a Web Serial host (and any log line emitted while a
+// JSON line is still draining) flows through this queue.  serialOutboxPump()
+// runs once per loop() and writes ONLY what the TX buffer can take right now,
+// so a 5 KB config dump streams out across ~50 loop() passes instead of
+// stalling transmitSbus()'s 9 ms cadence for ~450 ms of wire time.  Nothing
+// here ever blocks: a stalled host means the outbox fills and new lines are
+// dropped whole (never truncated — a partial JSON line would corrupt the
+// host's line parser).
+
+static String g_serialOutbox;
+static size_t g_serialOutboxOff = 0;            // bytes already written to Serial
+static const size_t SERIAL_OUTBOX_MAX = 16384;  // drop-new threshold (heap-bounded)
+
+// Append raw bytes (no newline added).  Drops the WHOLE chunk if it would
+// push pending data past the cap — a partial line is worse than a missing one.
+static void serialEnqueueRaw(const char* data, size_t len) {
+  size_t pending = g_serialOutbox.length() - g_serialOutboxOff;
+  if (pending + len > SERIAL_OUTBOX_MAX) return;
+  if (g_serialOutboxOff) {                       // compact the already-sent prefix
+    g_serialOutbox.remove(0, g_serialOutboxOff);
+    g_serialOutboxOff = 0;
+  }
+  g_serialOutbox.concat(data, len);
+}
+
+// Append one JSON message + newline terminator as an atomic unit.
+static void serialEnqueueLine(const char* data, size_t len) {
+  size_t pending = g_serialOutbox.length() - g_serialOutboxOff;
+  if (pending + len + 1 > SERIAL_OUTBOX_MAX) return;
+  if (g_serialOutboxOff) {
+    g_serialOutbox.remove(0, g_serialOutboxOff);
+    g_serialOutboxOff = 0;
+  }
+  g_serialOutbox.concat(data, len);
+  g_serialOutbox += '\n';
+}
+
+// Drain as much as fits in the TX buffer right now.  Called once per loop()
+// and opportunistically after enqueues.  Never blocks.
+static void serialOutboxPump() {
+  size_t len = g_serialOutbox.length();
+  if (g_serialOutboxOff >= len) {
+    if (len) { g_serialOutbox = ""; g_serialOutboxOff = 0; }
+    return;
+  }
+  int avail = Serial.availableForWrite();
+  if (avail <= 0) return;
+  size_t pending = len - g_serialOutboxOff;
+  size_t chunk   = (size_t)avail < pending ? (size_t)avail : pending;
+  Serial.write((const uint8_t*)g_serialOutbox.c_str() + g_serialOutboxOff, chunk);
+  g_serialOutboxOff += chunk;
+  if (g_serialOutboxOff >= g_serialOutbox.length()) { g_serialOutbox = ""; g_serialOutboxOff = 0; }
+}
+
+// ── Non-blocking logging ────────────────────────────────────────────────────
+// Never stall on Serial. On WCB HW 3.2 the USB serial path back-pressures when
+// no host is draining it, so a plain Serial.printf() on a recurring path (WS
+// connect/disconnect, HTTP hits, WiFi events) freezes the whole controller once
+// the TX buffer fills. vlogf() writes ONLY if the TX buffer has room right now,
+// otherwise the line is silently dropped — it can never block.  When a JSON
+// line is mid-flight in the outbox, the log line is queued BEHIND it instead of
+// being written directly, which would inject text into the middle of the JSON
+// and corrupt it for the Web Serial host.
+// NOTE: deliberately OUTSIDE #ifdef SBUS_DEBUG — WS/HTTP handlers call this
+// unconditionally, so it must exist in non-debug builds too.
+static void vlogf(const char* fmt, ...) {
+  char buf[192];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  if (n <= 0) return;
+  if (n > (int)sizeof(buf)) n = sizeof(buf);
+  if (g_serialOutbox.length() > g_serialOutboxOff)
+    serialEnqueueRaw(buf, (size_t)n);                  // keep line ordering intact
+  else if (Serial.availableForWrite() >= n)
+    Serial.write((const uint8_t*)buf, (size_t)n);
+}
+
+// =============================================================================
 //  SBUS DEBUG
 // =============================================================================
 
@@ -755,25 +846,6 @@ static void decodeSbusFrame(const uint8_t* frame, uint16_t* out, int chcnt) {
       raw |= (uint16_t)(frame[1 + b/8 + 2]) << (16 - b % 8);
     out[i] = raw & 0x07FF;
   }
-}
-
-// ── Non-blocking logging ────────────────────────────────────────────────────
-// Never stall on Serial. On WCB HW 3.2 the USB serial path back-pressures when
-// no host is draining it, so a plain Serial.printf() on a recurring path (WS
-// connect/disconnect, HTTP hits, WiFi events) freezes the whole controller once
-// the TX buffer fills. vlogf() writes ONLY if the TX buffer has room right now,
-// otherwise the line is silently dropped — it can never block. Use it for any
-// recurring/background log; reserve plain Serial.* for one-shot boot output and
-// replies to host commands (a host is by definition present and draining then).
-static void vlogf(const char* fmt, ...) {
-  char buf[192];
-  va_list ap;
-  va_start(ap, fmt);
-  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-  if (n <= 0) return;
-  if (n > (int)sizeof(buf)) n = sizeof(buf);
-  if (Serial.availableForWrite() >= n) Serial.write((const uint8_t*)buf, (size_t)n);
 }
 
 static void printSbusDebug(const uint8_t* frame, int flen, int chcnt) {
@@ -896,34 +968,18 @@ static inline bool serialHostAlive() {
 //   - all WebSocket clients (always)
 //   - the USB serial port (only if a Web Serial host has PINGed us recently)
 // Use this in place of ws.textAll() for anything that should reach BOTH
-// transports.  Replies to a specific Serial command (PONG, etc.) bypass this
-// and go straight to Serial.println() to avoid echoing back over WS.
+// transports.
 //
-// The serial write is CHUNKED — each chunk is sized to current TX free space,
-// no chunk ever blocks individually.  When the buffer fills we yield 1 ms for
-// the UART to drain, then continue.  Total send time is bounded by the wire
-// speed (~450 ms for a 5 KB cfg dump @ 115200 baud) regardless of buffer size,
-// so we can run a small TX buffer without losing big messages.  Hard 1 s
-// deadline drops the message rather than block the loop forever if the host
-// stops reading completely.
+// The serial side ENQUEUES into the outbox (see serialOutboxPump above) and
+// pushes whatever fits right now; loop() drains the rest across iterations.
+// This function never waits — earlier chunked/blocking versions stalled
+// loop() up to ~450 ms per 5 KB cfg dump, starving the 9 ms SBUS cadence and
+// risking receiver failsafe.
 static void broadcastJson(const String& msg) {
   ws.textAll(msg);
   if (!serialHostAlive()) return;
-  const uint8_t* data = (const uint8_t*)msg.c_str();
-  size_t   remaining = msg.length();
-  uint32_t deadline  = millis() + 1000;
-  while (remaining > 0) {
-    if ((int32_t)(millis() - deadline) > 0) return;     // host stalled — drop rest
-    int avail = Serial.availableForWrite();
-    if (avail <= 0) { delay(1); continue; }
-    size_t chunk = (size_t)avail < remaining ? (size_t)avail : remaining;
-    Serial.write(data, chunk);
-    data      += chunk;
-    remaining -= chunk;
-  }
-  // Newline terminator — short enough to fit any non-zero free space.
-  while (Serial.availableForWrite() <= 0 && (int32_t)(millis() - deadline) < 0) delay(1);
-  if (Serial.availableForWrite() > 0) Serial.write('\n');
+  serialEnqueueLine(msg.c_str(), msg.length());
+  serialOutboxPump();
 }
 
 void processCommandJson(const char* json) {
@@ -943,10 +999,10 @@ void processCommandJson(const char* json) {
     resp += "}";
     // Reply only over Serial — WS clients use the WebSocket open event for
     // the same purpose, so echoing PONGs to all WS clients would be noise.
-    if (Serial.availableForWrite() >= (int)resp.length() + 1) {
-      Serial.write((const uint8_t*)resp.c_str(), resp.length());
-      Serial.write('\n');
-    }
+    // Routed through the outbox so it can never interleave into the middle
+    // of a partially-drained JSON line (e.g. a cfg dump in flight).
+    serialEnqueueLine(resp.c_str(), resp.length());
+    serialOutboxPump();
     return;
   }
 
@@ -989,8 +1045,13 @@ void processCommandJson(const char* json) {
     int pos = doc["p"] | 0;
     if (idx >= 0 && idx < MAX_SWITCHES) {
       auto& s = cfg.sw[idx];
-      uint8_t maxPos = (s.type == SW_3POS) ? 2 : 1;
-      swPos[idx] = (uint8_t)constrain(pos, 0, (int)maxPos);
+      // The UI sends position 2 ("up/high") for 2-pos and momentary switches —
+      // their valid positions are {0, 2}.  The old clamp (max 1 for non-3pos)
+      // silently rerouted that to the unused MID value, which was masked while
+      // defaults had val[1]==val[2] but breaks user-edited types.
+      uint8_t p = (uint8_t)constrain(pos, 0, 2);
+      if (s.type != SW_3POS && p == 1) p = 0;
+      swPos[idx] = p;
       if (s.ch >= 1 && s.ch <= SBUS_CH_COUNT_24)
         sbusChannels[s.ch - 1] = s.val[swPos[idx]];
     }
@@ -1205,7 +1266,9 @@ void processCommandJson(const char* json) {
     saveConfig();
     applyAllControls();
     broadcastJson(buildCfgJson());
-    Serial.println("[SBUS] Config updated.");
+    // vlogf, not Serial.println: the cfg line above may still be draining from
+    // the outbox — a direct write here would inject into the middle of it.
+    vlogf("[SBUS] Config updated.\n");
 
   // ── WiFi config + switch ───────────────────────────────────────────────────
   // { "t":"wificfg", "pref":N, "nets":[{"s":"SSID","p":"pass"},...] }
@@ -1224,6 +1287,13 @@ void processCommandJson(const char* json) {
     uint8_t pref = (uint8_t)(doc["pref"] | cfg.wifiPref);
     cfg.wifiPref = pref;
     saveConfig();
+    // nosw:1 — save the network list but DON'T switch connections.  Used by
+    // the config-import path: an imported file's networks should be stored
+    // without booting the current session off its network mid-import.
+    if (doc["nosw"] | false) {
+      broadcastJson(buildCfgJson());
+      return;
+    }
     // Notify browser BEFORE switching (IP may change)
     const char* targetSSID = (pref == 0 && cfg.wifiCount > 0) ? cfg.wifiNets[0].ssid :
                              (pref >= 1 && pref <= cfg.wifiCount) ? cfg.wifiNets[pref-1].ssid :
@@ -1301,6 +1371,10 @@ void switchWifi(uint8_t pref) {
 
     auto tryNet = [](int idx) -> bool {
       if (idx < 0 || idx >= cfg.wifiCount || !cfg.wifiNets[idx].ssid[0]) return false;
+      // Each attempt blocks up to WIFI_STA_TIMEOUT_MS — give the boot guard a
+      // fresh window so an all-unreachable cascade (N × 5 s) can't false-trip
+      // it mid-boot.  No-op once the guard is disarmed (runtime switches).
+      bootGuardKick();
       Serial.printf("[SBUS] Trying \"%s\"...\n", cfg.wifiNets[idx].ssid);
       WiFi.disconnect(false);
       WiFi.begin(cfg.wifiNets[idx].ssid, cfg.wifiNets[idx].pass);
@@ -1319,7 +1393,7 @@ void switchWifi(uint8_t pref) {
   }
 
   if (g_wifiNet >= 0) {
-    statusSet(0, 40, 0);          // GREEN = STA connected
+    statusSet(0, 255, 0);         // GREEN = STA connected
     Serial.printf("[SBUS] Connected to \"%s\"\n", cfg.wifiNets[g_wifiNet].ssid);
     Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.localIP().toString().c_str());
     if (MDNS.begin(MDNS_HOST))
@@ -1328,7 +1402,7 @@ void switchWifi(uint8_t pref) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-    statusSet(0, 0, 40);          // BLUE = AP fallback
+    statusSet(0, 0, 255);         // BLUE = AP fallback
     Serial.printf("[SBUS] AP mode  SSID: %s  Pass: %s\n", WIFI_AP_SSID, WIFI_AP_PASS);
     Serial.printf("[SBUS]   IP:   http://%s\n", WiFi.softAPIP().toString().c_str());
   }
@@ -1373,6 +1447,18 @@ static void bootGuardDisarm() {
   }
 }
 
+// Re-arm the guard's full window.  Called once per WiFi connect attempt during
+// the boot cascade: with up to MAX_WIFI_NETS (8) saved networks at 5 s timeout
+// each, a legitimate all-unreachable cascade runs 20-40 s — far past the fixed
+// 15 s window — and without kicks the guard would restart mid-cascade forever,
+// never reaching the AP fallback (boot loop in the field, away from home WiFi).
+// A genuine hang still trips within 15 s of wherever it stalls, because a hung
+// setup() stops kicking.  No-op after bootGuardDisarm() (runtime WiFi switches).
+static void bootGuardKick() {
+  if (_bootGuardTimer)
+    esp_timer_restart(_bootGuardTimer, (uint64_t)BOOT_GUARD_TIMEOUT_MS * 1000ULL);
+}
+
 // Report at boot which 2nd-stage bootloader is on the board (stock vs the custom
 // short-WDT one). Reads the esp_bootloader_desc_t in IDF 5.2+ bootloader images —
 // no flash dump. The custom bootloaders are identified by build timestamp; if
@@ -1396,6 +1482,45 @@ static void printBootloaderInfo() {
   }
 }
 
+// ── Boot telemetry ──────────────────────────────────────────────────────────
+// Boot-attempt counter in RTC noinit RAM: survives watchdog/software/panic
+// resets (and usually the reset button); garbage only after true power loss —
+// the magic word detects that and restarts the count. After a "dark board"
+// episode this tells you whether the chip had been reset-looping through the
+// app (count climbing), brown-outing (RTC code 15), or never reached app code
+// at all (count restarts at 1).
+#define BOOT_MAGIC 0xB007C0DEUL
+RTC_NOINIT_ATTR static uint32_t g_bootMagic;
+RTC_NOINIT_ATTR static uint32_t g_bootAttempts;
+
+static void printBootTelemetry() {
+  esp_reset_reason_t r = esp_reset_reason();
+  const char *name = "other";
+  switch (r) {
+    case ESP_RST_POWERON:  name = "Power-on / EN reset"; break;
+    case ESP_RST_SW:       name = "Software restart (incl. boot-guard retry)"; break;
+    case ESP_RST_PANIC:    name = "Crash (panic)"; break;
+    case ESP_RST_INT_WDT:  name = "Interrupt watchdog"; break;
+    case ESP_RST_TASK_WDT: name = "Task watchdog"; break;
+    case ESP_RST_WDT:      name = "RTC watchdog (short-WDT bootloader fired)"; break;
+    case ESP_RST_BROWNOUT: name = "BROWNOUT — supply rail sagged"; break;
+    default: break;
+  }
+  // Low-level per-core causes (rom/rtc.h). Key S3 codes:
+  //   1 = power-on   15 = RTC-WDT brown-out   16 = RTC-WDT system reset
+  //   (16 = the short-WDT bootloader's 3 s watchdog fired — auto-retry)
+  Serial.printf("Reset reason: %d - %s  (RTC codes core0=%d core1=%d)\n",
+                (int)r, name, (int)rtc_get_reset_reason(0), (int)rtc_get_reset_reason(1));
+  if (g_bootMagic != BOOT_MAGIC) {          // true power loss → fresh count
+    g_bootMagic = BOOT_MAGIC;
+    g_bootAttempts = 0;
+  }
+  g_bootAttempts++;
+  Serial.printf("Boot attempts since power applied: %lu%s\n",
+                (unsigned long)g_bootAttempts,
+                g_bootAttempts > 1 ? "   <-- board retried/reset before this boot" : "");
+}
+
 void setup() {
   // Arm the boot guard FIRST so it covers all of setup() (LittleFS, WiFi/web
   // bring-up). Disarmed at the very end once the board is confirmed healthy.
@@ -1405,16 +1530,15 @@ void setup() {
   //    "I'm alive" signal even if a later step blocks.  If you flash and
   //    don't see the LED at all, the chip never got out of the ROM bootloader. ──
   statusLed.begin();
-  statusLed.setBrightness(40);   // dim — onboard LEDs are bright
-  statusSet(40, 0, 0);            // RED = booting
+  statusLed.setBrightness(40);   // global dimmer — onboard LEDs are bright
+  statusSet(255, 0, 0);           // RED = booting (full scale; setBrightness dims)
   delay(20);                       // a tick for the pixel to latch
 
   // TX ring buffer — modest size that comfortably fits boot prints + the
-  // throttled chdata stream.  broadcastJson() now CHUNKS large writes (config
-  // dumps etc.) so it no longer depends on the buffer being big enough to
-  // hold a whole message at once.  Keeping this small avoids the larger
-  // allocation that — in earlier sessions — appeared to correlate with the
-  // WCB HW 3.2 boot-strap latch ("only runs with serial monitor open").
+  // throttled chdata stream.  Large messages (5 KB config dumps) go through
+  // the serial outbox, which streams them across loop() iterations sized to
+  // the buffer's CURRENT free space — so the buffer never needs to hold a
+  // whole message at once and loop()'s 9 ms SBUS cadence is never stalled.
   // Must precede begin().
   Serial.setTxBufferSize(4096);
   // RX buffer big enough to absorb a full config payload (~5 KB import)
@@ -1423,12 +1547,24 @@ void setup() {
   // Must precede begin().
   Serial.setRxBufferSize(4096);
   Serial.begin(115200);
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // This build routes Serial to the native USB CDC (Tools → USB CDC On Boot:
+  // Enabled — output appears on the USB-Serial/JTAG port).  Unlike a UART,
+  // CDC writes WAIT for the host when the TX buffer is full; with no serial
+  // monitor open, every print stalls its full timeout once the buffer fills —
+  // the classic "only runs with the serial monitor open" failure.  Timeout 0
+  // = drop instead of wait.  On UART builds (CDC On Boot: Disabled) this
+  // member doesn't exist and the whole block compiles out — the UART drains
+  // in hardware regardless of any listener, so it needs no equivalent.
+  Serial.setTxTimeoutMs(0);
+#endif
   // Reserve the JSON line accumulator once so per-byte += doesn't reallocate
   // 13× while a 5 KB import streams in.  Hands-off after this.
   g_serialJsonBuf.reserve(MAX_JSON_LINE);
   delay(400);
   Serial.println("\n[SBUS] SBUSController booting (X18 edition)...");
   printBootloaderInfo();
+  printBootTelemetry();
 
   // SBUS output: 100 kbaud, 8E2, inverted (GPIO9 = Serial5 TX on WCB v3.x)
   Serial1.begin(SBUS_BAUD, SERIAL_8E2, -1, SBUS_TX_PIN, true);
@@ -1634,6 +1770,7 @@ static void handleSerialCommands() {
 }
 
 void loop() {
+  serialOutboxPump();      // drain pending JSON to the Web Serial host, never blocks
   handleSerialCommands();
 
   uint32_t now = millis();
