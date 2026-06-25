@@ -114,6 +114,7 @@ bool WCB_Client::begin() {
     // Pre-register every WCB MAC and the broadcast MAC as ESP-NOW peers.
     // ESP-NOW requires a peer to be registered before you can send to it.
     _registerPeers();
+    _started = true;             // enableSpecialPeer() after begin() registers immediately
 
     Serial.printf("[WCB_Client] Joined WCB network as device ID %d "
                   "(quantity=%d, oct2=0x%02X, oct3=0x%02X)\n",
@@ -628,6 +629,40 @@ bool WCB_Client::isOnline(uint8_t wcb_number) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// enableSpecialPeer / isSpecialPeerOnline / sendToSpecialPeer
+//
+// The "special peer" (NaviCore) is an out-of-band device (default ID 20) that
+// lives outside the 1..wcb_quantity range. Receiving heartbeats/commands/ACKs
+// from it already works; these helpers add the two things that DON'T work until
+// the peer is explicitly enabled: (1) registering its MAC so we can SEND to it,
+// and (2) including it in offline detection so its ETM status is tracked.
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::enableSpecialPeer(uint8_t id) {
+    if (id < 1 || id > WCB_MAX_BOARDS) {
+        Serial.printf("[WCB_Client] enableSpecialPeer: id %d out of range (1–%d)\n",
+                      id, WCB_MAX_BOARDS);
+        return;
+    }
+    _specialPeerID = id;
+    if (_started) _registerSpecialPeer();   // begin() already ran — register now
+    Serial.printf("[WCB_Client] Special peer enabled at ID %d\n", id);
+}
+
+bool WCB_Client::isSpecialPeerOnline() {
+    if (_specialPeerID < 1 || _specialPeerID > WCB_MAX_BOARDS) return false;
+    return _boards[_specialPeerID - 1].online;
+}
+
+bool WCB_Client::sendToSpecialPeer(const char* command, bool ensured) {
+    if (_specialPeerID < 1) {
+        Serial.println("[WCB_Client] sendToSpecialPeer: special peer not enabled "
+                       "(call enableSpecialPeer() first)");
+        return false;
+    }
+    return send(_specialPeerID, command, ensured);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // onCommand / onStatusChange / setChecksum
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -713,6 +748,29 @@ void WCB_Client::_registerPeers() {
     bcast.channel = 0;
     bcast.encrypt = false;
     esp_now_add_peer(&bcast);
+
+    // Register the out-of-band special peer (NaviCore) if one was enabled.
+    _registerSpecialPeer();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _registerSpecialPeer
+//
+// Registers the special peer's MAC as an ESP-NOW peer so send()/sendToSpecialPeer()
+// can reach it. Only needed when the special peer sits OUTSIDE the 1..quantity
+// range (IDs within that range are already registered by _registerPeers()).
+// No-op when no special peer is enabled, when it's this device's own ID, or when
+// it's already a normal peer.
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::_registerSpecialPeer() {
+    if (_specialPeerID < 1 || _specialPeerID > WCB_MAX_BOARDS) return;
+    if (_specialPeerID == _deviceID)  return;   // that's us
+    if (_specialPeerID <= _quantity)  return;   // already registered as a normal peer
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, _wcbMACs[_specialPeerID - 1], 6);
+    peer.channel = 0;
+    peer.encrypt = false;
+    esp_now_add_peer(&peer);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -886,6 +944,17 @@ void WCB_Client::_checkOfflineBoards() {
         if (now - _boards[i].lastSeenMs > threshold) {
             _boards[i].online = false;
             if (_statusCallback) _statusCallback(i + 1, false);
+        }
+    }
+
+    // The special peer (NaviCore) sits outside 1..quantity, so the loop above
+    // skips it — check it here so its ETM offline transition fires too (and so
+    // ensured retries to it stop once it's gone).
+    if (_specialPeerID > _quantity && _specialPeerID <= WCB_MAX_BOARDS) {
+        int sp = _specialPeerID - 1;
+        if (_boards[sp].online && (now - _boards[sp].lastSeenMs > threshold)) {
+            _boards[sp].online = false;
+            if (_statusCallback) _statusCallback(_specialPeerID, false);
         }
     }
 }

@@ -375,6 +375,32 @@ public:
     // the target is reachable before dispatching a critical command.
     bool isOnline(uint8_t wcb_number);
 
+    // ── Special peer (NaviCore) ────────────────────────────────────────────────
+
+    // Enable two-way communication with the out-of-band "special peer" — e.g.
+    // NaviCore, which normally lives at ID 20 OUTSIDE the 1..wcb_quantity range
+    // (so it does not consume a WCB slot). This:
+    //   • registers the special peer's MAC as an ESP-NOW peer (ESP-NOW requires
+    //     this before send()/sendToSpecialPeer() can reach it), and
+    //   • includes it in online/offline (ETM heartbeat) tracking, so
+    //     isSpecialPeerOnline() / isOnline(id) and the status callback work for it.
+    //
+    // Call from setup(); works before OR after begin() (if begin() already ran,
+    // the peer is registered immediately). The matching WCBs must have the
+    // special peer enabled too (?SPECIAL,ON,<id>).
+    //
+    // id : the special peer's ID (1–20). Defaults to WCB_SPECIAL_ID (20).
+    void enableSpecialPeer(uint8_t id = WCB_SPECIAL_ID);
+
+    // True if the special peer has sent a heartbeat within the offline threshold.
+    // Always false until enableSpecialPeer() has been called.
+    bool isSpecialPeerOnline();
+
+    // Send a text command to the special peer (e.g. NaviCore). Convenience wrapper
+    // around send(specialPeerID, ...). Returns false if enableSpecialPeer() was
+    // never called.
+    bool sendToSpecialPeer(const char* command, bool ensured = true);
+
     // ── Callbacks ────────────────────────────────────────────────────────────
 
     // Register or replace the command callback after construction.
@@ -450,6 +476,8 @@ private:
     char     _password[40];      // Network password
     uint8_t  _quantity;          // Total WCBs in the system
     uint8_t  _deviceID;          // This device's ID (1–20)
+    uint8_t  _specialPeerID = 0; // Out-of-band special peer (NaviCore) ID; 0 = not enabled
+    bool     _started       = false; // True once begin() has registered ESP-NOW peers
 
     // ── MAC address tables ───────────────────────────────────────────────────
     // Pre-computed MAC addresses for every possible WCB slot and the broadcast
@@ -527,6 +555,7 @@ private:
     // Register each WCB (1–quantity) as an ESP-NOW peer using its pre-computed
     // MAC address, plus the shared broadcast MAC as a peer.
     void _registerPeers();
+    void _registerSpecialPeer();   // registers the special peer MAC if enabled + out-of-band
 
     // Build and broadcast a HEARTBEAT packet so all WCBs know this device is alive.
     void _sendHeartbeat();
