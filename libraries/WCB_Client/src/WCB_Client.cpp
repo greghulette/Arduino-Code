@@ -944,6 +944,19 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
     // Ignore undersized packets — they can't be a valid wcb_packet_etm_t
     if (len < (int)sizeof(wcb_packet_etm_t)) return;
 
+    // Network-namespace check — the sender's MAC must belong to THIS network's
+    // octet scheme (02:oct2:oct3:00:00:ID, see _buildMACs). The radio delivers
+    // ESP-NOW broadcasts/action-frames from foreign networks sharing the channel
+    // regardless of their scoped FF:oct2:oct3:FF:FF:FF group, so without this the
+    // password was the ONLY gate — and a mis-set local oct2/oct3 would still
+    // "see" other networks' boards (false-positive online status) even though it
+    // could never address them. Drop anything whose source octets aren't ours so
+    // status and send-ability stay consistent. (mac == info->src_addr.)
+    if (!mac ||
+        mac[0] != 0x02 || mac[1] != _oct2 || mac[2] != _oct3 ||
+        mac[3] != 0x00 || mac[4] != 0x00)
+        return;
+
     const wcb_packet_etm_t* pkt = (const wcb_packet_etm_t*)data;
 
     // Password check — reject packets from other WCB networks on the same channel
