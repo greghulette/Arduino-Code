@@ -674,6 +674,26 @@ void WCB_Client::onStatusChange(WCBStatusCallback callback) {
     _statusCallback = callback;
 }
 
+void WCB_Client::onRawPacket(WCBRawPacketCallback callback) {
+    _rawPacketCallback = callback;
+}
+
+// Unicast a raw buffer to a WCB's MAC (computed scheme). Registers the peer on
+// demand so a custom protocol (e.g. OTA) can reach any WCB without relying on
+// _registerPeers() having already added it. Returns true if ESP-NOW accepted it.
+bool WCB_Client::sendRawPacket(uint8_t target_wcb, const uint8_t* data, size_t len) {
+    if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS || !data || len == 0) return false;
+    const uint8_t* mac = _wcbMACs[target_wcb - 1];
+    if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peer = {};
+        memcpy(peer.peer_addr, mac, 6);
+        peer.channel = 0;
+        peer.encrypt = false;
+        if (esp_now_add_peer(&peer) != ESP_OK) return false;
+    }
+    return esp_now_send(mac, data, len) == ESP_OK;
+}
+
 // Enable or disable CRC32 checksum. Must match the WCB network's ?ETM,CHKSM setting.
 void WCB_Client::setChecksum(bool enabled) {
     _checksumEnabled = enabled;
@@ -1010,21 +1030,29 @@ int WCB_Client::_findFreePending() {
 // ─────────────────────────────────────────────────────────────────────────────
 void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len) {
 
-    // Ignore undersized packets — they can't be a valid wcb_packet_etm_t
-    if (len < (int)sizeof(wcb_packet_etm_t)) return;
-
-    // Network-namespace check — the sender's MAC must belong to THIS network's
-    // octet scheme (02:oct2:oct3:00:00:ID, see _buildMACs). The radio delivers
-    // ESP-NOW broadcasts/action-frames from foreign networks sharing the channel
-    // regardless of their scoped FF:oct2:oct3:FF:FF:FF group, so without this the
-    // password was the ONLY gate — and a mis-set local oct2/oct3 would still
-    // "see" other networks' boards (false-positive online status) even though it
-    // could never address them. Drop anything whose source octets aren't ours so
-    // status and send-ability stay consistent. (mac == info->src_addr.)
+    // Network-namespace check FIRST — the sender's MAC must belong to THIS
+    // network's octet scheme (02:oct2:oct3:00:00:ID, see _buildMACs). The radio
+    // delivers ESP-NOW broadcasts/action-frames from foreign networks sharing the
+    // channel regardless of their scoped FF:oct2:oct3:FF:FF:FF group, so without
+    // this the password was the ONLY gate — and a mis-set local oct2/oct3 would
+    // still "see" other networks' boards (false-positive online status) even
+    // though it could never address them. Drop anything whose source octets
+    // aren't ours. Done before the size routing below so it also gates raw
+    // (non-etm) packets handed to _rawPacketCallback. (mac == info->src_addr.)
     if (!mac ||
         mac[0] != 0x02 || mac[1] != _oct2 || mac[2] != _oct3 ||
         mac[3] != 0x00 || mac[4] != 0x00)
         return;
+
+    // Anything that is NOT the standard 252-byte WCB packet (e.g. an
+    // application's OTA control/data structs, 55/243 B) goes to the raw-packet
+    // hook, if registered, and stops here. This lets a custom protocol share the
+    // mesh without forking the receive path. Undersized junk with no hook
+    // registered is simply dropped (same as the previous `< sizeof` guard).
+    if (len != (int)sizeof(wcb_packet_etm_t)) {
+        if (_rawPacketCallback) _rawPacketCallback(mac, data, len);
+        return;
+    }
 
     const wcb_packet_etm_t* pkt = (const wcb_packet_etm_t*)data;
 

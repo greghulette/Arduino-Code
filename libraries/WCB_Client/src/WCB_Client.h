@@ -221,6 +221,16 @@ typedef void (*WCBCommandCallback)(uint8_t senderID, const char* command);
 // callback is registered — use isOnline() to poll status at any time.
 typedef void (*WCBStatusCallback)(uint8_t wcbID, bool online);
 
+// Called for any received ESP-NOW packet whose size is NOT the standard
+// wcb_packet_etm_t (252 B) — e.g. an application layer's own structs (the
+// NaviCore OTA control/data packets are 55/243 B). The packet has already
+// passed the network-MAC-namespace gate. Runs in the ESP-NOW receive (WiFi)
+// task, so the callback should do MINIMAL work and DEFER any blocking ops.
+//   mac  : source MAC (valid only for the duration of the call)
+//   data : raw packet bytes
+//   len  : packet length in bytes
+typedef void (*WCBRawPacketCallback)(const uint8_t* mac, const uint8_t* data, int len);
+
 
 // =============================================================================
 // WCB_Client
@@ -411,6 +421,20 @@ public:
     // Can be called at any time; the new callback takes effect immediately.
     void onStatusChange(WCBStatusCallback callback);
 
+    // Register a callback for received packets that are NOT the standard 252-byte
+    // WCB packet (e.g. an application's OTA control/data structs). Lets a custom
+    // protocol piggyback on the WCB ESP-NOW mesh without forking the receive
+    // path. The callback runs in the WiFi receive task — keep it minimal and
+    // defer blocking work (see the NaviCore OTA enqueue/drain pattern).
+    void onRawPacket(WCBRawPacketCallback callback);
+
+    // Unicast a raw byte buffer to a WCB's MAC (computed from the shared scheme).
+    // For custom protocols (e.g. OTA ACKs / relay forwards) that must send a
+    // struct other than wcb_packet_etm_t. Registers the peer on demand if needed.
+    //   target_wcb : WCB number 1..WCB_MAX_BOARDS
+    // Returns true if ESP-NOW accepted the packet for transmission.
+    bool sendRawPacket(uint8_t target_wcb, const uint8_t* data, size_t len);
+
     // ── Serial monitoring ─────────────────────────────────────────────────────
 
     // Monitor a UART for raw binary packets output by an attached device
@@ -508,8 +532,9 @@ private:
     bool _checksumEnabled = true;  // CRC32 on/off — must match ?ETM,CHKSM on WCBs
 
     // ── Callbacks ────────────────────────────────────────────────────────────
-    WCBCommandCallback _commandCallback = nullptr;
-    WCBStatusCallback  _statusCallback  = nullptr;
+    WCBCommandCallback   _commandCallback   = nullptr;
+    WCBStatusCallback    _statusCallback    = nullptr;
+    WCBRawPacketCallback _rawPacketCallback = nullptr;
 
     // ── WCBStream registry ───────────────────────────────────────────────────
     // WCBStream instances self-register here during construction so update()
