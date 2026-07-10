@@ -489,13 +489,14 @@ public:
     // Number of neighbors currently in the table.
     uint8_t neighborCount();
 
-    // Auto-join (default ON): when this device decodes a WDP advert from a
-    // regular WCB it isn't already peered with, it registers that board as an
-    // ESP-NOW peer LIVE — so the fleet is discovered without setting wcb_quantity
-    // to cover it, and without pre-registering slots for boards that may not
-    // exist (the ESP-NOW peer table caps at ~20). A board is joined only after
-    // it has been heard advertise at least twice. Client devices (other
-    // setIdentity() peers) and the special peer are never auto-joined.
+    // Auto-join (default ON): when this device decodes a WDP advert from a node
+    // it isn't already peered with — a WCB OR a client device (mesh monitor, other
+    // controller, command-accepting client) — it registers that node as an ESP-NOW
+    // peer LIVE, so anything on the mesh is discovered (and reachable via send())
+    // without setting wcb_quantity to cover it, and without pre-registering slots
+    // for nodes that may not exist (the ESP-NOW peer table caps at ~20). A node is
+    // joined only after it has been heard advertise at least twice. The special
+    // peer and this device itself are never auto-joined.
     //
     // A learned peer is PERMANENT: it is saved to NVS, restored on every
     // begin(), and from then on always expected to be on and ready (heartbeats

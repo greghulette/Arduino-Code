@@ -1182,7 +1182,13 @@ void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
     // write, which must NEVER run here (overflows the callback stack → crash /
     // boot loop on the 2nd advert). Only FLAG the join; update() performs it on
     // the loop task.
-    if (_autoJoin && !nb.isClient) {
+    // Auto-join learns WCBs AND client devices (mesh monitors, other controllers,
+    // command-accepting clients) so anything seen on the mesh becomes a PERSISTENT
+    // peer you can send() to — registered on the loop task, saved to NVS, restored
+    // every begin(). (_addLearnedPeer still skips self, the special peer, and the
+    // 1..wcb_quantity floor.) A learned peer never self-evicts; forgetPeer() /
+    // clearLearnedPeers() to drop one.
+    if (_autoJoin) {
         if (_advertCount[senderWCB - 1] < 255) _advertCount[senderWCB - 1]++;
         if (_advertCount[senderWCB - 1] >= 2 && !_learnedPeer[senderWCB - 1])
             _pendingJoin[senderWCB - 1] = true;
