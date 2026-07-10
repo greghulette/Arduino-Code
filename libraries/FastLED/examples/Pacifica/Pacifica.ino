@@ -1,3 +1,4 @@
+// @filter: (mem is large)
 /// @file    Pacifica.ino
 /// @brief   Gentle, blue-green ocean wave animation
 /// @example Pacifica.ino
@@ -9,9 +10,11 @@
 //  For Dan.
 //
 
-#define FASTLED_ALLOW_INTERRUPTS 0
+// FastLED.h must be included first to trigger precompiled headers for FastLED's build system
 #include <FastLED.h>
-FASTLED_USING_NAMESPACE
+// Note: FASTLED_ALLOW_INTERRUPTS improves performance on AVR platforms
+// Commented out to enable precompiled headers for faster compilation
+// #define FASTLED_ALLOW_INTERRUPTS 0
 
 #define DATA_PIN            3
 #define NUM_LEDS            60
@@ -22,7 +25,7 @@ FASTLED_USING_NAMESPACE
 //////////////////////////////////////////////////////////////////////////
 
 
-void pacifica_one_layer( CRGBPalette16& p, uint16_t cistart, uint16_t wavescale, uint8_t bri, uint16_t ioff);
+void pacifica_one_layer( fl::CRGBPalette16& p, uint16_t cistart, uint16_t wavescale, uint8_t bri, uint16_t ioff);
 void pacifica_loop();
 void pacifica_add_whitecaps();
 void pacifica_deepen_colors();
@@ -30,7 +33,7 @@ void pacifica_deepen_colors();
 
 
 
-CRGB leds[NUM_LEDS];
+fl::CRGB leds[NUM_LEDS];
 
 void setup() {
   delay( 3000); // 3 second delay for boot recovery, and a moment of silence
@@ -63,7 +66,7 @@ void loop()
 // All four wave layers are added together on top of each other, and then 
 // another filter is applied that adds "whitecaps" of brightness where the 
 // waves line up with each other more.  Finally, another pass is taken
-// over the led array to 'deepen' (dim) the blues and greens.
+// over the led fl::array to 'deepen' (dim) the blues and greens.
 //
 // The speed and scale and motion each layer varies slowly within independent 
 // hand-chosen ranges, which is why the code has a lot of low-speed 'beatsin8' functions
@@ -72,13 +75,13 @@ void loop()
 // These three custom blue-green color palettes were inspired by the colors found in
 // the waters off the southern coast of California, https://goo.gl/maps/QQgd97jjHesHZVxQ7
 //
-CRGBPalette16 pacifica_palette_1 = 
+fl::CRGBPalette16 pacifica_palette_1 = 
     { 0x000507, 0x000409, 0x00030B, 0x00030D, 0x000210, 0x000212, 0x000114, 0x000117, 
       0x000019, 0x00001C, 0x000026, 0x000031, 0x00003B, 0x000046, 0x14554B, 0x28AA50 };
-CRGBPalette16 pacifica_palette_2 = 
+fl::CRGBPalette16 pacifica_palette_2 = 
     { 0x000507, 0x000409, 0x00030B, 0x00030D, 0x000210, 0x000212, 0x000114, 0x000117, 
       0x000019, 0x00001C, 0x000026, 0x000031, 0x00003B, 0x000046, 0x0C5F52, 0x19BE5F };
-CRGBPalette16 pacifica_palette_3 = 
+fl::CRGBPalette16 pacifica_palette_3 = 
     { 0x000208, 0x00030E, 0x000514, 0x00061A, 0x000820, 0x000927, 0x000B2D, 0x000C33, 
       0x000E39, 0x001040, 0x001450, 0x001860, 0x001C70, 0x002080, 0x1040BF, 0x2060FF };
 
@@ -103,8 +106,8 @@ void pacifica_loop()
   sCIStart3 -= (deltams1 * beatsin88(501,5,7));
   sCIStart4 -= (deltams2 * beatsin88(257,4,6));
 
-  // Clear out the LED array to a dim background blue-green
-  fill_solid( leds, NUM_LEDS, CRGB( 2, 6, 10));
+  // Clear out the LED fl::array to a dim background blue-green
+  fill_solid( leds, NUM_LEDS, fl::CRGB( 2, 6, 10));
 
   // Render each of four layers, with different scales and speeds, that vary over time
   pacifica_one_layer( pacifica_palette_1, sCIStart1, beatsin16( 3, 11 * 256, 14 * 256), beatsin8( 10, 70, 130), 0-beat16( 301) );
@@ -119,8 +122,8 @@ void pacifica_loop()
   pacifica_deepen_colors();
 }
 
-// Add one layer of waves into the led array
-void pacifica_one_layer( CRGBPalette16& p, uint16_t cistart, uint16_t wavescale, uint8_t bri, uint16_t ioff)
+// Add one layer of waves into the led fl::array
+void pacifica_one_layer( fl::CRGBPalette16& p, uint16_t cistart, uint16_t wavescale, uint8_t bri, uint16_t ioff)
 {
   uint16_t ci = cistart;
   uint16_t waveangle = ioff;
@@ -132,7 +135,7 @@ void pacifica_one_layer( CRGBPalette16& p, uint16_t cistart, uint16_t wavescale,
     ci += cs;
     uint16_t sindex16 = sin16( ci) + 32768;
     uint8_t sindex8 = scale16( sindex16, 240);
-    CRGB c = ColorFromPalette( p, sindex8, bri, LINEARBLEND);
+    fl::CRGB c = ColorFromPalette( p, sindex8, bri, LINEARBLEND);
     leds[i] += c;
   }
 }
@@ -150,7 +153,7 @@ void pacifica_add_whitecaps()
     if( l > threshold) {
       uint8_t overage = l - threshold;
       uint8_t overage2 = qadd8( overage, overage);
-      leds[i] += CRGB( overage, overage2, qadd8( overage2, overage2));
+      leds[i] += fl::CRGB( overage, overage2, qadd8( overage2, overage2));
     }
   }
 }
@@ -161,6 +164,6 @@ void pacifica_deepen_colors()
   for( uint16_t i = 0; i < NUM_LEDS; i++) {
     leds[i].blue = scale8( leds[i].blue,  145); 
     leds[i].green= scale8( leds[i].green, 200); 
-    leds[i] |= CRGB( 2, 5, 7);
+    leds[i] |= fl::CRGB( 2, 5, 7);
   }
 }

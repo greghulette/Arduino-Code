@@ -1,6 +1,9 @@
+// IWYU pragma: private
 
-#include "fl/unique_ptr.h"
+
+#include "fl/stl/unique_ptr.h"
 #include "pixel_iterator.h"
+#include "fl/stl/noexcept.h"
 
 namespace fl {
 
@@ -10,15 +13,15 @@ class PixelIterator;
 class IAdafruitNeoPixelDriver {
 public:
     /// Static factory method to create driver implementation
-    static unique_ptr<IAdafruitNeoPixelDriver> create();
+    static unique_ptr<IAdafruitNeoPixelDriver> create() FL_NOEXCEPT;
 
     virtual ~IAdafruitNeoPixelDriver() = default;
     
     /// Initialize the driver with data pin and RGBW mode
-    virtual void init(int dataPin) = 0;
+    virtual void init(int dataPin) FL_NOEXCEPT = 0;
     
     /// Output pixels to the LED strip
-    virtual void showPixels(PixelIterator& pixelIterator) = 0;
+    virtual void showPixels(PixelIterator& pixelIterator) FL_NOEXCEPT = 0;
 
 };
 

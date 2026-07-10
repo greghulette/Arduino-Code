@@ -1,6 +1,7 @@
 #include "WCB_Client.h"
 #include "WCBStream.h"
 #include <esp_wifi.h>
+#include <Preferences.h>   // learned-peer persistence (NVS)
 
 // Singleton instance pointer — allows the static ESP-NOW callback to route
 // received packets back to the active WCB_Client object. Only one WCB_Client
@@ -114,6 +115,10 @@ bool WCB_Client::begin() {
     // Pre-register every WCB MAC and the broadcast MAC as ESP-NOW peers.
     // ESP-NOW requires a peer to be registered before you can send to it.
     _registerPeers();
+
+    // Restore auto-joined peers persisted by a previous session — they are
+    // permanent members until the app forgets them (forgetPeer/clearLearnedPeers).
+    _loadLearnedPeers();
     _started = true;             // enableSpecialPeer() after begin() registers immediately
 
     Serial.printf("[WCB_Client] Joined WCB network as device ID %d "
@@ -149,6 +154,8 @@ void WCB_Client::update() {
     _checkOfflineBoards();
     _processMonitors();
     _processFragJob();   // drain a pending fragmented send, one chunk per tick
+    _wdpTick();          // WDP device-identity advert cadence (boot burst + periodic)
+    _ageNeighbors(now);  // expire WDP neighbors we haven't heard from recently
 
     // Service the pending table.
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
@@ -678,6 +685,50 @@ void WCB_Client::onRawPacket(WCBRawPacketCallback callback) {
     _rawPacketCallback = callback;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// onNeighbor / getNeighbor / neighborCount — WDP consumer API
+//
+// A neighbor is any board on the mesh whose WDP advert we've decoded: another
+// WCB, or a WCB_Client device (isClient). Adverts arrive roughly every 30s and
+// age out after WCB_WDP_NEIGHBOR_TTL_MS of silence.
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::onNeighbor(WCBNeighborCallback callback) {
+    _neighborCallback = callback;
+}
+
+const WCBNeighbor* WCB_Client::getNeighbor(uint8_t wcbNumber) {
+    if (wcbNumber < 1 || wcbNumber > WCB_MAX_BOARDS) return nullptr;
+    const WCBNeighbor& nb = _neighbors[wcbNumber - 1];
+    return nb.valid ? &nb : nullptr;
+}
+
+uint8_t WCB_Client::neighborCount() {
+    uint8_t n = 0;
+    for (int i = 0; i < WCB_MAX_BOARDS; i++)
+        if (_neighbors[i].valid) n++;
+    return n;
+}
+
+// Enable/disable auto-join. Turning it OFF stops NEW boards from being learned;
+// already-registered learned peers stay until they age out or the device
+// restarts. Turning it ON lets subsequently-heard boards join.
+void WCB_Client::setAutoJoin(bool enabled) {
+    _autoJoin = enabled;
+}
+
+// Expire neighbors we haven't heard an advert from within the TTL. Fires
+// onNeighbor once more with valid=false so the app can drop it from any UI.
+void WCB_Client::_ageNeighbors(unsigned long now) {
+    for (int i = 0; i < WCB_MAX_BOARDS; i++) {
+        WCBNeighbor& nb = _neighbors[i];
+        if (!nb.valid) continue;
+        if ((long)(now - nb.lastSeenMs) >= (long)WCB_WDP_NEIGHBOR_TTL_MS) {
+            nb.valid = false;
+            if (_neighborCallback) _neighborCallback(nb);
+        }
+    }
+}
+
 // Unicast a raw buffer to a WCB's MAC (computed scheme). Registers the peer on
 // demand so a custom protocol (e.g. OTA) can reach any WCB without relying on
 // _registerPeers() having already added it. Returns true if ESP-NOW accepted it.
@@ -794,6 +845,115 @@ void WCB_Client::_registerSpecialPeer() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// _addLearnedPeer
+//
+// Register a regular WCB (learned via a WDP advert) as an ESP-NOW peer, live,
+// and remember it in NVS. Uses the same derived MAC scheme as _buildMACs(), so
+// no address is learned — only the FACT that the board exists. Idempotent, and
+// guarded against self, the special peer, ids already covered by the
+// 1..quantity floor, and the ~20-peer ESP-NOW cap. A learned peer is PERMANENT:
+// it is restored on every begin() and is always expected to be on and ready.
+// Offline-detection tracks its heartbeat liveness, but membership never
+// self-evicts — only forgetPeer()/clearLearnedPeers() remove it. If the peer
+// table gets crowded, clearing it up is deliberately the user's call.
+// ─────────────────────────────────────────────────────────────────────────────
+bool WCB_Client::_addLearnedPeer(uint8_t id) {
+    if (id < 1 || id > WCB_MAX_BOARDS)  return false;
+    if (id == _deviceID)                return false;   // that's us
+    if (id == _specialPeerID)           return false;   // controller, registered separately
+    if (id <= _quantity)                return false;   // already a floor peer
+    int idx = id - 1;
+    if (_learnedPeer[idx])              return true;    // already joined
+
+    if (!esp_now_is_peer_exist(_wcbMACs[idx])) {
+        esp_now_peer_info_t peer = {};
+        memcpy(peer.peer_addr, _wcbMACs[idx], 6);
+        peer.channel = 0;
+        peer.encrypt = false;
+        if (esp_now_add_peer(&peer) != ESP_OK) {
+            Serial.printf("[WCB_Client] auto-join: could not add WCB%d (peer table full?)\n", id);
+            return false;
+        }
+    }
+    _learnedPeer[idx] = true;
+    _saveLearnedPeers();     // joining is a rare, one-time event — persist immediately
+    Serial.printf("[WCB_Client] auto-joined WCB%d\n", id);
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Learned-peer persistence (NVS namespace "wcb_peers")
+//
+// Only MEMBERSHIP is stored, as a 20-bit mask — identity re-learns from adverts
+// and MACs are always derived, so there is nothing else to keep. The blob is
+// fingerprinted with the network octets: change oct2/oct3 (a different mesh)
+// and the old membership is discarded instead of deriving wrong-group MACs.
+// Mirrors the WCB firmware's "learned_peers" scheme.
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::_saveLearnedPeers() {
+    uint32_t mask = 0;
+    for (int i = 0; i < WCB_MAX_BOARDS; i++)
+        if (_learnedPeer[i]) mask |= (1UL << i);
+    Preferences prefs;
+    prefs.begin("wcb_peers", false);
+    prefs.putUChar("ver", 1);
+    prefs.putUChar("o2", _oct2);
+    prefs.putUChar("o3", _oct3);
+    prefs.putUInt("mask", mask);
+    prefs.end();
+}
+
+void WCB_Client::_loadLearnedPeers() {
+    Preferences prefs;
+    prefs.begin("wcb_peers", true);
+    uint8_t  ver  = prefs.getUChar("ver", 0);
+    uint8_t  o2   = prefs.getUChar("o2", 0);
+    uint8_t  o3   = prefs.getUChar("o3", 0);
+    uint32_t mask = prefs.getUInt("mask", 0);
+    prefs.end();
+
+    if (ver != 1) return;                       // nothing saved (or unknown schema)
+    if (o2 != _oct2 || o3 != _oct3) {           // saved under a different network
+        Preferences wipe;
+        wipe.begin("wcb_peers", false);
+        wipe.clear();
+        wipe.end();
+        return;
+    }
+
+    int restored = 0;
+    for (int i = 0; i < WCB_MAX_BOARDS; i++) {
+        if (!(mask & (1UL << i))) continue;
+        uint8_t id = i + 1;
+        // Ids now covered by the floor/special/self are skipped (e.g. the app
+        // raised wcb_quantity since the save) — _addLearnedPeer re-derives the
+        // guards, so a stale bit simply doesn't re-join.
+        if (_addLearnedPeer(id)) restored++;
+    }
+    if (restored > 0)
+        Serial.printf("[WCB_Client] restored %d learned peer(s)\n", restored);
+}
+
+// Forget one auto-joined peer: deregister it, drop it from NVS, mark it offline.
+// Floor peers (1..wcb_quantity) and the special peer are unaffected.
+void WCB_Client::forgetPeer(uint8_t id) {
+    if (id < 1 || id > WCB_MAX_BOARDS) return;
+    int idx = id - 1;
+    if (!_learnedPeer[idx]) return;
+    _learnedPeer[idx] = false;
+    if (esp_now_is_peer_exist(_wcbMACs[idx])) esp_now_del_peer(_wcbMACs[idx]);
+    _boards[idx].online = false;
+    _saveLearnedPeers();
+    Serial.printf("[WCB_Client] forgot WCB%d\n", id);
+}
+
+// Forget ALL auto-joined peers (the user-cleanup handle for a crowded table).
+void WCB_Client::clearLearnedPeers() {
+    for (int i = 0; i < WCB_MAX_BOARDS; i++)
+        if (_learnedPeer[i]) forgetPeer(i + 1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // _sendHeartbeat
 //
 // Broadcasts a HEARTBEAT packet to the network. Heartbeats carry no command
@@ -813,6 +973,180 @@ void WCB_Client::_sendHeartbeat() {
     hb.structSequenceNumber  = 0;         // Heartbeats don't use sequence numbers
 
     esp_now_send(_broadcastMAC, (uint8_t*)&hb, sizeof(hb));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WDP device-identity advert
+//
+// Broadcasts this device's identity (set via setIdentity) on the mesh so every
+// WCB discovers it through its Wireless Discovery Protocol neighbor table. The
+// wire format MUST match the WCB firmware's WCB_WDP: a 2-byte header (magic 'W',
+// proto 0x01) then [type][len][value] TLVs, carried raw in the ETM packet's
+// structCommand with structPacketType = WCB_PACKET_WDP. No CRC — WDP carries TLV
+// bytes, not a text command.
+// ─────────────────────────────────────────────────────────────────────────────
+#define WCB_WDP_MAGIC        'W'
+#define WCB_WDP_PROTO        0x01
+#define WCB_WDP_TLV_END      0x00
+#define WCB_WDP_TLV_FWVER    0x03   // string (shared with WCB adverts)
+#define WCB_WDP_TLV_DEVTYPE  0x0B   // string — canonical device type name
+#define WCB_WDP_TLV_HWREV    0x0C   // string — hardware revision
+#define WCB_WDP_TLV_CAPTAGS  0x0D   // string — space-separated capability tags
+// Decode-only TLVs (WCBs advertise these; the consumer below reads them).
+#define WCB_WDP_TLV_ALIAS     0x01  // string — WCB alias
+#define WCB_WDP_TLV_HWVER     0x04  // uint8  — WCB numeric hardware version
+#define WCB_WDP_TLV_CAPFLAGS  0x05  // uint16 LE — WCB capability bitmap
+#define WCB_WDP_TLV_MAESTRO   0x06  // bytes  — local Maestro IDs
+#define WCB_WDP_TLV_PORTLABEL 0x09  // [port][label] — one per labeled serial port
+#define WCB_WDP_TLV_CTRLID    0x0A  // uint8  — controller (special-peer) ID
+
+// Append one TLV; returns the new offset (unchanged if it wouldn't fit).
+static int wcbPutTLV(uint8_t* buf, int o, int max, uint8_t type,
+                     const uint8_t* val, int len) {
+    if (len < 0)   len = 0;
+    if (len > 255) len = 255;
+    if (o + 2 + len > max) return o;   // no room — skip this TLV
+    buf[o++] = type;
+    buf[o++] = (uint8_t)len;
+    for (int i = 0; i < len; i++) buf[o++] = val[i];
+    return o;
+}
+
+void WCB_Client::setIdentity(const char* type, const char* fw,
+                             const char* hwRev, const char* caps) {
+    strncpy(_wdpType,  type  ? type  : "", sizeof(_wdpType)  - 1);  _wdpType[sizeof(_wdpType)  - 1] = '\0';
+    strncpy(_wdpFw,    fw    ? fw    : "", sizeof(_wdpFw)    - 1);  _wdpFw[sizeof(_wdpFw)      - 1] = '\0';
+    strncpy(_wdpHwRev, hwRev ? hwRev : "", sizeof(_wdpHwRev) - 1);  _wdpHwRev[sizeof(_wdpHwRev) - 1] = '\0';
+    strncpy(_wdpCaps,  caps  ? caps  : "", sizeof(_wdpCaps)  - 1);  _wdpCaps[sizeof(_wdpCaps)  - 1] = '\0';
+
+    // Arm the cadence so the new identity goes out promptly (short boot burst),
+    // then settles to a staggered periodic backstop. Works whether called before
+    // or after begin(): the send happens from update() once ESP-NOW is up.
+    _wdpBootLeft     = (_wdpType[0]) ? 3 : 0;
+    _wdpNextBootMs   = millis() + 300;
+    _wdpNextAdvertMs = millis() + 60000UL + (unsigned long)((_deviceID % 16) * 500);
+
+    if (_wdpType[0])
+        Serial.printf("[WCB_Client] WDP identity set: type=\"%s\" fw=\"%s\"\n", _wdpType, _wdpFw);
+}
+
+int WCB_Client::_buildWdpPayload(uint8_t* buf, int max) {
+    int o = 0;
+    if (max < 3) return 0;
+    buf[o++] = WCB_WDP_MAGIC;
+    buf[o++] = WCB_WDP_PROTO;
+    o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_DEVTYPE, (const uint8_t*)_wdpType, strlen(_wdpType));
+    if (_wdpFw[0])    o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_FWVER,   (const uint8_t*)_wdpFw,    strlen(_wdpFw));
+    if (_wdpHwRev[0]) o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_HWREV,   (const uint8_t*)_wdpHwRev, strlen(_wdpHwRev));
+    if (_wdpCaps[0])  o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_CAPTAGS, (const uint8_t*)_wdpCaps,  strlen(_wdpCaps));
+    if (o < max) buf[o++] = WCB_WDP_TLV_END;
+    return o;
+}
+
+void WCB_Client::_sendWdpAdvert() {
+    wcb_packet_etm_t pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    strncpy(pkt.structPassword, _password, sizeof(pkt.structPassword) - 1);
+    snprintf(pkt.structSenderID, sizeof(pkt.structSenderID), "%d", _deviceID);
+    snprintf(pkt.structTargetID, sizeof(pkt.structTargetID), "0");   // 0 = broadcast
+    pkt.structCommandIncluded = 1;
+    // Raw TLV bytes (may contain 0x00) go straight into structCommand — no CRC.
+    _buildWdpPayload((uint8_t*)pkt.structCommand, sizeof(pkt.structCommand));
+    pkt.structPacketType     = WCB_PACKET_WDP;
+    pkt.structSequenceNumber = 0;
+    esp_now_send(_broadcastMAC, (uint8_t*)&pkt, sizeof(pkt));
+}
+
+void WCB_Client::_wdpTick() {
+    if (!_started || !_wdpType[0]) return;   // not running, or nothing to advertise
+    unsigned long now = millis();
+    if (_wdpBootLeft > 0 && now >= _wdpNextBootMs) {
+        _sendWdpAdvert();
+        _wdpBootLeft--;
+        _wdpNextBootMs = now + 1300;
+    }
+    if ((long)(now - _wdpNextAdvertMs) >= 0) {   // rollover-safe
+        _sendWdpAdvert();
+        _wdpNextAdvertMs = now + 60000UL;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _handleWdpAdvert — WDP consumer
+//
+// Decode a neighbor's advert payload (magic 'W' + proto + [type][len][value]
+// TLVs, riding structCommand) into _neighbors[senderWCB-1] and fire onNeighbor.
+// Mirrors the WCB firmware's decoder; a client's DEVTYPE doubles as the name and
+// flags isClient. In-RAM parse only — safe to run inline in the receive callback.
+// ─────────────────────────────────────────────────────────────────────────────
+void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
+    if (senderWCB < 1 || senderWCB > WCB_MAX_BOARDS) return;
+    if (cmd[0] != (uint8_t)WCB_WDP_MAGIC || cmd[1] != WCB_WDP_PROTO) return;
+
+    WCBNeighbor& nb = _neighbors[senderWCB - 1];
+    memset(&nb, 0, sizeof(nb));            // a board is the sole authority for its facts — replace wholesale
+    nb.valid      = true;
+    nb.wcbNumber  = senderWCB;
+    nb.lastSeenMs = millis();
+
+    int o = 2;                             // skip magic + version
+    while (o + 2 <= 200) {
+        uint8_t type = cmd[o];
+        if (type == WCB_WDP_TLV_END) break;
+        int len = cmd[o + 1];
+        const uint8_t* val = &cmd[o + 2];
+        if (o + 2 + len > 200) break;      // truncated / malformed
+        switch (type) {
+            case WCB_WDP_TLV_ALIAS: {
+                int L = len > 24 ? 24 : len; memcpy(nb.name, val, L); nb.name[L] = '\0'; break;
+            }
+            case WCB_WDP_TLV_DEVTYPE: {    // client device type doubles as the name
+                int L = len > 24 ? 24 : len; memcpy(nb.name, val, L); nb.name[L] = '\0';
+                nb.isClient = true; break;
+            }
+            case WCB_WDP_TLV_FWVER: {
+                int L = len > 27 ? 27 : len; memcpy(nb.fw, val, L); nb.fw[L] = '\0'; break;
+            }
+            case WCB_WDP_TLV_HWVER:  if (len >= 1) nb.hwVer = val[0]; break;
+            case WCB_WDP_TLV_HWREV: {
+                int L = len > 15 ? 15 : len; memcpy(nb.hwRev, val, L); nb.hwRev[L] = '\0'; break;
+            }
+            case WCB_WDP_TLV_CAPFLAGS:
+                if (len >= 2) nb.capFlags = (uint16_t)val[0] | ((uint16_t)val[1] << 8);
+                break;
+            case WCB_WDP_TLV_CAPTAGS: {
+                int L = len > 48 ? 48 : len; memcpy(nb.capTags, val, L); nb.capTags[L] = '\0'; break;
+            }
+            case WCB_WDP_TLV_CTRLID:  if (len >= 1) nb.ctrlId = val[0]; break;
+            case WCB_WDP_TLV_MAESTRO: {
+                int L = len > 9 ? 9 : len; memcpy(nb.maestroIds, val, L); nb.maestroCount = (uint8_t)L; break;
+            }
+            case WCB_WDP_TLV_PORTLABEL: {
+                if (len >= 1) {
+                    int port = val[0];
+                    if (port >= 1 && port <= 5) {
+                        int L = len - 1; if (L > 24) L = 24;
+                        memcpy(nb.portLabels[port - 1], val + 1, L);
+                        nb.portLabels[port - 1][L] = '\0';
+                    }
+                }
+                break;
+            }
+            default: break;                // unknown TLV — skipped by length (forward-compatible)
+        }
+        o += 2 + len;
+    }
+
+    // Auto-join: register a regular WCB (not a client device, not the special
+    // peer) as an ESP-NOW peer once we've heard it advertise at least twice, so
+    // a single stray/spoofed advert can't add a peer. The sender was bound to its
+    // source MAC in _handleReceive, so senderWCB is trustworthy here.
+    if (_autoJoin && !nb.isClient) {
+        if (_advertCount[senderWCB - 1] < 255) _advertCount[senderWCB - 1]++;
+        if (_advertCount[senderWCB - 1] >= 2) _addLearnedPeer(senderWCB);
+    }
+
+    if (_neighborCallback) _neighborCallback(nb);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -959,7 +1293,11 @@ void WCB_Client::_checkOfflineBoards() {
     unsigned long threshold = (unsigned long)_heartbeatIntervalSec
                               * _missedBeforeOffline * 1000UL;
 
-    for (int i = 0; i < _quantity; i++) {
+    for (int i = 0; i < WCB_MAX_BOARDS; i++) {
+        // Sweep floor peers (1..quantity) AND auto-joined learned peers; a learned
+        // board above the floor must still transition offline when its heartbeats
+        // stop, so ensured retries to it stop and the status callback fires.
+        if (i >= _quantity && !_learnedPeer[i]) continue;
         if (!_boards[i].online) continue;
         if (now - _boards[i].lastSeenMs > threshold) {
             _boards[i].online = false;
@@ -1063,6 +1401,13 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
     int senderID = atoi(pkt->structSenderID);
     int targetID = atoi(pkt->structTargetID);
 
+    // Bind the claimed sender id to its real MAC. The octet check above already
+    // proved octets 0-4; every WCB and WCB_Client forces its STA MAC's LAST octet
+    // to its board number (02:oct2:oct3:00:00:<id>, see _buildMACs), so a packet
+    // whose structSenderID disagrees with mac[5] is spoofed or misconfigured.
+    // Drop it before it can mark a board online, satisfy an ACK, or auto-join.
+    if (senderID >= 1 && senderID <= WCB_MAX_BOARDS && (uint8_t)senderID != mac[5]) return;
+
     // Only process packets addressed to us or to everyone
     if (targetID != WCB_TARGET_BROADCAST && targetID != _deviceID) return;
 
@@ -1141,6 +1486,14 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
                 _commandCallback((uint8_t)senderID, cmd);
             }
 
+            break;
+
+        // ── WDP advert ─────────────────────────────────────────────────────────
+        // A neighbor announcing itself. Decode its TLVs into the neighbor table
+        // and fire onNeighbor. No ACK — adverts are fire-and-forget.
+        case WCB_PACKET_WDP:
+            if (senderID >= 1 && senderID <= WCB_MAX_BOARDS && pkt->structCommandIncluded)
+                _handleWdpAdvert((uint8_t)senderID, (const uint8_t*)pkt->structCommand);
             break;
     }
 }

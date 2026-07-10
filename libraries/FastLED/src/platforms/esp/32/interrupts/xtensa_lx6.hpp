@@ -1,5 +1,9 @@
+// ok no namespace fl
 #pragma once
 
+// IWYU pragma: private
+
+#include "fl/stl/compiler_control.h"
 // Assembly Shims for High-Priority Interrupts on ESP32 (Xtensa LX6)
 //
 // This file provides assembly interrupt service routine (ISR) shims for
@@ -12,14 +16,17 @@
 //       The assembly directives and implementation need to be researched and
 //       validated for Xtensa LX6 architecture before use.
 
-#include <stdint.h>
+#include "fl/stl/stdint.h"
+// IWYU pragma: begin_keep
 #include "soc/soc.h"
+// IWYU pragma: end_keep
 #include "esp_intr_alloc.h"
+// IWYU pragma: begin_keep
 #include "hal/interrupt_coreasm.h"
+#include "fl/stl/noexcept.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// IWYU pragma: end_keep
+FL_EXTERN_C_BEGIN
 
 //=============================================================================
 // XTENSA LX6 ARCHITECTURE CONTEXT (ESP32)
@@ -149,16 +156,16 @@ extern "C" {
  *
  * Assembly implementation requirements:
  * 1. Save all used registers to stack (16-byte aligned)
- * 2. Call C handler function (marked IRAM_ATTR)
+ * 2. Call C handler function (marked FL_IRAM)
  * 3. Restore registers from stack
  * 4. Execute "rfi 4" to return from interrupt
  *
  * Example installation (CUSTOM, not standard FastLED):
  *   esp_intr_alloc(ETS_RMT_INTR_SOURCE,
  *                  ESP_INTR_FLAG_LEVEL4 | ESP_INTR_FLAG_IRAM,
- *                  xt_highint4, NULL, &handle);
+ *                  xt_highint4, nullptr, &handle);
  */
-extern void xt_highint4(void);
+extern void xt_highint4(void) FL_NOEXCEPT;
 
 /*
  * Level 5 Interrupt Shim (EXPERIMENTAL)
@@ -172,20 +179,20 @@ extern void xt_highint4(void);
  * Critical for RMT LED timing under Wi-Fi load - provides maximum
  * interrupt latency immunity, but requires custom implementation.
  */
-extern void xt_highint5(void);
+extern void xt_highint5(void) FL_NOEXCEPT;
 
 //=============================================================================
 // C HANDLER FUNCTION PROTOTYPES
 //=============================================================================
 
 /*
- * C Handler Functions (IRAM_ATTR required) - EXPERIMENTAL ONLY
+ * C Handler Functions (FL_IRAM required) - EXPERIMENTAL ONLY
  *
  * These functions are called from the assembly shims for CUSTOM implementations.
  * They are NOT part of the official FastLED RMT driver which uses level 1-3.
  *
  * Requirements for custom handlers:
- * 1. Marked with IRAM_ATTR (placed in IRAM, not flash)
+ * 1. Marked with FL_IRAM (placed in IRAM, not flash)
  * 2. Keep execution time minimal
  * 3. No printf, malloc, or FreeRTOS calls
  * 4. Only register and memory operations
@@ -196,10 +203,10 @@ extern void xt_highint5(void);
  */
 
 // Level 4 C handler - EXPERIMENTAL, called from xt_highint4 assembly shim
-void IRAM_ATTR fastled_esp32_level4_handler(void);
+void FL_IRAM fastled_esp32_level4_handler(void) FL_NOEXCEPT;
 
 // Level 5 C handler - EXPERIMENTAL, called from xt_highint5 assembly shim
-void IRAM_ATTR fastled_esp32_level5_handler(void);
+void FL_IRAM fastled_esp32_level5_handler(void) FL_NOEXCEPT;
 
 //=============================================================================
 // INTERRUPT INSTALLATION HELPERS
@@ -215,7 +222,7 @@ void IRAM_ATTR fastled_esp32_level5_handler(void);
  *
  * Parameters:
  *   source: Interrupt source (e.g., ETS_RMT_INTR_SOURCE)
- *   arg: User argument passed to handler (can be NULL)
+ *   arg: User argument passed to handler (can be nullptr)
  *   handle: Pointer to store interrupt handle
  *
  * Returns: ESP_OK on success, error code on failure
@@ -223,13 +230,13 @@ void IRAM_ATTR fastled_esp32_level5_handler(void);
  * Example usage for RMT (STANDARD FastLED approach):
  *   esp_intr_handle_t rmt_intr_handle;
  *   esp_err_t err = fastled_esp32_install_level3_interrupt(
- *       ETS_RMT_INTR_SOURCE, NULL, &rmt_intr_handle);
+ *       ETS_RMT_INTR_SOURCE, nullptr, &rmt_intr_handle);
  */
 esp_err_t fastled_esp32_install_level3_interrupt(
     int source,
     void *arg,
     esp_intr_handle_t *handle
-);
+) FL_NOEXCEPT;
 
 /*
  * Install Level 4 High-Priority Interrupt (EXPERIMENTAL)
@@ -241,7 +248,7 @@ esp_err_t fastled_esp32_install_level4_interrupt(
     int source,
     void *arg,
     esp_intr_handle_t *handle
-);
+) FL_NOEXCEPT;
 
 /*
  * Install Level 5 High-Priority Interrupt (EXPERIMENTAL)
@@ -253,7 +260,7 @@ esp_err_t fastled_esp32_install_level5_interrupt(
     int source,
     void *arg,
     esp_intr_handle_t *handle
-);
+) FL_NOEXCEPT;
 
 //=============================================================================
 // RMT-SPECIFIC INTEGRATION
@@ -286,19 +293,19 @@ esp_err_t fastled_esp32_install_level5_interrupt(
 esp_err_t fastled_esp32_rmt_init_official(
     int channel,
     int gpio_num,
-    uint32_t resolution_hz,
+    fl::u32 resolution_hz,
     size_t mem_block_symbols,
     int interrupt_level  // 1-3 only, 3 recommended
-);
+) FL_NOEXCEPT;
 
 // Initialize RMT with CUSTOM high-priority interrupt (EXPERIMENTAL)
 esp_err_t fastled_esp32_rmt_init_custom(
     int channel,
     int gpio_num,
-    uint32_t resolution_hz,
+    fl::u32 resolution_hz,
     size_t mem_block_symbols,
     int interrupt_level  // 4 or 5, bypasses official driver
-);
+) FL_NOEXCEPT;
 
 //=============================================================================
 // ASSEMBLY TRAMPOLINE MACRO
@@ -396,7 +403,7 @@ esp_err_t fastled_esp32_rmt_init_custom(
  * Example Usage:
  *
  * // Define your C handler function
- * void IRAM_ATTR my_rmt_handler(void* arg) {
+ * void FL_IRAM my_rmt_handler(void* arg) {
  *     // Handle RMT interrupt - minimal code only
  * }
  *
@@ -407,7 +414,7 @@ esp_err_t fastled_esp32_rmt_init_custom(
  * esp_intr_handle_t handle;
  * esp_intr_alloc(ETS_RMT_INTR_SOURCE,
  *                ESP_INTR_FLAG_LEVEL4 | ESP_INTR_FLAG_IRAM,
- *                my_rmt_isr, NULL, &handle);
+ *                my_rmt_isr, nullptr, &handle);
  */
 
 //=============================================================================
@@ -439,7 +446,7 @@ esp_err_t fastled_esp32_rmt_init_custom(
  *     s32i  a3, a1, FASTLED_ISR_A3_OFFSET
  *     # ... save other registers as needed
  *
- *     # Call C handler (must be IRAM_ATTR)
+ *     # Call C handler (must be FL_IRAM)
  *     call0 fastled_esp32_level5_handler
  *
  *     # Restore registers
@@ -474,7 +481,7 @@ esp_err_t fastled_esp32_rmt_init_custom(
  *
  * 1. IRAM Placement:
  *    - All handler code must be in IRAM (not flash)
- *    - Use IRAM_ATTR for C functions
+ *    - Use FL_IRAM for C functions
  *    - Use .iram1 section for assembly
  *    - Ensures operation when flash cache disabled
  *
@@ -518,6 +525,4 @@ esp_err_t fastled_esp32_rmt_init_custom(
  *   -mlongcalls  # Required for IRAM function calls
  */
 
-#ifdef __cplusplus
-}
-#endif
+FL_EXTERN_C_END

@@ -8,23 +8,25 @@
 #define __INC_FASTSPI_ARM_SAM_H
 
 #if FASTLED_DOXYGEN // guard against the arduino ide idiotically including every header file
-#include "FastLED.h"
-#include "fl/int.h"
+#include "fl/system/fastled.h"
+#include "fl/stl/int.h"
+#include "fl/stl/compiler_control.h"
 
-FASTLED_NAMESPACE_BEGIN
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
 
 /// A skeletal implementation of hardware SPI support.  Fill in the necessary code for init, waiting, and writing.  The rest of
 /// the method implementations should provide a starting point, even if they're not the most efficient to start with
 template <fl::u8 _DATA_PIN, fl::u8 _CLOCK_PIN, fl::u32 _SPI_CLOCK_DIVIDER>
 class REFHardwareSPIOutput {
-	Selectable *m_pSelect;
+	Selectable *mPSelect;
 
 public:
 	/// Default Constructor
-	SAMHardwareSPIOutput() { m_pSelect = NULL; }
+	SAMHardwareSPIOutput() { mPSelect = nullptr; }
 
 	/// Constructor with selectable
-	SAMHArdwareSPIOutput(Selectable *pSelect) { m_pSelect = pSelect; }
+	SAMHArdwareSPIOutput(Selectable *pSelect) { mPSelect = pSelect; }
 
 	/// set the object representing the selectable
 	void setSelect(Selectable *pSelect) { /* TODO */ }
@@ -33,10 +35,15 @@ public:
 	void init() { /* TODO */ }
 
 	/// latch the CS select
-	void inline select() __attribute__((always_inline)) { if(m_pSelect != NULL) { m_pSelect->select(); } }
+	void inline select() __attribute__((always_inline)) { if(mPSelect != nullptr) { mPSelect->select(); } }
 
 	/// release the CS select
-	void inline release() __attribute__((always_inline)) { if(m_pSelect != NULL) { m_pSelect->release(); } }
+	void inline release() __attribute__((always_inline)) { if(mPSelect != nullptr) { mPSelect->release(); } }
+
+	void endTransaction() {
+		waitFully();
+		release();
+	}
 
 	/// wait until all queued up data has been written
 	static void waitFully() { /* TODO */ }
@@ -45,7 +52,7 @@ public:
 	static void writeByte(fl::u8 b) { /* TODO */ }
 
 	/// write a word out via SPI (returns immediately on writing register)
-	static void writeWord(uint16_t w) { /* TODO */ }
+	static void writeWord(fl::u16 w) { /* TODO */ }
 
 	/// A raw set of writing byte values, assumes setup/init/waiting done elsewhere
 	static void writeBytesValueRaw(fl::u8 value, int len) {
@@ -78,7 +85,7 @@ public:
 
 	/// write a block of uint8_ts out in groups of three.  len is the total number of uint8_ts to write out.  The template
 	/// parameters indicate how many uint8_ts to skip at the beginning and/or end of each grouping
-	template <fl::u8 FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels, void* context = NULL) {
+	template <fl::u8 FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels, void* context = nullptr) {
 		select();
 		while(data != end) {
 			if(FLAGS & FLAG_START_BIT) {
@@ -98,8 +105,9 @@ public:
 
 };
 
-FASTLED_NAMESPACE_END
 
 #endif
 
 #endif
+
+FL_DISABLE_WARNING_POP

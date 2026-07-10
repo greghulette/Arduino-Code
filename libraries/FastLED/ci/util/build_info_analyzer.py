@@ -16,7 +16,52 @@ import argparse
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
+
+
+@dataclass(slots=True)
+class PlatformDefinesResult:
+    """Result of get_platform_defines."""
+
+    ok: bool
+    defines: list[str]
+    error: str
+
+
+@dataclass(slots=True)
+class CompilerInfoResult:
+    """Result of get_compiler_info."""
+
+    ok: bool
+    compiler_info: "CompilerInfo"
+    error: str
+
+
+@dataclass(slots=True)
+class ToolchainAliasesResult:
+    """Result of get_toolchain_aliases."""
+
+    ok: bool
+    aliases: dict[str, str]
+    error: str
+
+
+@dataclass(slots=True)
+class AllInfoResult:
+    """Result of get_all_info."""
+
+    ok: bool
+    info: dict[str, Any]
+    error: str
+
+
+@dataclass(slots=True)
+class CompareDefinesResult:
+    """Result of compare_defines."""
+
+    ok: bool
+    comparison: dict[str, Any]
+    error: str
 
 
 @dataclass
@@ -25,8 +70,8 @@ class CompilerInfo:
 
     cc_path: str = ""
     cxx_path: str = ""
-    cc_flags: List[str] = field(default_factory=lambda: list())
-    cxx_flags: List[str] = field(default_factory=lambda: list())
+    cc_flags: list[str] = field(default_factory=lambda: list())
+    cxx_flags: list[str] = field(default_factory=lambda: list())
     compiler_type: str = ""
     build_type: str = ""
 
@@ -36,9 +81,9 @@ class BuildInfo:
     """Complete build information for a platform"""
 
     board_name: str
-    defines: Dict[str, str] = field(default_factory=lambda: dict())
+    defines: dict[str, str] = field(default_factory=lambda: dict())
     compiler_info: CompilerInfo = field(default_factory=CompilerInfo)
-    aliases: Dict[str, Optional[str]] = field(default_factory=lambda: dict())
+    aliases: dict[str, Optional[str]] = field(default_factory=lambda: dict())
 
 
 class BuildInfoAnalyzer:
@@ -53,14 +98,14 @@ class BuildInfoAnalyzer:
         """
         self.build_dir = Path(build_dir)
 
-    def list_available_boards(self) -> List[str]:
+    def list_available_boards(self) -> list[str]:
         """
         List all boards that have build_info.json files.
 
         Returns:
             List of board names that have been built
         """
-        boards: List[str] = []
+        boards: list[str] = []
         if not self.build_dir.exists():
             return boards
 
@@ -85,7 +130,7 @@ class BuildInfoAnalyzer:
             return build_info_path
         return None
 
-    def load_build_info(self, board_name: str) -> Optional[Dict[str, Any]]:
+    def load_build_info(self, board_name: str) -> Optional[dict[str, Any]]:
         """
         Load and parse build_info.json for a board.
 
@@ -107,7 +152,7 @@ class BuildInfoAnalyzer:
             return None
 
     def create_board_key_from_build_info(
-        self, data: Dict[str, Any], board_name: str
+        self, data: dict[str, Any], board_name: str
     ) -> Optional[str]:
         """
         Get the actual board key used in build_info.json.
@@ -137,7 +182,7 @@ class BuildInfoAnalyzer:
 
         return None
 
-    def get_platform_defines(self, board_name: str) -> Tuple[bool, List[str], str]:
+    def get_platform_defines(self, board_name: str) -> PlatformDefinesResult:
         """
         Get platform-specific preprocessor defines for a board.
 
@@ -145,23 +190,29 @@ class BuildInfoAnalyzer:
             board_name: Name of the board
 
         Returns:
-            Tuple of (success, defines_list, error_message)
+            PlatformDefinesResult with ok, defines, and error fields
         """
         data = self.load_build_info(board_name)
         if not data:
-            return False, [], f"Build info not found for {board_name}"
+            return PlatformDefinesResult(
+                ok=False, defines=[], error=f"Build info not found for {board_name}"
+            )
 
         board_key = self.create_board_key_from_build_info(data, board_name)
         if not board_key:
             available_keys = list(data.keys())
-            return False, [], f"Board key not found. Available keys: {available_keys}"
+            return PlatformDefinesResult(
+                ok=False,
+                defines=[],
+                error=f"Board key not found. Available keys: {available_keys}",
+            )
 
         board_data = data[board_key]
         defines = board_data.get("defines", [])
 
-        return True, defines, ""
+        return PlatformDefinesResult(ok=True, defines=defines, error="")
 
-    def get_compiler_info(self, board_name: str) -> Tuple[bool, CompilerInfo, str]:
+    def get_compiler_info(self, board_name: str) -> CompilerInfoResult:
         """
         Get compiler information for a board.
 
@@ -169,15 +220,23 @@ class BuildInfoAnalyzer:
             board_name: Name of the board
 
         Returns:
-            Tuple of (success, compiler_info, error_message)
+            CompilerInfoResult with ok, compiler_info, and error fields
         """
         data = self.load_build_info(board_name)
         if not data:
-            return False, CompilerInfo(), f"Build info not found for {board_name}"
+            return CompilerInfoResult(
+                ok=False,
+                compiler_info=CompilerInfo(),
+                error=f"Build info not found for {board_name}",
+            )
 
         board_key = self.create_board_key_from_build_info(data, board_name)
         if not board_key:
-            return False, CompilerInfo(), "Board key not found in build_info.json"
+            return CompilerInfoResult(
+                ok=False,
+                compiler_info=CompilerInfo(),
+                error="Board key not found in build_info.json",
+            )
 
         board_data = data[board_key]
 
@@ -190,11 +249,9 @@ class BuildInfoAnalyzer:
             build_type=board_data.get("build_type", ""),
         )
 
-        return True, compiler_info, ""
+        return CompilerInfoResult(ok=True, compiler_info=compiler_info, error="")
 
-    def get_toolchain_aliases(
-        self, board_name: str
-    ) -> Tuple[bool, Dict[str, str], str]:
+    def get_toolchain_aliases(self, board_name: str) -> ToolchainAliasesResult:
         """
         Get toolchain tool aliases for a board.
 
@@ -202,22 +259,26 @@ class BuildInfoAnalyzer:
             board_name: Name of the board
 
         Returns:
-            Tuple of (success, aliases_dict, error_message)
+            ToolchainAliasesResult with ok, aliases, and error fields
         """
         data = self.load_build_info(board_name)
         if not data:
-            return False, {}, f"Build info not found for {board_name}"
+            return ToolchainAliasesResult(
+                ok=False, aliases={}, error=f"Build info not found for {board_name}"
+            )
 
         board_key = self.create_board_key_from_build_info(data, board_name)
         if not board_key:
-            return False, {}, "Board key not found in build_info.json"
+            return ToolchainAliasesResult(
+                ok=False, aliases={}, error="Board key not found in build_info.json"
+            )
 
         board_data = data[board_key]
         aliases = board_data.get("aliases", {})
 
-        return True, aliases, ""
+        return ToolchainAliasesResult(ok=True, aliases=aliases, error="")
 
-    def get_all_info(self, board_name: str) -> Tuple[bool, Dict[str, Any], str]:
+    def get_all_info(self, board_name: str) -> AllInfoResult:
         """
         Get all available information for a board.
 
@@ -225,21 +286,23 @@ class BuildInfoAnalyzer:
             board_name: Name of the board
 
         Returns:
-            Tuple of (success, all_info_dict, error_message)
+            AllInfoResult with ok, info, and error fields
         """
         data = self.load_build_info(board_name)
         if not data:
-            return False, {}, f"Build info not found for {board_name}"
+            return AllInfoResult(
+                ok=False, info={}, error=f"Build info not found for {board_name}"
+            )
 
         board_key = self.create_board_key_from_build_info(data, board_name)
         if not board_key:
-            return False, {}, "Board key not found in build_info.json"
+            return AllInfoResult(
+                ok=False, info={}, error="Board key not found in build_info.json"
+            )
 
-        return True, data[board_key], ""
+        return AllInfoResult(ok=True, info=data[board_key], error="")
 
-    def compare_defines(
-        self, board1: str, board2: str
-    ) -> Tuple[bool, Dict[str, Any], str]:
+    def compare_defines(self, board1: str, board2: str) -> CompareDefinesResult:
         """
         Compare platform defines between two boards.
 
@@ -248,18 +311,26 @@ class BuildInfoAnalyzer:
             board2: Second board name
 
         Returns:
-            Tuple of (success, comparison_dict, error_message)
+            CompareDefinesResult with ok, comparison, and error fields
         """
-        success1, defines1, err1 = self.get_platform_defines(board1)
-        success2, defines2, err2 = self.get_platform_defines(board2)
+        result1 = self.get_platform_defines(board1)
+        result2 = self.get_platform_defines(board2)
 
-        if not success1:
-            return False, {}, f"Error getting defines for {board1}: {err1}"
-        if not success2:
-            return False, {}, f"Error getting defines for {board2}: {err2}"
+        if not result1.ok:
+            return CompareDefinesResult(
+                ok=False,
+                comparison={},
+                error=f"Error getting defines for {board1}: {result1.error}",
+            )
+        if not result2.ok:
+            return CompareDefinesResult(
+                ok=False,
+                comparison={},
+                error=f"Error getting defines for {board2}: {result2.error}",
+            )
 
-        set1 = set(defines1)
-        set2 = set(defines2)
+        set1 = set(result1.defines)
+        set2 = set(result2.defines)
 
         comparison = {
             "board1": board1,
@@ -267,15 +338,15 @@ class BuildInfoAnalyzer:
             "board1_only": sorted(list(set1 - set2)),
             "board2_only": sorted(list(set2 - set1)),
             "common": sorted(list(set1 & set2)),
-            "board1_total": len(defines1),
-            "board2_total": len(defines2),
+            "board1_total": len(result1.defines),
+            "board2_total": len(result2.defines),
             "common_count": len(set1 & set2),
         }
 
-        return True, comparison, ""
+        return CompareDefinesResult(ok=True, comparison=comparison, error="")
 
 
-def print_defines(defines: List[str], board_name: str):
+def print_defines(defines: list[str], board_name: str):
     """Print platform defines in a formatted way."""
     print(f"\n📋 Platform Defines for {board_name.upper()}:")
     print("=" * 50)
@@ -304,7 +375,7 @@ def print_compiler_info(compiler_info: CompilerInfo, board_name: str):
             print(f"  {flag}")
 
 
-def print_toolchain_aliases(aliases: Dict[str, str], board_name: str):
+def print_toolchain_aliases(aliases: dict[str, str], board_name: str):
     """Print toolchain aliases in a formatted way."""
     print(f"\n⚙️  Toolchain Aliases for {board_name.upper()}:")
     print("=" * 50)
@@ -317,7 +388,7 @@ def print_toolchain_aliases(aliases: Dict[str, str], board_name: str):
             print(f"  {tool:10}: Not available")
 
 
-def print_comparison(comparison: Dict[str, Any]):
+def print_comparison(comparison: dict[str, Any]):
     """Print a comparison between two boards."""
     board1 = comparison["board1"]
     board2 = comparison["board2"]
@@ -424,15 +495,15 @@ Examples:
 
     if args.compare:
         board1, board2 = args.compare
-        success, comparison, error = analyzer.compare_defines(board1, board2)
-        if not success:
-            print(f"❌ Error: {error}")
+        compare_result = analyzer.compare_defines(board1, board2)
+        if not compare_result.ok:
+            print(f"❌ Error: {compare_result.error}")
             return 1
 
         if args.json:
-            print(json.dumps(comparison, indent=2))
+            print(json.dumps(compare_result.comparison, indent=2))
         else:
-            print_comparison(comparison)
+            print_comparison(compare_result.comparison)
         return 0
 
     if not args.board:
@@ -441,37 +512,41 @@ Examples:
 
     # Handle single board analysis
     if args.show_defines or args.show_all:
-        success, defines, error = analyzer.get_platform_defines(args.board)
-        if not success:
-            print(f"❌ Error getting defines: {error}")
+        defines_result = analyzer.get_platform_defines(args.board)
+        if not defines_result.ok:
+            print(f"❌ Error getting defines: {defines_result.error}")
             return 1
 
         if args.json:
-            print(json.dumps({"defines": defines}, indent=2))
+            print(json.dumps({"defines": defines_result.defines}, indent=2))
         else:
-            print_defines(defines, args.board)
+            print_defines(defines_result.defines, args.board)
 
     if args.show_compiler or args.show_all:
-        success, compiler_info, error = analyzer.get_compiler_info(args.board)
-        if not success:
-            print(f"❌ Error getting compiler info: {error}")
+        compiler_result = analyzer.get_compiler_info(args.board)
+        if not compiler_result.ok:
+            print(f"❌ Error getting compiler info: {compiler_result.error}")
             return 1
 
         if args.json:
-            print(json.dumps({"compiler": asdict(compiler_info)}, indent=2))
+            print(
+                json.dumps(
+                    {"compiler": asdict(compiler_result.compiler_info)}, indent=2
+                )
+            )
         else:
-            print_compiler_info(compiler_info, args.board)
+            print_compiler_info(compiler_result.compiler_info, args.board)
 
     if args.show_toolchain or args.show_all:
-        success, aliases, error = analyzer.get_toolchain_aliases(args.board)
-        if not success:
-            print(f"❌ Error getting toolchain aliases: {error}")
+        aliases_result = analyzer.get_toolchain_aliases(args.board)
+        if not aliases_result.ok:
+            print(f"❌ Error getting toolchain aliases: {aliases_result.error}")
             return 1
 
         if args.json:
-            print(json.dumps({"toolchain": aliases}, indent=2))
+            print(json.dumps({"toolchain": aliases_result.aliases}, indent=2))
         else:
-            print_toolchain_aliases(aliases, args.board)
+            print_toolchain_aliases(aliases_result.aliases, args.board)
 
     return 0
 

@@ -1,17 +1,18 @@
+// @filter: (memory is large)
 
 /// @file    BlinkParallel.ino
 /// @brief   Shows parallel usage of WS2812 strips. Blinks once for red, twice for green, thrice for blue.
 /// @example BlinkParallel.ino
 
+// FastLED.h must be included first to trigger precompiled headers for FastLED's build system
 #include "FastLED.h"
 
+#include "fl/system/sketch_macros.h"
 
-#if SKETCH_HAS_LOTS_OF_MEMORY
+#include "FastLED.h"
+
 // How many leds in your strip?
 #define NUM_LEDS 256
-#else
-#define NUM_LEDS 16
-#endif
 
 // Demo of driving multiple WS2812 strips on different pins
 
@@ -20,6 +21,14 @@ CRGB leds[NUM_LEDS];  // Yes, they all share a buffer.
 
 void setup() {
     Serial.begin(115200);
+    delay(100);  // Give serial time to initialize
+
+    delay(2000);
+
+    Serial.println("BlinkParallel setup starting");
+    Serial.print("NUM_LEDS: ");
+    Serial.println(NUM_LEDS);
+
 
     //FastLED.addLeds<WS2812, 5>(leds, NUM_LEDS);  // GRB ordering is assumed
     FastLED.addLeds<WS2812, 1>(leds, NUM_LEDS);  // GRB ordering is assumed
@@ -27,8 +36,11 @@ void setup() {
     FastLED.addLeds<WS2812, 3>(leds, NUM_LEDS);  // GRB ordering is assumed
     FastLED.addLeds<WS2812, 4>(leds, NUM_LEDS);  // GRB ordering is assumed
 
-    FL_WARN("Initialized 4 LED strips with " << NUM_LEDS << " LEDs each");
-    FL_WARN("Setup complete - starting blink animation");
+    Serial.print("Initialized 4 LED strips with ");
+    Serial.print(NUM_LEDS);
+    Serial.println(" LEDs each");
+
+    Serial.println("Setup complete - starting blink animation");
 
     delay(1000);
 }
@@ -55,11 +67,14 @@ void loop() {
 
   EVERY_N_MILLISECONDS(1000) {  // Every 1 second (faster for QEMU testing)
     loopCount++;
-    FL_WARN("Starting loop iteration " << loopCount);
+    Serial.print("Starting loop iteration ");
+    Serial.println(loopCount);
 
     // Add completion marker after a few loops for QEMU testing
     if (loopCount >= 2) {  // Complete after 2 iterations instead of 3
-      FL_WARN("FL_WARN test finished - completed " << loopCount << " iterations");
+      Serial.print("Test finished - completed ");
+      Serial.print(loopCount);
+      Serial.println(" iterations");
     }
   }
 
@@ -80,7 +95,9 @@ void loop() {
   Serial.println(diff);
 
   EVERY_N_MILLISECONDS(500) {  // Every 0.5 seconds (faster for QEMU testing)
-    FL_WARN("FastLED.show() timing: " << diff << "ms");
+    Serial.print("FastLED.show() timing: ");
+    Serial.print(diff);
+    Serial.println("ms");
   }
 
   delay(50);

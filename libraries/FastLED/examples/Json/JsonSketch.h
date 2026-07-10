@@ -7,7 +7,7 @@
 
 #include <Arduino.h>
 #include "FastLED.h"
-#include "fl/json.h" // Assumed ideal JSON API header
+#include "fl/stl/json.h" // Assumed ideal JSON API header
 
 #define NUM_LEDS 100
 #define DATA_PIN 3
@@ -42,7 +42,7 @@ void setup() {
     })";
 
     // NEW: Parse using ideal API
-    fl::Json json = fl::Json::parse(configJson);
+    fl::json json = fl::json::parse(configJson);
 
     if (json.has_value()) {
         Serial.println("JSON parsed successfully with ideal API!");
@@ -91,7 +91,7 @@ void setup() {
             }
         })";
         
-        fl::Json config = fl::Json::parse(mixedJson);
+        fl::json config = fl::json::parse(mixedJson);
         
         Serial.println("\nThree New Conversion Methods:");
         
@@ -140,7 +140,7 @@ void setup() {
 
 void loop() {
     // Simple LED pattern to show something is happening
-    static uint8_t hue = 0;
+    static uint8_t hue = 0; // okay static in header
     fill_rainbow(leds, NUM_LEDS, hue++, 7);
     FastLED.show();
     delay(50);

@@ -3,6 +3,13 @@
 /// @file fastled_config.h
 /// Contains definitions that can be used to configure FastLED at compile time
 
+/// @def FASTLED_ALL_PINS_VALID
+/// For stub platforms (testing, native compilation, WebAssembly), all pins are considered valid.
+/// This is automatically defined when FASTLED_STUB_IMPL or __EMSCRIPTEN__ is set.
+#if defined(FASTLED_STUB_IMPL) || defined(FL_IS_WASM)
+    #define FASTLED_ALL_PINS_VALID
+#endif
+
 /// @def FASTLED_FORCE_SOFTWARE_PINS
 /// Use this option only for debugging pin access and forcing software pin access.  Forces use of `digitalWrite()`
 /// methods for pin access vs. direct hardware port access.
@@ -31,10 +38,10 @@
 // #define FASTLED_NOISE_ALLOW_AVERAGE_TO_OVERFLOW 1
 
 /// @def FASTLED_SCALE8_FIXED
-/// Use this to toggle whether or not to use the "fixed" FastLED scale8().  The initial scale8()
-/// had a problem where scale8(255,255) would give you 254.  This is now fixed, and that
+/// Use this to toggle whether or not to use the "fixed" FastLED fl::scale8().  The initial fl::scale8()
+/// had a problem where fl::scale8(255,255) would give you 254.  This is now fixed, and that
 /// fix is enabled by default.  However, if for some reason you have code that is not
-/// working right as a result of this (e.g. code that was expecting the old scale8() behavior)
+/// working right as a result of this (e.g. code that was expecting the old fl::scale8() behavior)
 /// you can disable it here.
 #define FASTLED_SCALE8_FIXED 1
 // #define FASTLED_SCALE8_FIXED 0

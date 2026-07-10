@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 # pyright: reportUnknownMemberType=false
 """
 Tools for working with build info and tool paths.
@@ -8,7 +11,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ci.util.paths import BUILD
 
@@ -24,9 +27,9 @@ class Tools:
 
 
 def load_tools(build_info_path: Path) -> Tools:
-    build_info: Dict[str, Any] = json.loads(build_info_path.read_text())
-    board_info: Dict[str, Any] = build_info[next(iter(build_info))]
-    aliases: Dict[str, str] = board_info["aliases"]
+    build_info: dict[str, Any] = json.loads(build_info_path.read_text())
+    board_info: dict[str, Any] = build_info[next(iter(build_info))]
+    aliases: dict[str, str] = board_info["aliases"]
     as_path = Path(aliases["as"])
     ld_path = Path(aliases["ld"])
     objcopy_path = Path(aliases["objcopy"])
@@ -206,6 +209,8 @@ def cli() -> None:
 if __name__ == "__main__":
     try:
         cli()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
         print("Exiting...")
         sys.exit(1)

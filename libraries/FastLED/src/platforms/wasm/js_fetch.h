@@ -1,11 +1,19 @@
 #pragma once
 
-#include "fl/string.h"
-#include "fl/function.h"
+// IWYU pragma: private
 
-// Forward declaration - fl::response is defined in fl/fetch.h
+#include "fl/stl/string.h"
+#include "fl/stl/function.h"
+#include "fl/stl/noexcept.h"
+
+// Forward declaration - fl::net::http::Response is defined in fl/net/http/fetch.h
 namespace fl {
-    class response;
+namespace net {
+namespace http {
+    class Response;
+}
+}
+    using FetchResponseCallback = fl::function<void(const net::http::Response&)>;
 }
 
 namespace fl {
@@ -13,20 +21,17 @@ namespace fl {
 /// Forward declaration for WASM fetch request
 class WasmFetchRequest;
 
-/// Simple fetch response callback type (now uses unified fl::response)
-using FetchResponseCallback = fl::function<void(const response&)>;
-
 /// WASM fetch request object for fluent API
 class WasmFetchRequest {
 private:
     fl::string mUrl;
     
 public:
-    explicit WasmFetchRequest(const fl::string& url) : mUrl(url) {}
+    explicit WasmFetchRequest(const fl::string& url) FL_NOEXCEPT : mUrl(url) {}
     
     /// Execute the fetch request and call the response callback
     /// @param callback Function to call with the response object
-    void response(const FetchResponseCallback& callback);
+    void response(const FetchResponseCallback& callback) FL_NOEXCEPT;
 };
 
 /// Internal WASM fetch object (renamed to avoid conflicts)
@@ -35,7 +40,7 @@ public:
     /// Create a GET request
     /// @param url The URL to fetch
     /// @returns WasmFetchRequest object for chaining
-    WasmFetchRequest get(const fl::string& url) {
+    WasmFetchRequest get(const fl::string& url) FL_NOEXCEPT {
         return WasmFetchRequest(url);
     }
 };

@@ -1,4 +1,7 @@
+// ok no namespace fl
 #pragma once
+
+// IWYU pragma: private
 
 // ⚠️⚠️⚠️ DEPRECATED: WASM-SPECIFIC ACTIVE STRIP DATA HEADER ⚠️⚠️⚠️
 //

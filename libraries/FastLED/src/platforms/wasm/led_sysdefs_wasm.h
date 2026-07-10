@@ -1,11 +1,15 @@
+// ok no namespace fl
 #pragma once
+
+// IWYU pragma: private
 
 #ifndef FASTLED_STUB_IMPL
 #define FASTLED_STUB_IMPL
 #endif
 
 #include "platforms/wasm/compiler/Arduino.h"
-#include "fl/stdint.h"
+#include "fl/stl/stdint.h"
+#include "fl/stl/noexcept.h"
 
 #ifndef F_CPU
 #define F_CPU 1000000000
@@ -37,8 +41,8 @@
 #define SCK 7
 
 
-typedef volatile uint32_t RoReg;
-typedef volatile uint32_t RwReg;
+typedef volatile fl::u32 RoReg;
+typedef volatile fl::u32 RwReg;
 
 extern "C" {
 
@@ -49,6 +53,6 @@ extern "C" {
 // uint32_t millis(void);
 // uint32_t micros(void);
 
-void delay(int ms);
-void yield(void);
+// Note: delay() removed - FastLED.h provides via "using fl::delay;"
+void yield(void) FL_NOEXCEPT;
 }

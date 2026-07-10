@@ -1,61 +1,60 @@
 #pragma once
 
-#include "fl/engine_events.h"
-#include "fl/map.h"
-#include "fl/namespace.h"
-#include "fl/screenmap.h"
-#include "fl/singleton.h"
-#include "fl/span.h"
-#include "fl/id_tracker.h"
+// IWYU pragma: private
 
-
-FASTLED_NAMESPACE_BEGIN
+#include "fl/system/engine_events.h"
+#include "fl/stl/flat_map.h"
+#include "fl/math/screenmap.h"
+#include "fl/stl/singleton.h"
+#include "fl/stl/span.h"
+#include "fl/channels/id_tracker.h"
+#include "fl/stl/noexcept.h"
+namespace fl {
 class CLEDController;
-FASTLED_NAMESPACE_END
-
+}  // namespace fl
 namespace fl {
 
 
 
-typedef fl::span<const uint8_t> SliceUint8;
+typedef fl::span<const u8> SliceUint8;
 
 // Zero copy data transfer of strip information - platform-agnostic core logic
 class ActiveStripData : public fl::EngineEvents::Listener {
   public:
-    typedef fl::SortedHeapMap<int, SliceUint8> StripDataMap;
-    typedef fl::SortedHeapMap<int, ScreenMap> ScreenMapMap;
+    typedef fl::flat_map<int, SliceUint8> StripDataMap;
+    typedef fl::flat_map<int, ScreenMap> ScreenMapMap;
 
-    static ActiveStripData &Instance();
-    void update(int id, uint32_t now, const uint8_t *pixel_data, size_t size);
-    void updateScreenMap(int id, const ScreenMap &screenmap);
+    static ActiveStripData &Instance() FL_NOEXCEPT;
+    void update(int id, u32 now, fl::span<const u8> pixel_data) FL_NOEXCEPT;
+    void updateScreenMap(int id, const ScreenMap &screenmap) FL_NOEXCEPT;
 
     // JSON creation methods
-    fl::string infoJsonString(); // Legacy implementation (working)
-    fl::string infoJsonStringNew(); // New fl::Json API (when creation is fixed)
+    fl::string infoJsonString() FL_NOEXCEPT; // Legacy implementation (working)
+    fl::string infoJsonStringNew() FL_NOEXCEPT; // New fl::json API (when creation is fixed)
 
-    // JSON parsing methods (NEW - using working fl::Json parsing API)
-    bool parseStripJsonInfo(const char* jsonStr); // Parse strip configuration from JSON
+    // JSON parsing methods (NEW - using working fl::json parsing API)
+    bool parseStripJsonInfo(const char* jsonStr) FL_NOEXCEPT; // Parse strip configuration from JSON
     
-    const StripDataMap &getData() const { return mStripMap; }
-    const ScreenMapMap &getScreenMaps() const { return mScreenMap; }
+    const StripDataMap &getData() const FL_NOEXCEPT { return mStripMap; }
+    const ScreenMapMap &getScreenMaps() const FL_NOEXCEPT { return mScreenMap; }
 
     ~ActiveStripData() { fl::EngineEvents::removeListener(this); }
 
-    void onBeginFrame() override { mStripMap.clear(); }
+    void onBeginFrame() FL_NOEXCEPT override { mStripMap.clear(); }
 
     void onCanvasUiSet(CLEDController *strip,
-                       const ScreenMap &screenmap) override;
+                       const ScreenMap &screenmap) FL_NOEXCEPT override;
 
-    bool hasScreenMap(int id) const { return mScreenMap.has(id); }
+    bool hasScreenMap(int id) const FL_NOEXCEPT { return mScreenMap.has(id); }
 
     /**
      * Get the ID tracker for strip ID management
      */
-    IdTracker& getIdTracker() { return mIdTracker; }
+    IdTracker& getIdTracker() FL_NOEXCEPT { return mIdTracker; }
 
   private:
     friend class fl::Singleton<ActiveStripData>;
-    ActiveStripData() {
+    ActiveStripData() FL_NOEXCEPT {
         fl::EngineEvents::Listener *listener = this;
         fl::EngineEvents::addListener(listener);
     }

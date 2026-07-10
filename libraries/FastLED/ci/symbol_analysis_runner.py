@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 """
 Generic Symbol Analysis Runner for GitHub Actions
@@ -26,15 +29,29 @@ def main():
 
     print(f"Symbol Analysis Runner - Board: {args.board}, Example: {args.example}")
 
-    # Check if build_info.json exists
-    build_info_path = Path(".build") / args.board / "build_info.json"
-    if not build_info_path.exists():
-        # Fall back to nested pio structure
-        build_info_path = Path(".build") / "pio" / args.board / "build_info.json"
+    # Build list of all paths to check (in priority order)
+    build_info_filename = f"build_info_{args.example}.json"
+    paths_to_check = [
+        Path(".build") / args.board / build_info_filename,
+        Path(".build") / "pio" / args.board / build_info_filename,
+        Path(".build") / args.board / "build_info.json",
+        Path(".build") / "pio" / args.board / "build_info.json",
+    ]
 
-    if not build_info_path.exists():
+    # Find first existing path
+    build_info_path = None
+    for path in paths_to_check:
+        if path.exists():
+            build_info_path = path
+            break
+
+    if build_info_path is None:
+        # Show all paths that were checked
+        checked_paths = "\n  - ".join(str(p) for p in paths_to_check)
         message = (
-            f"Build info not found at {build_info_path}. Skipping symbol analysis."
+            f"Build info not found. Checked the following paths:\n  - {checked_paths}\n"
+            f"This may indicate the compilation did not complete successfully. "
+            f"Check the compilation logs for warnings about build_info generation."
         )
         if args.skip_on_failure:
             print(f"Warning: {message}")
@@ -47,9 +64,15 @@ def main():
         # Import and run the generic symbol analysis
         print("Running symbol analysis...")
 
-        # Override sys.argv to pass the board argument to the symbol analysis script
+        # Override sys.argv to pass the board and example arguments to the symbol analysis script
         original_argv = sys.argv
-        sys.argv = ["symbol_analysis.py", "--board", args.board]
+        sys.argv = [
+            "symbol_analysis.py",
+            "--board",
+            args.board,
+            "--example",
+            args.example,
+        ]
 
         try:
             symbol_analysis()
@@ -63,6 +86,9 @@ def main():
         if args.skip_on_failure:
             return 0
         return 1
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         print(f"Symbol analysis failed: {e}")
         if args.skip_on_failure:

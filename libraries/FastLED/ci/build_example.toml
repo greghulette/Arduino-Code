@@ -23,14 +23,17 @@ ranlib = ["uv", "run", "python", "-m", "ziglang", "ranlib"]
 [all]
 # Universal compilation flags (compiler command handled separately)
 compiler_flags = [
-    "-std=gnu++17",
+    "-std=gnu++11",
     "-fpermissive",
     "-Wall",
     "-Wextra",
+    "-Werror=c++14-extensions",  # Error on C++14 features when using C++11
+    "-Werror=c++17-extensions",  # Error on C++17 features when using C++11
     "-Wno-deprecated-register",  # Suppress 'register' keyword warnings for C++17 compatibility
     "-Wno-backslash-newline-escape",  # Suppress backslash newline escape warnings
     "-fno-exceptions",
     "-fno-rtti",
+    "-Werror=unused-result",  # Treat ignored FL_NODISCARD return values as errors
 ]
 
 defines = [
@@ -47,12 +50,12 @@ include_flags = [
 # ================================================================================================
 # WINDOWS-SPECIFIC BUILD FLAGS
 # ================================================================================================
-# Comprehensive Windows build configuration using Zig's bundled Clang with GNU target
+# Comprehensive Windows build configuration using clang-tool-chain with GNU target
 
 # C compiler flags for Windows
 cc_flags = [
     "--target=x86_64-windows-gnu",     # Explicit target for MSYS2/MinGW compatibility
-    "-fuse-ld=lld",                       # Use Zig's bundled LLD linker
+    "-fuse-ld=lld",                       # Use LLD linker
     "-std=c17",                           # C17 standard
     "-Wall",
     "-Wextra",
@@ -62,7 +65,7 @@ cc_flags = [
 cpp_flags = [
     "--target=x86_64-windows-gnu",     # Explicit target for MSYS2/MinGW compatibility
     "-fuse-ld=lld-link",                  # Use lld-link (Windows MSVC-compatible linker)
-    "-std=c++17",                         # C++17 standard
+    "-std=c++11",                         # C++11 standard
     "-Wall", 
     "-Wextra",
     "-fno-exceptions",
@@ -80,7 +83,7 @@ link_flags = [
     # Prevent automatic library inclusion to avoid CRT collisions
     "-nodefaultlibs",                     # Don't automatically include default libraries
     
-    # Fix CRT collision between Zig/Clang and MSYS2/MinGW runtimes
+    # Fix CRT collision between Clang and MSYS2/MinGW runtimes
     # This prevents "atexit was replaced" errors from conflicting CRT implementations
     # "-rtlib=compiler-rt",               # Removed - was causing conflicts
     "-unwindlib=libunwind",               # Use Clang's libunwind (avoid MinGW unwind)
@@ -122,11 +125,13 @@ flags = [
     "-Werror=unused-function",          # Force error on unused functions
     "-Werror=unused-but-set-variable",  # Force error on variables that are set but never used
     "-Wuninitialized",
+    "-Werror=maybe-uninitialized",      # Force error on possibly uninitialized variables (GCC only)
     "-Wdouble-promotion",
     "-Wformat=2",
     "-Wcast-align",
     "-Wcast-qual",
     "-Werror=return-type",
+    "-Werror=switch-enum",              # Force error on incomplete switch over enum
 ]
 
 [stub_platform]
@@ -141,7 +146,8 @@ defines = [
     "ARDUINO=10808",                         # Arduino version compatibility
     "FASTLED_USE_STUB_ARDUINO",             # Use stub Arduino implementation
     "FASTLED_STUB_IMPL",                    # Enable STUB platform Arduino function implementations
-    "SKETCH_HAS_LOTS_OF_MEMORY=1",          # Enable memory-intensive features for STUB platform
+    "SKETCH_HAS_LARGE_MEMORY=1",          # Enable memory-intensive features for STUB platform
+    "SKETCH_HAS_HUGE_MEMORY=1",       # Enable very large memory features for STUB platform
     "FASTLED_HAS_ENGINE_EVENTS=1",          # Enable EngineEvents for UI components
 ]
 
@@ -160,7 +166,13 @@ compiler_args = [
 # ARCHIVE CREATION FLAGS
 # ================================================================================================
 # Flags for creating static libraries (.a files) with deterministic builds.
-# Using Zig's unified toolchain (ziglang ar) which supports deterministic builds on all platforms.
+# Using llvm-ar from clang-tool-chain which supports deterministic builds on all platforms.
+#
+# Thin archives are ENABLED BY DEFAULT for deterministic builds.
+# Thin archives store file references (~100 bytes) instead of copying object files (can be MBs).
+# This reduces disk usage and speeds up archive creation, but requires object files to remain in place.
+#
+# To disable thin archives if needed, set: FASTLED_DISABLE_THIN_ARCHIVES=1
 
 flags = "rcsD"  # r=insert, c=create if needed, s=write symbol table, D=deterministic (zero timestamps)
 

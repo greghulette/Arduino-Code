@@ -111,6 +111,9 @@ void loop() {
         wcb.broadcast(":PP100");
         Serial.println("[TX] Broadcast :PP100");
 
+        // WCB1 is online — but to also learn *what* it is (alias, firmware,
+        // capabilities), use the WDP consumer API: wcb.getNeighbor(1). See the
+        // NeighborDiscovery example for the full onNeighbor()/getNeighbor() flow.
         if (wcb.isOnline(1)) {
             wcb.send(1, ":LEDON");
             Serial.println("[TX] Unicast to WCB1: :LEDON");

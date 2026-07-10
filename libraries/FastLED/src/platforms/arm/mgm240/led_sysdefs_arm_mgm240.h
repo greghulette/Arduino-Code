@@ -1,4 +1,7 @@
+// ok no namespace fl
 #pragma once
+
+// IWYU pragma: private
 
 /// @file led_sysdefs_arm_mgm240.h
 /// @brief System definitions for Silicon Labs MGM240 ARM Cortex-M33 microcontroller
@@ -12,7 +15,9 @@
 /// - Silicon Labs EFM32/EFR32 GPIO architecture
 /// - FreeRTOS compatibility with automatic detection
 
-#include <stdint.h>
+#include "fl/stl/stdint.h"
+#include "fl/stl/has_include.h"
+#include "platforms/arm/is_arm.h"
 
 // Include Silicon Labs EMLIB GPIO for direct register access
 
@@ -21,12 +26,12 @@
 #endif
 
 /// ARM platform identification
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
+#ifndef FL_IS_ARM
+#error "FL_IS_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
 #endif
 /// Use ARM Cortex-M3 compatibility mode for FastLED
 /// (Cortex-M33 is backward compatible with M3 instruction set)
-#define FASTLED_ARM_M3
+#define FL_IS_ARM_M3
 
 /// Enable interrupt-aware timing for accurate LED control
 #ifndef FASTLED_ALLOW_INTERRUPTS
@@ -40,9 +45,11 @@
 /// @brief FreeRTOS-compatible critical section macros
 /// Automatically detects FreeRTOS presence and uses task-safe critical sections.
 /// Falls back to bare metal interrupt disable/enable when FreeRTOS is not available.
-#ifdef __has_include
-  #if __has_include("FreeRTOS.h")
-    #include "FreeRTOS.h"
+#ifdef FL_HAS_INCLUDE
+  #if FL_HAS_INCLUDE("FreeRTOS.h")
+    // IWYU pragma: begin_keep
+    #include <FreeRTOS.h>
+    // IWYU pragma: end_keep
     /// Enter critical section (FreeRTOS task-safe)
     #define cli()  taskENTER_CRITICAL()
     /// Exit critical section (FreeRTOS task-safe)
@@ -54,7 +61,7 @@
     #define sei()  __enable_irq()
   #endif
 #else
-  // Fallback for compilers without __has_include
+  // Fallback for compilers without FL_HAS_INCLUDE
   #define cli()  __disable_irq()
   #define sei()  __enable_irq()
 #endif
@@ -72,8 +79,8 @@
 #endif
 
 /// @brief Type definitions for ARM register access
-typedef volatile uint32_t RwReg;  ///< Read-write register (32-bit)
-typedef volatile uint32_t RoReg;  ///< Read-only register (32-bit)
+typedef volatile fl::u32 RwReg;  ///< Read-write register (32-bit)
+typedef volatile fl::u32 RoReg;  ///< Read-only register (32-bit)
 
 /// @brief Arduino compatibility macros
 /// These provide fallback pin manipulation functions when hardware FastPin is not available.
@@ -90,9 +97,9 @@ typedef volatile uint32_t RoReg;  ///< Read-only register (32-bit)
 /// These provide generic ARM memory-mapped register access for Arduino compatibility.
 /// The MGM240 platform primarily uses Silicon Labs EMLIB GPIO functions instead.
 #ifndef portOutputRegister
-#define portOutputRegister(P) ((volatile uint32_t*)(0x40000000 + (P) * 0x400))
+#define portOutputRegister(P) ((volatile fl::u32*)(0x40000000 + (P) * 0x400))
 #endif
 
 #ifndef portInputRegister
-#define portInputRegister(P) ((volatile uint32_t*)(0x40000000 + (P) * 0x400))
+#define portInputRegister(P) ((volatile fl::u32*)(0x40000000 + (P) * 0x400))
 #endif

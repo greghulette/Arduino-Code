@@ -7,9 +7,13 @@
 // LED Audio Spectrum Analyzer Display
 //
 // Creates an impressive LED light show to music input
-//   using Teensy 3.1 with the OctoWS2811 adaptor board
-//   http://www.pjrc.com/store/teensy31.html
+//   using Teensy with the OctoWS2811 adaptor board
 //   http://www.pjrc.com/store/octo28_adaptor.html
+//
+// @note Requires Teensy with OctoWS2811 support AND sufficient RAM:
+//       - Teensy 3.5, 3.6, 4.0, or 4.1
+//       - NOT compatible with Teensy 3.0/3.1/3.2 (insufficient RAM)
+//       - NOT compatible with Teensy LC (no OctoWS2811 hardware support)
 //
 // Line Level Audio Input connects to analog pin A3
 //   Recommended input circuit:
@@ -61,7 +65,8 @@ int frequencyBinsHorizontal[matrix_width] = {
   15, 16, 17, 18, 19, 20, 22, 23, 24, 25
 };
 
-
+// Forward declaration
+void computeVerticalLevels();
 
 // Run setup once
 void setup() {

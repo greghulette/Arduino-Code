@@ -9,9 +9,10 @@ import subprocess
 import time
 from pathlib import Path
 from threading import Lock
-from typing import List
+from typing import Optional
 
-from ci.boards import Board  # type: ignore
+from ci.boards import Board
+from ci.util.build_lock import libfastled_build_lock
 from ci.util.locked_print import locked_print
 
 
@@ -37,9 +38,9 @@ def _fastled_js_is_parent_directory(p: Path) -> bool:
 def compile_for_board_and_example(
     board: Board,
     example: Path,
-    build_dir: str | None,
+    build_dir: Optional[str],
     verbose_on_failure: bool,
-    libs: list[str] | None,
+    libs: Optional[list[str]],
 ) -> tuple[bool, str]:
     """Compile the given example for the given board."""
     global ERROR_HAPPENED  # pylint: disable=global-statement
@@ -60,7 +61,7 @@ def compile_for_board_and_example(
     if srcdir.exists():
         shutil.rmtree(srcdir, ignore_errors=False)
     locked_print(f"*** Building example {example} for board {board_name} ***")
-    cwd: str | None = None
+    cwd: Optional[str] = None
     shell: bool = False
     # Copy all files from the example directory to the "src" directory
     for src_file in example.rglob("*"):
@@ -114,38 +115,46 @@ def compile_for_board_and_example(
     msg = "\n".join(msg_lsit)
     locked_print(msg)
 
-    # Start timing for the process
-    start_time = time.time()
+    # Acquire build lock before compiling (PlatformIO builds its own libfastled.a)
+    try:
+        with libfastled_build_lock(
+            timeout=900
+        ):  # 15 minute timeout for platform builds
+            # Start timing for the process
+            start_time = time.time()
 
-    # Run the process with real-time output capture and timing
-    result = subprocess.Popen(
-        cmd_list,
-        cwd=cwd,
-        shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+            # Run the process with real-time output capture and timing
+            result = subprocess.Popen(
+                cmd_list,
+                cwd=cwd,
+                shell=shell,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
 
-    # Capture output lines in real-time with timing
-    stdout_lines: List[str] = []
-    if result.stdout:
-        for line in iter(result.stdout.readline, ""):
-            if line:
-                elapsed = time.time() - start_time
-                # Format timing as seconds with 2 decimal places
-                timing_prefix = f"{elapsed:5.2f} "
-                timed_line = timing_prefix + line.rstrip()
-                stdout_lines.append(
-                    line.rstrip()
-                )  # Store original line for return value
-                locked_print(timed_line)
+            # Capture output lines in real-time with timing
+            stdout_lines: list[str] = []
+            if result.stdout:
+                for line in iter(result.stdout.readline, ""):
+                    if line:
+                        elapsed = time.time() - start_time
+                        # Format timing as seconds with 2 decimal places
+                        timing_prefix = f"{elapsed:5.2f} "
+                        timed_line = timing_prefix + line.rstrip()
+                        stdout_lines.append(
+                            line.rstrip()
+                        )  # Store original line for return value
+                        locked_print(timed_line)
 
-    # Wait for process to complete
-    result.wait()
+            # Wait for process to complete
+            result.wait()
 
-    # Join all stdout lines for the return value
-    stdout = "\n".join(stdout_lines)
+            # Join all stdout lines for the return value
+            stdout = "\n".join(stdout_lines)
+    except TimeoutError as e:
+        ERROR_HAPPENED = True
+        return False, f"Build lock timeout: {e}"
 
     # replace all instances of "lib/src" => "src" so intellisense can find the files
     # with one click.
@@ -172,41 +181,46 @@ def compile_for_board_and_example(
         msg = "\n".join(msg_lsit)
         locked_print(msg)
 
-        # Start timing for the verbose re-run
-        start_time_verbose = time.time()
+        # Acquire build lock for verbose rebuild
+        try:
+            with libfastled_build_lock(timeout=900):  # 15 minute timeout
+                # Start timing for the verbose re-run
+                start_time_verbose = time.time()
 
-        # Run the verbose process with real-time output capture and timing
-        result = subprocess.Popen(
-            cmd_list,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
+                # Run the verbose process with real-time output capture and timing
+                result = subprocess.Popen(
+                    cmd_list,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
 
-        # Capture output lines in real-time with timing for verbose run
-        stdout_lines_verbose: List[str] = []
-        if result.stdout:
-            for line in iter(result.stdout.readline, ""):
-                if line:
-                    elapsed = time.time() - start_time_verbose
-                    # Format timing as seconds with 2 decimal places
-                    timing_prefix = f"{elapsed:5.2f} "
-                    timed_line = timing_prefix + line.rstrip()
-                    stdout_lines_verbose.append(
-                        line.rstrip()
-                    )  # Store original line for return value
-                    locked_print(timed_line)
+                # Capture output lines in real-time with timing for verbose run
+                stdout_lines_verbose: list[str] = []
+                if result.stdout:
+                    for line in iter(result.stdout.readline, ""):
+                        if line:
+                            elapsed = time.time() - start_time_verbose
+                            # Format timing as seconds with 2 decimal places
+                            timing_prefix = f"{elapsed:5.2f} "
+                            timed_line = timing_prefix + line.rstrip()
+                            stdout_lines_verbose.append(
+                                line.rstrip()
+                            )  # Store original line for return value
+                            locked_print(timed_line)
 
-        # Wait for verbose process to complete
-        result.wait()
+                # Wait for verbose process to complete
+                result.wait()
 
-        # Join all stdout lines for the return value
-        stdout = "\n".join(stdout_lines_verbose)
-        stdout = (
-            stdout
-            + "\n\nThis is a second attempt, but with verbose output, look above for compiler errors.\n"
-        )
-        return False, stdout
+                # Join all stdout lines for the return value
+                stdout = "\n".join(stdout_lines_verbose)
+                stdout = (
+                    stdout
+                    + "\n\nThis is a second attempt, but with verbose output, look above for compiler errors.\n"
+                )
+                return False, stdout
+        except TimeoutError as e:
+            return False, f"Build lock timeout during verbose rebuild: {e}"
     locked_print(f"*** Finished building example {example} for board {board_name} ***")
     return True, stdout
 
@@ -215,9 +229,9 @@ def compile_for_board_and_example(
 def compile_examples(
     board: Board,
     examples: list[Path],
-    build_dir: str | None,
+    build_dir: Optional[str],
     verbose_on_failure: bool,
-    libs: list[str] | None,
+    libs: Optional[list[str]],
 ) -> tuple[bool, str]:
     """Process the task queue for the given board."""
     global ERROR_HAPPENED  # pylint: disable=global-statement

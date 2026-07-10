@@ -24,7 +24,9 @@ import subprocess
 import sys
 import traceback
 from functools import partial
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator, Optional
+
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 
 
 try:
@@ -43,8 +45,8 @@ class ExitStatus:
     TROUBLE = 2
 
 
-def excludes_from_file(ignore_file: str) -> List[str]:
-    excludes: List[str] = []
+def excludes_from_file(ignore_file: str) -> list[str]:
+    excludes: list[str] = []
     try:
         with io.open(ignore_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -63,17 +65,17 @@ def excludes_from_file(ignore_file: str) -> List[str]:
 
 
 def list_files(
-    files: List[str],
+    files: list[str],
     recursive: bool = False,
-    extensions: Optional[List[str]] = None,
-    exclude: Optional[List[str]] = None,
-) -> List[str]:
+    extensions: Optional[list[str]] = None,
+    exclude: Optional[list[str]] = None,
+) -> list[str]:
     if extensions is None:
         extensions = []
     if exclude is None:
         exclude = []
 
-    out: List[str] = []
+    out: list[str] = []
     for file in files:
         if recursive and os.path.isdir(file):
             for dirpath, dnames, fnames in os.walk(file):
@@ -97,7 +99,7 @@ def list_files(
     return out
 
 
-def make_diff(file: str, original: List[str], reformatted: List[str]) -> List[str]:
+def make_diff(file: str, original: list[str], reformatted: list[str]) -> list[str]:
     return list(
         difflib.unified_diff(
             original,
@@ -110,9 +112,9 @@ def make_diff(file: str, original: List[str], reformatted: List[str]) -> List[st
 
 
 class DiffError(Exception):
-    def __init__(self, message: str, errs: Optional[List[str]] = None):
+    def __init__(self, message: str, errs: Optional[list[str]] = None):
         super(DiffError, self).__init__(message)
-        self.errs: List[str] = errs or []
+        self.errs: list[str] = errs or []
 
 
 class UnexpectedError(Exception):
@@ -122,17 +124,20 @@ class UnexpectedError(Exception):
         self.exc = exc
 
 
-def run_clang_format_diff_wrapper(args: Any, file: str) -> Tuple[List[str], List[str]]:
+def run_clang_format_diff_wrapper(args: Any, file: str) -> tuple[list[str], list[str]]:
     try:
         ret = run_clang_format_diff(args, file)
         return ret
     except DiffError:
         raise
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         raise UnexpectedError("{}: {}: {}".format(file, e.__class__.__name__, e), e)
 
 
-def run_clang_format_diff(args: Any, file: str) -> Tuple[List[str], List[str]]:
+def run_clang_format_diff(args: Any, file: str) -> tuple[list[str], list[str]]:
     try:
         with io.open(file, "r", encoding="utf-8") as f:
             original = f.readlines()
@@ -169,7 +174,7 @@ def run_clang_format_diff(args: Any, file: str) -> Tuple[List[str], List[str]]:
     #   > -- http://clang.llvm.org/docs/InternalsManual.html#internals-diag-translation
     #
     # It's not pretty, due to Python 2 & 3 compatibility.
-    encoding_py3: Dict[str, str] = {}
+    encoding_py3: dict[str, str] = {}
     if sys.version_info[0] >= 3:
         encoding_py3["encoding"] = "utf-8"
 
@@ -225,7 +230,7 @@ def bold_red(s: str) -> str:
     return "\x1b[1m\x1b[31m" + s + "\x1b[0m"
 
 
-def colorize(diff_lines: List[str]) -> Generator[str, None, None]:
+def colorize(diff_lines: list[str]) -> Generator[str, None, None]:
     def bold(s: str) -> str:
         return "\x1b[1m" + s + "\x1b[0m"
 
@@ -251,7 +256,7 @@ def colorize(diff_lines: List[str]) -> Generator[str, None, None]:
             yield line
 
 
-def print_diff(diff_lines: List[str], use_color: bool) -> None:
+def print_diff(diff_lines: list[str], use_color: bool) -> None:
     if use_color:
         diff_lines = list(colorize(diff_lines))
     if sys.version_info[0] < 3:

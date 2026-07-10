@@ -1,17 +1,30 @@
+// ok no namespace fl
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
+// IWYU pragma: private
 
-namespace fl {
-    // Default platform (desktop/generic): assume short 16-bit, int 32-bit (uint32_t is unsigned int)
-    typedef short i16;
-    typedef unsigned short u16;
-    typedef int i32;             // 'int' is 32-bit on all desktop and most embedded targets
-    typedef unsigned int u32;
-    typedef long long i64;
-    typedef unsigned long long u64;
-    // Use standard types directly to ensure exact compatibility
-    typedef size_t size;
-    typedef uintptr_t uptr;
-}
+// Desktop/generic platform integer type definitions
+// Dispatches to platform-specific files for macOS, Linux, Windows, etc.
+//
+// IMPORTANT: macOS and Linux LP64 systems define u64 differently:
+// - macOS: u64 is 'unsigned long long' (even in 64-bit mode)
+// - Linux: u64 is 'unsigned long' (in 64-bit LP64 mode)
+//
+// See individual platform files for details.
+
+#include "platforms/posix/is_posix.h"
+#include "platforms/win/is_win.h"
+
+#if defined(FL_IS_APPLE)
+    // macOS (all versions)
+    #include "platforms/shared/int_macos.h"
+#elif defined(FL_IS_WIN)
+    // Windows (all versions)
+    #include "platforms/shared/int_windows.h"
+#elif defined(FL_IS_LINUX) && (defined(__LP64__) || defined(_LP64))
+    // Linux LP64 (64-bit Linux)
+    #include "platforms/shared/int_linux.h"
+#else
+    // Generic/32-bit/unknown platforms
+    #include "platforms/shared/int_generic.h"
+#endif

@@ -76,6 +76,8 @@ void onStatusChanged(uint8_t wcbID, bool online) {
 // Pass your credentials and callbacks here. The callbacks are optional —
 // omit either one (or both) if you don't need them.
 // ─────────────────────────────────────────────────────────────────────────────
+// Want this device to DISCOVER the mesh — learn which WCBs are out there and
+// what they can do? See the NeighborDiscovery example (onNeighbor/getNeighbor).
 WCB_Client wcb(MAC_OCT2, MAC_OCT3, PASSWORD, WCB_QUANTITY, DEVICE_ID,
                onCommandReceived, onStatusChanged);
 

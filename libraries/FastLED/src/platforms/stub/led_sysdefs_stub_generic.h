@@ -1,3 +1,6 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __INC_LED_SYSDEFS_STUB_H
 #define __INC_LED_SYSDEFS_STUB_H
 
@@ -5,7 +8,12 @@
 #define FASTLED_STUB_IMPL
 #endif
 
-#include "fl/stdint.h"
+#ifndef FASTLED_STUB
+#define FASTLED_STUB
+#endif
+
+#include "fl/stl/stdint.h"
+#include "fl/stl/noexcept.h"
 
 #ifndef F_CPU
 #define F_CPU 1000000000
@@ -22,8 +30,11 @@
 #define FASTLED_USE_PROGMEM 0
 #define INTERRUPT_THRESHOLD 0
 
+#ifndef FASTLED_NO_ARDUINO_STUBS
+// Arduino pin and register macros - excluded when FASTLED_NO_ARDUINO_STUBS is defined
+// (for compatibility with ArduinoFake and other Arduino mock frameworks)
 #define digitalPinToBitMask(P) ( 0 )
-#define digitalPinToPort(P) ( 0 )
+#define digitalPinToPort(P) ( (P) / 32 )
 #define portOutputRegister(P) ( 0 )
 #define portInputRegister(P) ( 0 )
 
@@ -49,17 +60,19 @@
 #error "INPUT_PULLUP is not 2"
 #endif
 
-typedef volatile uint32_t RoReg;
-typedef volatile uint32_t RwReg;
+typedef volatile fl::u32 RoReg;
+typedef volatile fl::u32 RwReg;
 
 extern "C" {
-    void pinMode(uint8_t pin, uint8_t mode);
+    void pinMode(fl::u8 pin, fl::u8 mode) FL_NOEXCEPT;
 
-    uint32_t millis(void);
-    uint32_t micros(void);
+    fl::u32 millis(void) FL_NOEXCEPT;
+    fl::u32 micros(void) FL_NOEXCEPT;
 
-    void delay(int ms);
-    void yield(void);
+    // delay() is provided by fl::delay() via "using fl::delay;" in FastLED.h
+    // This gives sketches the async-pumping version automatically
+    void yield(void) FL_NOEXCEPT;
 }
+#endif // FASTLED_NO_ARDUINO_STUBS
 
 #endif // __INC_LED_SYSDEFS_STUB_H

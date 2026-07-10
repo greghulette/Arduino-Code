@@ -4,6 +4,7 @@
 #include "./util.h"
 
 #include "ApproximatingFunction.h"
+#include "fl/math/math.h"
 #include "settings.h"
 
 /*
@@ -78,7 +79,7 @@ float CalcDecayFactor(bool sustain_pedal_on,
   static const float kBias = 1.10;
   float decay_time = kDefaultDecayTime;  // default - no sustain.
   if (key_on || sustain_pedal_on || !dampened_key) {
-    decay_time = MapDecayTime(key_idx) * max(0.25f, velocity);
+    decay_time = MapDecayTime(key_idx) * fl::max(0.25f, velocity);
   }
   // decay_interp is a value which starts off as 1.0 to signify the start of the
   // key press and gradually decreases to 0.0. For example, if the decay time is 1 second

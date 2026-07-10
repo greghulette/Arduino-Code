@@ -1,5 +1,7 @@
 #pragma once
 
+// IWYU pragma: private
+
 #define FASTLED_INTERNAL  
 #include "FastLED.h"
 
@@ -9,8 +11,13 @@ void avr_compile_tests() {
 #error "FASTLED_USE_PROGMEM should be 1 for AVR"
 #endif
 
-#if SKETCH_HAS_LOTS_OF_MEMORY != 0
-#error "SKETCH_HAS_LOTS_OF_MEMORY should be 0 for AVR"
+#if !defined(SKETCH_HAS_LARGE_MEMORY_OVERRIDDEN)
+#if SKETCH_HAS_LARGE_MEMORY != 0
+#error "SKETCH_HAS_LARGE_MEMORY should be 0 for AVR"
+#endif
+#if SKETCH_HAS_HUGE_MEMORY != 0
+#error "SKETCH_HAS_HUGE_MEMORY should be 0 for AVR"
+#endif
 #endif
 
 #if FASTLED_ALLOW_INTERRUPTS != 0

@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
-import hashlib
-import json
+import functools
+import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from typeguard import typechecked
+
+if TYPE_CHECKING:
+    from typeguard import typechecked
+else:
+    # No-op decorator: skip typeguard's ~277ms import cost at runtime.
+    # Static type checkers (mypy/pyright) still see the real decorator.
+    def typechecked(f):  # type: ignore[no-redef]
+        return f
+
+
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 
 
 class TestResultType(Enum):
@@ -28,7 +39,7 @@ class TestResult:
     type: TestResultType
     message: str
     test_name: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[dict[str, Any]] = None
     timestamp: float = 0.0
 
     def __post_init__(self):
@@ -42,7 +53,7 @@ class TestSuiteResult:
     """Results for a test suite"""
 
     name: str
-    results: List[TestResult]
+    results: list[TestResult]
     start_time: float
     end_time: Optional[float] = None
     passed: bool = True
@@ -74,17 +85,36 @@ class TestArgs:
     show_link: bool = False
     quick: bool = False
     no_stack_trace: bool = False
+    stack_trace: bool = False
     check: bool = False
     examples: Optional[list[str]] = None
     no_pch: bool = False
-    unity: bool = False
-    no_unity: bool = False  # Disable unity builds for cpp tests and examples
     full: bool = False
 
     no_parallel: bool = False  # Force sequential test execution
-    unity_chunks: int = 1  # Number of unity chunks for libfastled build
-    debug: bool = False  # Enable debug mode for unit tests
-    qemu: Optional[list[str]] = None  # Run examples in QEMU emulation
+    debug: bool = False  # Enable debug mode for unit tests and examples
+    build_mode: Optional[str] = None  # Override build mode (quick, debug, release)
+    qemu: Optional[list[str]] = (
+        None  # Run examples in QEMU emulation (deprecated - use --run)
+    )
+    run: Optional[list[str]] = (
+        None  # Run examples in emulation (QEMU for ESP32, avr8js for AVR)
+    )
+    no_fingerprint: bool = False  # Disable fingerprint caching
+    build: bool = False  # Build Docker images if missing (use with --run)
+    force: bool = False  # Force rerun of all tests, ignore fingerprint cache
+    no_unity: bool = False  # Not in use any more, maybe revived later
+    docker: bool = (
+        False  # Run tests inside Docker container (implies --debug unless overridden)
+    )
+    default_mode: bool = False  # True when no specific test flags were provided
+    list_tests: bool = False  # List available tests without running them
+    raw_test_query: Optional[str] = None  # Original test query before disambiguation
+    log_failures: Optional[Path] = None  # Directory to write per-test failure logs
+    debug_test: bool = False  # Enable debug tracing for KeyboardInterrupt handlers
+    setup_only: bool = (
+        False  # Run Meson setup only (generate compile_commands.json), skip build/test
+    )
 
 
 @typechecked
@@ -96,10 +126,12 @@ class TestCategories:
     examples: bool
     py: bool
     integration: bool
+    wasm: bool
     unit_only: bool
     examples_only: bool
     py_only: bool
     integration_only: bool
+    wasm_only: bool
     qemu_esp32s3: bool
     qemu_esp32s3_only: bool
 
@@ -110,10 +142,12 @@ class TestCategories:
             "examples",
             "py",
             "integration",
+            "wasm",
             "unit_only",
             "examples_only",
             "py_only",
             "integration_only",
+            "wasm_only",
             "qemu_esp32s3",
             "qemu_esp32s3_only",
         ]:
@@ -125,11 +159,49 @@ class TestCategories:
 @typechecked
 @dataclass
 class FingerprintResult:
-    """Type-safe fingerprint result"""
+    """Type-safe fingerprint result with test metadata for cache display"""
 
     hash: str
     elapsed_seconds: Optional[str] = None
     status: Optional[str] = None
+    # Test result metadata - stored when tests complete for display on cache hits
+    num_tests_run: Optional[int] = None
+    num_tests_passed: Optional[int] = None
+    duration_seconds: Optional[float] = None
+    test_name: Optional[str] = None  # Human-readable test category name
+
+    def get_cache_summary(self) -> str:
+        """Get a human-readable summary of cached test results"""
+        if self.num_tests_run is not None and self.num_tests_passed is not None:
+            duration_str = (
+                f" in {self.duration_seconds:.2f}s" if self.duration_seconds else ""
+            )
+            return f"{self.num_tests_passed}/{self.num_tests_run} passed{duration_str}"
+        return ""
+
+    def should_skip(self, current: "FingerprintResult") -> bool:
+        """
+        Determine if we should skip running tests based on fingerprint comparison.
+
+        Args:
+            current: The current fingerprint calculated from the codebase
+
+        Returns:
+            True if we should skip (cache hit), False if we should run tests
+
+        Logic:
+            - Skip if hash matches AND previous status was "success"
+            - Always run if hash differs (code changed)
+            - Always run if previous status was not "success" (previous failure)
+        """
+        if self.hash != current.hash:
+            # Code changed - must run
+            return False
+        if self.status != "success":
+            # Previous run failed - must run again
+            return False
+        # Hash matches and previous run succeeded - safe to skip
+        return True
 
 
 def process_test_flags(args: TestArgs) -> TestArgs:
@@ -154,40 +226,6 @@ def process_test_flags(args: TestArgs) -> TestArgs:
 
     # If any specific flags are provided, ONLY run those (exclusive behavior)
     if specific_count > 0:
-        # When specific flags are provided, disable everything else unless explicitly set
-        if not args.unit:
-            # Unit was not explicitly set, so disable it
-            pass  # args.unit is already False
-
-        # Auto-enable verbose mode for unit tests (disabled)
-        # if args.unit and not args.verbose:
-        #     args.verbose = True
-        #     print("Auto-enabled --verbose mode for unit tests")
-        if args.examples is None:
-            # Examples was not explicitly set, so disable it
-            pass  # args.examples is already None
-        if not args.py:
-            # Python was not explicitly set, so disable it
-            pass  # args.py is already False
-        if not args.full:
-            # Full was not explicitly set, so disable it
-            pass  # args.full is already False
-
-        # Log what's running
-        enabled_tests: list[str] = []
-        if args.unit:
-            enabled_tests.append("unit tests")
-        if args.examples is not None:
-            enabled_tests.append("examples")
-        if args.py:
-            enabled_tests.append("Python tests")
-        if args.full:
-            if args.examples is not None:
-                enabled_tests.append("full example integration tests")
-            else:
-                enabled_tests.append("full integration tests")
-
-        print(f"Specific test flags provided: Running only {', '.join(enabled_tests)}")
         return args
 
     # If no specific flags, run everything (backward compatibility)
@@ -195,13 +233,7 @@ def process_test_flags(args: TestArgs) -> TestArgs:
         args.unit = True
         args.examples = []  # Empty list means run all examples
         args.py = True
-        print("No test flags specified: Running all tests (unit, examples, Python)")
-
-        # Auto-enable verbose mode for unit tests (disabled)
-        # if args.unit and not args.verbose:
-        #     args.verbose = True
-        #     print("Auto-enabled --verbose mode for unit tests")
-
+        args.default_mode = True  # Mark that we're in default mode (enables WASM)
         return args
 
     return args
@@ -216,38 +248,138 @@ def determine_test_categories(args: TestArgs) -> TestCategories:
     integration_enabled = args.full and args.examples is None
     qemu_esp32s3_enabled = args.qemu is not None
 
+    # WASM compilation runs in default mode (when no specific test flags were provided)
+    # When user explicitly specifies test categories (--cpp, --unit, --examples, --py), WASM is disabled
+    wasm_enabled = args.default_mode
+
     return TestCategories(
         unit=unit_enabled,
         examples=examples_enabled,
         py=py_enabled,
         integration=integration_enabled,
+        wasm=wasm_enabled,
         qemu_esp32s3=qemu_esp32s3_enabled,
         unit_only=unit_enabled
         and not examples_enabled
         and not py_enabled
         and not integration_enabled
+        and not wasm_enabled
         and not qemu_esp32s3_enabled,
         examples_only=examples_enabled
         and not unit_enabled
         and not py_enabled
         and not integration_enabled
+        and not wasm_enabled
         and not qemu_esp32s3_enabled,
         py_only=py_enabled
         and not unit_enabled
         and not examples_enabled
         and not integration_enabled
+        and not wasm_enabled
         and not qemu_esp32s3_enabled,
         integration_only=integration_enabled
         and not unit_enabled
         and not examples_enabled
         and not py_enabled
+        and not wasm_enabled
+        and not qemu_esp32s3_enabled,
+        wasm_only=wasm_enabled
+        and not unit_enabled
+        and not examples_enabled
+        and not py_enabled
+        and not integration_enabled
         and not qemu_esp32s3_enabled,
         qemu_esp32s3_only=qemu_esp32s3_enabled
         and not unit_enabled
         and not examples_enabled
         and not py_enabled
-        and not integration_enabled,
+        and not integration_enabled
+        and not wasm_enabled,
     )
+
+
+# C++ file extensions where whitespace-only changes don't affect compiled output.
+# Normalizing whitespace in these files prevents spurious fingerprint cache misses
+# when a developer adds/removes blank lines or trailing spaces in headers.
+def _scandir_collect_files(
+    root_path: str, exts: frozenset[str]
+) -> list[tuple[str, str]]:
+    """Collect files matching extensions using os.scandir (faster than Path.glob).
+
+    On Windows, DirEntry.stat() reuses FindFirstFile data — no extra syscall
+    per file. Avoids Path object creation overhead from Path.glob().
+
+    Returns list of (relative_path, absolute_path) tuples sorted to match
+    Path sort order (case-insensitive on Windows via os.path.normcase).
+    """
+    results: list[tuple[str, str]] = []
+    root_len = len(root_path)
+    if not root_path.endswith(os.sep):
+        root_len += 1
+    stack = [root_path]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            _, ext = os.path.splitext(entry.name)
+                            if ext in exts:
+                                rel = entry.path[root_len:]
+                                results.append((rel, entry.path))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    # Sort using normcase to match Path.__lt__ (case-insensitive on Windows)
+    results.sort(key=lambda x: os.path.normcase(x[0]))
+    return results
+
+
+@functools.lru_cache(maxsize=32)
+def _hash_directory(start_directory: Path, glob: str) -> str:
+    """
+    Compute SHA-256 hash of directory contents. Cached per process invocation to
+    avoid redundant file I/O when multiple fingerprint checks scan the same directory
+    (e.g., src/ is read by check_all, check_cpp, check_examples, and check_wasm).
+
+    Uses os.scandir for fast traversal — on Windows, DirEntry metadata is free
+    (from FindFirstFile), avoiding per-file stat syscalls that Path.glob incurs.
+
+    Raises exceptions on failure so lru_cache does not cache error results.
+    """
+    import hashlib  # noqa: PLC0415 - lazy: ~5ms saved; only needed when fingerprinting
+
+    hasher = hashlib.sha256()
+
+    # Extract extensions from glob patterns (e.g., "**/*.h,**/*.cpp" -> {".h", ".cpp"})
+    exts = frozenset(os.path.splitext(p.strip())[1] for p in glob.split(","))
+
+    # Collect files using scandir (faster than Path.glob)
+    files = _scandir_collect_files(str(start_directory), exts)
+
+    for rel_path, abs_path in files:
+        # Add the relative path to the hash
+        hasher.update(rel_path.encode("utf-8"))
+
+        # Add the file content to the hash (raw bytes, no normalization)
+        try:
+            with open(abs_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+        except KeyboardInterrupt as ki:
+            # Only notify main thread if we're in a worker thread
+            if threading.current_thread() != threading.main_thread():
+                handle_keyboard_interrupt(ki)
+            raise
+        except Exception as e:
+            # If we can't read the file, include the error in the hash
+            hasher.update(f"ERROR:{str(e)}".encode("utf-8"))
+
+    return hasher.hexdigest()
 
 
 def fingerprint_code_base(
@@ -264,41 +396,17 @@ def fingerprint_code_base(
         A FingerprintResult with hash and optional status
     """
     try:
-        hasher = hashlib.sha256()
-        patterns = glob.split(",")
-
-        # Get all matching files
-        all_files: list[Path] = []
-        for pattern in patterns:
-            pattern = pattern.strip()
-            all_files.extend(sorted(start_directory.glob(pattern)))
-
-        # Sort files for consistent ordering
-        all_files.sort()
-
-        # Process each file
-        for file_path in all_files:
-            if file_path.is_file():
-                # Add the relative path to the hash
-                rel_path = file_path.relative_to(start_directory)
-                hasher.update(str(rel_path).encode("utf-8"))
-
-                # Add the file content to the hash
-                try:
-                    with open(file_path, "rb") as f:
-                        # Read in chunks to handle large files
-                        for chunk in iter(lambda: f.read(4096), b""):
-                            hasher.update(chunk)
-                except Exception as e:
-                    # If we can't read the file, include the error in the hash
-                    hasher.update(f"ERROR:{str(e)}".encode("utf-8"))
-
-        return FingerprintResult(hash=hasher.hexdigest())
+        return FingerprintResult(hash=_hash_directory(start_directory, glob))
+    except KeyboardInterrupt as ki:
+        # Only notify main thread if we're in a worker thread
+        if threading.current_thread() != threading.main_thread():
+            handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         return FingerprintResult(hash="", status=f"error: {str(e)}")
 
 
-def calculate_fingerprint(root_dir: Path | None = None) -> FingerprintResult:
+def calculate_fingerprint(root_dir: Optional[Path] = None) -> FingerprintResult:
     """
     Calculate the code base fingerprint.
 
@@ -319,3 +427,255 @@ def calculate_fingerprint(root_dir: Path | None = None) -> FingerprintResult:
     result.elapsed_seconds = f"{elapsed_time:.2f}"
 
     return result
+
+
+def calculate_cpp_test_fingerprint(
+    args: Optional[TestArgs] = None,
+) -> FingerprintResult:
+    """
+    Calculate fingerprint for C++ unit tests, including both src/ and tests/ directories.
+
+    Args:
+        args: Test arguments (optional, used to include build configuration in fingerprint)
+
+    Returns:
+        The fingerprint result covering files that affect C++ unit tests
+    """
+    import hashlib  # noqa: PLC0415 - lazy: ~5ms saved; only needed when fingerprinting
+
+    start_time = time.time()
+    cwd = Path.cwd()
+
+    # Combine fingerprints from both src/ and tests/ directories
+    hasher = hashlib.sha256()
+
+    # Process src/ directory (C++ source files)
+    src_dir = cwd / "src"
+    if src_dir.exists():
+        src_result = fingerprint_code_base(src_dir, "**/*.h,**/*.cpp,**/*.hpp")
+        hasher.update(f"src:{src_result.hash}".encode("utf-8"))
+
+    # Process tests/ directory (test files)
+    tests_dir = cwd / "tests"
+    if tests_dir.exists():
+        tests_result = fingerprint_code_base(tests_dir, "**/*.h,**/*.cpp,**/*.hpp")
+        hasher.update(f"tests:{tests_result.hash}".encode("utf-8"))
+
+    # Include meson.build files that affect build configuration
+    meson_build_files = [
+        cwd / "meson.build",  # Root build configuration
+        cwd / "tests" / "meson.build",  # Test discovery and configuration
+        cwd / "ci" / "meson" / "native" / "meson.build",  # Native library build flags
+    ]
+    for meson_file in meson_build_files:
+        if meson_file.exists():
+            with open(meson_file, "rb") as f:
+                meson_content = f.read()
+                hasher.update(
+                    f"meson:{meson_file.name}:{hashlib.sha256(meson_content).hexdigest()}".encode(
+                        "utf-8"
+                    )
+                )
+
+    # Include build configuration flags that affect compilation
+    if args is not None:
+        # Include build_mode in fingerprint (quick/debug/release affects compiler flags)
+        # This ensures separate fingerprints for different build configurations
+        build_mode = (
+            args.build_mode if args.build_mode else ("debug" if args.debug else "quick")
+        )
+        hasher.update(f"build_mode:{build_mode}".encode("utf-8"))
+
+    elapsed_time = time.time() - start_time
+
+    return FingerprintResult(
+        hash=hasher.hexdigest(), elapsed_seconds=f"{elapsed_time:.2f}", status="success"
+    )
+
+
+def calculate_examples_fingerprint(
+    args: Optional[TestArgs] = None,
+) -> FingerprintResult:
+    """
+    Calculate fingerprint for example tests, including examples/ directory.
+
+    Args:
+        args: Test arguments (optional, used to include build configuration in fingerprint)
+
+    Returns:
+        The fingerprint result covering files that affect example compilation tests
+    """
+    import hashlib  # noqa: PLC0415 - lazy: ~5ms saved; only needed when fingerprinting
+
+    start_time = time.time()
+    cwd = Path.cwd()
+
+    # Combine fingerprints from relevant directories
+    hasher = hashlib.sha256()
+
+    # Process src/ directory (affects example compilation)
+    src_dir = cwd / "src"
+    if src_dir.exists():
+        src_result = fingerprint_code_base(src_dir, "**/*.h,**/*.cpp,**/*.hpp")
+        hasher.update(f"src:{src_result.hash}".encode("utf-8"))
+
+    # Process examples/ directory
+    examples_dir = cwd / "examples"
+    if examples_dir.exists():
+        examples_result = fingerprint_code_base(
+            examples_dir, "**/*.ino,**/*.h,**/*.cpp,**/*.hpp"
+        )
+        hasher.update(f"examples:{examples_result.hash}".encode("utf-8"))
+
+    # Include meson.build files that affect build configuration
+    meson_build_files = [
+        cwd / "meson.build",  # Root build configuration
+        cwd / "examples" / "meson.build",  # Example registration and configuration
+        cwd / "ci" / "meson" / "native" / "meson.build",  # Native library build flags
+    ]
+    for meson_file in meson_build_files:
+        if meson_file.exists():
+            with open(meson_file, "rb") as f:
+                meson_content = f.read()
+                hasher.update(
+                    f"meson:{meson_file.name}:{hashlib.sha256(meson_content).hexdigest()}".encode(
+                        "utf-8"
+                    )
+                )
+
+    # Include test_example_compilation.py and related scripts
+    example_test_files = [
+        cwd / "ci" / "compiler" / "test_example_compilation.py",
+        cwd / "ci" / "compiler" / "clang_compiler.py",
+        cwd / "ci" / "compiler" / "native_fingerprint.py",
+    ]
+    for script_file in example_test_files:
+        if script_file.exists():
+            with open(script_file, "rb") as f:
+                script_content = f.read()
+                hasher.update(
+                    f"script:{script_file.name}:{hashlib.sha256(script_content).hexdigest()}".encode(
+                        "utf-8"
+                    )
+                )
+
+    # Include build configuration flags that affect compilation
+    if args is not None:
+        # Include build_mode in fingerprint (quick/debug/release affects compiler flags)
+        # This ensures separate fingerprints for different build configurations
+        build_mode = (
+            args.build_mode if args.build_mode else ("debug" if args.debug else "quick")
+        )
+        hasher.update(f"build_mode:{build_mode}".encode("utf-8"))
+
+    elapsed_time = time.time() - start_time
+
+    return FingerprintResult(
+        hash=hasher.hexdigest(), elapsed_seconds=f"{elapsed_time:.2f}", status="success"
+    )
+
+
+def calculate_python_test_fingerprint() -> FingerprintResult:
+    """
+    Calculate fingerprint for Python tests, including ci/tests/ directory.
+
+    Returns:
+        The fingerprint result covering files that affect Python tests
+    """
+    import hashlib  # noqa: PLC0415 - lazy: ~5ms saved; only needed when fingerprinting
+
+    start_time = time.time()
+    cwd = Path.cwd()
+
+    # Combine fingerprints from relevant directories
+    hasher = hashlib.sha256()
+
+    # Process ci/tests/ directory (Python test files)
+    ci_tests_dir = cwd / "ci" / "tests"
+    if ci_tests_dir.exists():
+        ci_tests_result = fingerprint_code_base(ci_tests_dir, "**/*.py")
+        hasher.update(f"ci_tests:{ci_tests_result.hash}".encode("utf-8"))
+
+    # Process ci/ directory (Python modules that affect tests)
+    ci_dir = cwd / "ci"
+    if ci_dir.exists():
+        # Include important Python modules
+        ci_modules_result = fingerprint_code_base(ci_dir, "**/*.py")
+        hasher.update(f"ci_modules:{ci_modules_result.hash}".encode("utf-8"))
+
+    # Include relevant configuration files
+    config_files = [
+        cwd / "pyproject.toml",
+        cwd / "uv.lock",
+        cwd / ".python-version",
+    ]
+    for config_file in config_files:
+        if config_file.exists():
+            with open(config_file, "rb") as f:
+                config_content = f.read()
+                hasher.update(
+                    f"config:{config_file.name}:{hashlib.sha256(config_content).hexdigest()}".encode(
+                        "utf-8"
+                    )
+                )
+
+    elapsed_time = time.time() - start_time
+
+    return FingerprintResult(
+        hash=hasher.hexdigest(), elapsed_seconds=f"{elapsed_time:.2f}", status="success"
+    )
+
+
+def calculate_wasm_fingerprint() -> FingerprintResult:
+    """
+    Calculate fingerprint for WASM compilation tests.
+
+    Returns:
+        The fingerprint result covering files that affect WASM compilation
+    """
+    import hashlib  # noqa: PLC0415 - lazy: ~5ms saved; only needed when fingerprinting
+
+    start_time = time.time()
+    cwd = Path.cwd()
+
+    # Combine fingerprints from relevant directories
+    hasher = hashlib.sha256()
+
+    # Process src/ directory (affects WASM compilation)
+    src_dir = cwd / "src"
+    if src_dir.exists():
+        src_result = fingerprint_code_base(src_dir, "**/*.h,**/*.cpp,**/*.hpp")
+        hasher.update(f"src:{src_result.hash}".encode("utf-8"))
+
+    # Process examples/wasm directory (the default WASM test example)
+    wasm_example_dir = cwd / "examples" / "wasm"
+    if wasm_example_dir.exists():
+        wasm_result = fingerprint_code_base(
+            wasm_example_dir, "**/*.ino,**/*.h,**/*.cpp,**/*.hpp,**/*.js,**/*.html"
+        )
+        hasher.update(f"wasm_example:{wasm_result.hash}".encode("utf-8"))
+
+    # Include WASM compilation scripts and build configuration
+    wasm_compile_files = [
+        cwd / "ci" / "wasm_compile.py",
+        cwd / "ci" / "wasm_build.py",
+        cwd / "ci" / "wasm_build_library.py",
+        cwd / "ci" / "boards.py",
+        cwd / "ci" / "meson" / "wasm" / "meson.build",  # WASM library build flags & PCH
+        cwd / "meson.build",  # Root build configuration
+    ]
+    for script_file in wasm_compile_files:
+        if script_file.exists():
+            with open(script_file, "rb") as f:
+                script_content = f.read()
+                hasher.update(
+                    f"script:{script_file.name}:{hashlib.sha256(script_content).hexdigest()}".encode(
+                        "utf-8"
+                    )
+                )
+
+    elapsed_time = time.time() - start_time
+
+    return FingerprintResult(
+        hash=hasher.hexdigest(), elapsed_seconds=f"{elapsed_time:.2f}", status="success"
+    )

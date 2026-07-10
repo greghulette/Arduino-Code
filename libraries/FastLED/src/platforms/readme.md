@@ -3,6 +3,7 @@
 Table of Contents
 - [What lives here](#what-lives-here)
 - [Popular boards → where to look](#popular-boards--where-to-look)
+- [Platform header organization pattern](#platform-header-organization-pattern)
 - [Controller types in FastLED](#controller-types-in-fastled)
   - [Clockless (one-wire NRZ)](#1-clockless-onewire-nrz)
   - [SPI (clocked)](#2-spi-clocked)
@@ -57,6 +58,166 @@ The `src/platforms/` directory contains platform backends and integrations that 
 If you are targeting a desktop/browser host for demos or tests:
 - Native host tests → [stub](./stub/README.md) (with [shared](./shared/README.md) for data/UI)
 - Browser/WASM builds → [wasm](./wasm/README.md)
+
+### Platform header organization pattern
+
+FastLED has evolved its platform directory to contain **dispatch headers** that follow a **coarse-to-fine delegation pattern**. These dispatch headers live at the root of `src/platforms/` (e.g., `int.h`, `io_arduino.h`, `quad_spi_platform.h`) and route the compiler to the appropriate platform-specific implementations. This keeps platform routing clean and maintainable.
+
+**Architecture**: Headers at `platforms/header.h` perform **coarse platform detection** (ESP32, AVR, ARM families) and delegate to platform-specific subdirectories for **fine-grained detection** (ESP32-S3, ATmega328P, SAMD51, etc.).
+
+#### Pattern structure
+
+```cpp
+// platforms/header.h - Coarse detection
+#if defined(FASTLED_TESTING)
+    #include "platforms/stub/platform_stub.h"
+#elif defined(ESP32)
+    // Delegate to ESP-specific header for fine-grained variant detection
+    #include "platforms/esp/platform_esp.h"
+#elif defined(__AVR__)
+    #include "platforms/avr/platform_avr.h"
+#else
+    // Fallback
+#endif
+```
+
+```cpp
+// platforms/esp/platform_esp.h - Fine-grained detection
+#if defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32)
+    // ESP32 classic
+#elif defined(ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S2)
+    // ESP32-S2
+#elif defined(ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32S3)
+    // ESP32-S3
+#elif defined(ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    // ESP32-C3
+#elif defined(ESP32P4) || defined(CONFIG_IDF_TARGET_ESP32P4)
+    // ESP32-P4
+// ... etc
+#endif
+```
+
+#### Why this pattern?
+
+1. **Coarse headers stay simple**: Only check for broad platform families (`ESP32`, `__AVR__`, `FL_IS_ARM`)
+2. **Fine-grained logic isolated**: Variant-specific detection (`ESP32S3`, `CONFIG_IDF_TARGET_ESP32C6`) lives in platform subdirectories
+3. **Easy to maintain**: Adding new variants only requires changes in platform-specific headers
+4. **Follows existing patterns**: See `platforms/int.h`, `platforms/audio.h` for reference implementations
+
+### SPI Hardware Manager Pattern
+
+FastLED uses a **unified hardware manager pattern** for initializing SPI controllers across all platforms. This pattern centralizes hardware initialization, uses feature flags for conditional compilation, and implements priority-based registration for multi-lane controllers.
+
+#### Architecture Overview
+
+**Single Entry Point**: Each platform has one `initSpiHardware()` function in a platform-specific manager file:
+- ESP32: `platforms/esp/32/drivers/spi_hw_manager_esp32.cpp.hpp`
+- STM32: `platforms/arm/stm32/spi_hw_manager_stm32.cpp.hpp`
+- Teensy 4.x: `platforms/arm/teensy/teensy4_common/spi_hw_manager_mxrt1062.cpp.hpp`
+- RP2040/RP2350: `platforms/arm/rp/rpcommon/spi_hw_manager_rp.cpp.hpp`
+- SAMD21: `platforms/arm/d21/spi_hw_manager_samd21.cpp.hpp`
+- SAMD51: `platforms/arm/d51/spi_hw_manager_samd51.cpp.hpp`
+- nRF52: `platforms/arm/nrf52/spi_hw_manager_nrf52.cpp.hpp`
+- Stub: `platforms/stub/spi_hw_manager_stub.cpp.hpp`
+
+**Dispatch Headers**: Coarse-to-fine platform routing via `platforms/init_spi_hw.h`:
+```cpp
+// Top-level: platforms/init_spi_hw.h
+#if defined(FASTLED_TESTING)
+    #include "platforms/stub/init_spi_hw.h"
+#elif defined(FL_IS_ESP)
+    #include "platforms/esp/init_spi_hw.h"
+#elif defined(FL_IS_ARM)
+    #include "platforms/arm/init_spi_hw.h"
+#endif
+
+// Platform-level: platforms/esp/init_spi_hw.h
+namespace fl {
+namespace platform {
+void initSpiHardware();
+}
+}
+```
+
+#### Manager Implementation Pattern
+
+Each platform manager follows this structure (example from ESP32):
+
+```cpp
+namespace fl {
+namespace detail {
+
+/// Priority constants (higher = preferred for routing)
+constexpr int PRIORITY_HW_16 = 9;   // Highest (16-lane I2S)
+constexpr int PRIORITY_HW_8 = 8;
+constexpr int PRIORITY_HW_4 = 7;
+constexpr int PRIORITY_HW_2 = 6;
+constexpr int PRIORITY_HW_1 = 5;    // Lowest (single-lane)
+
+/// Helper function pattern with feature flags
+static void addSpiHw16IfPossible() {
+#if FASTLED_ESP32_HAS_I2S
+    // Include concrete implementation
+    #include "platforms/esp/32/drivers/i2s/spi_hw_i2s_esp32.cpp.hpp"
+
+    // Create and register instances
+    static auto i2s0 = fl::make_shared<SpiHwI2SESP32>(0);
+    SpiHw16::registerInstance(i2s0, PRIORITY_HW_16);
+
+    FL_DBG("ESP32: Added I2S SpiHw16 controller");
+#else
+    // No-op if feature not available
+#endif
+}
+
+}  // namespace detail
+
+namespace platform {
+
+/// Unified initialization entry point
+void initSpiHardware() {
+    FL_DBG("ESP32: Initializing SPI hardware");
+
+    // Register in priority order (highest to lowest)
+    detail::addSpiHw16IfPossible();  // Priority 9
+    detail::addSpiHw8IfPossible();   // Priority 8
+    detail::addSpiHw4IfPossible();   // Priority 7
+    detail::addSpiHw2IfPossible();   // Priority 6
+    detail::addSpiHw1IfPossible();   // Priority 5
+
+    FL_DBG("ESP32: SPI hardware initialized");
+}
+
+}  // namespace platform
+}  // namespace fl
+```
+
+#### Key Advantages
+
+- **Lazy initialization**: Hardware is only initialized on first access to `SpiHwN::getAll()`
+- **No static constructors**: Avoids initialization order issues and startup overhead
+- **Feature flag driven**: Conditional compilation uses clear `PLATFORM_HAS_*` macros
+- **Priority-based routing**: Higher lane counts get priority when multiple controllers are available
+- **Platform dispatch**: Clean separation between detection (dispatch headers) and implementation (manager files)
+- **Meyer's Singleton**: Thread-safe lazy initialization using static local variables
+- **Type-safe shared pointers**: Automatic memory management with `fl::shared_ptr`
+
+#### Platform Capability Matrix
+
+| Platform | SpiHw1 | SpiHw2 | SpiHw4 | SpiHw8 | SpiHw16 | Hardware |
+|----------|--------|--------|--------|--------|---------|----------|
+| ESP32 classic | ✅ | ✅ | ✅ | ✅ | ✅ | I2S LCD_CAM (16-lane) |
+| ESP32-S3 | ✅ | ✅ | ✅ | ✅ | ❌ | SPI peripheral |
+| STM32 F2/F4/F7/H7/L4 | ✅ | ✅ | ✅ | ✅ | ❌ | Timer+DMA (stream-based) |
+| Teensy 4.x | ✅ | ✅ | ✅ | ❌ | ❌ | LPSPI WIDTH field |
+| RP2040/RP2350 | ✅ | ✅ | ✅ | ✅ | ❌ | PIO state machines |
+| SAMD21 | ✅ | ✅ | ❌ | ❌ | ❌ | SERCOM + DMA |
+| SAMD51 | ✅ | ✅ | ✅ | ❌ | ❌ | SERCOM + DMA |
+| nRF52 | ✅ | ✅ | ✅ | ❌ | ❌ | Timer/PPI |
+
+#### Adding a New Platform
+
+See [shared/SPI_MANAGER_PATTERN.md](./shared/SPI_MANAGER_PATTERN.md) for a detailed implementation guide and template code for adding SPI hardware support to a new platform
 
 ### Controller types in FastLED
 

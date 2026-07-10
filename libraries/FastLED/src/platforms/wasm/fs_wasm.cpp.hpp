@@ -1,0 +1,362 @@
+// IWYU pragma: private
+
+
+#include "platforms/wasm/is_wasm.h"
+#ifdef FL_IS_WASM
+
+// ⚠️⚠️⚠️ CRITICAL WARNING: C++ ↔ JavaScript FILE SYSTEM BRIDGE - HANDLE WITH EXTREME CARE! ⚠️⚠️⚠️
+//
+// 🚨 THIS FILE CONTAINS C++ TO JAVASCRIPT FILE SYSTEM BINDINGS 🚨
+//
+// DO NOT MODIFY FUNCTION SIGNATURES WITHOUT UPDATING CORRESPONDING JAVASCRIPT CODE!
+//
+// This file manages file system operations between C++ and JavaScript for WASM builds.
+// Any changes to:
+// - EMSCRIPTEN_BINDINGS macro contents
+// - extern "C" EMSCRIPTEN_KEEPALIVE function signatures
+// - fastled_declare_files() parameter types
+// - File operation function names or parameters
+//
+// Will BREAK JavaScript file loading and cause SILENT RUNTIME FAILURES!
+//
+// Key integration points that MUST remain synchronized:
+// - EMSCRIPTEN_BINDINGS(_fastled_declare_files)
+// - fastled_declare_files(std::string jsonStr) 
+// - extern "C" jsInjectFile(), jsAppendFile(), jsDeclareFile()
+// - JavaScript Module._fastled_declare_files() calls
+// - JSON file declaration format parsing
+//
+// Before making ANY changes:
+// 1. Understand this affects file loading for animations and data
+// 2. Test with real WASM builds that load external files
+// 3. Verify JSON parsing for file declarations works correctly
+// 4. Check that file operations remain accessible from JavaScript
+//
+// ⚠️⚠️⚠️ REMEMBER: File system errors prevent resource loading! ⚠️⚠️⚠️
+
+// IWYU pragma: begin_keep
+#include <emscripten.h>
+#include <emscripten/emscripten.h> // Include Emscripten headers
+#include <emscripten/html5.h>
+#include <emscripten/val.h>
+// IWYU pragma: end_keep
+
+// IWYU pragma: begin_keep
+#include "fl/stl/flat_map.h"  // ok include
+#include "fl/stl/mutex.h"  // ok include
+#include "fl/stl/cstdio.h"  // ok include
+#include "fl/stl/vector.h"  // ok include
+// IWYU pragma: end_keep
+
+#include "fl/log/log.h"
+#include "fl/system/file_system.h"
+#include "fl/stl/json.h"
+#include "fl/math/math.h"
+#include "fl/stl/memory.h"
+#include "fl/stl/string.h"
+#include "fl/stl/stdio.h"
+#include "fl/log/log.h"
+#include "fl/stl/mutex.h"
+#include "platforms/wasm/js.h"
+
+
+namespace fl {
+
+FASTLED_SHARED_PTR(FsImplWasm);
+FASTLED_SHARED_PTR(WasmFileHandle);
+
+// Map is great because it doesn't invalidate it's data members unless erase is
+// called.
+FASTLED_SHARED_PTR(FileData);
+
+class FileData {
+  public:
+    FileData(size_t capacity) : mCapacity(capacity) { mData.reserve(capacity); }
+    FileData(const fl::vector<u8> &data, size_t len)
+        : mData(data), mCapacity(len) {}
+    FileData() = default;
+
+    void append(const u8 *data, size_t len) {
+        fl::unique_lock<fl::mutex> lock(mMutex);
+        mData.insert(mData.end(), data, data + len);
+        mCapacity = fl::max(mCapacity, mData.size());
+    }
+
+    size_t read(size_t pos, u8 *dst, size_t len) {
+        fl::unique_lock<fl::mutex> lock(mMutex);
+        if (pos >= mData.size()) {
+            return 0;
+        }
+        size_t bytesAvailable = mData.size() - pos;
+        size_t bytesToActuallyRead = fl::min(len, bytesAvailable);
+        fl::memcpy(dst, mData.data() + pos, bytesToActuallyRead);
+        return bytesToActuallyRead;
+    }
+
+    bool ready(size_t pos) {
+        fl::unique_lock<fl::mutex> lock(mMutex);
+        return mData.size() == mCapacity || pos < mData.size();
+    }
+
+    size_t bytesRead() const {
+        fl::unique_lock<fl::mutex> lock(mMutex);
+        return mData.size();
+    }
+
+    size_t capacity() const {
+        fl::unique_lock<fl::mutex> lock(mMutex);
+        return mCapacity;
+    }
+
+  private:
+    fl::vector<u8> mData;
+    size_t mCapacity = 0;
+    mutable fl::mutex mMutex;
+};
+
+typedef fl::flat_map<fl::string, FileDataPtr, fl::StringFastLess> FileMap;  // okay fl namespace
+
+struct FileRegistry {
+    FileMap files;
+    fl::mutex mutex;
+    static FileRegistry &instance() {
+        static FileRegistry registry;
+        return registry;
+    }
+private:
+    FileRegistry() = default;
+};
+
+class WasmFileHandle : public fl::filebuf {
+  private:
+    FileDataPtr mData;
+    size_t mPos;
+    string mPath;
+
+  public:
+    WasmFileHandle(const string &path, const FileDataPtr data)
+        : mData(data), mPos(0), mPath(path) {}
+
+    virtual ~WasmFileHandle() override {}
+
+    bool is_open() const override { return true; } // always open if we have data
+
+    bool available() const override {
+        if (mPos >= mData->capacity()) {
+            return false;
+        }
+        if (!mData->ready(mPos)) {
+            FL_WARN("File is not ready yet. This is a major error because "
+                         "FastLED-wasm does not support async yet, the file "
+                         "will fail to read.");
+            return false;
+        }
+        return true;
+    }
+
+    fl::size_t bytes_left() const override {
+        if (!available()) {
+            return 0;
+        }
+        return mData->capacity() - mPos;
+    }
+
+    size_t size() const override { return mData->capacity(); }
+
+    size_t read(char *dst, size_t bytesToRead) override {
+        if (mPos >= mData->capacity()) {
+            return 0;
+        }
+        if (mPos + bytesToRead > mData->capacity()) {
+            bytesToRead = mData->capacity() - mPos;
+        }
+        if (!mData->ready(mPos)) {
+            FL_WARN("File is not ready yet. This is a major error because "
+                         "FastLED-wasm does not support async yet, the file "
+                         "will fail to read.");
+            return 0;
+        }
+        size_t bytesRead = mData->read(mPos, reinterpret_cast<u8*>(dst), bytesToRead); // ok reinterpret cast
+        mPos += bytesRead;
+        return bytesRead;
+    }
+    using filebuf::read; // Pull in u8 overload
+
+    size_t write(const char *data, size_t count) override {
+        (void)data; (void)count;
+        return 0; // Read-only
+    }
+
+    size_t tell() override { return mPos; }
+    const char *path() const override { return mPath.c_str(); }
+
+    bool seek(size_t pos, fl::seek_dir dir) override {
+        size_t target = pos;
+        if (dir == fl::seek_dir::cur) {
+            target = mPos + pos;
+        } else if (dir == fl::seek_dir::end) {
+            target = mData->capacity() + pos;
+        }
+        if (target > mData->capacity()) {
+            return false;
+        }
+        mPos = target;
+        return true;
+    }
+    using filebuf::seek; // Pull in single-arg overload
+
+    void close() override {
+        // No need to do anything for in-memory files
+    }
+
+    bool is_eof() const override { return mPos >= mData->capacity(); }
+    bool has_error() const override { return false; }
+    void clear_error() override {}
+    int error_code() const override { return 0; }
+    const char *error_message() const override { return "No error"; }
+};
+
+class FsImplWasm : public fl::FsImpl {
+  public:
+    FsImplWasm() = default;
+    ~FsImplWasm() override {}
+
+    bool begin() override { return true; }
+    void end() override {}
+
+    fl::filebuf_ptr openRead(const char *_path) override {
+        // FL_DBG("Opening file: " << _path);
+        string path(_path);
+        filebuf_ptr out;
+        {
+            auto &reg = FileRegistry::instance();
+            fl::unique_lock<fl::mutex> lock(reg.mutex);
+            auto it = reg.files.find(path);
+            if (it != reg.files.end()) {
+                auto &data = it->second;
+                out = fl::make_shared<WasmFileHandle>(path, data);
+                // FL_DBG("Opened file: " << _path);
+            } else {
+                out = fl::filebuf_ptr();
+                FL_DBG("File not found: " << _path);
+            }
+        }
+        return out;
+    }
+};
+
+FileDataPtr _findIfExists(const fl::string &path) {
+    auto &reg = FileRegistry::instance();
+    fl::unique_lock<fl::mutex> lock(reg.mutex);
+    auto it = reg.files.find(path);
+    if (it != reg.files.end()) {
+        return it->second;
+    }
+    return FileDataPtr();
+}
+
+FileDataPtr _findOrCreate(const fl::string &path, size_t len) {
+    auto &reg = FileRegistry::instance();
+    fl::unique_lock<fl::mutex> lock(reg.mutex);
+    auto it = reg.files.find(path);
+    if (it != reg.files.end()) {
+        return it->second;
+    }
+    auto entry = fl::make_shared<FileData>(len);
+    reg.files.insert(fl::make_pair(path, entry));  // okay fl namespace
+    return entry;
+}
+
+FileDataPtr _createIfNotExists(const fl::string &path, size_t len) {
+    auto &reg = FileRegistry::instance();
+    fl::unique_lock<fl::mutex> lock(reg.mutex);
+    auto it = reg.files.find(path);
+    if (it != reg.files.end()) {
+        return FileDataPtr();
+    }
+    auto entry = fl::make_shared<FileData>(len);
+    reg.files.insert(fl::make_pair(path, entry));  // okay fl namespace
+    return entry;
+}
+
+} // namespace fl
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE bool jsInjectFile(const char *path, const fl::u8 *data,
+                                       size_t len) {
+
+    auto inserted = fl::_createIfNotExists(fl::string(path), len);
+    if (!inserted) {
+        FL_WARN("File can only be injected once.");
+        return false;
+    }
+    inserted->append(data, len);
+    return true;
+}
+
+EMSCRIPTEN_KEEPALIVE bool jsAppendFile(const char *path, const fl::u8 *data,
+                                       size_t len) {
+    auto entry = fl::_findIfExists(fl::string(path));
+    if (!entry) {
+        FL_WARN("File must be declared before it can be appended.");
+        return false;
+    }
+    entry->append(data, len);
+    return true;
+}
+
+EMSCRIPTEN_KEEPALIVE bool jsDeclareFile(const char *path, size_t len) {
+    // declare a file and it's length. But don't fill it in yet
+    auto inserted = fl::_createIfNotExists(fl::string(path), len);
+    if (!inserted) {
+        FL_WARN("File can only be declared once.");
+        return false;
+    }
+    return true;
+}
+
+EMSCRIPTEN_KEEPALIVE void fastled_declare_files(const char* jsonStr) {
+    fl::json doc = fl::json::parse(fl::string(jsonStr));
+    if (!doc.is_object() || !doc.contains("files")) {
+        return;
+    }
+    
+    auto files = doc["files"];
+    if (!files.is_array()) {
+        return;
+    }
+    
+    size_t fileCount = files.size();
+    for (size_t i = 0; i < fileCount; i++) {
+        auto file = files[i];
+        if (!file.is_object()) {
+            continue;
+        }
+        
+        if (!file.contains("size") || !file.contains("path")) {
+            continue;
+        }
+        
+        int size = file["size"] | 0;
+        fl::string path = file["path"] | fl::string("");
+        
+        if (size > 0 && !path.empty()) {
+            fl::printf("Declaring file %s with size %d. These will become available as "
+                   "File system paths within the app.\n",
+                   path.c_str(), size);
+            jsDeclareFile(path.c_str(), size);
+        }
+    }
+}
+
+} // extern "C"
+
+
+
+namespace fl {
+// Platforms eed to implement this to create an instance of the filesystem.
+FsImplPtr make_sdcard_filesystem(int cs_pin) { return fl::make_shared<FsImplWasm>(); }
+} // namespace fl
+
+#endif // FL_IS_WASM

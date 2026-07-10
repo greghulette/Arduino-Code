@@ -464,6 +464,20 @@ bool AsyncWebServerRequest::_parseChunkedBytes(uint8_t *buf, size_t len) {
   return false;
 }
 
+static inline const char *skip_ows(const char *p, const char *end) {
+  while (p < end && (*p == ' ' || *p == '\t')) {
+    p++;
+  }
+  return p;
+}
+
+static inline const char *rtrim_ows(const char *start, const char *end) {
+  while (end > start && (*(end - 1) == ' ' || *(end - 1) == '\t')) {
+    end--;
+  }
+  return end;
+}
+
 bool AsyncWebServerRequest::_parseReqHeader() {
   AsyncWebHeader header = AsyncWebHeader::parse(_temp);
   if (header) {
@@ -473,9 +487,142 @@ bool AsyncWebServerRequest::_parseReqHeader() {
       _host = value;
     } else if (name.equalsIgnoreCase(T_Content_Type)) {
       _contentType = value.substring(0, value.indexOf(';'));
-      if (value.startsWith(T_MULTIPART_)) {
-        _boundary = value.substring(value.indexOf('=') + 1);
-        _boundary.replace(String('"'), String());
+      // Trim _contentType defensively; AsyncWebHeader::parse now strips all
+      // leading OWS per RFC 7230, but trim() guards against any future change.
+      _contentType.trim();
+      if (strncasecmp(value.c_str(), T_MULTIPART_, sizeof(T_MULTIPART_) - 1) == 0) {
+        // Delimiter-structured, quote-aware search for the boundary parameter.
+        // We scan parameter by parameter (';'-delimited) so that 'boundary='
+        // inside a quoted value (e.g. foo="x; boundary=y") is never mistaken
+        // for the real parameter.  A ';' inside a quoted-string is not a
+        // parameter separator per RFC 2045 §5.1.
+        const char *p = value.c_str();
+        const char *end = p + value.length();
+
+        // Advance past the media-type to the first ';'
+        while (p < end && *p != ';') {
+          p++;
+        }
+
+        const char *bvdata = nullptr;
+        while (p < end) {
+          p++;  // consume ';'
+          p = skip_ows(p, end);
+          if ((size_t)(end - p) > T_BOUNDARY_LEN && strncasecmp(p, T_BOUNDARY, T_BOUNDARY_LEN) == 0) {
+            bvdata = p + T_BOUNDARY_LEN;
+            break;
+          }
+          // Advance to the next ';', skipping over any quoted-string value
+          while (p < end && *p != ';') {
+            if (*p++ == '"') {
+              while (p < end && *p != '"') {
+                if (*p == '\\' && p + 1 < end) {
+                  p++;  // skip quoted-pair
+                }
+                p++;
+              }
+              if (p < end) {
+                p++;  // skip closing '"'
+              }
+            }
+          }
+        }
+
+        if (bvdata == nullptr) {
+          // No valid boundary parameter found — cannot parse multipart body.
+          async_ws_log_d("Missing multipart boundary parameter, aborting");
+          _parseState = PARSE_REQ_FAIL;
+          abort();
+          return true;
+        }
+
+        // Strip leading OWS after 'boundary=' — non-RFC but seen in the wild.
+        bvdata = skip_ows(bvdata, end);
+
+        // Clear any previous value — duplicate Content-Type headers must not
+        // concatenate into the boundary string.
+        _boundary = String();
+
+        if (bvdata < end && *bvdata == '"') {
+          // Quoted-string: unescape quoted-pairs into _boundary directly.
+          bvdata++;  // skip opening '"'
+          // Reserve at most 70 chars — the RFC 2046 §5.1 maximum — rather than
+          // the full (attacker-controlled) remaining suffix length.
+          if (!_boundary.reserve(70)) {
+            async_ws_log_e("Failed to allocate");
+            _parseState = PARSE_REQ_FAIL;
+            abort();
+            return true;
+          }
+          bool closed = false;
+          while (bvdata < end) {
+            char c = *bvdata++;
+            if (c == '\\' && bvdata < end) {
+              _boundary += *bvdata++;  // quoted-pair: keep only the escaped char
+            } else if (c == '"') {
+              closed = true;
+              break;
+            } else {
+              _boundary += c;
+            }
+            // CWE-190 / DoS fix: RFC 2046 §5.1 limits boundary strings to 70 characters.
+            if (_boundary.length() > 70) {
+              async_ws_log_d("Invalid multipart boundary length (%u), aborting", _boundary.length());
+              _parseState = PARSE_REQ_FAIL;
+              abort();
+              return true;
+            }
+          }
+          if (!closed) {
+            // Opening quote was never closed — malformed header.
+            async_ws_log_d("Invalid multipart boundary (unterminated quote), aborting");
+            _parseState = PARSE_REQ_FAIL;
+            abort();
+            return true;
+          }
+        } else {
+          // Token form: value ends at the next ';' or end of string.
+          const char *tok_end = bvdata;
+          while (tok_end < end && *tok_end != ';') {
+            tok_end++;
+          }
+          tok_end = rtrim_ows(bvdata, tok_end);
+          size_t bvlen = (size_t)(tok_end - bvdata);
+          // CWE-190 / DoS fix: RFC 2046 §5.1 limits boundary strings to 70 characters.
+          if (bvlen == 0 || bvlen > 70) {
+            async_ws_log_d("Invalid multipart boundary length (%u), aborting", (unsigned)bvlen);
+            _parseState = PARSE_REQ_FAIL;
+            abort();
+            return true;
+          }
+#ifdef ESP8266
+          {
+            // ESP8266 Arduino String lacks String(const char*, size_t).
+            // bvlen <= 70 is guaranteed above, so a stack buffer is safe.
+            char buf[71];
+            memcpy(buf, bvdata, bvlen);
+            buf[bvlen] = '\0';
+            _boundary = String(buf);
+          }
+#else
+          _boundary = String(bvdata, (unsigned int)bvlen);
+#endif
+        }
+
+        // CWE-190 / DoS fix: final safety net.  The per-branch checks above
+        // cover the token path (bvlen == 0 || bvlen > 70) and the quoted-string
+        // path (> 70 inside the loop), but an empty quoted-string (boundary="")
+        // closes immediately with _boundary still empty and is not rejected
+        // by either branch.  Reject it here before _isMultipart is set, so an
+        // empty boundary never reaches the multipart body parser (where it
+        // would cause --\r\n to be accepted as a delimiter).
+        if (_boundary.length() == 0 || _boundary.length() > 70) {
+          async_ws_log_d("Invalid multipart boundary length (%u), aborting", _boundary.length());
+          _parseState = PARSE_REQ_FAIL;
+          abort();
+          return true;
+        }
+
         _isMultipart = true;
       }
     } else if (name.equalsIgnoreCase(T_Content_Length) || name.equalsIgnoreCase(T_X_Expected_Entity_Length)) {
@@ -578,6 +725,13 @@ void AsyncWebServerRequest::_parsePlainPostChar(uint8_t data) {
 }
 
 void AsyncWebServerRequest::_handleUploadByte(uint8_t data, bool last) {
+  // CWE-476 defense-in-depth: never write through a NULL buffer pointer.
+  // The primary fix resets _itemIsFile when the buffer is freed, but this guard
+  // protects against any future code path that might reach here without one.
+  if (_itemBuffer == NULL) {
+    return;
+  }
+
   _itemBuffer[_itemBufferIndex++] = data;
 
   if (last || _itemBufferIndex == RESPONSE_STREAM_BUFFER_SIZE) {
@@ -628,6 +782,11 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
       _multiParseState = EXPECT_FEED1;
     }
   } else if (_multiParseState == EXPECT_BOUNDARY) {
+    // Note: when _parsedLength < 2, the subtractions below (_parsedLength - 2
+    // and _parsedLength - 3) wrap around to very large size_t values.  This is
+    // intentional: the wrapped values are always greater than _boundary.length()
+    // (which is at most 70), so those comparisons evaluate to false and the
+    // first two bytes (the '--' prefix) are consumed without error.
     if (_parsedLength < 2 && data != '-') {
       _multiParseState = PARSE_ERROR;
       return;
@@ -743,8 +902,9 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
       itemWriteByte('\n');
       itemWriteByte('-');
       itemWriteByte('-');
-      uint8_t i;
-      for (i = 0; i < _boundaryPosition; i++) {
+      // CWE-190 fix: loop variable was uint8_t, matching the old type of
+      // _boundaryPosition.  Changed to size_t for consistency.
+      for (size_t i = 0; i < _boundaryPosition; i++) {
         itemWriteByte(_boundary.c_str()[i]);
       }
       _parseMultipartPostByte(data, last);
@@ -764,6 +924,12 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
         });
         free(_itemBuffer);
         _itemBuffer = NULL;
+        // CWE-476 fix: _itemIsFile must be cleared when the buffer is freed.
+        // Otherwise, if the next byte does not confirm a clean boundary close
+        // (e.g. '--<boundary>' appeared in the file data by coincidence), the
+        // rewind logic in DASH3_OR_RETURN2 / EXPECT_FEED2 calls itemWriteByte()
+        // which dereferences the now-NULL _itemBuffer and crashes (DoS).
+        _itemIsFile = false;
       }
 
     } else {
@@ -784,8 +950,7 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
       itemWriteByte('\n');
       itemWriteByte('-');
       itemWriteByte('-');
-      uint8_t i;
-      for (i = 0; i < _boundary.length(); i++) {
+      for (size_t i = 0; i < _boundary.length(); i++) {
         itemWriteByte(_boundary.c_str()[i]);
       }
       _parseMultipartPostByte(data, last);
@@ -800,8 +965,7 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
       itemWriteByte('\n');
       itemWriteByte('-');
       itemWriteByte('-');
-      uint8_t i;
-      for (i = 0; i < _boundary.length(); i++) {
+      for (size_t i = 0; i < _boundary.length(); i++) {
         itemWriteByte(_boundary.c_str()[i]);
       }
       itemWriteByte('\r');

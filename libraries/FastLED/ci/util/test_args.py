@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-import argparse
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
 from typing import Optional
 
-from typeguard import typechecked
-
 from ci.util.test_types import TestArgs
+from ci.util.timestamp_print import ts_print
 
 
 def _python_test_exists(test_name: str) -> bool:
@@ -31,6 +31,8 @@ def _python_test_exists(test_name: str) -> bool:
 
 def parse_args(args: Optional[list[str]] = None) -> TestArgs:
     """Parse command line arguments"""
+    import argparse  # noqa: PLC0415 - lazy: ~20ms saved on early-exit paths
+
     parser = argparse.ArgumentParser(description="Run FastLED tests")
     parser.add_argument(
         "--cpp",
@@ -42,9 +44,9 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
     parser.add_argument(
         "test",
         type=str,
-        nargs="?",
+        nargs="*",
         default=None,
-        help="Specific test to run (Python or C++)",
+        help="Specific test to run (Python or C++). Multiple words can be provided for fuzzy matching (e.g., 'string interner')",
     )
 
     # Create mutually exclusive group for compiler selection
@@ -85,13 +87,16 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
         action="store_true",
         help="Show linking commands and output",
     )
-    parser.add_argument(
-        "--quick", action="store_true", help="Enable quick mode with FASTLED_ALL_SRC=1"
-    )
+    parser.add_argument("--quick", action="store_true", help="Enable quick mode")
     parser.add_argument(
         "--no-stack-trace",
         action="store_true",
         help="Disable stack trace dumping on timeout",
+    )
+    parser.add_argument(
+        "--stack-trace",
+        action="store_true",
+        help="Enable stack trace dumping on crashes and timeouts (overrides default behavior)",
     )
     parser.add_argument(
         "--check",
@@ -109,16 +114,6 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
         help="Disable precompiled headers (PCH) when running example compilation tests",
     )
     parser.add_argument(
-        "--unity",
-        action="store_true",
-        help="Enable UNITY build mode for examples - compile all source files as a single unit for improved performance",
-    )
-    parser.add_argument(
-        "--no-unity",
-        action="store_true",
-        help="Disable unity builds for cpp tests and examples",
-    )
-    parser.add_argument(
         "--full",
         action="store_true",
         help="Run full integration tests including compilation + linking + program execution",
@@ -130,30 +125,90 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
         help="Force sequential test execution",
     )
     parser.add_argument(
-        "--unity-chunks",
-        type=int,
-        default=1,
-        help="Number of unity chunks when building libfastled.a (default: 1)",
-    )
-    parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug mode for C++ unit tests (e.g., full debug symbols)",
+        help="Enable debug mode for C++ unit tests and examples (full debug symbols + sanitizers)",
+    )
+    parser.add_argument(
+        "--build-mode",
+        type=str,
+        choices=["quick", "debug", "release", "profile"],
+        default=None,
+        help="Override build mode for unit tests and examples (default: quick, or debug if --debug flag set)",
+    )
+    parser.add_argument(
+        "--run",
+        nargs="+",
+        help="Run examples in emulation. Usage: --run esp32s3|uno [example_names...]. Auto-detects QEMU for ESP32 or avr8js for AVR.",
     )
     parser.add_argument(
         "--qemu",
         nargs="+",
-        help="Run examples in QEMU emulation. Usage: --qemu esp32s3 [example_names...]",
+        help="(Deprecated - use --run) Run examples in QEMU emulation. Usage: --qemu esp32s3 [example_names...]",
+    )
+    parser.add_argument(
+        "--no-fingerprint",
+        action="store_true",
+        help="Disable fingerprint caching for tests (force rebuild/rerun)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force rerun of all tests, ignore fingerprint cache (same as --no-fingerprint)",
+    )
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Build Docker images if missing (use with --qemu)",
+    )
+    parser.add_argument(
+        "--no-unity",
+        action="store_true",
+        help="This option will be re-enabled in the near future. How we always assume no unity builds.",
+    )
+    parser.add_argument(
+        "--docker",
+        action="store_true",
+        help="Run tests inside Docker container (Linux environment). Implies --debug unless --quick or --release is specified.",
+    )
+    parser.add_argument(
+        "--list-tests",
+        action="store_true",
+        help="List all available tests without running them",
+    )
+    parser.add_argument(
+        "--log-failures",
+        type=str,
+        default=None,
+        help="Directory to write per-test failure logs (<name>_compile.log, <name>_run.log)",
+    )
+    parser.add_argument(
+        "--debug-test",
+        action="store_true",
+        help="Enable debug tracing for KeyboardInterrupt handler calls (prints caller location and stack)",
+    )
+    parser.add_argument(
+        "--setup-only",
+        action="store_true",
+        help="Run Meson setup only (generates compile_commands.json) without building or testing",
     )
 
     parsed_args = parser.parse_args(args)
+
+    # Handle test argument - join multiple words into a single query string
+    # nargs="*" returns a list, so we need to convert it
+    test_query = None
+    if parsed_args.test:
+        # Join multiple arguments with spaces for fuzzy matching
+        # e.g., ["string", "interner"] -> "string interner"
+        test_query = " ".join(parsed_args.test)
 
     # Convert argparse.Namespace to TestArgs dataclass
     test_args = TestArgs(
         cpp=parsed_args.cpp,
         unit=parsed_args.unit,
         py=parsed_args.py,
-        test=parsed_args.test,
+        test=test_query,
         clang=parsed_args.clang,
         gcc=parsed_args.gcc,
         clean=parsed_args.clean,
@@ -164,17 +219,48 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
         show_link=parsed_args.show_link,
         quick=parsed_args.quick,
         no_stack_trace=parsed_args.no_stack_trace,
+        stack_trace=parsed_args.stack_trace,
         check=parsed_args.check,
         examples=parsed_args.examples,
         no_pch=parsed_args.no_pch,
-        unity=parsed_args.unity,
-        no_unity=parsed_args.no_unity,
         full=parsed_args.full,
         no_parallel=parsed_args.no_parallel,
-        unity_chunks=parsed_args.unity_chunks,
         debug=parsed_args.debug,
+        build_mode=parsed_args.build_mode,
+        run=parsed_args.run,
         qemu=parsed_args.qemu,
+        no_fingerprint=parsed_args.no_fingerprint,
+        force=parsed_args.force,
+        build=parsed_args.build,
+        no_unity=parsed_args.no_unity,
+        docker=parsed_args.docker,
+        list_tests=parsed_args.list_tests,
+        log_failures=Path(parsed_args.log_failures)
+        if parsed_args.log_failures
+        else None,
+        setup_only=parsed_args.setup_only,
     )
+
+    # Handle --docker flag: implies --debug unless --quick or --release is specified
+    if test_args.docker:
+        # Determine the effective build mode
+        if test_args.build_mode is None and not test_args.quick:
+            # No explicit build mode and no --quick flag: default to debug
+            test_args.debug = True
+            ts_print(
+                "⚠️  --docker implies --debug mode (sanitizers enabled). "
+                "Use --quick or --build-mode release for faster builds."
+            )
+        elif test_args.quick:
+            ts_print("Docker mode: using quick build (--quick specified)")
+        elif test_args.build_mode:
+            ts_print(
+                f"Docker mode: using {test_args.build_mode} build (--build-mode specified)"
+            )
+
+    # Save original test query before disambiguation modifies it
+    # (Docker runner needs the raw query, not the meson target name)
+    test_args.raw_test_query = test_args.test
 
     # Auto-enable --py or --cpp mode when a specific test is provided
     if test_args.test:
@@ -183,73 +269,137 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
             # This is a Python test - enable Python mode
             if not test_args.py and not test_args.cpp:
                 test_args.py = True
-                print(
+                ts_print(
                     f"Auto-enabled --py mode for specific Python test: {test_args.test}"
                 )
         else:
-            # This is not a Python test - assume it's a C++ test
-            if not test_args.cpp and not test_args.py:
-                test_args.cpp = True
-                print(f"Auto-enabled --cpp mode for specific test: {test_args.test}")
-            # Also enable --unit when a specific C++ test is provided without any other flags
-            if (
-                not test_args.unit
-                and not test_args.examples
-                and not test_args.py
-                and not test_args.full
-            ):
-                test_args.unit = True
-                print(f"Auto-enabled --unit mode for specific test: {test_args.test}")
+            # Use smart selector to find matching unit test or example
+            # Print banner for test discovery phase (verbose mode only)
+            from ci.meson.output import print_banner
+
+            print_banner("Discovery", "🔍", verbose=test_args.verbose)
+
+            # Determine filter type based on flags (silently, no separate message)
+            filter_type = None
+            filter_desc = ""
+            if test_args.cpp and not test_args.examples:
+                # --cpp flag without --examples means unit tests only
+                filter_type = "unit_test"
+                filter_desc = " (--cpp filter)"
+            elif test_args.examples is not None and not test_args.unit:
+                # --examples flag without --unit means examples only
+                filter_type = "example"
+                filter_desc = " (--examples filter)"
+
+            from ci.util.smart_selector import (
+                get_best_match_or_prompt,  # noqa: PLC0415 - lazy: ~50ms saved when no test name
+            )
+
+            match = get_best_match_or_prompt(test_args.test, filter_type=filter_type)
+
+            if match is None:
+                # No match or ambiguous - error message already printed by smart selector
+                sys.exit(1)
+
+            # Found a match - configure based on match type
+            if match.type == "example":
+                # Enable example mode
+                if not test_args.examples:
+                    test_args.examples = [match.name]
+                if not test_args.cpp:
+                    test_args.cpp = True
+                # Print consolidated selection message with type and filter info
+                ts_print(f"Found: {match.name} ({match.path}) [example]{filter_desc}")
+            else:  # unit_test
+                # Convert path to Meson target name using the same logic as tests/test_helpers.py
+                # This ensures "fl async" → "tests/fl/async.cpp" → "fl_async" target
+                path_without_ext = match.path.replace(".cpp", "").replace(".ino", "")
+
+                # Remove "tests/" prefix if present
+                if path_without_ext.startswith("tests/"):
+                    path_without_ext = path_without_ext[6:]  # Remove "tests/"
+
+                # Convert to Meson target name format (following extract_test_name logic)
+                if path_without_ext.startswith("fl/"):
+                    # fl/async.cpp -> fl_async (replace / with _)
+                    meson_target_name = path_without_ext.replace("/", "_")
+                elif path_without_ext.startswith("fx/"):
+                    # fx/engine.cpp -> fx_engine (replace / with _)
+                    meson_target_name = path_without_ext.replace("/", "_")
+                else:
+                    # Other files: use basename (e.g., misc/test_uart.cpp -> test_uart)
+                    meson_target_name = path_without_ext.split("/")[-1]
+
+                test_args.test = meson_target_name
+                if not test_args.cpp and not test_args.py:
+                    test_args.cpp = True
+                # Also enable --unit when a specific C++ test is provided without any other flags
+                if (
+                    not test_args.unit
+                    and not test_args.examples
+                    and not test_args.py
+                    and not test_args.full
+                ):
+                    test_args.unit = True
+                # Print consolidated selection message with type and filter info
+                ts_print(f"Found: {match.name} ({match.path}) [unit]{filter_desc}")
 
     # Auto-enable --verbose when running unit tests (disabled)
     # if test_args.unit and not test_args.verbose:
     #     test_args.verbose = True
-    #     print("Auto-enabled --verbose mode for unit tests")
+    #     ts_print("Auto-enabled --verbose mode for unit tests")
+
+    # Collect config items for consolidated summary
+    config_parts: list[str] = []
 
     # Auto-enable --cpp and --clang when --check is provided
     if test_args.check:
         if not test_args.cpp:
             test_args.cpp = True
-            print("Auto-enabled --cpp mode for static analysis (--check)")
         if not test_args.clang and not test_args.gcc:
             test_args.clang = True
-            print("Auto-enabled --clang compiler for static analysis (--check)")
+        config_parts.append("check")
 
     # Auto-enable --cpp and --quick when --examples is provided
     if test_args.examples is not None:
         if not test_args.cpp:
             test_args.cpp = True
-            print("Auto-enabled --cpp mode for example compilation (--examples)")
         if not test_args.quick:
             test_args.quick = True
-            print(
-                "Auto-enabled --quick mode for faster example compilation (--examples)"
-            )
+        # Show just the build mode - "examples" is redundant since user knows what they're running
+        if test_args.quick:
+            config_parts.append("quick")
+        else:
+            config_parts.append("examples")
 
     # Handle --full flag behavior
     if test_args.full:
         if test_args.examples is not None:
             # --examples --full: Run examples with full compilation+linking+execution
-            print("Full examples mode: compilation + linking + program execution")
+            config_parts.append("full")
         else:
             # --full alone: Run integration tests
             if not test_args.cpp:
                 test_args.cpp = True
-                print("Auto-enabled --cpp mode for full integration tests (--full)")
-            print("Full integration tests: compilation + linking + program execution")
+            config_parts.append("full integration")
 
     # Default to Clang on Windows unless --gcc is explicitly passed
     if sys.platform == "win32" and not test_args.gcc and not test_args.clang:
         test_args.clang = True
-        print("Windows detected: defaulting to Clang compiler (use --gcc to override)")
-    elif test_args.gcc:
-        print("Using GCC compiler")
+
+    # Determine compiler for config summary
+    if test_args.gcc:
+        config_parts.append("gcc")
     elif test_args.clang:
-        print("Using Clang compiler")
+        config_parts.append("clang")
+
+    # Print consolidated config summary if there are config items
+    if config_parts:
+        ts_print(f"Config: {', '.join(config_parts)}")
 
     # Validate conflicting arguments
     if test_args.no_interactive and test_args.interactive:
-        print(
+        ts_print(
             "Error: --interactive and --no-interactive cannot be used together",
             file=sys.stderr,
         )
@@ -258,6 +408,6 @@ def parse_args(args: Optional[list[str]] = None) -> TestArgs:
     # Set NO_PARALLEL environment variable if --no-parallel is used
     if test_args.no_parallel:
         os.environ["NO_PARALLEL"] = "1"
-        print("Forcing sequential execution (NO_PARALLEL=1)")
+        ts_print("Forcing sequential execution (NO_PARALLEL=1)")
 
     return test_args

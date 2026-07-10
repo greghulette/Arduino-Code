@@ -23,8 +23,9 @@ const AsyncWebHeader AsyncWebHeader::parse(const char *data) {
     return AsyncWebHeader();  // Header name cannot be empty
   }
   const char *startOfValue = colon + 1;  // Skip the colon
-  // skip one optional whitespace after the colon
-  if (*startOfValue == ' ') {
+  // RFC 7230 §3.2.3: OWS (optional whitespace) = *( SP / HTAB )
+  // Skip all leading spaces and tabs, not just the first one.
+  while (*startOfValue == ' ' || *startOfValue == '\t') {
     startOfValue++;
   }
   String name;

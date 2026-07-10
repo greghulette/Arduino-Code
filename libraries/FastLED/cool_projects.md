@@ -32,3 +32,15 @@
 
 * llm-min.txt
   * https://github.com/marv1nnnnn/llm-min.txt
+ 
+* ESP Flix - Mpeg1 decoder and player
+  * https://github.com/rossumur/espflix
+
+* ESP32 Project
+  * https://www.reddit.com/r/esp32/s/4wcqmmjSZM
+
+* Header-only neural network library in C++11
+  * https://www.reddit.com/r/Cplusplus/comments/1rckwyr/headeronly_neural_network_library_written_in_c11/
+
+* PolarShader - Polar coordinate shader effects
+  * https://github.com/pthomain/PolarShader

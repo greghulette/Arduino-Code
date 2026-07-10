@@ -1,8 +1,13 @@
+// IWYU pragma: private
+
+#include "platforms/arm/is_arm.h"
+
+// ok no namespace fl
 #ifndef __INC_LED_SYSDEFS_ARM_RENESAS_H
 #define __INC_LED_SYSDEFS_ARM_RENESAS_H
 
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
+#ifndef FL_IS_ARM
+#error "FL_IS_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
 #endif
 
 #ifndef INTERRUPT_THRESHOLD
@@ -28,7 +33,7 @@
 
 #define FASTLED_NO_PINMAP
 
-typedef volatile uint32_t RoReg;
-typedef volatile uint32_t RwReg;
+typedef volatile fl::u32 RoReg;
+typedef volatile fl::u32 RwReg;
 
 #endif

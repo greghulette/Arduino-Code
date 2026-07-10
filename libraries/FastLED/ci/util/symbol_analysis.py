@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 # pyright: reportUnknownMemberType=false, reportOperatorIssue=false, reportArgumentType=false
 """
@@ -14,7 +17,9 @@ import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Optional
+
+from running_process import RunningProcess
 
 # Import board mapping system
 from ci.boards import create_board
@@ -47,8 +52,8 @@ class CallStats:
 
     functions_with_calls: int
     functions_called_by_others: int
-    most_called: List[Tuple[str, int]] = field(default_factory=lambda: [])
-    most_calling: List[Tuple[str, int]] = field(default_factory=lambda: [])
+    most_called: list[tuple[str, int]] = field(default_factory=lambda: [])
+    most_calling: list[tuple[str, int]] = field(default_factory=lambda: [])
 
 
 @dataclass
@@ -58,11 +63,11 @@ class AnalysisReport:
     board: str
     total_symbols: int
     total_size: int
-    largest_symbols: List[SymbolInfo] = field(default_factory=lambda: [])
-    type_breakdown: List[TypeBreakdown] = field(default_factory=lambda: [])
-    dependencies: Dict[str, List[str]] = field(default_factory=lambda: {})
-    call_graph: Optional[Dict[str, List[str]]] = None
-    reverse_call_graph: Optional[Dict[str, List[str]]] = None
+    largest_symbols: list[SymbolInfo] = field(default_factory=lambda: [])
+    type_breakdown: list[TypeBreakdown] = field(default_factory=lambda: [])
+    dependencies: dict[str, list[str]] = field(default_factory=lambda: {})
+    call_graph: Optional[dict[str, list[str]]] = None
+    reverse_call_graph: Optional[dict[str, list[str]]] = None
     call_stats: Optional[CallStats] = None
 
 
@@ -71,17 +76,17 @@ class DetailedAnalysisData:
     """Complete detailed analysis data structure for JSON output"""
 
     summary: AnalysisReport
-    all_symbols_sorted_by_size: List[SymbolInfo]
-    dependencies: Dict[str, List[str]]
-    call_graph: Optional[Dict[str, List[str]]] = None
-    reverse_call_graph: Optional[Dict[str, List[str]]] = None
+    all_symbols_sorted_by_size: list[SymbolInfo]
+    dependencies: dict[str, list[str]]
+    call_graph: Optional[dict[str, list[str]]] = None
+    reverse_call_graph: Optional[dict[str, list[str]]] = None
 
 
 @dataclass
 class TypeStats:
     """Statistics for symbol types with dictionary-like functionality"""
 
-    stats: Dict[str, TypeBreakdown] = field(default_factory=lambda: {})
+    stats: dict[str, TypeBreakdown] = field(default_factory=lambda: {})
 
     def add_symbol(self, symbol: SymbolInfo) -> None:
         """Add a symbol to the type statistics"""
@@ -91,11 +96,11 @@ class TypeStats:
         self.stats[sym_type].count += 1
         self.stats[sym_type].total_size += symbol.size
 
-    def items(self) -> List[Tuple[str, TypeBreakdown]]:
+    def items(self) -> list[tuple[str, TypeBreakdown]]:
         """Return items for iteration, sorted by total_size descending"""
         return sorted(self.stats.items(), key=lambda x: x[1].total_size, reverse=True)
 
-    def values(self) -> List[TypeBreakdown]:
+    def values(self) -> list[TypeBreakdown]:
         """Return values for iteration"""
         return list(self.stats.values())
 
@@ -111,13 +116,36 @@ class TypeStats:
 def run_command(cmd: str) -> str:
     """Run a command and return stdout"""
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, check=True
+        proc = RunningProcess(cmd, shell=True, auto_run=True, timeout=30)
+        from running_process import EndOfStream
+
+        # `get_next_line` strips the trailing newline. Re-add it so callers
+        # that `output.split("\n")` actually get one entry per line rather
+        # than a single mega-line that no parser can split on whitespace
+        # (the cause of "nm: 1 symbols" on toolchains like xtensa-esp-elf
+        # whose nm prints many hundreds of lines).
+        output_lines: list[str] = []
+        while line := proc.get_next_line(timeout=30):
+            if isinstance(line, EndOfStream):
+                break
+            output_lines.append(str(line))
+        output = "\n".join(output_lines)
+        exit_code = proc.wait()
+        if exit_code != 0:
+            print(f"Error running command: {cmd}")
+            print(f"Exit code: {exit_code}")
+            return ""
+        return output
+    except KeyboardInterrupt as ki:
+        from ci.util.global_interrupt_handler import (
+            handle_keyboard_interrupt,
         )
-        return result.stdout
-    except subprocess.CalledProcessError as e:
+
+        handle_keyboard_interrupt(ki)
+        raise
+    except Exception as e:
         print(f"Error running command: {cmd}")
-        print(f"Error: {e.stderr}")
+        print(f"Error: {e}")
         return ""
 
 
@@ -125,12 +153,21 @@ def demangle_symbol(mangled_name: str, cppfilt_path: str) -> str:
     """Demangle a C++ symbol using c++filt"""
     try:
         cmd = f'echo "{mangled_name}" | "{cppfilt_path}"'
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, check=True
-        )
-        demangled = result.stdout.strip()
+        proc = RunningProcess(cmd, shell=True, auto_run=True, timeout=10)
+        output = ""
+        from running_process import EndOfStream
+
+        while line := proc.get_next_line(timeout=10):
+            if isinstance(line, EndOfStream):
+                break
+            output += str(line)
+        exit_code = proc.wait()
+        demangled = output.strip()
         # If demangling failed, c++filt returns the original name
-        return demangled if demangled != mangled_name else mangled_name
+        return demangled if demangled and demangled != mangled_name else mangled_name
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         print(f"Error demangling symbol: {mangled_name}")
         print(f"Error: {e}")
@@ -139,12 +176,14 @@ def demangle_symbol(mangled_name: str, cppfilt_path: str) -> str:
 
 def analyze_symbols(
     elf_file: str, nm_path: str, cppfilt_path: str, readelf_path: Optional[str] = None
-) -> List[SymbolInfo]:
+) -> list[SymbolInfo]:
     """Analyze ALL symbols in ELF file using both nm and readelf for comprehensive coverage"""
     print("Analyzing symbols with enhanced coverage...")
 
-    symbols: List[SymbolInfo] = []
-    symbols_dict: Dict[str, SymbolInfo] = {}  # To deduplicate by address+name
+    symbols: list[SymbolInfo] = []
+    symbols_dict: dict[
+        str, SymbolInfo
+    ] = {}  # To deduplicate by address+type (or demangled name for zero-address symbols)
 
     # Method 1: Use readelf to get ALL symbols (including those without size)
     if readelf_path:
@@ -172,7 +211,7 @@ def analyze_symbols(
                         addr = parts[1]
                         size = int(parts[2]) if parts[2].isdigit() else 0
                         symbol_type = parts[3]
-                        bind = parts[4]
+                        parts[4]
                         # Skip vis and ndx (parts[5], parts[6]) - not needed
                         name = " ".join(parts[7:]) if len(parts) > 7 else ""
 
@@ -180,23 +219,47 @@ def analyze_symbols(
                         if not name or name.startswith(".") or symbol_type == "SECTION":
                             continue
 
-                        # Create a unique key for deduplication (use name as primary key since addresses can vary)
-                        key = name.strip()
+                        # Demangle the symbol name
+                        demangled_name = demangle_symbol(name, cppfilt_path)
+
+                        # Normalize address to int for comparison (readelf uses hex)
+                        try:
+                            addr_int = int(addr, 16)
+                        except ValueError:
+                            addr_int = 0
+
+                        # Create key: Use address ONLY for non-zero addresses (symbol type can vary between tools)
+                        # For zero-address symbols, use demangled_name+type to catch duplicates
+                        sym_type_char = symbol_type[0].upper()
+                        if addr_int != 0:
+                            key = f"{addr_int}"
+                        else:
+                            key = f"0:{demangled_name}:{sym_type_char}"
 
                         if key not in symbols_dict:
-                            # Demangle the symbol name
-                            demangled_name = demangle_symbol(name, cppfilt_path)
-
                             symbol_info = SymbolInfo(
                                 address=addr,
                                 size=size,
-                                type=symbol_type[0].upper(),  # T, D, B, etc.
+                                type=sym_type_char,  # T, D, B, etc.
                                 name=name,
                                 demangled_name=demangled_name,
                                 source="readelf",
                             )
 
                             symbols_dict[key] = symbol_info
+                        else:
+                            # If duplicate found, prefer the one with more accurate data
+                            existing = symbols_dict[key]
+
+                            # Prefer non-truncated mangled names (longer is usually better)
+                            if len(name) > len(existing.name):
+                                symbols_dict[key].name = name
+                                symbols_dict[key].demangled_name = demangled_name
+
+                            # Prefer larger non-zero size (more accurate measurement)
+                            if size > existing.size:
+                                symbols_dict[key].size = size
+                                symbols_dict[key].source = "readelf-updated"
 
                     except (ValueError, IndexError):
                         continue  # Skip malformed lines
@@ -219,18 +282,40 @@ def analyze_symbols(
                     symbol_type = parts[2]
                     name = " ".join(parts[3:])
 
-                    # Create a unique key for deduplication (use name as primary key)
-                    key = name.strip()
+                    # Demangle the symbol name
+                    demangled_name = demangle_symbol(name, cppfilt_path)
+
+                    # Normalize address to int for comparison (nm --radix=d uses decimal)
+                    try:
+                        addr_int = int(addr)
+                    except ValueError:
+                        addr_int = 0
+
+                    # Create key: Use address ONLY for non-zero addresses
+                    if addr_int != 0:
+                        key = f"{addr_int}"
+                    else:
+                        key = f"0:{demangled_name}:{symbol_type}"
 
                     # If we already have this symbol from readelf, update with accurate size
                     if key in symbols_dict:
-                        symbols_dict[key].size = size
-                        symbols_dict[key].type = symbol_type
-                        symbols_dict[key].source = "nm+readelf"
+                        existing = symbols_dict[key]
+
+                        # Prefer non-truncated mangled names (longer is usually better)
+                        if len(name) > len(existing.name):
+                            symbols_dict[key].name = name
+                            symbols_dict[key].demangled_name = demangled_name
+
+                        # Prefer larger non-zero size (more accurate measurement)
+                        if size > existing.size:
+                            symbols_dict[key].size = size
+                            symbols_dict[key].type = symbol_type
+                            symbols_dict[key].source = "nm+readelf"
+                        # If same size, prefer nm over readelf (nm --print-size is more accurate)
+                        elif size == existing.size and "nm" not in existing.source:
+                            symbols_dict[key].source = "nm+readelf"
                     else:
                         # New symbol not found by readelf
-                        demangled_name = demangle_symbol(name, cppfilt_path)
-
                         symbol_info = SymbolInfo(
                             address=addr,
                             size=size,
@@ -266,13 +351,23 @@ def analyze_symbols(
                     if not name:
                         continue
 
-                    # Create a unique key for deduplication (use name as primary key)
-                    key = name.strip()
+                    # Demangle the symbol name
+                    demangled_name = demangle_symbol(name, cppfilt_path)
+
+                    # Normalize address to int for comparison (nm -a uses decimal with --radix=d)
+                    try:
+                        addr_int = int(addr)
+                    except ValueError:
+                        addr_int = 0
+
+                    # Create key: Use address ONLY for non-zero addresses
+                    if addr_int != 0:
+                        key = f"{addr_int}"
+                    else:
+                        key = f"0:{demangled_name}:{symbol_type}"
 
                     if key not in symbols_dict:
                         # New symbol not found by other methods
-                        demangled_name = demangle_symbol(name, cppfilt_path)
-
                         symbol_info = SymbolInfo(
                             address=addr,
                             size=0,  # nm -a doesn't provide size
@@ -283,12 +378,18 @@ def analyze_symbols(
                         )
 
                         symbols_dict[key] = symbol_info
+                    else:
+                        # If duplicate found, prefer non-truncated mangled names
+                        existing = symbols_dict[key]
+                        if len(name) > len(existing.name):
+                            symbols_dict[key].name = name
+                            symbols_dict[key].demangled_name = demangled_name
 
                 except (ValueError, IndexError):
                     continue  # Skip malformed lines
 
     # Convert dict to list
-    symbols: List[SymbolInfo] = list(symbols_dict.values())
+    symbols: list[SymbolInfo] = list(symbols_dict.values())
 
     print(f"Found {len(symbols)} total symbols using enhanced analysis")
     print(f"  - Symbols with size info: {len([s for s in symbols if s.size > 0])}")
@@ -299,7 +400,7 @@ def analyze_symbols(
 
 def analyze_function_calls(
     elf_file: str, objdump_path: str, cppfilt_path: str
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """Analyze function calls using objdump to build call graph"""
     print("Analyzing function calls using objdump...")
 
@@ -309,7 +410,7 @@ def analyze_function_calls(
     symbol_output = run_command(cmd)
 
     # Build symbol address map for function symbols
-    symbol_map: Dict[str, str] = {}  # address -> symbol_name
+    symbol_map: dict[str, dict[str, str]] = {}  # address -> {name, demangled}
     function_symbols: set[str] = set()  # set of function names
 
     for line in symbol_output.strip().split("\n"):
@@ -327,7 +428,11 @@ def analyze_function_calls(
                 # Demangle the symbol name
                 demangled_name = demangle_symbol(symbol_name, cppfilt_path)
 
-                symbol_map[address] = {"name": symbol_name, "demangled": demangled_name}
+                entry: dict[str, str] = {
+                    "name": symbol_name,
+                    "demangled": demangled_name,
+                }
+                symbol_map[address] = entry
                 function_symbols.add(demangled_name)
             except (ValueError, IndexError):
                 continue
@@ -395,9 +500,9 @@ def analyze_function_calls(
     return {caller: list(callees) for caller, callees in call_graph.items()}
 
 
-def build_reverse_call_graph(call_graph: Dict[str, List[str]]) -> Dict[str, List[str]]:
+def build_reverse_call_graph(call_graph: dict[str, list[str]]) -> dict[str, list[str]]:
     """Build reverse call graph: function -> list of functions that call it"""
-    reverse_graph: defaultdict[str, List[str]] = defaultdict(list)
+    reverse_graph: defaultdict[str, list[str]] = defaultdict(list)
 
     for caller, callees in call_graph.items():
         for callee in callees:
@@ -406,11 +511,11 @@ def build_reverse_call_graph(call_graph: Dict[str, List[str]]) -> Dict[str, List
     return dict(reverse_graph)
 
 
-def analyze_map_file(map_file: Path) -> Dict[str, List[str]]:
+def analyze_map_file(map_file: Path) -> dict[str, list[str]]:
     """Analyze the map file to understand module dependencies"""
     print(f"Analyzing map file: {map_file}")
 
-    dependencies: Dict[str, List[str]] = {}
+    dependencies: dict[str, list[str]] = {}
     current_archive: Optional[str] = None
 
     if not map_file.exists():
@@ -441,6 +546,9 @@ def analyze_map_file(map_file: Path) -> Dict[str, List[str]]:
                             symbol = line[symbol_start:symbol_end]
                             dependencies[current_archive].append(symbol)
                     current_archive = None
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         print(f"Error reading map file: {e}")
         return {}
@@ -450,10 +558,10 @@ def analyze_map_file(map_file: Path) -> Dict[str, List[str]]:
 
 def generate_report(
     board_name: str,
-    symbols: List[SymbolInfo],
-    dependencies: Dict[str, List[str]],
-    call_graph: Optional[Dict[str, List[str]]] = None,
-    reverse_call_graph: Optional[Dict[str, List[str]]] = None,
+    symbols: list[SymbolInfo],
+    dependencies: dict[str, list[str]],
+    call_graph: Optional[dict[str, list[str]]] = None,
+    reverse_call_graph: Optional[dict[str, list[str]]] = None,
     enhanced_mode: bool = False,
 ) -> AnalysisReport:
     """Generate a comprehensive report with optional call graph analysis"""
@@ -466,24 +574,24 @@ def generate_report(
 
     # Summary statistics
     total_symbols = len(symbols)
-    total_size = sum(s.size for s in symbols)
     symbols_with_size = [s for s in symbols if s.size > 0]
     symbols_without_size = [s for s in symbols if s.size == 0]
+
+    # Calculate total size from ONLY sized symbols
+    total_size = sum(s.size for s in symbols_with_size)
 
     print("\nSUMMARY:")
     print(f"  Total symbols: {total_symbols}")
     print(f"  Symbols with size info: {len(symbols_with_size)}")
-    print(f"  Symbols without size info: {len(symbols_without_size)}")
-    print(
-        f"  Total symbol size: {total_size} bytes ({total_size / 1024:.1f} KB) [sized symbols only]"
-    )
+    print(f"  Symbols without size (elided by linker): {len(symbols_without_size)}")
+    print(f"  Total symbol size: {total_size} bytes ({total_size / 1024:.1f} KB)")
 
     if enhanced_mode and call_graph and reverse_call_graph:
         print(f"  Functions with calls: {len(call_graph)}")
         print(f"  Functions called by others: {len(reverse_call_graph)}")
 
     # Show source breakdown
-    source_stats: Dict[str, int] = {}
+    source_stats: dict[str, int] = {}
     for sym in symbols:
         source = sym.source
         if source not in source_stats:
@@ -494,9 +602,18 @@ def generate_report(
     for source, count in sorted(source_stats.items()):
         print(f"  {source}: {count} symbols")
 
-    # Largest symbols overall
+    # Largest symbols overall (FILTER OUT ZERO-SIZE SYMBOLS)
     print("\nLARGEST SYMBOLS (all symbols, sorted by size):")
-    symbols_sorted = sorted(symbols, key=lambda x: x.size, reverse=True)
+
+    # Filter to only symbols with size > 0 (exclude elided/unused symbols)
+    sized_symbols = [s for s in symbols if s.size > 0]
+    symbols_sorted = sorted(sized_symbols, key=lambda x: x.size, reverse=True)
+
+    zero_size_count = len(symbols) - len(sized_symbols)
+    if zero_size_count > 0:
+        print(
+            f"  (Filtered out {zero_size_count} zero-size symbols that were elided by linker)"
+        )
 
     display_count = 30 if enhanced_mode else 50
     for i, sym in enumerate(symbols_sorted[:display_count]):
@@ -527,8 +644,8 @@ def generate_report(
             )
 
     # Initialize variables for enhanced mode data
-    most_called = []
-    most_calling = []
+    most_called_stats: list[tuple[str, int]] = []
+    most_calling_stats: list[tuple[str, int]] = []
 
     # Enhanced function call analysis
     if enhanced_mode and call_graph and reverse_call_graph:
@@ -540,6 +657,7 @@ def generate_report(
         most_called = sorted(
             reverse_call_graph.items(), key=lambda x: len(x[1]), reverse=True
         )
+        most_called_stats = [(name, len(callers)) for name, callers in most_called]
         print("\nMOST CALLED FUNCTIONS (functions called by many others):")
         for i, (func_name, callers) in enumerate(most_called[:15]):
             short_name = func_name[:60] + "..." if len(func_name) > 60 else func_name
@@ -558,6 +676,7 @@ def generate_report(
 
         # Functions that call many others
         most_calling = sorted(call_graph.items(), key=lambda x: len(x[1]), reverse=True)
+        most_calling_stats = [(name, len(callees)) for name, callees in most_calling]
         print("\nFUNCTIONS THAT CALL MANY OTHERS:")
         for i, (func_name, callees) in enumerate(most_calling[:10]):
             short_name = func_name[:60] + "..." if len(func_name) > 60 else func_name
@@ -614,15 +733,25 @@ def generate_report(
         report_data.call_stats = CallStats(
             functions_with_calls=len(call_graph),
             functions_called_by_others=len(reverse_call_graph),
-            most_called=most_called[:10],
-            most_calling=most_calling[:10],
+            most_called=most_called_stats[:10],
+            most_calling=most_calling_stats[:10],
         )
 
     return report_data
 
 
-def find_board_build_info(board_name: Optional[str] = None) -> Tuple[Path, str]:
-    """Find build info for a specific board or detect available boards"""
+def find_board_build_info(
+    board_name: Optional[str] = None, example: str = "Blink"
+) -> tuple[Path, str]:
+    """Find build info for a specific board or detect available boards
+
+    Args:
+        board_name: Board name to search for (optional)
+        example: Example name for finding example-specific build_info_{example}.json (default: "Blink")
+
+    Returns:
+        Tuple of (build_info_path, board_name)
+    """
     # Detect build directory
     current = Path.cwd()
     build_dir: Optional[Path] = None
@@ -637,42 +766,86 @@ def find_board_build_info(board_name: Optional[str] = None) -> Tuple[Path, str]:
         print("Error: Could not find build directory (.build)")
         sys.exit(1)
 
+    assert build_dir is not None
+
     # If specific board requested, look for it
     if board_name:
-        # 1) Direct board directory: .build/<board>/build_info.json
+        # Try example-specific build_info_{example}.json first
+        build_info_filename = f"build_info_{example}.json"
+
+        # 1) Direct board directory: .build/<board>/build_info_{example}.json
         board_dir = build_dir / board_name
+        if board_dir.exists() and (board_dir / build_info_filename).exists():
+            return board_dir / build_info_filename, board_name
+
+        # 2) PlatformIO nested directory: .build/pio/<board>/build_info_{example}.json
+        pio_board_dir = build_dir / "pio" / board_name
+        if pio_board_dir.exists() and (pio_board_dir / build_info_filename).exists():
+            return pio_board_dir / build_info_filename, board_name
+
+        # Fallback to legacy build_info.json (for backward compatibility)
         if board_dir.exists() and (board_dir / "build_info.json").exists():
+            print(
+                f"Warning: Using legacy build_info.json (consider migrating to {build_info_filename})"
+            )
             return board_dir / "build_info.json", board_name
 
-        # 2) PlatformIO nested directory: .build/pio/<board>/build_info.json
-        pio_board_dir = build_dir / "pio" / board_name
         if pio_board_dir.exists() and (pio_board_dir / "build_info.json").exists():
+            print(
+                f"Warning: Using legacy build_info.json (consider migrating to {build_info_filename})"
+            )
             return pio_board_dir / "build_info.json", board_name
 
-        print(f"Error: Board '{board_name}' not found or missing build_info.json")
+        print(
+            f"Error: Board '{board_name}' not found or missing {build_info_filename} (or build_info.json)"
+        )
         sys.exit(1)
 
-    # Otherwise, find any available board
-    available_boards: List[Tuple[Path, str]] = []
+    # Otherwise, find any available board (prefer example-specific files)
+    available_boards: list[tuple[Path, str]] = []
+    build_info_filename = f"build_info_{example}.json"
 
-    # 1) Direct children of .build
+    # 1) Direct children of .build - try example-specific first
     for item in build_dir.iterdir():
         if item.is_dir():
-            build_info_file = item / "build_info.json"
+            build_info_file = item / build_info_filename
             if build_info_file.exists():
                 available_boards.append((build_info_file, item.name))
 
-    # 2) Nested PlatformIO structure .build/pio/*
+    # 2) Nested PlatformIO structure .build/pio/* - try example-specific first
     pio_dir = build_dir / "pio"
     if pio_dir.exists() and pio_dir.is_dir():
         for item in pio_dir.iterdir():
             if item.is_dir():
-                build_info_file = item / "build_info.json"
+                build_info_file = item / build_info_filename
                 if build_info_file.exists():
                     available_boards.append((build_info_file, item.name))
 
+    # Fallback to legacy build_info.json if no example-specific files found
     if not available_boards:
-        print(f"Error: No boards with build_info.json found in {build_dir}")
+        for item in build_dir.iterdir():
+            if item.is_dir():
+                build_info_file = item / "build_info.json"
+                if build_info_file.exists():
+                    print(
+                        f"Warning: Using legacy build_info.json (consider migrating to {build_info_filename})"
+                    )
+                    available_boards.append((build_info_file, item.name))
+
+        if pio_dir.exists() and pio_dir.is_dir():
+            for item in pio_dir.iterdir():
+                if item.is_dir():
+                    build_info_file = item / "build_info.json"
+                    if build_info_file.exists():
+                        print(
+                            f"Warning: Using legacy build_info.json (consider migrating to {build_info_filename})"
+                        )
+                        available_boards.append((build_info_file, item.name))
+
+    if not available_boards:
+        print(
+            f"Error: No boards with {build_info_filename} or build_info.json found in {build_dir}"
+        )
         sys.exit(1)
 
     # Return the first available board
@@ -687,6 +860,11 @@ def main():
     )
     parser.add_argument(
         "--board", help="Board name to analyze (e.g., uno, esp32dev, esp32s3)"
+    )
+    parser.add_argument(
+        "--example",
+        default="Blink",
+        help="Example name for finding example-specific build_info_{example}.json",
     )
     parser.add_argument(
         "--no-enhanced",
@@ -713,7 +891,7 @@ def main():
     comprehensive_symbols = not args.basic
 
     # Find build info
-    build_info_path, board_name = find_board_build_info(args.board)
+    build_info_path, board_name = find_board_build_info(args.board, args.example)
     print(f"Found build info for {board_name}: {build_info_path}")
 
     with open(build_info_path) as f:
@@ -801,7 +979,7 @@ def main():
         exact_callers = reverse_call_graph.get(target_function, [])
 
         # Also search for partial matches
-        partial_matches: Dict[str, List[str]] = {}
+        partial_matches: dict[str, list[str]] = {}
         for func_name, callers in reverse_call_graph.items():
             if (
                 target_function.lower() in func_name.lower()

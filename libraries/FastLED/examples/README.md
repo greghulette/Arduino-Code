@@ -16,7 +16,7 @@ This document maps the example sketches, shows how to run them on different targ
   - [Color, palettes, and HSV](#color-palettes-and-hsv)
   - [Classic 1D effects](#classic-1d-effects)
   - [2D, matrices, mapping](#2d-matrices-mapping)
-  - [FX engine and higher-level utilities](#fx-engine-and-higher-level-utilities)
+  - [FX engine and higher-level utilities](#fx-driver-and-higher-level-utilities)
   - [Audio and reactive demos](#audio-and-reactive-demos)
   - [Storage, SD card, and data](#storage-sd-card-and-data)
   - [Multiple strips, parallel, and high-density](#multiple-strips-parallel-and-high-density)
@@ -68,24 +68,24 @@ Tips:
 
 - Board-based workflows: create a `platformio.ini` that targets your MCU and copy an example sketch into a project `src/` folder
 - Host/STUB workflows: use the STUB platform for local testing where appropriate (no hardware); advanced builds hook into `src/platforms/stub/`
-
-The repository includes `ci/native/` and `ci/kitchensink/` PlatformIO configs you can reference for host builds and integration tests.
+- For native host compilation, FastLED uses Meson (see `meson.build` and run `uv run test.py --cpp`)
 
 ### Teensy/OctoWS2811
 
-- Examples under `examples/OctoWS2811*` and related Teensy demos show multi-output patterns
+- Examples under `examples/SpecialDrivers/Teensy/OctoWS2811/*` and related Teensy demos show multi-output patterns
 - Replace pin/channel configuration and buffer sizes to match your wiring; ensure you select the correct Teensy model in your IDE/toolchain
 
-### ESP32 / I2S (parallel output)
+### ESP32 Special Drivers (parallel output)
 
-- See `examples/EspI2SDemo/` and `examples/Esp32S3I2SDemo/`
-- These demonstrate high-throughput I2S-driven output; choose a board definition matching your dev board and wiring
+- See `examples/SpecialDrivers/ESP/` for ESP32 special driver examples:
+  - `DriverTest/` - Tests all available LED drivers for your ESP32 variant (RMT, SPI, I2S, PARLIO, UART, LCD_RGB)
+- These demonstrate high-throughput hardware-accelerated output; choose a board definition matching your dev board and wiring
 - On some environments, parallel output requires specific pin sets and PSRAM settings; consult the sketch notes
 
 ### WASM (browser demos + JSON UI)
 
 - `examples/wasm/` and related WASM-focused examples run in the browser
-- The JSON UI system enables sliders, buttons, and other controls (see `src/platforms/wasm` and `src/fl/ui.h`)
+- The JSON UI system enables sliders, buttons, and other controls (see `src/platforms/wasm` and `src/fl/ui/ui.h`)
 - Typical flow: build to WebAssembly, serve the app, and interact via the browser UI
 
 ---
@@ -136,6 +136,7 @@ This list highlights commonly used examples. It is not exhaustive—browse the f
 ### Audio and reactive demos
 
 - `Audio/` — audio input + analysis (simple and advanced variants)
+- `AudioInput/` — I2S microphone input (ESP32 & Teensy, INMP441 compatible)
 - `Ports/PJRCSpectrumAnalyzer/` — Teensy-centric spectrum analyzer
 
 ### Storage, SD card, and data
@@ -146,12 +147,12 @@ This list highlights commonly used examples. It is not exhaustive—browse the f
 
 - `Multiple/` — organize multiple arrays/segments
 - `TeensyParallel/` — multi-output example
-- `TeensyMassiveParallel/` — larger multi-output wiring
-- `OctoWS2811/`, `OctoWS2811Demo/` — OctoWS2811 multi-channel output
+- See `SpecialDrivers/` for platform-specific high-performance drivers (ESP, Teensy, Adafruit)
 
 ### ESP/Teensy/SmartMatrix specifics
 
-- `EspI2SDemo/`, `Esp32S3I2SDemo/` — ESP32 parallel/I2S output
+- See `SpecialDrivers/ESP/DriverTest/` for ESP32 driver testing (tests RMT, SPI, I2S, PARLIO, UART, LCD_RGB based on your variant)
+- See `SpecialDrivers/Teensy/` for Teensy parallel drivers (OctoWS2811, ObjectFLED)
 - `SmartMatrix/` — run on SmartMatrix hardware
 
 ### WASM and UI
@@ -166,6 +167,62 @@ This list highlights commonly used examples. It is not exhaustive—browse the f
 - `LuminescentGrand/` — complex, multi-file installation piece
 - `Luminova/` — larger effect set
 - `Chromancer/` — advanced example with assets and helpers
+
+---
+
+## 🎯 Platform-Specific Filtering with @filter
+
+FastLED now supports flexible `@filter` directives in `.ino` sketch files for conditional compilation based on platform, memory, target, and board properties. This enables you to maintain platform-specific examples without duplicating code.
+
+### Supported Filter Syntax
+
+**One-liner format** (compact, flexible):
+```cpp
+// @filter (memory is large) and (platform is esp32s3)
+// @filter (memory is huge) and (platform is esp32)
+// @filter (mem is large) and (plat is esp32*)
+// @filter (mem: large) and (plat: esp32)
+// @filter (mem=large) and (plat=esp32)
+```
+
+**Multi-line YAML format** (explicit):
+```cpp
+// @filter
+//   - require:
+//     - platform: esp32s3
+//     - memory: large
+//   - exclude:
+//     - platform: avr
+// @end-filter
+```
+
+### Filter Features
+
+**Operators:**
+- `is` / `is not` - Exact match (supports wildcards with `*`)
+- `=` / `:` - Shorthand for `is`
+- `matches` - Regex/glob pattern match
+
+**Property shortcuts:**
+- `mem` → `memory`
+- `plat` → `platform`
+- `tgt` → `target`
+- `brd` → `board`
+
+**Logical operators:** `and`, `or`
+
+**Memory tiers** (ordered: low < large < huge):
+- `(memory is large)` — matches large AND huge boards
+- `(memory is huge)` — matches only huge boards (ESP32, Teensy 4.x, RP2040, native)
+- `(memory is low)` — matches all boards (every board is >= low)
+
+**Examples:**
+```cpp
+// @filter (platform is esp32*)
+// @filter (memory is huge)
+// @filter (memory is not low)
+// @filter (target is -D__AVR__) or (board is uno)
+```
 
 ---
 
@@ -216,7 +273,7 @@ This list highlights commonly used examples. It is not exhaustive—browse the f
 
 - Many examples are deliberately small; for more reusable building blocks, see `src/fl/` and `src/fx/`
 - Prefer `fl::` containers, views (`fl::span`), and graphics helpers for portability and quality
-- For UI/remote control on capable targets, use the JSON UI elements (see `src/fl/ui.h`) and WASM bridge (`src/platforms/wasm`)
+- For UI/remote control on capable targets, use the JSON UI elements (see `src/fl/ui/ui.h`) and WASM bridge (`src/platforms/wasm`)
 
 ---
 

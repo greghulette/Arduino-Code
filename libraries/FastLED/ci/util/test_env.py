@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 import os
-import platform
 import sys
 import threading
 import time
 import traceback
-from pathlib import Path
 from typing import Protocol, cast
 
-import psutil
-
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 from ci.util.test_types import TestArgs
 
 
@@ -19,10 +16,9 @@ class ReconfigurableIO(Protocol):
 
 def setup_environment(args: TestArgs) -> None:
     """Set up the test environment based on arguments"""
-    # Handle --quick flag
-    if args.quick:
-        os.environ["FASTLED_ALL_SRC"] = "1"
-        print("Quick mode enabled. FASTLED_ALL_SRC=1")
+    # Handle --quick flag (message already printed by test_types.py with timestamp)
+    # if args.quick:
+    #     print("Quick mode enabled.")
 
     # Handle build flags
     if args.show_compile:
@@ -46,6 +42,8 @@ def setup_windows_console() -> None:
 
 def get_process_tree_info(pid: int) -> str:
     """Get information about a process and its children"""
+    import psutil  # noqa: PLC0415 - lazy: ~21ms saved on normal execution paths
+
     try:
         process = psutil.Process(pid)
         info = [f"Process {pid} ({process.name()})"]
@@ -64,12 +62,17 @@ def get_process_tree_info(pid: int) -> str:
                 info.append(f"    Memory: {child.memory_info()}")
 
         return "\n".join(info)
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except:
         return f"Could not get process info for PID {pid}"
 
 
 def kill_process_tree(pid: int) -> None:
     """Kill a process and all its children"""
+    import psutil  # noqa: PLC0415 - lazy: deferred to cleanup-only path
+
     try:
         parent = psutil.Process(pid)
         children = parent.children(recursive=True)

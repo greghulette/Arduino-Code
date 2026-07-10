@@ -7,8 +7,12 @@ void avr_tests() {
 #error "FASTLED_USE_PROGMEM should be 1 for AVR"
 #endif
 
-#if SKETCH_HAS_LOTS_OF_MEMORY != 0
-#error "SKETCH_HAS_LOTS_OF_MEMORY should be 0 for AVR"
+#if SKETCH_HAS_LARGE_MEMORY != 0
+#error "SKETCH_HAS_LARGE_MEMORY should be 0 for AVR"
+#endif
+
+#if SKETCH_HAS_HUGE_MEMORY != 0
+#error "SKETCH_HAS_HUGE_MEMORY should be 0 for AVR"
 #endif
 
 #if FASTLED_ALLOW_INTERRUPTS != 0
@@ -36,5 +40,10 @@ void avr_tests() {
 // AVR-specific assembly optimizations should be enabled
 #ifndef QADD8_AVRASM
 #warning "AVR assembly optimizations may not be enabled"
+#endif
+
+// DEFAULT macro must survive FastLED.h inclusion (used by analogReference)
+#ifndef DEFAULT
+#error "DEFAULT macro should be defined after including FastLED.h on AVR"
 #endif
 }

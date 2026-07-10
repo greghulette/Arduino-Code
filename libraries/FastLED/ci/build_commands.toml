@@ -6,7 +6,6 @@ defines = [
 ]
 compiler_flags = [
   "-std=gnu++17",
-  "-fpermissive",
   "-Wall",
   "-Wextra"
 ]
@@ -29,4 +28,6 @@ ranlib = ["uv", "run", "python", "-m", "ziglang", "ranlib"]
 
 [archive]
 # Required by BuildFlags.parse; not used for compile-commands generation
+# NOTE: Thin archives are ENABLED BY DEFAULT for deterministic builds
+# To disable, set: FASTLED_DISABLE_THIN_ARCHIVES=1
 flags = "rcsD"

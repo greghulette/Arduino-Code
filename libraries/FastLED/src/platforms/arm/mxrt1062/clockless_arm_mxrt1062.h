@@ -1,47 +1,62 @@
+// IWYU pragma: private
+
 #ifndef __INC_CLOCKLESS_ARM_MXRT1062_H
 #define __INC_CLOCKLESS_ARM_MXRT1062_H
 
-FASTLED_NAMESPACE_BEGIN
+#include "fl/chipsets/timing_traits.h"
+#include "platforms/arm/teensy/is_teensy.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/noexcept.h"
 
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+
+namespace fl {
 // Definition for a single channel clockless controller for the teensy4
 // See clockless.h for detailed info on how the template parameters are used.
-#if defined(FASTLED_TEENSY4)
 
-#define FASTLED_HAS_CLOCKLESS 1
+#if defined(FL_IS_TEENSY_4X)
+
+#define FL_CLOCKLESS_CONTROLLER_DEFINED 1
 
 #define _FASTLED_NS_TO_DWT(_NS) (((F_CPU_ACTUAL>>16)*(_NS)) / (1000000000UL>>16))
 
-template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
 class ClocklessController : public CPixelLEDController<RGB_ORDER> {
 	typedef typename FastPin<DATA_PIN>::port_ptr_t data_ptr_t;
 	typedef typename FastPin<DATA_PIN>::port_t data_t;
 
+	// Extract timing values from ChipsetTiming struct at compile-time
+	static constexpr u32 T1 = TIMING::T1;
+	static constexpr u32 T2 = TIMING::T2;
+	static constexpr u32 T3 = TIMING::T3;
+
 	data_t mPinMask;
 	data_ptr_t mPort;
 	CMinWait<WAIT_TIME> mWait;
-	uint32_t off[3];
+	u32 off[3];
 
 public:
 	static constexpr int __DATA_PIN() { return DATA_PIN; }
-	static constexpr int __T1() { return T1; }
-	static constexpr int __T2() { return T2; }
-	static constexpr int __T3() { return T3; }
+	static constexpr u32 __T1() { return T1; }
+	static constexpr u32 __T2() { return T2; }
+	static constexpr u32 __T3() { return T3; }
 	static constexpr EOrder __RGB_ORDER() { return RGB_ORDER; }
 	static constexpr int __XTRA0() { return XTRA0; }
 	static constexpr bool __FLIP() { return FLIP; }
 	static constexpr int __WAIT_TIME() { return WAIT_TIME; }
 
-	virtual void init() {
+	virtual void init() FL_NOEXCEPT {
 		FastPin<DATA_PIN>::setOutput();
 		mPinMask = FastPin<DATA_PIN>::mask();
 		mPort = FastPin<DATA_PIN>::port();
     	FastPin<DATA_PIN>::lo();
 	}
 
-	virtual uint16_t getMaxRefreshRate() const { return 400; }
+	virtual u16 getMaxRefreshRate() const { return 400; }
 
 protected:
-	virtual void showPixels(PixelController<RGB_ORDER> & pixels) {
+	virtual void showPixels(PixelController<RGB_ORDER> & pixels) FL_NOEXCEPT {
     	mWait.wait();
 		if(!showRGBInternal(pixels)) {
       		sei(); delayMicroseconds(WAIT_TIME); cli();
@@ -50,8 +65,8 @@ protected:
     	mWait.mark();
   	}
 
-	template<int BITS> __attribute__ ((always_inline)) inline void writeBits(FASTLED_REGISTER uint32_t & next_mark, FASTLED_REGISTER uint32_t & b)  {
-		for(FASTLED_REGISTER uint32_t i = BITS-1; i > 0; --i) {
+	template<int BITS> __attribute__ ((always_inline)) inline void writeBits(FASTLED_REGISTER u32 & next_mark, FASTLED_REGISTER u32 & b) FL_NOEXCEPT {
+		for(FASTLED_REGISTER u32 i = BITS-1; i > 0; --i) {
 			while(ARM_DWT_CYCCNT < next_mark);
 			next_mark = ARM_DWT_CYCCNT + off[0];
 			FastPin<DATA_PIN>::hi();
@@ -78,12 +93,12 @@ protected:
 		}
 	}
 
-	uint32_t showRGBInternal(PixelController<RGB_ORDER> pixels) {
-		uint32_t start = ARM_DWT_CYCCNT;
+	u32 showRGBInternal(PixelController<RGB_ORDER> pixels) FL_NOEXCEPT {
+		u32 start = ARM_DWT_CYCCNT;
 
 		// Setup the pixel controller and load/scale the first byte
 		pixels.preStepFirstByteDithering();
-		FASTLED_REGISTER uint32_t b = pixels.loadAndScale0();
+		FASTLED_REGISTER u32 b = pixels.loadAndScale0();
 
 		cli();
 
@@ -91,9 +106,9 @@ protected:
 		off[1] = _FASTLED_NS_TO_DWT(T2+T3);
 		off[2] = _FASTLED_NS_TO_DWT(T3);
 
-	uint32_t wait_off = _FASTLED_NS_TO_DWT((WAIT_TIME-INTERRUPT_THRESHOLD)*1000);
+	u32 wait_off = _FASTLED_NS_TO_DWT((WAIT_TIME-INTERRUPT_THRESHOLD)*1000);
 
-    	uint32_t next_mark = ARM_DWT_CYCCNT + off[0];
+    	u32 next_mark = ARM_DWT_CYCCNT + off[0];
 
 		while(pixels.has(1)) {
 			pixels.stepDithering();
@@ -125,7 +140,8 @@ protected:
 	}
 };
 #endif
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
 
 #endif

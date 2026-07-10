@@ -1,16 +1,45 @@
+// IWYU pragma: private
+
 #ifndef __INC_CLOCKLESS_ARM_K66_H
 #define __INC_CLOCKLESS_ARM_K66_H
 
-FASTLED_NAMESPACE_BEGIN
+#include "fl/chipsets/timing_traits.h"
+#include "fastled_delay.h"
+#include "platforms/arm/teensy/is_teensy.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/noexcept.h"
 
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+
+namespace fl {
 // Definition for a single channel clockless controller for the k66 family of chips, like that used in the teensy 3.6
 // See clockless.h for detailed info on how the template parameters are used.
-#if defined(FASTLED_TEENSY3)
 
-#define FASTLED_HAS_CLOCKLESS 1
+#if defined(FL_IS_TEENSY_3X)
 
-template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
+#define FL_CLOCKLESS_CONTROLLER_DEFINED 1
+
+/// @brief ARM K66 (Teensy 3.6) Clockless LED Controller
+/// @tparam DATA_PIN Pin number for data line output
+/// @tparam TIMING ChipsetTiming structure containing T1, T2, T3, and RESET values
+/// @tparam RGB_ORDER Color order (RGB, GRB, etc.)
+/// @tparam XTRA0 Additional parameter for platform-specific needs
+/// @tparam FLIP Flip the output bit order if true
+/// @tparam WAIT_TIME Wait time between updates in microseconds
+///
+/// Example usage with named timing constant:
+/// @code
+///   ClocklessController<5, TIMING_WS2812_800KHZ, GRB> controller;
+/// @endcode
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
 class ClocklessController : public CPixelLEDController<RGB_ORDER> {
+	// Extract timing values from struct and convert from nanoseconds to clock cycles
+	// Formula: cycles = (nanoseconds * CPU_MHz + 500) / 1000
+	// The +500 provides rounding to nearest integer
+	static constexpr u32 T1 = (TIMING::T1 * (F_CPU / 1000000UL) + 500) / 1000;
+	static constexpr u32 T2 = (TIMING::T2 * (F_CPU / 1000000UL) + 500) / 1000;
+	static constexpr u32 T3 = (TIMING::T3 * (F_CPU / 1000000UL) + 500) / 1000;
 	typedef typename FastPin<DATA_PIN>::port_ptr_t data_ptr_t;
 	typedef typename FastPin<DATA_PIN>::port_t data_t;
 
@@ -19,16 +48,16 @@ class ClocklessController : public CPixelLEDController<RGB_ORDER> {
 	CMinWait<WAIT_TIME> mWait;
 
 public:
-	virtual void init() {
+	virtual void init() FL_NOEXCEPT {
 		FastPin<DATA_PIN>::setOutput();
 		mPinMask = FastPin<DATA_PIN>::mask();
 		mPort = FastPin<DATA_PIN>::port();
 	}
 
-	virtual uint16_t getMaxRefreshRate() const { return 400; }
+	virtual u16 getMaxRefreshRate() const { return 400; }
 
 protected:
-	virtual void showPixels(PixelController<RGB_ORDER> & pixels) {
+	virtual void showPixels(PixelController<RGB_ORDER> & pixels) FL_NOEXCEPT {
 		mWait.wait();
 		if(!showRGBInternal(pixels)) {
 			sei(); delayMicroseconds(WAIT_TIME); cli();
@@ -37,8 +66,8 @@ protected:
 		mWait.mark();
 	}
 
-	template<int BITS> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER uint32_t & next_mark, FASTLED_REGISTER data_ptr_t port, FASTLED_REGISTER data_t hi, FASTLED_REGISTER data_t lo, FASTLED_REGISTER uint8_t & b)  {
-		for(FASTLED_REGISTER uint32_t i = BITS-1; i > 0; --i) {
+	template<int BITS> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER u32 & next_mark, FASTLED_REGISTER data_ptr_t port, FASTLED_REGISTER data_t hi, FASTLED_REGISTER data_t lo, FASTLED_REGISTER u8 & b) FL_NOEXCEPT {
+		for(FASTLED_REGISTER u32 i = BITS-1; i > 0; --i) {
 			while(ARM_DWT_CYCCNT < next_mark);
 			next_mark = ARM_DWT_CYCCNT + (T1+T2+T3);
 			FastPin<DATA_PIN>::fastset(port, hi);
@@ -67,7 +96,7 @@ protected:
 
 	// This method is made static to force making register Y available to use for data on AVR - if the method is non-static, then
 	// gcc will use register Y for the this pointer.
-	static uint32_t showRGBInternal(PixelController<RGB_ORDER> pixels) {
+	static u32 showRGBInternal(PixelController<RGB_ORDER> pixels) FL_NOEXCEPT {
 	    // Get access to the clock
 		ARM_DEMCR    |= ARM_DEMCR_TRCENA;
 		ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
@@ -80,10 +109,10 @@ protected:
 
 		// Setup the pixel controller and load/scale the first byte
 		pixels.preStepFirstByteDithering();
-		FASTLED_REGISTER uint8_t b = pixels.loadAndScale0();
+		FASTLED_REGISTER u8 b = pixels.loadAndScale0();
 
 		cli();
-		uint32_t next_mark = ARM_DWT_CYCCNT + (T1+T2+T3);
+		u32 next_mark = ARM_DWT_CYCCNT + (T1+T2+T3);
 
 		while(pixels.has(1)) {
 			pixels.stepDithering();
@@ -118,7 +147,8 @@ protected:
 	}
 };
 #endif
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
 
 #endif

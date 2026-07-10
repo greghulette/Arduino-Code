@@ -21,9 +21,12 @@
 
 #pragma once
 
+// IWYU pragma: private
+
 #include "cpixel_ledcontroller.h"
 #include "pixel_iterator.h"
-#include "fl/vector.h"
+#include "fl/stl/vector.h"
+#include "fl/stl/noexcept.h"
 
 #ifndef FASTLED_OBJECTFLED_LATCH_DELAY
 #define FASTLED_OBJECTFLED_LATCH_DELAY 300  // WS2812-5VB
@@ -33,11 +36,11 @@ namespace fl {
 
 class ObjectFled {
   public:
-    static void SetOverclock(float overclock);
-    static void SetLatchDelay(uint16_t latchDelayUs);
-    void beginShowLeds(int data_pin, int nleds);
-    void showPixels(uint8_t data_pin, PixelIterator& pixel_iterator);
-    void endShowLeds();
+    static void SetOverclock(float overclock) FL_NOEXCEPT;
+    static void SetLatchDelay(u16 latchDelayUs) FL_NOEXCEPT;
+    void beginShowLeds(int data_pin, int nleds) FL_NOEXCEPT;
+    void showPixels(u8 data_pin, PixelIterator& pixel_iterator) FL_NOEXCEPT;
+    void endShowLeds() FL_NOEXCEPT;
 };
 
 // TODO: RGBW support, should be pretty easy except the fact that ObjectFLED
@@ -50,16 +53,16 @@ class ClocklessController_ObjectFLED_WS2812
     ObjectFled mObjectFled;
 
   public:
-    ClocklessController_ObjectFLED_WS2812(float overclock = 1.0f, int latchDelayUs = FASTLED_OBJECTFLED_LATCH_DELAY): Base() {
+    ClocklessController_ObjectFLED_WS2812(float overclock = 1.0f, int latchDelayUs = FASTLED_OBJECTFLED_LATCH_DELAY) FL_NOEXCEPT : Base() {
         // Warning - overwrites previous overclock value.
         // Warning latchDelayUs is GLOBAL!
-        ObjectFled::SetOverclock(overclock);
+        ObjectFled::SetOverclock(overclock) FL_NOEXCEPT;
         if (latchDelayUs >= 0) {
-            ObjectFled::SetLatchDelay(latchDelayUs);
+            ObjectFled::SetLatchDelay(latchDelayUs) FL_NOEXCEPT;
         }
     }
     void init() override {}
-    virtual uint16_t getMaxRefreshRate() const { return 800; }
+    virtual u16 getMaxRefreshRate() const { return 800; }
 
   protected:
     // Wait until the last draw is complete, if necessary.
@@ -70,13 +73,13 @@ class ClocklessController_ObjectFLED_WS2812
     }
 
     // Prepares data for the draw.
-    virtual void showPixels(PixelController<RGB_ORDER> &pixels) override {
+    virtual void showPixels(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT override {
         auto pixel_iterator = pixels.as_iterator(this->getRgbw());
         mObjectFled.showPixels(DATA_PIN, pixel_iterator);
     }
 
     // Send the data to the strip
-    virtual void endShowLeds(void *data) override {
+    virtual void endShowLeds(void *data) FL_NOEXCEPT override {
         Base::endShowLeds(data);
         mObjectFled.endShowLeds();
     }

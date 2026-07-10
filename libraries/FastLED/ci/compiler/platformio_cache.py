@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 """
 PlatformIO artifact cache implementation for speeding up CI builds.
@@ -11,12 +14,12 @@ providing functionality to:
 """
 
 import _thread
+import atexit
 import configparser
 import json
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -26,15 +29,30 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from types import TracebackType
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Optional
 
-import fasteners
 import httpx
+from running_process import RunningProcess
 
 from ci.compiler.platformio_ini import PlatformIOIni
-from ci.util.running_process import RunningProcess
+from ci.util.download_breadcrumb import (
+    is_download_complete,
+    read_breadcrumb,
+    write_breadcrumb,
+)
 from ci.util.url_utils import sanitize_url_for_path
+
+
+def _get_utf8_env() -> dict[str, str]:
+    """Get environment with UTF-8 encoding to prevent Windows CP1252 encoding errors.
+
+    PlatformIO outputs Unicode characters (checkmarks, etc.) that fail on Windows
+    when using the default CP1252 console encoding. This ensures UTF-8 is used.
+    """
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8:replace"
+    env["PYTHONUTF8"] = "1"
+    return env
 
 
 @dataclass
@@ -98,6 +116,9 @@ def _get_remote_file_size(url: str) -> Optional[int]:
                 content_length = response.headers.get("Content-Length")
                 if content_length:
                     return int(content_length)
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         logger.debug(f"Failed to get file size for {url}: {e}")
     return None
@@ -128,37 +149,21 @@ _global_cancel_event = threading.Event()
 _download_lock = threading.Lock()
 
 
+# Legacy function wrappers for backward compatibility
+# These now use the consolidated breadcrumb system
 def _get_status_file(artifact_dir: Path, cache_key: str) -> Path:
-    """Get the JSON status file path for an artifact."""
-    # Use simple descriptive filename since artifacts are already in unique directories
+    """Get the JSON status file path for an artifact (legacy wrapper)."""
     return artifact_dir / "info.json"
 
 
-def _read_status(status_file: Path) -> Optional[Dict[str, Any]]:
-    """Read status from JSON file."""
-    if not status_file.exists():
-        return None
-
-    try:
-        with open(status_file, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
-def _write_status(status_file: Path, status: Dict[str, Any]) -> None:
-    """Write status to JSON file."""
-    try:
-        with open(status_file, "w") as f:
-            json.dump(status, f, indent=2)
-    except OSError as e:
-        logger.warning(f"Failed to write status file {status_file}: {e}")
+def _write_status(status_file: Path, status: dict[str, Any]) -> None:
+    """Write status to JSON file (legacy wrapper)."""
+    write_breadcrumb(status_file, status)
 
 
 def _is_processing_complete(status_file: Path) -> bool:
-    """Check if processing is complete based on status file."""
-    status = _read_status(status_file)
-    return status is not None and status.get("status") == "complete"
+    """Check if processing is complete based on status file (legacy wrapper)."""
+    return is_download_complete(status_file)
 
 
 def _download_with_progress(
@@ -273,6 +278,90 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+def cleanup_stale_platformio_locks(max_age_minutes: float = 30) -> int:
+    """
+    ⚠️ CRITICAL: Clean up stale PlatformIO lock files that block builds.
+
+    PlatformIO creates .download.lock files but doesn't always clean them up
+    when processes crash or are killed. This causes future builds to hang
+    indefinitely waiting for locks that will never be released.
+
+    This function removes lock files older than max_age_minutes from:
+    1. PlatformIO's global cache directory (~/.platformio/global_cache)
+    2. FastLED's global cache directory (~/.fastled/global_cache)
+
+    Args:
+        max_age_minutes: Maximum age of locks to keep (default: 30 minutes)
+
+    Returns:
+        Number of stale locks removed
+    """
+    cache_dirs = [
+        Path.home() / ".platformio" / "global_cache",
+        Path.home() / ".fastled" / "global_cache",
+    ]
+
+    cleaned_count = 0
+    max_age_seconds = max_age_minutes * 60
+    current_time = time.time()
+
+    for cache_dir in cache_dirs:
+        if not cache_dir.exists():
+            continue
+
+        try:
+            # Find all .lock files recursively
+            for lock_file in cache_dir.rglob("*.lock"):
+                try:
+                    # Check file age
+                    age_seconds = current_time - lock_file.stat().st_mtime
+
+                    if age_seconds > max_age_seconds:
+                        lock_file.unlink()
+                        age_minutes = age_seconds / 60
+                        logger.info(
+                            f"Cleaned stale lock: {lock_file.name} "
+                            f"from {cache_dir.name} (age: {age_minutes:.1f} minutes)"
+                        )
+                        cleaned_count += 1
+
+                        # Also clean up associated .pid metadata files
+                        pid_file = lock_file.with_suffix(lock_file.suffix + ".pid")
+                        if pid_file.exists():
+                            pid_file.unlink()
+
+                except (OSError, PermissionError) as e:
+                    logger.debug(f"Could not remove lock {lock_file}: {e}")
+
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
+        except Exception as e:
+            logger.warning(f"Error during lock cleanup in {cache_dir}: {e}")
+
+    if cleaned_count > 0:
+        logger.info(f"🧹 Cleaned {cleaned_count} stale lock file(s)")
+
+    return cleaned_count
+
+
+# Register atexit handler to clean up stale locks on process exit
+# This ensures we clean up even if the process crashes or is interrupted
+_cleanup_registered = False
+
+
+def _register_cleanup_handler():
+    """Register atexit handler for lock cleanup (once per process)."""
+    global _cleanup_registered
+    if not _cleanup_registered:
+        atexit.register(lambda: cleanup_stale_platformio_locks(max_age_minutes=30))
+        _cleanup_registered = True
+
+
+# Register cleanup handler when module is imported
+_register_cleanup_handler()
+
+
 class PlatformIOCache:
     """Enhanced cache manager for PlatformIO artifacts."""
 
@@ -284,6 +373,10 @@ class PlatformIOCache:
 
         # Create directory structure
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Proactively clean up stale PlatformIO locks before starting builds
+        # This prevents hangs from previous crashed builds
+        cleanup_stale_platformio_locks(max_age_minutes=30)
 
     def _get_cache_key(self, url: str) -> str:
         """Generate cache key from URL - sanitized for filesystem use."""
@@ -300,11 +393,11 @@ class PlatformIOCache:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         cached_path = artifact_dir / "artifact.zip"
 
-        # Use read-write locking for concurrent safety
-        # Start with write lock for downloading, can upgrade to read if cache hit
-        lock_path = str(artifact_dir / "artifact.lock")
-        rw_lock = fasteners.InterProcessReaderWriterLock(lock_path)
-        with rw_lock.write_lock():
+        # Use write locking for concurrent safety
+        from ci.util.file_lock_rw import custom_lock
+
+        lock_path = artifact_dir / "artifact.lock"
+        with custom_lock(lock_path, timeout=60.0, operation="artifact_download"):
             if cached_path.exists():
                 # Check if processing was completed successfully
                 status_file = _get_status_file(artifact_dir, cache_key)
@@ -386,11 +479,18 @@ class PlatformIOCache:
                 print(f"Successfully cached: {cached_path}")
                 return str(cached_path)
 
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception as e:
                 logger.error(f"Download failed: {e}")
                 if temp_path.exists():
                     temp_path.unlink()
                 raise
+
+        raise RuntimeError(
+            "Unreachable: download_artifact with block must return or raise"
+        )
 
 
 def _is_zip_web_url(value: str) -> bool:
@@ -513,6 +613,9 @@ def unzip_and_install(
         except zipfile.BadZipFile:
             logger.error(f"Invalid zip file: {cached_zip_path_obj}")
             return False
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             logger.error(f"Extraction failed: {e}")
             return False
@@ -583,11 +686,12 @@ def install_with_platformio(
             command,
             check=False,  # We'll handle errors ourselves
             timeout=300,  # 5 minute timeout
+            env=_get_utf8_env(),
         )
 
         # Stream output in real-time
         for line in process.line_iter(timeout=300):
-            line_str = cast(str, line)
+            line_str = line
             print(f"PIO: {line_str}")
 
         # Wait for completion and check result
@@ -604,6 +708,9 @@ def install_with_platformio(
             )
             return False
 
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         if "No such file or directory" in str(e) or "not found" in str(e).lower():
             logger.error("PlatformIO CLI not found. Is it installed and in PATH?")
@@ -739,6 +846,9 @@ def handle_zip_artifact(
         # Return the file URL for the extracted directory
         return get_proper_file_url(extracted_dir)
 
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         import traceback
 
@@ -761,6 +871,9 @@ def _process_artifact(
             env_section=env_section,
             resolved_path=resolved_path,
         )
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         logger.error(f"Failed to process {artifact_url}: {e}", exc_info=e)
         return ArtifactProcessingResult(
@@ -771,11 +884,11 @@ def _process_artifact(
         )
 
 
-def _collect_all_zip_urls(pio_ini: PlatformIOIni) -> List[ZipUrlInfo]:
+def _collect_all_zip_urls(pio_ini: PlatformIOIni) -> list[ZipUrlInfo]:
     """
     Collect all zip URLs from platformio.ini in a single pass.
     """
-    all_urls: List[ZipUrlInfo] = []
+    all_urls: list[ZipUrlInfo] = []
 
     # Collect platform URLs
     for section_name, option_name, url in pio_ini.get_platform_urls():
@@ -793,13 +906,13 @@ def _collect_all_zip_urls(pio_ini: PlatformIOIni) -> List[ZipUrlInfo]:
 
 
 def _dedupe_urls(
-    all_urls: List[ZipUrlInfo],
-) -> Dict[str, str]:
+    all_urls: list[ZipUrlInfo],
+) -> dict[str, str]:
     """
     Deduplicate URLs, keeping the first occurrence of each unique URL.
     Returns dict mapping url -> env_section.
     """
-    unique_urls: Dict[str, str] = {}
+    unique_urls: dict[str, str] = {}
     for url_info in all_urls:
         if url_info.url not in unique_urls:
             unique_urls[url_info.url] = url_info.section_name
@@ -807,8 +920,8 @@ def _dedupe_urls(
 
 
 def _download_and_process_urls(
-    unique_urls: Dict[str, str], cache_manager: PlatformIOCache
-) -> Dict[str, str]:
+    unique_urls: dict[str, str], cache_manager: PlatformIOCache
+) -> dict[str, str]:
     """
     Download and process all URLs concurrently.
     Returns dict mapping original_url -> resolved_local_path.
@@ -822,12 +935,12 @@ def _download_and_process_urls(
         max_workers=max_workers, thread_name_prefix="download"
     ) as executor:
         # Submit all download tasks
-        futures: List[Future[ArtifactProcessingResult]] = []
+        futures: list[Future[ArtifactProcessingResult]] = []
         for url, env_section in unique_urls.items():
             future = executor.submit(_process_artifact, url, env_section, cache_manager)
             futures.append(future)
 
-        replacements: Dict[str, str] = {}
+        replacements: dict[str, str] = {}
 
         try:
             for future in as_completed(futures):
@@ -843,12 +956,17 @@ def _download_and_process_urls(
                         # Re-raise all exceptions - no downloads should fail silently
                         if result.exception:
                             raise result.exception
+                except KeyboardInterrupt as ki:
+                    handle_keyboard_interrupt(ki)
+                    raise
                 except Exception as e:
                     logger.error(
                         f"Future failed with unexpected error: {e}", exc_info=e
                     )
                     raise  # Re-raise unexpected exceptions
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
             logger.warning("Processing interrupted, cancelling remaining downloads...")
             _global_cancel_event.set()
             # The context manager will handle cleanup of the executor
@@ -859,8 +977,8 @@ def _download_and_process_urls(
 
 def _replace_all_urls(
     pio_ini: PlatformIOIni,
-    all_urls: List[ZipUrlInfo],
-    replacements: Dict[str, str],
+    all_urls: list[ZipUrlInfo],
+    replacements: dict[str, str],
 ) -> None:
     """
     Replace all URLs in platformio.ini with their resolved local paths.
@@ -913,6 +1031,9 @@ def _apply_board_specific_config(
         try:
             pio_ini.dump(platformio_ini_path)
             print(f"Updated platformio.ini with {len(replacements)} resolved artifacts")
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             logger.error(f"Failed to update platformio.ini: {e}")
             raise

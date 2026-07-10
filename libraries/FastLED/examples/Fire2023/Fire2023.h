@@ -1,5 +1,5 @@
 /// @file    Fire2023.ino
-/// @brief   Enhanced fire effect with ScreenMap
+/// @brief   Enhanced fire effect with fl::ScreenMap
 /// @example Fire2023.ino
 ///
 /// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
@@ -29,11 +29,10 @@ Demo: https://www.youtube.com/shorts/a_Wr0q9YQs4
 
 
 #include "FastLED.h"
-#include "fl/xymap.h"
-#include "fl/screenmap.h"
-#include "fl/vector.h"
+#include "fl/math/xymap.h"
+#include "fl/math/screenmap.h"
+#include "fl/stl/vector.h"
 
-using namespace fl;
 
 
 // matrix size
@@ -64,7 +63,7 @@ using namespace fl;
 #define SMOKENOISE_DIMMER 250 // thickness of smoke: the lower the value, the brighter the flames. 0-255
 #define SMOKENOISESCALE 125 // small values, softer smoke. Big values, blink smoke. 0-255
 
-CRGB leds[NUM_LEDS];
+fl::CRGB leds[NUM_LEDS];
 
 // fire palette roughly like matlab "hot" colormap
 // This was one of the most important parts to improve - fire color makes fire impression.
@@ -84,7 +83,7 @@ CRGBPalette32 hotPalette = hot_gp;
 uint8_t XY (uint8_t x, uint8_t y);
 
 
-// parameters and buffer for the noise array
+// parameters and buffer for the noise fl::array
 #define NUM_LAYERS 2
 // two layers of perlin noise make the fire effect
 #define FIRENOISE 0
@@ -101,7 +100,7 @@ uint8_t noise2[NUM_LAYERS][WIDTH][HEIGHT];
 uint8_t heat[NUM_LEDS];
 
 
-ScreenMap makeScreenMap();
+fl::ScreenMap makeScreenMap();
 
 void setup() {
 
@@ -120,20 +119,20 @@ void Fire2023(uint32_t now);
 
 void loop() {
   EVERY_N_MILLISECONDS(8) {
-    Fire2023(millis());
+    Fire2023(fl::millis());
   }
   FastLED.show();
 }
 
-ScreenMap makeScreenMap() {
-    fl::vector<vec2f> lut;
+fl::ScreenMap makeScreenMap() {
+    fl::vector<fl::vec2f> lut;
     for (uint16_t y = 0; y < WIDTH; y++) {
         for (uint16_t x = 0; x < HEIGHT; x++) {
-            vec2f xy = {float(x) * 3, float(y) * 20};
+            fl::vec2f xy = {float(x) * 3, float(y) * 20};
             lut.push_back(xy);
         }
     }
-    return ScreenMap(lut.data(), lut.size(), 1);
+    return fl::ScreenMap(lut.data(), lut.size(), 1);
 }
 
 void Fire2023(uint32_t now) {
@@ -186,7 +185,7 @@ void Fire2023(uint32_t now) {
 
   // draw lowest line - seed the fire where it is brightest and hottest
   for (uint8_t x = 0; x < WIDTH; x++) {
-    heat[XY(x, HEIGHT-1)] =  noise[FIRENOISE][WIDTH - x][CentreX];
+    heat[XY(x, HEIGHT-1)] =  noise[FIRENOISE][WIDTH - 1 - x][CentreX];
     //if (heat[XY(x, HEIGHT-1)] < 200) heat[XY(x, HEIGHT-1)] = 150; 
   }
 

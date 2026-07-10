@@ -7,8 +7,12 @@ void apollo3_tests() {
 #error "FASTLED_USE_PROGMEM should be 0 for Apollo3"
 #endif
 
-#if SKETCH_HAS_LOTS_OF_MEMORY != 1
-#error "SKETCH_HAS_LOTS_OF_MEMORY should be 1 for Apollo3"
+#if SKETCH_HAS_LARGE_MEMORY != 1
+#error "SKETCH_HAS_LARGE_MEMORY should be 1 for Apollo3"
+#endif
+
+#if SKETCH_HAS_HUGE_MEMORY != 0
+#error "SKETCH_HAS_HUGE_MEMORY should be 0 for Apollo3 (high tier, not huge)"
 #endif
 
 #if FASTLED_ALLOW_INTERRUPTS != 1

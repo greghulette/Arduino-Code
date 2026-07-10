@@ -1,19 +1,26 @@
+// IWYU pragma: private
+
 #ifndef __INC_CLOCKLESS_BLOCK_ESP8266_H
 #define __INC_CLOCKLESS_BLOCK_ESP8266_H
 
-#include "fl/stdint.h"
-#include "fl/namespace.h"
-#include "clock_cycles.h"
+#include "fl/stl/stdint.h"
+#include "fl/stl/static_assert.h"
+#include "platforms/esp/32/core/clock_cycles.h"
 #include "esp_intr_alloc.h"
 #include "eorder.h"
 #include "transpose8x1_noinline.h"
-#include "fl/force_inline.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/chipsets/timing_traits.h"
+#include "fl/math/math.h"
+#include "fl/stl/noexcept.h"
+
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
 
 #define FASTLED_HAS_BLOCKLESS 1
 
 #define PORT_MASK (((1<<LANES)-1) & 0x0000FFFFL)
-#define MIN(X,Y) (((X)<(Y)) ? (X):(Y))
-#define USED_LANES (MIN(LANES,4))
+#define USED_LANES (fl::min(LANES,4))
 #define REAL_FIRST_PIN 12
 #define LAST_PIN (12 + USED_LANES - 1)
 
@@ -23,33 +30,45 @@
 #define PORTD_FIRST_PIN 12
 #define PORTA_FIRST_PIN 14
 #define PORTB_FIRST_PIN 16
-
-FASTLED_NAMESPACE_BEGIN
-
+namespace fl {
 #ifdef FASTLED_DEBUG_COUNT_FRAME_RETRIES
-extern uint32_t _frame_cnt;
-extern uint32_t _retry_cnt;
+extern u32 _frame_cnt;
+extern u32 _retry_cnt;
 #endif
 
-FASTLED_FORCE_INLINE void interrupt_unlock() {
+FASTLED_FORCE_INLINE void interrupt_unlock() FL_NOEXCEPT {
 	// ets_intr_unlock();
 	// TODO: imlement interrupt_unlock?
 	// These functions were mined out of the code below and
 	// made no-ops here. We probably want to implement them.
 }
 
-FASTLED_FORCE_INLINE void interrupt_lock()  {
+FASTLED_FORCE_INLINE void interrupt_lock() FL_NOEXCEPT {
 	// ets_intr_lock();
 	// TODO: imlement interrupt_lock?
 }
 
-template <uint8_t LANES, int FIRST_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = GRB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 5>
+template <u8 LANES, int FIRST_PIN, typename TIMING, EOrder RGB_ORDER = GRB, int XTRA0 = 0, bool FLIP = false>
 class InlineBlockClocklessController : public CPixelLEDController<RGB_ORDER, LANES, PORT_MASK> {
     typedef typename FastPin<FIRST_PIN>::port_ptr_t data_ptr_t;
     typedef typename FastPin<FIRST_PIN>::port_t data_t;
 
+    // Convert nanoseconds to CPU cycles (compile-time)
+    // Formula: cycles = (ns * (F_CPU / 1MHz) + 500) / 1000
+    // +500 for rounding to nearest cycle
+    static constexpr u32 NS_TO_CYCLES(u32 ns) {
+        return (ns * (F_CPU / 1000000UL) + 500) / 1000;
+    }
+
+    enum : u32 {
+        T1 = NS_TO_CYCLES(TIMING::T1),  // Convert nanoseconds → CPU cycles
+        T2 = NS_TO_CYCLES(TIMING::T2),
+        T3 = NS_TO_CYCLES(TIMING::T3),
+        WAIT_TIME = TIMING::RESET  // Already in microseconds (no conversion)
+    };
+
 	// Verify that the pin is valid
-	static_assert(FastPin<FIRST_PIN>::validpin(), "This pin has been marked as an invalid pin, common reasons includes it being a ground pin, read only, or too noisy (e.g. hooked up to the uart).");
+	FL_STATIC_ASSERT(FastPin<FIRST_PIN>::validpin(), "This pin has been marked as an invalid pin, common reasons includes it being a ground pin, read only, or too noisy (e.g. hooked up to the uart).");
 
 	data_t mPinMask;
     data_ptr_t mPort;
@@ -58,9 +77,9 @@ class InlineBlockClocklessController : public CPixelLEDController<RGB_ORDER, LAN
 public:
     virtual int size() { return CLEDController::size() * LANES; }
 
-    virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) {
+    virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) FL_NOEXCEPT {
 	// mWait.wait();
-	/*uint32_t clocks = */
+	/*u32 clocks = */
 	int cnt=FASTLED_INTERRUPT_RETRY_COUNT;
 	while(!showRGBInternal(pixels) && cnt--) {
 	    // ets_intr_unlock();
@@ -81,14 +100,14 @@ public:
 	// mWait.mark();
     }
 
-    template<int PIN> static void initPin() {
+    template<int PIN> static void initPin() FL_NOEXCEPT {
 	if(PIN >= REAL_FIRST_PIN && PIN <= LAST_PIN) {
 	    _ESPPIN<PIN, 1<<(PIN & 0xFF), true>::setOutput();
 	    // FastPin<PIN>::setOutput();
 	}
     }
 
-    virtual void init() {
+    virtual void init() FL_NOEXCEPT {
 	// Only supportd on pins 12-15
         // SZG: This probably won't work (check pins definitions in fastpin_esp32)
 	initPin<12>();
@@ -101,29 +120,29 @@ public:
 	// Serial.print("Mask is "); Serial.println(PORT_MASK);
     }
 
-    virtual uint16_t getMaxRefreshRate() const { return 400; }
+    virtual u16 getMaxRefreshRate() const { return 400; }
     
     typedef union {
-	uint8_t bytes[8];
-	uint16_t shorts[4];
-	uint32_t raw[2];
+	u8 bytes[8];
+	u16 shorts[4];
+	u32 raw[2];
     } Lines;
 
 #define ESP_ADJUST 0 // (2*(F_CPU/24000000))
 #define ESP_ADJUST2 0
-    template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER uint32_t & last_mark, FASTLED_REGISTER Lines & b, PixelController<RGB_ORDER, LANES, PORT_MASK> &pixels) { // , FASTLED_REGISTER uint32_t & b2)  {
+    template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER u32 & last_mark, FASTLED_REGISTER Lines & b, PixelController<RGB_ORDER, LANES, PORT_MASK> &pixels) FL_NOEXCEPT { // , FASTLED_REGISTER uint32_t & b2)  {
 	Lines b2 = b;
 	transpose8x1_noinline(b.bytes,b2.bytes);
 	
-	FASTLED_REGISTER uint8_t d = pixels.template getd<PX>(pixels);
-	FASTLED_REGISTER uint8_t scale = pixels.template getscale<PX>(pixels);
+	FASTLED_REGISTER u8 d = pixels.template getd<PX>(pixels);
+	FASTLED_REGISTER u8 scale = pixels.template getscale<PX>(pixels);
 	
-	for(FASTLED_REGISTER uint32_t i = 0; i < USED_LANES; ++i) {
+	for(FASTLED_REGISTER u32 i = 0; i < USED_LANES; ++i) {
 	    while((__clock_cycles() - last_mark) < (T1+T2+T3));
 	    last_mark = __clock_cycles();
 	    *FastPin<FIRST_PIN>::sport() = PORT_MASK << REAL_FIRST_PIN;
 	    
-	    uint32_t nword = ((uint32_t)(~b2.bytes[7-i]) & PORT_MASK) << REAL_FIRST_PIN;
+	    u32 nword = ((u32)(~b2.bytes[7-i]) & PORT_MASK) << REAL_FIRST_PIN;
 	    while((__clock_cycles() - last_mark) < (T1-6));
 	    *FastPin<FIRST_PIN>::cport() = nword;
 	    
@@ -133,12 +152,12 @@ public:
 	    b.bytes[i] = pixels.template loadAndScale<PX>(pixels,i,d,scale);
 	}
 
-	for(FASTLED_REGISTER uint32_t i = USED_LANES; i < 8; ++i) {
+	for(FASTLED_REGISTER u32 i = USED_LANES; i < 8; ++i) {
 	    while((__clock_cycles() - last_mark) < (T1+T2+T3));
 	    last_mark = __clock_cycles();
 	    *FastPin<FIRST_PIN>::sport() = PORT_MASK << REAL_FIRST_PIN;
 	    
-	    uint32_t nword = ((uint32_t)(~b2.bytes[7-i]) & PORT_MASK) << REAL_FIRST_PIN;
+	    u32 nword = ((u32)(~b2.bytes[7-i]) & PORT_MASK) << REAL_FIRST_PIN;
 	    while((__clock_cycles() - last_mark) < (T1-6));
 	    *FastPin<FIRST_PIN>::cport() = nword;
 	    
@@ -149,7 +168,7 @@ public:
 
     // This method is made static to force making register Y available to use for data on AVR - if the method is non-static, then
     // gcc will use register Y for the this pointer.
-    static uint32_t showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) {
+    static u32 showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) FL_NOEXCEPT {
 	
 	// Setup the pixel controller and load/scale the first byte
 	Lines b0;
@@ -161,8 +180,8 @@ public:
 	
 	// ets_intr_lock();
 	interrupt_lock();
-	uint32_t _start = __clock_cycles();
-	uint32_t last_mark = _start;
+	u32 _start = __clock_cycles();
+	u32 last_mark = _start;
 	
 	while(allpixels.has(1)) {
 	    // Write first byte, read next byte
@@ -186,8 +205,8 @@ public:
 	    // ets_intr_lock();
 		interrupt_lock();
 	    // if interrupts took longer than 45µs, punt on the current frame
-	    if((int32_t)(__clock_cycles()-last_mark) > 0) {
-		if((int32_t)(__clock_cycles()-last_mark) > (T1+T2+T3+((WAIT_TIME-INTERRUPT_THRESHOLD)*CLKS_PER_US))) { interrupt_unlock(); return 0; }
+	    if((i32)(__clock_cycles()-last_mark) > 0) {
+		if((i32)(__clock_cycles()-last_mark) > (T1+T2+T3+((WAIT_TIME-INTERRUPT_THRESHOLD)*CLKS_PER_US))) { interrupt_unlock(); return 0; }
 	    }
 #endif
 	};
@@ -200,6 +219,8 @@ public:
 	return __clock_cycles() - _start;
     }
 };
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
+
 #endif

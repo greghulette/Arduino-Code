@@ -1,0 +1,378 @@
+#pragma once
+
+/// @file fl/channels/cled_controller.h
+/// base definitions used by led controllers for writing out led data
+
+#include "color.h"
+
+#include "fl/stl/compiler_control.h"
+#include "dither_mode.h"
+#include "fl/system/engine_events.h"
+#include "fl/math/screenmap.h"
+#include "fl/stl/int.h"
+#include "fl/stl/bit_cast.h"
+#include "fl/channels/options.h"
+#include "fl/stl/span.h"
+#include "fl/stl/noexcept.h"
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// LED Controller interface definition
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Base definition for an LED controller.  Pretty much the methods that every LED controller object will make available.
+/// If you want to pass LED controllers around to methods, make them references to this type, keeps your code saner. However,
+/// most people won't be seeing/using these objects directly at all.
+/// @note That the methods for eventual checking of background writing of data (I'm looking at you, Teensy 3.0 DMA controller!)
+/// are not yet implemented.
+
+namespace fl {
+
+class CLEDController {
+protected:
+    friend class CFastLED;
+    fl::span<CRGB> mLeds;     ///< span of LED data used by this controller
+    CLEDController *mPNext = nullptr;   ///< pointer to the next LED controller in the linked list
+    ChannelOptions mSettings;  ///< Optional channel settings (correction, temperature, dither, rgbw, affinity)
+    bool mEnabled = true;
+    static CLEDController *mPHead;  ///< pointer to the first LED controller in the linked list
+    static CLEDController *mPTail;  ///< pointer to the last LED controller in the linked list
+
+    /// @brief Registration mode for constructor
+    enum class RegistrationMode {
+        AutoRegister,   ///< Automatically add to linked list (default, backward compatible)
+        DeferRegister   ///< Defer registration until addToList() is called
+    };
+
+    /// @brief Protected constructor with registration mode
+    /// @param mode Registration mode (AutoRegister or DeferRegister)
+    /// @note Subclasses can use DeferRegister to control when they join the linked list
+    CLEDController(RegistrationMode mode) FL_NOEXCEPT;
+
+public:
+    /// @brief Add this controller to the linked list
+    /// @note Used with DeferRegister mode to explicitly add controller to list
+    /// @note Safe to call multiple times - won't add if already in list
+    void addToList() FL_NOEXCEPT;
+
+    /// @brief Check if this controller is in the linked list
+    /// @return true if controller is in the list, false otherwise
+    bool isInList() const FL_NOEXCEPT;
+
+    /// Set all the LEDs to a given color. 
+    /// @param data the CRGB color to set the LEDs to
+    /// @param nLeds the number of LEDs to set to this color
+    /// @param scale the rgb scaling value for outputting color
+    virtual void showColor(const CRGB & data, int nLeds, fl::u8 brightness) FL_NOEXCEPT = 0;
+
+    /// Write the passed in RGB data out to the LEDs managed by this controller. 
+    /// @param data the rgb data to write out to the strip
+    /// @param nLeds the number of LEDs being written out
+    /// @param scale the rgb scaling to apply to each led before writing it out
+    virtual void show(const CRGB *data, int nLeds, fl::u8 brightness) FL_NOEXCEPT = 0;
+
+    CLEDController& setRgbw(const Rgbw& arg = RgbwDefault::value()) FL_NOEXCEPT {
+        // Note that at this time (Sept 13th, 2024) this is only implemented in the ESP32 driver
+        // directly. For an emulated version please see RGBWEmulatedController in chipsets.h
+        //
+        // (#2558) mSettings.mWhiteCfg is now a fl::variant<Empty, Rgbw, Rgbww>;
+        // assigning Rgbw selects the 4-channel alternative. The legacy
+        // "setRgbw(RgbwInvalid::value()) → disable" semantics are preserved
+        // by translating an inactive Rgbw into Empty so observers see the
+        // same "no white channel" state they did before the variant migration.
+        if (!arg.active()) {
+            mSettings.mWhiteCfg.reset();
+        } else {
+            mSettings.mWhiteCfg = arg;
+        }
+        return *this;  // builder pattern.
+    }
+
+    /// @brief Configure this channel for 5-channel RGBWW (RGB + warm-W + cool-W)
+    /// output. See issue #2558. Driver-side support arrives in later phases of
+    /// the RGBWW work; today this just sets the configuration alternative.
+    /// Symmetric with setRgbw: passing RgbwwInvalid::value() clears the channel
+    /// to plain RGB rather than storing an inactive Rgbww.
+    CLEDController& setRgbww(const Rgbww& arg = RgbwwDefault::value()) FL_NOEXCEPT {
+        if (!arg.active()) {
+            mSettings.mWhiteCfg.reset();
+        } else {
+            mSettings.mWhiteCfg = arg;
+        }
+        return *this;
+    }
+
+    /// @brief Reset this channel to plain 3-channel RGB (clears any RGBW/RGBWW
+    /// configuration). Equivalent to assigning an empty mWhiteCfg.
+    CLEDController& clearWhiteChannel() FL_NOEXCEPT {
+        mSettings.mWhiteCfg.reset();
+        return *this;
+    }
+
+    void setEnabled(bool enabled) FL_NOEXCEPT { mEnabled = enabled; }
+    bool getEnabled() FL_NOEXCEPT { return mEnabled; }
+
+    CLEDController() FL_NOEXCEPT;
+    // If we added virtual to the AVR boards then we are going to add 600 bytes of memory to the binary
+    // flash size. This is because the virtual destructor pulls in malloc and free, which are the largest
+    // Testing shows that this virtual destructor adds a 600 bytes to the binary on
+    // attiny85 and about 1k for the teensy 4.X series.
+    // Attiny85:
+    //   With CLEDController destructor virtual: 11018 bytes to binary.
+    //   Without CLEDController destructor virtual: 10666 bytes to binary.
+    VIRTUAL_IF_NOT_AVR ~CLEDController() FL_NOEXCEPT;
+
+    /// @return The Rgbw configuration if this channel is in 4-channel mode,
+    /// otherwise RgbwInvalid::value(). Backward-compatible with the pre-#2558
+    /// API: callers that don't know about Rgbww see the same shape as before.
+    Rgbw getRgbw() const FL_NOEXCEPT { return mSettings.rgbw(); }
+
+    /// @return The Rgbww configuration if this channel is in 5-channel mode,
+    /// otherwise RgbwwInvalid::value().
+    Rgbww getRgbww() const FL_NOEXCEPT { return mSettings.rgbww(); }
+
+    /// Initialize the LED controller
+    virtual void init() FL_NOEXCEPT = 0;
+
+    /// Clear out/zero out the given number of LEDs.
+    /// @param nLeds the number of LEDs to clear
+    VIRTUAL_IF_NOT_AVR void clearLeds(int nLeds = -1) FL_NOEXCEPT {
+        clearLedDataInternal(nLeds);
+        showLeds(0);
+    }
+
+    // Compatibility with the 3.8.x codebase.
+    VIRTUAL_IF_NOT_AVR void showLeds(fl::u8 brightness) FL_NOEXCEPT {
+#if FASTLED_HAS_ENGINE_EVENTS
+        fl::EngineEvents::onBeginFrame();
+#endif
+        void* data = beginShowLeds(mLeds.size());
+        showLedsInternal(brightness);
+        endShowLeds(data);
+#if FASTLED_HAS_ENGINE_EVENTS
+        fl::EngineEvents::onEndFrame();
+        fl::EngineEvents::onEndShowLeds();
+#endif
+    }
+
+    ColorAdjustment getAdjustmentData(fl::u8 brightness) FL_NOEXCEPT;
+
+    /// @copybrief show(const CRGB*, int, CRGB)
+    ///
+    /// Will scale for color correction and temperature. Can accept LED data not attached to this controller.
+    /// @param data the LED data to write to the strip
+    /// @param nLeds the number of LEDs in the data array
+    /// @param brightness the brightness of the LEDs
+    /// @see show(const CRGB*, int, CRGB)
+    void showInternal(const CRGB *data, int nLeds, fl::u8 brightness) FL_NOEXCEPT {
+        if (mEnabled) {
+           show(data, nLeds,brightness);
+        }
+    }
+
+    /// @copybrief showColor(const CRGB&, int, CRGB)
+    ///
+    /// Will scale for color correction and temperature. Can accept LED data not attached to this controller.
+    /// @param data the CRGB color to set the LEDs to
+    /// @param nLeds the number of LEDs in the data array
+    /// @param brightness the brightness of the LEDs
+    /// @see showColor(const CRGB&, int, CRGB)
+    void showColorInternal(const CRGB &data, int nLeds, fl::u8 brightness) FL_NOEXCEPT {
+        if (mEnabled) {
+            showColor(data, nLeds, brightness);
+        }
+    }
+
+    /// Write the data to the LEDs managed by this controller
+    /// @param brightness the brightness of the LEDs
+    /// @see show(const CRGB*, int, fl::u8)
+    void showLedsInternal(fl::u8 brightness) FL_NOEXCEPT {
+        if (mEnabled) {
+            show(mLeds.data(), mLeds.size(), brightness);
+        }
+    }
+
+    /// @copybrief showColor(const CRGB&, int, CRGB)
+    ///
+    /// @param data the CRGB color to set the LEDs to
+    /// @param brightness the brightness of the LEDs
+    /// @see showColor(const CRGB&, int, CRGB)
+    void showColorInternal(const CRGB & data, fl::u8 brightness) FL_NOEXCEPT {
+        if (mEnabled) {
+            showColor(data, mLeds.size(), brightness);
+        }
+    }
+
+    /// Get the first LED controller in the linked list of controllers
+    /// @returns CLEDController::mPHead
+    static CLEDController *head() FL_NOEXCEPT { return mPHead; }
+
+    /// Get the next controller in the linked list after this one.  Will return nullptr at the end of the linked list.
+    /// @returns CLEDController::mPNext
+    CLEDController *next() FL_NOEXCEPT { return mPNext; }
+
+    /// Visit all controllers in the linked list with a visitor
+    /// The visitor must be a callable that accepts (const CLEDController*, fl::span<const CRGB>)
+    /// @param visitor the visitor callable to call for each controller
+    /// @tparam Visitor callable type (function, lambda, functor, etc.)
+    template<typename Visitor>
+    static void visitControllers(Visitor&& visitor) FL_NOEXCEPT {
+        const CLEDController *pCur = head();
+        while(pCur) {
+            visitor(pCur, fl::span<const CRGB>(pCur->leds(), pCur->size()));
+            pCur = pCur->next();
+        }
+    }
+
+    /// Get the next controller in the linked list after this one (const version).  Will return nullptr at the end of the linked list.
+    /// @returns CLEDController::mPNext
+    const CLEDController *next() const FL_NOEXCEPT { return mPNext; }
+
+    /// Set the default array of LEDs to be used by this controller
+    /// @param data pointer to the LED data
+    /// @param nLeds the number of LEDs in the LED data
+    CLEDController & setLeds(CRGB *data, int nLeds) FL_NOEXCEPT {
+        mLeds = fl::span<CRGB>(data, nLeds);
+        return *this;
+    }
+
+    /// Set the default array of LEDs to be used by this controller (span version)
+    /// @param leds span of LED data
+    CLEDController & setLeds(fl::span<CRGB> leds) FL_NOEXCEPT {
+        mLeds = leds;
+        return *this;
+    }
+
+    /// Zero out the LED data managed by this controller
+    void clearLedDataInternal(int nLeds = -1) FL_NOEXCEPT;
+
+    /// Remove this controller from the draw list
+    /// @note Safe to call at any time - controllers currently drawing are protected by ownership
+    void removeFromDrawList() FL_NOEXCEPT {
+        removeFromList(this);
+    }
+
+    /// Remove a controller from the linked list
+    /// @param controller The controller to remove from the list
+    /// @note Protected static method - subclasses can call this in their cleanup methods
+    static void removeFromList(CLEDController* controller) FL_NOEXCEPT;
+
+    /// How many LEDs does this controller manage?
+    /// @returns CLEDController::mLeds.size()
+    virtual int size() const FL_NOEXCEPT { return mLeds.size(); }
+
+    /// How many Lanes does this controller manage?
+    /// @returns 1 for a non-Parallel controller
+    virtual int lanes() FL_NOEXCEPT { return 1; }
+
+    /// Pointer to the CRGB array for this controller
+    /// @returns CLEDController::mLeds.data()
+    CRGB* leds() FL_NOEXCEPT { return mLeds.data(); }
+
+    /// Const pointer to the CRGB array for this controller
+    /// @returns CLEDController::mLeds.data()
+    const CRGB* leds() const FL_NOEXCEPT { return mLeds.data(); }
+
+    /// Span of LEDs managed by this controller
+    /// @returns CLEDController::mLeds
+    fl::span<CRGB> ledsSpan() FL_NOEXCEPT { return mLeds; }
+
+    /// Reference to the n'th LED managed by the controller
+    /// @param x the LED number to retrieve
+    /// @returns reference to CLEDController::mLeds[x]
+    CRGB &operator[](int x) FL_NOEXCEPT { return mLeds[x]; }
+
+    /// Set the dithering mode for this controller to use
+    /// @param ditherMode the dithering mode to set
+    /// @returns a reference to the controller
+    inline CLEDController & setDither(fl::u8 ditherMode = BINARY_DITHER) FL_NOEXCEPT { mSettings.mDitherMode = ditherMode; return *this; }
+
+    CLEDController& setScreenMap(const fl::XYMap& map, float diameter = -1.f) FL_NOEXCEPT {
+        // EngineEvents::onCanvasUiSet(this, map);
+        fl::ScreenMap screenmap = map.toScreenMap();
+        if (diameter <= 0.0f) {
+            screenmap.setDiameter(.15f); // Assume small matrix is being used.
+        }
+        fl::EngineEvents::onCanvasUiSet(this, screenmap);
+        return *this;
+    }
+
+    CLEDController& setScreenMap(const fl::ScreenMap& map) FL_NOEXCEPT {
+        fl::EngineEvents::onCanvasUiSet(this, map);
+        return *this;
+    }
+
+    CLEDController& setScreenMap(fl::u16 width, fl::u16 height, float diameter = -1.f) FL_NOEXCEPT {
+        fl::XYMap xymap = fl::XYMap::constructRectangularGrid(width, height);
+        return setScreenMap(xymap, diameter);
+    }
+
+    /// Get the dithering option currently set for this controller
+    /// @return the currently set dithering option (CLEDController::mSettings.mDitherMode)
+    inline fl::u8 getDither() FL_NOEXCEPT { return mSettings.mDitherMode; }
+
+    virtual void* beginShowLeds(int size) FL_NOEXCEPT {
+        FASTLED_UNUSED(size);
+        // By default, emit an integer. This integer will, by default, be passed back.
+        // If you override beginShowLeds() then
+        // you should also override endShowLeds() to match the return state.
+        //
+        // For async led controllers this should be used as a sync point to block
+        // the caller until the leds from the last draw frame have completed drawing.
+        // for each controller:
+        //   beginShowLeds();
+        // for each controller:
+        //   showLeds();
+        // for each controller:
+        //   endShowLeds();
+        uintptr_t d = getDither();
+        void* out = fl::int_to_ptr<void>(d);
+        return out;
+    }
+
+    virtual void endShowLeds(void* data) FL_NOEXCEPT {
+        // By default recieves the integer that beginShowLeds() emitted.
+        //For async controllers this should be used to signal the controller
+        // to begin transmitting the current frame to the leds.
+        uintptr_t d = fl::ptr_to_int(data);
+        setDither(static_cast<fl::u8>(d));
+    }
+
+    /// The color corrction to use for this controller, expressed as a CRGB object
+    /// @param correction the color correction to set
+    /// @returns a reference to the controller
+    CLEDController & setCorrection(CRGB correction) FL_NOEXCEPT { mSettings.mCorrection = correction; return *this; }
+
+    /// @copydoc setCorrection()
+    CLEDController & setCorrection(LEDColorCorrection correction) FL_NOEXCEPT { mSettings.mCorrection = correction; return *this; }
+
+    /// Get the correction value used by this controller
+    /// @returns the current color correction (CLEDController::mSettings.mCorrection)
+    CRGB getCorrection() FL_NOEXCEPT { return mSettings.mCorrection; }
+
+    /// Set the color temperature, aka white point, for this controller
+    /// @param temperature the color temperature to set
+    /// @returns a reference to the controller
+    CLEDController & setTemperature(CRGB temperature) FL_NOEXCEPT { mSettings.mTemperature = temperature; return *this; }
+
+    /// @copydoc setTemperature()
+    CLEDController & setTemperature(ColorTemperature temperature) FL_NOEXCEPT { mSettings.mTemperature = temperature; return *this; }
+
+    /// Get the color temperature, aka white point, for this controller
+    /// @returns the current color temperature (CLEDController::mSettings.mTemperature)
+    CRGB getTemperature() FL_NOEXCEPT { return mSettings.mTemperature; }
+
+    /// Get the combined brightness/color adjustment for this controller
+    /// @param scale the brightness scale to get the correction for
+    /// @returns a CRGB object representing the total adjustment, including color correction and color temperature
+    CRGB getAdjustment(fl::u8 scale) FL_NOEXCEPT {
+        return CRGB::computeAdjustment(scale, mSettings.mCorrection, mSettings.mTemperature);
+    }
+
+    /// Gets the maximum possible refresh rate of the strip
+    /// @returns the maximum refresh rate, in frames per second (FPS)
+    virtual fl::u16 getMaxRefreshRate() const FL_NOEXCEPT { return 0; }
+};
+
+}  // namespace fl

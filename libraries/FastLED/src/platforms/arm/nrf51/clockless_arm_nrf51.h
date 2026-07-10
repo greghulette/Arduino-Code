@@ -1,10 +1,17 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __INC_CLOCKLESS_ARM_NRF51
 #define __INC_CLOCKLESS_ARM_NRF51
 
-#if defined(NRF51)
+#include "platforms/arm/nrf52/is_nrf52.h"
 
+#if defined(FL_IS_NRF52)
+
+// IWYU pragma: begin_keep
 #include <nrf51_bitfields.h>
-#define FASTLED_HAS_CLOCKLESS 1
+// IWYU pragma: end_keep
+#define FL_CLOCKLESS_CONTROLLER_DEFINED 1
 
 #if (FASTLED_ALLOW_INTERRUPTS==1)
 #define SEI_CHK LED_TIMER->CC[0] = (WAIT_TIME * (F_CPU/1000000)); LED_TIMER->TASKS_CLEAR; LED_TIMER->EVENTS_COMPARE[0] = 0;
@@ -17,26 +24,33 @@
 #endif
 
 
-#include "../common/m0clockless.h"
-template <uint8_t DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 75>
+#include "platforms/arm/common/m0clockless.h"
+#include "fl/chipsets/timing_traits.h"
+#include "fl/stl/noexcept.h"
+template <fl::u8 DATA_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 75>
 class ClocklessController : public CPixelLEDController<RGB_ORDER> {
     typedef typename FastPinBB<DATA_PIN>::port_ptr_t data_ptr_t;
     typedef typename FastPinBB<DATA_PIN>::port_t data_t;
+
+    // Extract timing values from ChipsetTiming struct at compile-time
+    static constexpr fl::u32 T1 = TIMING::T1;
+    static constexpr fl::u32 T2 = TIMING::T2;
+    static constexpr fl::u32 T3 = TIMING::T3;
 
     data_t mPinMask;
     data_ptr_t mPort;
     CMinWait<WAIT_TIME> mWait;
 
 public:
-    virtual void init() {
+    virtual void init() FL_NOEXCEPT {
         FastPinBB<DATA_PIN>::setOutput();
         mPinMask = FastPinBB<DATA_PIN>::mask();
         mPort = FastPinBB<DATA_PIN>::port();
     }
 
-	virtual uint16_t getMaxRefreshRate() const { return 400; }
+	virtual fl::u16 getMaxRefreshRate() const { return 400; }
 
-    virtual void showPixels(PixelController<RGB_ORDER> & pixels) {
+    virtual void showPixels(PixelController<RGB_ORDER> & pixels) FL_NOEXCEPT {
         mWait.wait();
         cli();
         if(!showRGBInternal(pixels)) {
@@ -49,7 +63,7 @@ public:
 
     // This method is made static to force making register Y available to use for data on AVR - if the method is non-static, then
     // gcc will use register Y for the this pointer.
-    static uint32_t showRGBInternal(PixelController<RGB_ORDER> pixels) {
+    static fl::u32 showRGBInternal(PixelController<RGB_ORDER> pixels) FL_NOEXCEPT {
         struct M0ClocklessData data;
         data.d[0] = pixels.d[0];
         data.d[1] = pixels.d[1];
@@ -72,7 +86,7 @@ public:
         LED_TIMER->SHORTS = TIMER_SHORTS_COMPARE0_CLEAR_Msk;
         LED_TIMER->TASKS_START = 1;
 
-        int ret = showLedData<4,8,T1,T2,T3,RGB_ORDER,WAIT_TIME>(portBase, FastPin<DATA_PIN>::mask(), pixels.mData, pixels.mLen, &data);
+        int ret = showLedData<4,8,TIMING,RGB_ORDER,WAIT_TIME>(portBase, FastPin<DATA_PIN>::mask(), pixels.mData, pixels.mLen, &data);
 
         LED_TIMER->TASKS_STOP = 1;
         return ret; // 0x00FFFFFF - _VAL;
@@ -80,5 +94,5 @@ public:
 };
 
 
-#endif // NRF51
+#endif // FL_IS_NRF52
 #endif // __INC_CLOCKLESS_ARM_NRF51

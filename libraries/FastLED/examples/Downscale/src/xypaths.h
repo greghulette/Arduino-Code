@@ -1,10 +1,8 @@
 
 
-#include "fl/xypath.h"
-#include "fl/vector.h"
+#include "fl/gfx/xypath.h"
+#include "fl/stl/vector.h"
 
-using namespace fl;
+ // fl::XYPath::NewRosePath(WIDTH, HEIGHT);
 
- // XYPath::NewRosePath(WIDTH, HEIGHT);
-
-fl::vector<XYPathPtr> CreateXYPaths(int width, int height);
+fl::vector<fl::XYPathPtr> CreateXYPaths(int width, int height);

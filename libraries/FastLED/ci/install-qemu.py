@@ -1,49 +1,49 @@
 #!/usr/bin/env python3
 """
-Standalone QEMU Installation Script
+Standalone script to install QEMU for ESP32 emulation.
 
-This is a convenience wrapper around install_qemu_esp32.py
-that can be called directly to install QEMU for ESP32 emulation.
-
-Usage:
-  uv run ci/install-qemu.py
+This script pulls the Docker QEMU image required for ESP32 testing.
 """
 
-import os
 import sys
 
-from install_qemu_esp32 import main as install_qemu_main
+from ci.docker_utils.qemu_test_integration import QEMUTestIntegration
 
 
-def main():
-    """Run the QEMU installation script."""
-    print("=== FastLED QEMU Installation ===")
-    print("Starting QEMU installation process...")
-    print(f"Python executable: {sys.executable}")
-    print(f"Working directory: {os.getcwd()}")
+def main() -> int:
+    """Install QEMU Docker image.
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    print("FastLED QEMU Installation")
+    print("=" * 50)
     print()
 
-    try:
-        # Call the main function directly
-        print("Calling install_qemu_esp32.main()...")
-        install_qemu_main()
-        print("install_qemu_esp32.main() completed successfully")
+    integration = QEMUTestIntegration()
 
-    except KeyboardInterrupt:
-        print("\nInstallation cancelled by user")
-        sys.exit(130)
-    except SystemExit as e:
-        print(f"SystemExit caught with code: {e.code}")
-        # Re-raise SystemExit to preserve exit codes
-        raise
-    except Exception as e:
-        print(f"ERROR: Installation failed: {e}")
-        import traceback
+    if not integration.docker_available:
+        print("ERROR: Docker is not available!", file=sys.stderr)
+        print("Please install Docker first:", file=sys.stderr)
+        print("  - Windows/Mac: https://www.docker.com/products/docker-desktop")
+        print("  - Linux: https://docs.docker.com/engine/install/")
+        return 1
 
-        print("Full traceback:")
-        traceback.print_exc()
-        sys.exit(1)
+    print("Docker is available, pulling QEMU image...")
+    success = integration.install_qemu()
+
+    if success:
+        print()
+        print("✓ QEMU installation successful!")
+        print()
+        print("You can now run QEMU tests with:")
+        print("  uv run test.py --qemu esp32s3")
+        return 0
+    else:
+        print()
+        print("✗ QEMU installation failed")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

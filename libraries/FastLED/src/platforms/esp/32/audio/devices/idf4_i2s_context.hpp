@@ -2,15 +2,20 @@
 
 #pragma once
 
+// IWYU pragma: private
+
+// IWYU pragma: begin_keep
 #include <driver/i2s.h>
 #include <driver/gpio.h>
+// IWYU pragma: end_keep
 
-#include "fl/assert.h"
-#include "fl/vector.h"
-#include "fl/warn.h"
-#include "fl/int.h"
-#include "fl/sstream.h"
-#include "fl/audio_input.h"
+#include "fl/stl/assert.h"
+#include "fl/stl/vector.h"
+#include "fl/log/log.h"
+#include "fl/stl/int.h"
+#include "fl/stl/sstream.h"
+#include "fl/audio/audio_input.h"
+#include "fl/stl/noexcept.h"
 
 
 #define I2S_INTR_ALLOC_FLAGS 0
@@ -27,31 +32,31 @@ struct I2SContext {
     i2s_port_t i2s_port;
 };
 
-I2SContext make_context(const AudioConfigI2S &config) {
-    auto convert_channel = [](AudioChannel value) -> int {
+I2SContext make_context(const audio::ConfigI2S &config) FL_NOEXCEPT {
+    auto convert_channel = [](audio::AudioChannel value) -> int {
         switch (value) {
-        case Left:
+        case audio::AudioChannel::Left:
             return I2S_CHANNEL_FMT_ONLY_LEFT;
-        case Right:
+        case audio::AudioChannel::Right:
             return I2S_CHANNEL_FMT_ONLY_RIGHT;
-        case Both:
+        case audio::AudioChannel::Both:
             return I2S_CHANNEL_FMT_RIGHT_LEFT;
         }
         FL_ASSERT(false, "Invalid mic channel");
         return 0;
     };
 
-    auto convert_comm_format = [](I2SCommFormat value) -> int {
+    auto convert_comm_format = [](audio::I2SCommFormat value) -> int {
         switch (value) {
-        case Philips:
+        case audio::I2SCommFormat::Philips:
             return I2S_COMM_FORMAT_STAND_I2S;
-        case MSB:
+        case audio::I2SCommFormat::MSB:
             return I2S_COMM_FORMAT_STAND_MSB;
-        case PCMShort:
+        case audio::I2SCommFormat::PCMShort:
             return I2S_COMM_FORMAT_STAND_PCM_SHORT;
-        case PCMLong:
+        case audio::I2SCommFormat::PCMLong:
             return I2S_COMM_FORMAT_STAND_PCM_LONG;
-        case Max:
+        case audio::I2SCommFormat::Max:
             return I2S_COMM_FORMAT_STAND_MAX;
         }
         FL_ASSERT(false, "Invalid comm format");
@@ -88,16 +93,16 @@ I2SContext make_context(const AudioConfigI2S &config) {
     return out;
 }
 
-I2SContext i2s_audio_init(const AudioConfigI2S &config) {
+I2SContext i2s_audio_init(const audio::ConfigI2S &config) FL_NOEXCEPT {
     I2SContext ctx = make_context(config);
-    i2s_driver_install(ctx.i2s_port, &ctx.i2s_config, 0, NULL);
+    i2s_driver_install(ctx.i2s_port, &ctx.i2s_config, 0, nullptr);
     i2s_set_pin(ctx.i2s_port, &ctx.pin_config);
     i2s_zero_dma_buffer(ctx.i2s_port);
     return ctx;
 }
 
 size_t i2s_read_raw_samples(const I2SContext &ctx,
-                            audio_sample_t (&buffer)[I2S_AUDIO_BUFFER_LEN]) {
+                            audio_sample_t (&buffer)[I2S_AUDIO_BUFFER_LEN]) FL_NOEXCEPT {
     size_t bytes_read = 0;
     i2s_event_t event;
 
@@ -113,7 +118,7 @@ size_t i2s_read_raw_samples(const I2SContext &ctx,
     return 0;
 }
 
-void i2s_audio_destroy(const I2SContext &ctx) {
+void i2s_audio_destroy(const I2SContext &ctx) FL_NOEXCEPT {
     i2s_driver_uninstall(ctx.i2s_port);
 }
 

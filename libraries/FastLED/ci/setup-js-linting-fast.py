@@ -1,3 +1,8 @@
+from ci.util.global_interrupt_handler import (
+    handle_keyboard_interrupt,  # pyright: ignore[reportMissingImports]
+)
+
+
 #!/usr/bin/env -S uv run --script
 
 
@@ -123,7 +128,7 @@ def download_and_extract_node():
                 tar_ref.extractall(NODE_DIR)
             # Move contents from nested folder to NODE_DIR
             nested_dir = (
-                NODE_DIR / f"node-v{NODE_VERSION}-{platform.system().lower()}-x64"
+                NODE_DIR / f"node-v{NODE_VERSION}-{platform.system().lower()}-{arch}"
             )
             if nested_dir.exists():
                 for item in nested_dir.iterdir():
@@ -141,21 +146,19 @@ def download_and_extract_node():
 
 def setup_eslint():
     """Install ESLint and create configuration"""
-    if platform.system() == "Windows":
-        node_exe = NODE_DIR / "node.exe"
-        npm_exe = NODE_DIR / "npm.cmd"
-    else:
-        node_exe = NODE_DIR / "bin" / "node"
-        npm_exe = NODE_DIR / "bin" / "npm"
-
     print("Installing ESLint...")
 
-    # Create package.json
+    # Create package.json with TypeScript ESLint support
     package_json = {
         "name": "fastled-js-linting",
         "version": "1.0.0",
         "private": True,
-        "dependencies": {"eslint": "^8.56.0"},
+        "dependencies": {
+            "eslint": "^8.56.0",
+            "@typescript-eslint/parser": "^6.19.0",
+            "@typescript-eslint/eslint-plugin": "^6.19.0",
+            "typescript": "^5.3.3",
+        },
     }
 
     with open(TOOLS_DIR / "package.json", "w") as f:
@@ -163,30 +166,46 @@ def setup_eslint():
 
     # Install ESLint
     try:
-        # Use absolute path for npm executable
+        # Get absolute paths for node and npm
+        _node_exe_abs = (
+            (TOOLS_DIR / "node" / "node.exe").resolve()
+            if platform.system() == "Windows"
+            else (TOOLS_DIR / "node" / "bin" / "node").resolve()
+        )
         npm_exe_abs = (
             (TOOLS_DIR / "node" / "npm.cmd").resolve()
             if platform.system() == "Windows"
             else (TOOLS_DIR / "node" / "bin" / "npm").resolve()
         )
 
+        # Add node directory to PATH for npm to find node executable
+        env = os.environ.copy()
+        node_bin_dir = (
+            str((TOOLS_DIR / "node").resolve())
+            if platform.system() == "Windows"
+            else str((TOOLS_DIR / "node" / "bin").resolve())
+        )
+        env["PATH"] = f"{node_bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
         # On Windows, use shell=True to properly execute .cmd files
         if platform.system() == "Windows":
-            result = subprocess.run(
+            subprocess.run(
                 [str(npm_exe_abs), "install"],
                 cwd=TOOLS_DIR,
                 check=True,
                 capture_output=True,
                 text=True,
                 shell=True,
+                env=env,
             )
         else:
-            result = subprocess.run(
+            subprocess.run(
                 [str(npm_exe_abs), "install"],
                 cwd=TOOLS_DIR,
                 check=True,
                 capture_output=True,
                 text=True,
+                env=env,
             )
         # npm install succeeded
     except subprocess.CalledProcessError as e:
@@ -195,63 +214,24 @@ def setup_eslint():
         print(f"npm install stdout: {e.stdout}")
         raise
 
-    # ESLint config is now in ci/.eslintrc.js (tracked in git)
-    # No need to create it here since it's already in version control
+    # Copy ESLint config to tools directory so it can resolve the TypeScript parser
+    import shutil
+
+    eslint_config_src = Path("src/platforms/wasm/compiler/.eslintrc.cjs")
+    eslint_config_dst = TOOLS_DIR / ".eslintrc.cjs"
+
+    if eslint_config_src.exists():
+        shutil.copy(eslint_config_src, eslint_config_dst)
+        print(f"SUCCESS: ESLint config copied to {eslint_config_dst}")
+    else:
+        print(f"WARNING: ESLint config not found at {eslint_config_src}")
 
     print("SUCCESS: ESLint configured")
 
 
 def create_fast_lint_script():
-    """Create fast linting script"""
-    if platform.system() == "Windows":
-        node_exe = NODE_DIR / "node.exe"
-        eslint_exe = TOOLS_DIR / "node_modules" / ".bin" / "eslint.cmd"
-    else:
-        node_exe = NODE_DIR / "bin" / "node"
-        eslint_exe = TOOLS_DIR / "node_modules" / ".bin" / "eslint"
-
-    script_content = f"""#!/bin/bash
-# FastLED JavaScript Linting Script (Node.js + ESLint - FAST!)
-
-# Colors for output
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-YELLOW='\\033[1;33m'
-BLUE='\\033[0;34m'
-NC='\\033[0m' # No Color
-
-echo -e "${{BLUE}}FAST FastLED JavaScript Linting (Node.js + ESLint - FAST!)${{NC}}"
-
-# Check if ESLint is installed
-if [ ! -f ".cache/js-tools/node_modules/.bin/eslint{".cmd" if platform.system() == "Windows" else ""}" ]; then
-    echo -e "${{RED}}ERROR: ESLint not found. Run: uv run ci/setup-js-linting-fast.py${{NC}}"
-    exit 1
-fi
-
-# Find JavaScript files in WASM platform
-JS_FILES=$(find src/platforms/wasm -name "*.js" -type f 2>/dev/null)
-
-if [ -z "$JS_FILES" ]; then
-    echo -e "${{YELLOW}}WARNING: No JavaScript files found in src/platforms/wasm/${{NC}}"
-    exit 0
-fi
-
-echo -e "${{BLUE}}Found JavaScript files:${{NC}}"
-echo "$JS_FILES" | sed 's/^/  /'
-
-# Run ESLint
-echo -e "${{BLUE}}Running ESLint...${{NC}}"
-cd .cache/js-tools
-if "./node_modules/.bin/eslint{".cmd" if platform.system() == "Windows" else ""}" --no-eslintrc --no-inline-config -c .eslintrc.js ../../src/platforms/wasm/compiler/*.js ../../src/platforms/wasm/compiler/modules/*.js; then
-    echo -e "${{GREEN}}SUCCESS: JavaScript linting completed successfully${{NC}}"
-else
-    echo -e "${{RED}}ERROR: JavaScript linting failed${{NC}}"
-    exit 1
-fi
-"""
-
-    # Lint script is now in ci/lint-js-fast (tracked in git)
-    # No need to create it here since it's already in version control
+    """Ensure the lint script is executable."""
+    # Lint script is ci/lint-js-fast (tracked in git)
     script_path = Path("ci/lint-js-fast")
     # Script already exists in ci/ and is tracked in git
     # Just ensure it's executable
@@ -266,7 +246,7 @@ def main():
     print("Setting up fast JavaScript linting (Node.js + ESLint)...")
 
     try:
-        node_exe = download_and_extract_node()
+        download_and_extract_node()
         setup_eslint()
         create_fast_lint_script()
 
@@ -275,6 +255,9 @@ def main():
         print("  bash ci/lint-js-fast                 # Fast linting with ESLint")
         print("  For more info: ci/js/README.md")
 
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         print(f"Setup failed: {e}")
         sys.exit(1)

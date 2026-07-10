@@ -9,27 +9,26 @@
 
 #if FASTLED_DOXYGEN // Guard against the arduino ide idiotically including every header file
 
-#include "FastLED.h"
-#include "fl/int.h"
+#include "fl/system/fastled.h"
+#include "fl/stl/int.h"
 
-FASTLED_NAMESPACE_BEGIN
 
 /// A nop/stub class, mostly to show the SPI methods that are needed/used by the various SPI chipset implementations.  Should
 /// be used as a definition for the set of methods that the spi implementation classes should use (since C++ doesn't support the
 /// idea of interfaces - it's possible this could be done with virtual classes, need to decide if i want that overhead)
-template <fl::u8 _DATA_PIN, fl::u8 _CLOCK_PIN, uint32_t _SPI_CLOCK_DIVIDER>
+template <fl::u8 _DATA_PIN, fl::u8 _CLOCK_PIN, fl::u32 _SPI_CLOCK_DIVIDER>
 class NOPSPIOutput {
-	Selectable *m_pSelect;
+	Selectable *mPSelect;
 
 public:
 	/// Default Constructor
-	NOPSPIOutput() { m_pSelect = NULL; }
+	NOPSPIOutput() { mPSelect = nullptr; }
 
 	/// Constructor with selectable
-	NOPSPIOutput(Selectable *pSelect) { m_pSelect = pSelect; }
+	NOPSPIOutput(Selectable *pSelect) { mPSelect = pSelect; }
 
 	/// set the object representing the selectable
-	void setSelect(Selectable *pSelect) { m_pSelect = pSelect;  }
+	void setSelect(Selectable *pSelect) { mPSelect = pSelect;  }
 
 	/// initialize the SPI subssytem
 	void init() { /* TODO */ }
@@ -40,6 +39,11 @@ public:
 	/// release the CS select
 	void release() { /* TODO */ }
 
+	void endTransaction() {
+		waitFully();
+		release();
+	}
+
 	/// wait until all queued up data has been written
 	void waitFully();
 
@@ -49,7 +53,7 @@ public:
 	/// write a byte out via SPI (returns immediately on writing register)
 	void writeByte(fl::u8 b) { /* TODO */ }
 	/// write a word out via SPI (returns immediately on writing register)
-	void writeWord(uint16_t w) { /* TODO */ }
+	void writeWord(fl::u16 w) { /* TODO */ }
 
 	/// A raw set of writing byte values, assumes setup/init/waiting done elsewhere (static for use by adjustment classes)
 	static void writeBytesValueRaw(fl::u8 value, int len) { /* TODO */ }
@@ -64,11 +68,10 @@ public:
 	template <fl::u8 BIT> inline static void writeBit(fl::u8 b) { /* TODO */ }
 
 	/// write out pixel data from the given PixelController object
-	template <fl::u8 FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels, void* context = NULL) { /* TODO */ }
+	template <fl::u8 FLAGS, class D, EOrder RGB_ORDER> void writePixels(PixelController<RGB_ORDER> pixels, void* context = nullptr) { /* TODO */ }
 
 };
 
-FASTLED_NAMESPACE_END
 
 #endif
 #endif

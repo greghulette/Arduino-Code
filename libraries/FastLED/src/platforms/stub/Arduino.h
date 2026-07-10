@@ -1,7 +1,10 @@
 // Arduino.h emulation for the WebAssembly platform.
 // This allows us to compile sketches as is for the WebAssembly platform.
+// ok no namespace fl
 
 #pragma once
+
+// IWYU pragma: private
 
 // Standard Arduino define - indicates Arduino environment and version
 // Using a modern Arduino IDE version number (1.8.19 = 10819)
@@ -9,82 +12,49 @@
 #define ARDUINO 1
 #endif
 
-#include "fl/str.h"
-#include <algorithm>
-#include <random>
-#include "fl/stdint.h"
-#include <stdio.h>
-#include <string>
-#include "fl/ostream.h"
+// FastLED headers only - NO stdlib headers
+#include "fl/stl/string.h"
+#include "fl/stl/stddef.h"
+#include "fl/stl/stdint.h"
+#include "fl/stl/ostream.h"
+#include "fl/stl/stdio.h"
+#include "fl/stl/type_traits.h"
+#include "fl/stl/singleton.h"
+#include "platforms/stub/time_stub.h"
+#include "fl/math/math.h"
+#include "fl/stl/noexcept.h"
 
-#include "fl/namespace.h"
-// Arduino timing functions - provided by time_stub.h
-#include "time_stub.h"
-#include "fl/math_macros.h"
-#include "fl/math.h"
+// Math functions from fl:: namespace
+// On stub platform, min/max/abs/radians/degrees are provided by
+// FastLED.h (from fl/math/math.h) which undefs Arduino macros and brings fl:: functions
+// into global namespace via using declarations.
+// Note: fl::map refers to the map container (red-black tree), not the Arduino map function
+// Note: fl/math/math.h is NOT included here - it's included by FastLED.h after macro undefs
+// Note: fl/map_range.h provides fl::map_range() which the global map() function delegates to
 
-FASTLED_USING_NAMESPACE
+#ifndef FASTLED_NO_ARDUINO_STUBS
+// Arduino stub functions - excluded when FASTLED_NO_ARDUINO_STUBS is defined
 
-template <typename T>
-T min(T a, T b) {
-    return a < b ? a : b;
-}
-template <typename T>
-T max(T a, T b) {
-    return a > b ? a : b;
-}
+// Arduino map() function - defined in global namespace (NOT in fl::)
+// fl::map refers to the map container
+// This delegates to fl::map_range() for consistent behavior and overflow protection
+long map(long x, long in_min, long in_max, long out_min, long out_max) FL_NOEXCEPT;
 
+long random(long min, long max) FL_NOEXCEPT;
+long random(long max) FL_NOEXCEPT;
+int analogRead(int) FL_NOEXCEPT;
+void init() FL_NOEXCEPT;  // Arduino hardware initialization (stub: does nothing)
 
-
-
-namespace fl {
-
-inline long map(long x, long in_min, long in_max, long out_min, long out_max) {
-    const long run = in_max - in_min;
-    if (run == 0) {
-        return 0; // AVR returns -1, SAM returns 0
-    }
-    const long rise = out_max - out_min;
-    const long delta = x - in_min;
-    return (delta * rise) / run + out_min;
-}
-
-// constrain
-template <typename T> T constrain(T x, T a, T b) {
-    return x < a ? a : (x > b ? b : x);
-}
-} // namespace fl
-
-using fl::constrain;
-using fl::map;
-
-inline long random(long min, long max) {
-    if (min == max) {
-        return min;
-    }
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    // Arduino random is exclusive of the max value, but
-    // std::uniform_int_distribution is inclusive. So we subtract 1 from the max
-    // value.
-    std::uniform_int_distribution<> dis(min, max - 1);
-    return dis(gen);
-}
-
-inline int analogRead(int) { return random(0, 1023); }
-
-inline long random(long max) { return random(0, max); }
-
-// Arduino-compatible random() with no parameters - returns full range random long
-inline long random() { 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<long> dis;
-    return dis(gen);
-}
+// Test helper functions for analog value injection (stub platform only)
+void setAnalogValue(int pin, int value) FL_NOEXCEPT;  // Set analog value for specific pin
+int getAnalogValue(int pin) FL_NOEXCEPT;              // Get current analog value for pin
+void clearAnalogValues() FL_NOEXCEPT;                 // Reset all analog values to default (random)
+#endif // FASTLED_NO_ARDUINO_STUBS
 
 
 
+#ifndef FASTLED_NO_ARDUINO_STUBS
+// Analog pin definitions - excluded when FASTLED_NO_ARDUINO_STUBS is defined
 #ifndef A0
 #define A0 0
 #endif
@@ -132,89 +102,110 @@ inline long random() {
 #ifndef A11
 #define A11 11
 #endif
+#endif // FASTLED_NO_ARDUINO_STUBS
 
 
 
+#ifndef FASTLED_NO_ARDUINO_STUBS
+// Serial emulation and digital I/O - excluded when FASTLED_NO_ARDUINO_STUBS is defined
 struct SerialEmulation {
-    void begin(int) {}
-    template <typename T> void print(T val) {
+    void begin(int) FL_NOEXCEPT;
+
+    // Single-argument print/println
+    template <typename T> void print(T val) FL_NOEXCEPT {
         fl::cout << val;
     }
-    template <typename T> void println(T val) {
+    template <typename T> void println(T val) FL_NOEXCEPT {
         fl::cout << val << fl::endl;
     }
-    
-    // Two-argument print overloads for formatting
-    void print(float _val, int digits) { 
-        // Clamp digits to reasonable range
+
+    // Two-argument floating point: print(float/double, digits)
+    template <typename T>
+    typename fl::enable_if<fl::is_floating_point<T>::value>::type
+    print(T val, int digits) FL_NOEXCEPT {
         digits = digits < 0 ? 0 : (digits > 9 ? 9 : digits);
-        double val = static_cast<double>(_val);
-        
-        // Use literal format strings to avoid linter warnings
+        double d = static_cast<double>(val);
         switch(digits) {
-            case 0: printf("%.0f", val); break;
-            case 1: printf("%.1f", val); break;
-            case 2: printf("%.2f", val); break;
-            case 3: printf("%.3f", val); break;
-            case 4: printf("%.4f", val); break;
-            case 5: printf("%.5f", val); break;
-            case 6: printf("%.6f", val); break;
-            case 7: printf("%.7f", val); break;
-            case 8: printf("%.8f", val); break;
-            case 9: printf("%.9f", val); break;
+            case 0: fl::printf("%.0f", d); break;
+            case 1: fl::printf("%.1f", d); break;
+            case 2: fl::printf("%.2f", d); break;
+            case 3: fl::printf("%.3f", d); break;
+            case 4: fl::printf("%.4f", d); break;
+            case 5: fl::printf("%.5f", d); break;
+            case 6: fl::printf("%.6f", d); break;
+            case 7: fl::printf("%.7f", d); break;
+            case 8: fl::printf("%.8f", d); break;
+            case 9: fl::printf("%.9f", d); break;
         }
     }
-    void print(double val, int digits) { 
-        // Clamp digits to reasonable range
-        digits = digits < 0 ? 0 : (digits > 9 ? 9 : digits);
-        
-        // Use literal format strings to avoid linter warnings
-        switch(digits) {
-            case 0: printf("%.0f", val); break;
-            case 1: printf("%.1f", val); break;
-            case 2: printf("%.2f", val); break;
-            case 3: printf("%.3f", val); break;
-            case 4: printf("%.4f", val); break;
-            case 5: printf("%.5f", val); break;
-            case 6: printf("%.6f", val); break;
-            case 7: printf("%.7f", val); break;
-            case 8: printf("%.8f", val); break;
-            case 9: printf("%.9f", val); break;
-        }
+
+    template <typename T>
+    typename fl::enable_if<fl::is_floating_point<T>::value>::type
+    println(T val, int digits) FL_NOEXCEPT {
+        print(val, digits);
+        fl::printf("\n");
     }
-    void print(int val, int base) {
-        if (base == 16) printf("%x", val);
-        else if (base == 8) printf("%o", val);
-        else if (base == 2) {
-            // Binary output
-            for (int i = 31; i >= 0; i--) {
-                printf("%d", (val >> i) & 1);
+
+    // Two-argument integer: print(integer, base)
+    // Covers all signed/unsigned integer types including char/u8
+    // (char/u8 are printed as numeric values, not characters)
+    template <typename T>
+    typename fl::enable_if<fl::is_integral<T>::value &&
+                           !fl::is_same<typename fl::remove_cv<T>::type, bool>::value>::type
+    print(T val, int base) FL_NOEXCEPT {
+        if (fl::is_signed<T>::value) {
+            long long v = static_cast<long long>(val);
+            if (base == 16) fl::printf("%llx", v);
+            else if (base == 8) fl::printf("%llo", v);
+            else if (base == 2) {
+                int bits = static_cast<int>(sizeof(T) * 8);
+                for (int i = bits - 1; i >= 0; i--)
+                    fl::printf("%d", (int)((v >> i) & 1));
             }
-        }
-        else printf("%d", val);
-    }
-    void print(unsigned int val, int base) {
-        if (base == 16) printf("%x", val);
-        else if (base == 8) printf("%o", val);
-        else if (base == 2) {
-            // Binary output
-            for (int i = 31; i >= 0; i--) {
-                printf("%d", (val >> i) & 1);
+            else fl::printf("%lld", v);
+        } else {
+            unsigned long long v = static_cast<unsigned long long>(val);
+            if (base == 16) fl::printf("%llx", v);
+            else if (base == 8) fl::printf("%llo", v);
+            else if (base == 2) {
+                int bits = static_cast<int>(sizeof(T) * 8);
+                for (int i = bits - 1; i >= 0; i--)
+                    fl::printf("%d", (int)((v >> i) & 1));
             }
+            else fl::printf("%llu", v);
         }
-        else printf("%u", val);
     }
-    
-    void println() { printf("\n"); }
-    int available() { return 0; }
-    int read() { return 0; }
-    void write(uint8_t) {}
-    void write(const char *s) { printf("%s", s); }
-    void write(const uint8_t *s, size_t n) { fwrite(s, 1, n, stdout); }
-    void write(const char *s, size_t n) { fwrite(s, 1, n, stdout); }
-    void flush() {}
-    void end() {}
-    uint8_t peek() { return 0; }
+
+    template <typename T>
+    typename fl::enable_if<fl::is_integral<T>::value &&
+                           !fl::is_same<typename fl::remove_cv<T>::type, bool>::value>::type
+    println(T val, int base) FL_NOEXCEPT {
+        print(val, base);
+        fl::printf("\n");
+    }
+
+    void println() FL_NOEXCEPT;
+
+    // Printf-style formatted output (variadic template implementation)
+    template<typename... Args>
+    void printf(const char* format, Args... args) FL_NOEXCEPT {  // ok snprintf — method routes through fl::printf
+        fl::printf(format, args...);
+    }
+
+    int available() FL_NOEXCEPT;
+    int read() FL_NOEXCEPT;
+    fl::string readStringUntil(char terminator) FL_NOEXCEPT;
+    void write(fl::u8) FL_NOEXCEPT;
+    void write(const char *s) FL_NOEXCEPT;
+    void write(const fl::u8 *s, size_t n) FL_NOEXCEPT;
+    void write(const char *s, size_t n) FL_NOEXCEPT;
+    void flush() FL_NOEXCEPT;
+    void end() FL_NOEXCEPT;
+    fl::u8 peek() FL_NOEXCEPT;
+
+    // Support for Serial boolean checks (always returns true for stub platform)
+    explicit operator bool() const FL_NOEXCEPT { return true; }
+    bool operator!() const FL_NOEXCEPT { return false; }
 };
 
 #define LED_BUILTIN 13
@@ -224,10 +215,24 @@ struct SerialEmulation {
 #define OUTPUT 1
 #define INPUT_PULLUP 2
 
-inline void digitalWrite(int, int) {}
-inline void analogWrite(int, int) {}
-inline int digitalRead(int) { return LOW; }
-inline void pinMode(int, int) {}
+// Bit manipulation macros
+#define bit(b) (1UL << (b))
+#define bitRead(value, bit) (((value) >> (bit)) & 0x01)
+#define bitSet(value, bit) ((value) |= (1UL << (bit)))
+#define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
+#define bitWrite(value, bit, bitvalue) ((bitvalue) ? bitSet(value, bit) : bitClear(value, bit))
+#define lowByte(w) ((fl::u8) ((w) & 0xff))
+#define highByte(w) ((fl::u8) ((w) >> 8))
+
+// Arduino math macro
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
+
+void digitalWrite(int, int) FL_NOEXCEPT;
+void analogWrite(int, int) FL_NOEXCEPT;
+void analogReference(int) FL_NOEXCEPT;
+int digitalRead(int) FL_NOEXCEPT;
+void pinMode(int, int) FL_NOEXCEPT;
+#endif // FASTLED_NO_ARDUINO_STUBS
 
 
 
@@ -245,7 +250,13 @@ inline void pinMode(int, int) {}
 
 #define FL_PGM_READ_PTR_NEAR(addr) (*(addr))
 typedef unsigned char byte;
+typedef bool boolean;
+typedef unsigned int word;
 
+// Arduino String class compatibility - use fl::string as String
+typedef fl::string String;
+
+#ifndef FASTLED_NO_ARDUINO_STUBS
 // Define Serial instances for stub compilation
 extern SerialEmulation Serial;
 extern SerialEmulation Serial1;
@@ -254,3 +265,4 @@ extern SerialEmulation Serial3;
 
 typedef SerialEmulation HardwareSerial;
 typedef SerialEmulation SoftwareSerial;
+#endif // FASTLED_NO_ARDUINO_STUBS

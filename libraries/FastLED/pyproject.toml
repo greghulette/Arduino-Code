@@ -1,11 +1,106 @@
 [project]
 name = "ci"
-version = "0.1.0"
+version = "0.1.1"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "platformio==6.1.18",
+    # Pin to fbuild 2.2.27 (released 2026-06-12). 2.2.27 bumps the
+    # bundled `running-process` daemon broker to 4.2.0
+    # (FastLED/fbuild#537) on top of the 2.2.26 ArmCompiler/zccache
+    # unification (FastLED/fbuild#526) and LPC845-BRK board stubs
+    # (FastLED/fbuild#536). It also rolls up the intermediate
+    # releases:
+    #   2.2.26 — ArmCompiler now wires zccache for the 8 generic-arm
+    #            platforms in one place (FastLED/fbuild#526), adds a
+    #            stub running-process broker adoption with diagnostics
+    #            (FastLED/fbuild#529/#530), and ships the
+    #            ArduinoCore LPC8xx board metadata
+    #            (FastLED/fbuild#514).
+    #   2.2.25 — `nxplpc` now picks up project-local
+    #            `variants/<variant>/pins_arduino.h` (FastLED/fbuild#521).
+    #   2.2.24 — daemon build path now threads `project_dir` through
+    #            board resolution (FastLED/fbuild#518) so per-project
+    #            board JSON gets picked up by the daemon, matching
+    #            the resolution path in 2.2.23 (#516).
+    #   2.2.23 — adds the `shrink` module scaffold + ShrinkMode CLI
+    #            flags (FastLED/fbuild#495/#497/#499 etc.) which is
+    #            the first step toward per-platform libc shrinkage
+    #            telemetry, plus the ESP32 `-Wl,-Map=firmware.map`
+    #            link-time emission (FastLED/fbuild#509) and
+    #            project-local `boards/*.json` resolution
+    #            (FastLED/fbuild#516).
+    #   2.2.22 — real NXP LPC Stage-2 build orchestrator
+    #            (FastLED/fbuild#488, part of #487) — first step in
+    #            honoring the LPC804/LPC845 bare-metal coverage that
+    #            was scaffolded back in 2.2.18 — plus the zccache
+    #            floor bump 1.11.15 → 1.11.20 (FastLED/fbuild#489)
+    #            which lines up with the FastLED #2891/#2967 zccache
+    #            pin and matches what `ci/setup-zccache.py` now
+    #            installs.
+    # Prior pins preserved for context:
+    #   2.2.21 — bloat per-symbol forward refs + bidirectional graph
+    #            + dual-rank sub-table (FastLED/fbuild#470), cargo
+    #            binary-locator fix (FastLED/fbuild#458), and the
+    #            `symbol_analysis` split (FastLED/fbuild#474). The
+    #            bloat changes layer on top of the `referenced_by`
+    #            and graphviz `.dot` work landed in 2.2.20.
+    #   2.2.20 — ships the `fbuild symbols`/bloat subcommand that
+    #            `ci/bloat.py` relies on — without it the FastLED
+    #            #2886 Stage-6 regression gate cannot run.
+    #            Specifically exposes linker --cref back-references
+    #            as `referenced_by` (FastLED/fbuild#459/#460) and
+    #            emits graphviz `.dot` back-reference graphs
+    #            (FastLED/fbuild#463/#468). Also contains a cargo
+    #            binary-locator fix (FastLED/fbuild#461), Stop-hook
+    #            + pre-push hook polish (FastLED/fbuild#462/#464/
+    #            #465/#467/#469), and the GH-Action release-flow
+    #            rework (FastLED/fbuild#457). (No 2.2.19 release was
+    #            tagged on GitHub; fbuild jumped 2.2.18 → 2.2.20.)
+    #   2.2.18 — FastLED #2836 Stage 1: LPC804/LPC845 bare-metal
+    #            (FastLED/fbuild#419) + vendor-warning scopings
+    #            (renesas FSP, nRF52 Adafruit BSP), the
+    #            ESP32-S2/S3 USB_VID/USB_PID redef-warning fix
+    #            (FastLED/fbuild#413), nested-example build-info
+    #            parent-dir creation (FastLED/fbuild#410), a
+    #            larger CLI Windows stack reservation, and the
+    #            SAMD/STM32/ATmega/CH559 test-fixture coverage
+    #            backing the validate_boards reconciliation
+    #            (FastLED/fbuild#421/#422).
+    #   2.2.17 — routed ESP32-S3 native deploys through esptool
+    #            (FastLED/fbuild#380), one of the user-visible
+    #            failure modes tracked in FastLED #2700.
+    #   2.2.15 — Arduino UNO Q / STM32U5 board defaults; compile-
+    #            many stage-2 framework-archive share
+    #            (FastLED/fbuild#337) that prevents every stage-2
+    #            sketch from re-building the framework from scratch
+    #            (the regression that originally forced
+    #            FASTLED_USE_FBUILD_CI=1 default-off in #2662);
+    #            stage-2 jobs split (#336), real-toolchain stage-2
+    #            perf regression test (#342), daemon-side
+    #            fmt-tracing-to-stderr fix (#348), bounded zccache
+    #            start-up timeout (#349), project-lock acquire
+    #            instrumentation (#350) — together address the
+    #            silent esp32c6 hang reported in fbuild#346 and
+    #            unblock flipping FASTLED_USE_FBUILD_CI=1
+    #            default-on; quoted Adafruit nRF52 BSP defines
+    #            preserved in response files, unblocking nRF52840
+    #            builds under fbuild.
+    #   2.2.16 — completed ESP32-C2 framework skeleton installs
+    #            and patched the missing touch_sensor_legacy_types.h
+    #            no-touch compatibility header (FastLED/fbuild#378).
+    # 2.2.28 (released 2026-06-15) -- LPC port delegates SystemInit +
+    # linker scripts to zackees/ArduinoCore-LPC8xx upstream; fbuild no
+    # longer ships shadow copies of those NXP-managed assets. Also rolls
+    # up the lite-SCons extra_scripts harness work (FastLED/fbuild#553
+    # steps 3-4, #581/#583/#585), the managed zccache bump to 1.12.4
+    # (FastLED/fbuild#582 -- separate from FastLED's own zccache pin
+    # which is a Python dep), the ESP auto-recovery-from-ROM-download
+    # primitive (FastLED/fbuild#532, #577/#580), and an
+    # http-connect-timeout fix on the managed-zccache client
+    # (FastLED/fbuild#573).
+    "fbuild==2.2.28",
+    "platformio>=6.1.19,<6.2",
     "python-dateutil",
     "ruff",
     "pyright>=1.1.373",
@@ -16,15 +111,62 @@ dependencies = [
     "pytest-xdist",
     "fpvgcc",
     "uv",
-    "ziglang",
+    "clang-tool-chain>=1.5.5",
+    # 1.11.18 (released 2026-06-06): drops the misleading
+    # "daemon-CLI protocol version mismatch" hint from the
+    # user-facing `lost connection to daemon (no response)` error.
+    # The hint was written before the thundering-herd fix (#674,
+    # 1.11.16) and pipe-pool wedge fix (#669, 1.11.15) landed and
+    # pointed users at a cause that is wrong in practice. New copy
+    # is centralized in `util::LOST_CONNECTION_MSG` and points users
+    # at `zccache status` first (zackees/zccache#678).
+    # 1.11.17 (released 2026-06-06): docs-only release that surfaces the
+    # ZCCACHE_PATH_REMAP env var in `zccache --help` (zackees/zccache#676).
+    # 1.11.16 (released 2026-06-06): adaptive daemon-spawn wait keyed on
+    # lockfile PID (zackees/zccache#674, closes #673) — eliminates the
+    # thundering-herd "daemon started but not accepting connections after
+    # 10s" wedge that hit our `clud-pr` parallel builds.
+    # 1.11.15 (released 2026-06-06): pipe-pool depletion + compile-path
+    # wedge recovery (zackees/zccache#669, refs #666) — daemon stopped
+    # responding after ~1h uptime on Windows during heavy concurrent
+    # compile load. Bumping to >=1.11.17 captures both fixes; the
+    # "lost connection to daemon (no response)" symptom we hit during
+    # the recent FastLED bloat-audit worktree builds maps to #673.
+    # 1.11.14 ships the `--no-walk` flag plus an expanded skip-list for
+    # the meson-configure wrapper (zackees/zccache#660, closes zackees/
+    # zccache#659). With `--no-walk` the wrapper skips its recursive
+    # meson.build discovery walk entirely and trusts the caller's
+    # `--input-file` entries instead. FastLED enumerates its 7 known
+    # meson.build files explicitly, eliminating the ~5s `.venv/`
+    # traversal (~100k Python files) on every cold-with-cache
+    # reconfigure. 1.11.13 shipped the `--input-file` flag
+    # (zackees/zccache#655, closes zackees/zccache#654). FastLED
+    # passes a sidecar digest of its test/example/source globs into the
+    # wrapper's cache key so the reconfigure path benefits from cache
+    # restoration — previously the wrapper had to be bypassed whenever
+    # FastLED's metadata-cache layer flagged a change, because the
+    # wrapper hashed only meson.build files and a hit would have served
+    # a stale-target tree. 1.11.12 added the wrapper itself
+    # (zackees/zccache#649, closes zackees/zccache#627). 1.11.11 ships
+    # the depfile-on-cache-hit fix (zackees/zccache#643) — without that,
+    # `deps = gcc` mode records `#deps 0` for every cached object and
+    # incremental builds produce stale .obj files after a git pull that
+    # changes transitive headers (symptom: `undefined symbol: ...` link
+    # errors hours after a header actually changed).
+    # 1.12.5 (released 2026-06-14): native-file lifecycle fix on Windows
+    # (zackees/zccache#710, surfaced in FastLED #3048). The meson-snapshot
+    # restore path no longer leaves `meson_native.txt` in a broken state
+    # after the file-lock race -- restores rewrite the native file
+    # unconditionally on failure recovery. Eliminates the
+    # `FileNotFoundError: meson_native.txt` / `ninja: error: rebuilding
+    # 'build.ninja': subcommand failed` cascade we hit during long-session
+    # `bash test --cpp` cycles.
+    "zccache>=1.12.7",
     "ninja",
-    "cmake",
+    "meson>=1.11.0",
     "download",
     "playwright",
-    "download",
     "httpx",
-    "pytest-xdist",
-    "sccache>=0.10.0",
     "psutil",
     "toml>=0.10.2",
     "typeguard>=4.4.4",
@@ -32,15 +174,22 @@ dependencies = [
     "compiledb>=0.10.7",
     "pathspec>=0.12.1",
     "rich>=14.1.0",
+    "textual>=1.0.0",
     "emoji>=2.14.1",
     "pydantic[email]>=2.0.0",
     "dirsync>=2.2.6",
-    "llvm-installer>=1.4.10",
-    "sys-detection>=1.3.4",
-    "fastled>=1.4.38",
-    "fasteners>=0.20",
     "esptool>=5.0.2",
-    "docker",
+    "docker>=7.0.0",
+    "pillow>=11.3.0",
+    "ffmpeg-python>=0.2.0",
+    "static-ffmpeg>=2.7",
+    "fastled>=2.0.9",
+    "running-process>=4.0.0",
+    "nodejs-wheel>=22.0.0",
+    "daemoniker>=0.2.3",
+    "colorama>=0.4.6",
+    "ty>=0.0.15",
+    "bleak>=0.22.3",
 ]
 
 [build-system]
@@ -51,12 +200,23 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 packages = ["ci"]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.ruff]
-exclude = ["ci/tmp", "ci/wasm", "scripts", "native"]
+exclude = ["ci/tmp", "ci/wasm", "scripts", "native", "**/.fbuild", "**/.pio"]
 
 [tool.ruff.lint]
 # Enable import sorting (replaces isort)
-select = ["I"]
+# Enable PEP 585 annotations and PEP 604 unions (modern type hints)
+select = [
+    "I",      # isort - import sorting
+    "UP006",  # Use PEP 585 annotation (list[T] instead of List[T])
+    "UP007",  # Use PEP 604 union syntax (X | Y instead of Union[X, Y], T | None instead of Optional[T])
+]
+# Register custom checker codes so ruff accepts # noqa: DCT001 etc.
+# KBI001/002/003 are emitted by ci/lint_python/keyboard_interrupt_checker.py.
+external = ["DCT001", "DCT002", "KBI001", "KBI002", "KBI003"]
 
 [tool.ruff.lint.isort]
 # Configure import sorting to match isort's black profile
@@ -71,6 +231,11 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.isort]
+# Configure isort to use black-compatible formatting
+profile = "black"
+skip_glob = ["ci/tmp/*", "ci/wasm/*", "scripts/*", "native/*", "**/.fbuild/*", "**/.pio/*"]
 
 [tool.pyright]
 include = ["ci", "ci/compiler"]
@@ -91,7 +256,10 @@ exclude = [
     "**/build",
     "**/dist",
     "**/*.egg-info",
-    "tmp.py"
+    "tmp.py",
+    "ci/compiler/packages.py",
+    "ci/tests/**",
+    "ci/util/test_*.py",
 ]
 
 # Type checking configuration
@@ -110,7 +278,7 @@ reportMissingImports = true
 reportMissingTypeStubs = false
 reportUnusedImport = false
 reportUnusedClass = false
-reportUnusedFunction = false
+reportUnusedFunction = true
 reportUnusedVariable = false
 reportDuplicateImport = true
 reportWildcardImportFromLibrary = true
@@ -139,7 +307,7 @@ reportUnknownVariableType = "error"
 reportUnknownMemberType = "error"
 reportMissingParameterType = "error"
 reportMissingTypeArgument = "error"
-reportMissingReturnType = "error"
+reportReturnType = "error"
 reportUntypedFunctionDecorator = "error"
 reportUntypedClassDecorator = "error"
 reportUntypedBaseClass = "error"
@@ -170,15 +338,21 @@ autoImportCompletions = false
 indexing = false
 functionSignatureDisplay = "compact"
 
-# Task list tokens
-taskListTokens = ["TODO", "FIXME", "BUG", "HACK", "NOTE"]
-
 [tool.pytest.ini_options]
 markers = [
     "full: marks tests as requiring the full test suite (deselected during quick Python-only runs)",
+    "serial: marks tests as requiring serial execution (no parallel execution)",
+    "slow: marks tests as slow (can be skipped with -m 'not slow' for faster test runs)",
 ]
 
 [[tool.pyright.executionEnvironments]]
 root = "."
 pythonVersion = "3.11"
 pythonPlatform = "All"
+
+[[tool.pyright.executionEnvironments]]
+root = "ci/tests"
+pythonVersion = "3.11"
+pythonPlatform = "All"
+# Enforce return type annotations even for test methods
+reportReturnType = "error"

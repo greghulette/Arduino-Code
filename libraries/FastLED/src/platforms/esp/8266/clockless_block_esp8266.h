@@ -1,44 +1,55 @@
+// IWYU pragma: private
+
 #ifndef __INC_CLOCKLESS_BLOCK_ESP8266_H
 #define __INC_CLOCKLESS_BLOCK_ESP8266_H
 
-#include "fl/stdint.h"
-#include "fl/namespace.h"
-#include "fl/register.h"
+#include "fl/stl/stdint.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/math/math.h"
+#include "fl/system/fastpin.h"
 #include "eorder.h"
 #include "transpose8x1_noinline.h"
+#include "fl/chipsets/timing_traits.h"
+#include "fastled_delay.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/noexcept.h"
+
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
 
 #define FASTLED_HAS_BLOCKLESS 1
 
 #define FIX_BITS(bits) (((bits & 0x0fL) << 12) | (bits & 0x30))
 
-#ifndef MIN
-#define MIN(X,Y) (((X)<(Y)) ? (X):(Y))
-#endif
-
-#define USED_LANES (MIN(LANES, 6))
+#define USED_LANES (fl::min(LANES, 6))
 #define PORT_MASK (((1 << USED_LANES)-1) & 0x0000FFFFL)
 #define PIN_MASK FIX_BITS(PORT_MASK)
-
-FASTLED_NAMESPACE_BEGIN
-
+namespace fl {
 #ifdef FASTLED_DEBUG_COUNT_FRAME_RETRIES
-extern uint32_t _frame_cnt;
-extern uint32_t _retry_cnt;
+extern u32 _frame_cnt;
+extern u32 _retry_cnt;
 #endif
 
-template <uint8_t LANES, int FIRST_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = GRB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
+template <u8 LANES, int FIRST_PIN, typename TIMING, EOrder RGB_ORDER = GRB, int XTRA0 = 0, bool FLIP = false>
 class InlineBlockClocklessController : public CPixelLEDController<RGB_ORDER, LANES, PORT_MASK> {
 	typedef typename FastPin<FIRST_PIN>::port_ptr_t data_ptr_t;
 	typedef typename FastPin<FIRST_PIN>::port_t data_t;
+
+	enum : u32 {
+		T1 = TIMING::T1,
+		T2 = TIMING::T2,
+		T3 = TIMING::T3,
+		WAIT_TIME = TIMING::RESET
+	};
 
 	CMinWait<WAIT_TIME> mWait;
 
 public:
 	virtual int size() { return CLEDController::size() * LANES; }
 
-	virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) {
+	virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) FL_NOEXCEPT {
 		mWait.wait();
-		/*uint32_t clocks = */
+		/*u32 clocks = */
 		int cnt=FASTLED_INTERRUPT_RETRY_COUNT;
 		while(!showRGBInternal(pixels) && cnt--) {
       		os_intr_unlock();
@@ -57,41 +68,41 @@ public:
 		mWait.mark();
 	}
 
-	template<int PIN> static void initPin() {
+	template<int PIN> static void initPin() FL_NOEXCEPT {
 		_ESPPIN<PIN, 1<<(PIN & 0xFF)>::setOutput();
 	}
 
-	virtual void init() {
+	virtual void init() FL_NOEXCEPT {
 		void (* funcs[])() ={initPin<12>, initPin<13>, initPin<14>, initPin<15>, initPin<4>, initPin<5>};
 
-		for (uint8_t i = 0; i < USED_LANES; ++i) {
+		for (u8 i = 0; i < USED_LANES; ++i) {
 			funcs[i]();
 		}
 	}
 
-	virtual uint16_t getMaxRefreshRate() const { return 400; }
+	virtual u16 getMaxRefreshRate() const { return 400; }
 
 	typedef union {
-		uint8_t bytes[8];
-		uint16_t shorts[4];
-		uint32_t raw[2];
+		u8 bytes[8];
+		u16 shorts[4];
+		u32 raw[2];
 	} Lines;
 
 #define ESP_ADJUST 0 // (2*(F_CPU/24000000))
 #define ESP_ADJUST2 0
-  	template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER uint32_t & last_mark, FASTLED_REGISTER Lines & b, PixelController<RGB_ORDER, LANES, PORT_MASK> &pixels) { // , FASTLED_REGISTER uint32_t & b2)  {
+  	template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER u32 & last_mark, FASTLED_REGISTER Lines & b, PixelController<RGB_ORDER, LANES, PORT_MASK> &pixels) FL_NOEXCEPT { // , FASTLED_REGISTER uint32_t & b2)  {
 	  	Lines b2 = b;
 		transpose8x1_noinline(b.bytes,b2.bytes);
 
-		FASTLED_REGISTER uint8_t d = pixels.template getd<PX>(pixels);
-		FASTLED_REGISTER uint8_t scale = pixels.template getscale<PX>(pixels);
+		FASTLED_REGISTER u8 d = pixels.template getd<PX>(pixels);
+		FASTLED_REGISTER u8 scale = pixels.template getscale<PX>(pixels);
 
-		for(FASTLED_REGISTER uint32_t i = 0; i < USED_LANES; ++i) {
+		for(FASTLED_REGISTER u32 i = 0; i < USED_LANES; ++i) {
 			while((__clock_cycles() - last_mark) < (T1+T2+T3));
 			last_mark = __clock_cycles();
 			*FastPin<FIRST_PIN>::sport() = PIN_MASK;
 
-			uint32_t nword = (uint32_t)(~b2.bytes[7-i]);
+			u32 nword = (u32)(~b2.bytes[7-i]);
 			while((__clock_cycles() - last_mark) < (T1-6));
 			*FastPin<FIRST_PIN>::cport() = FIX_BITS(nword);
 
@@ -101,12 +112,12 @@ public:
 			b.bytes[i] = pixels.template loadAndScale<PX>(pixels,i,d,scale);
 		}
 
-		for(FASTLED_REGISTER uint32_t i = USED_LANES; i < 8; ++i) {
+		for(FASTLED_REGISTER u32 i = USED_LANES; i < 8; ++i) {
 			while((__clock_cycles() - last_mark) < (T1+T2+T3));
 			last_mark = __clock_cycles();
 			*FastPin<FIRST_PIN>::sport() = PIN_MASK;
 
-			uint32_t nword = (uint32_t)(~b2.bytes[7-i]);
+			u32 nword = (u32)(~b2.bytes[7-i]);
 			while((__clock_cycles() - last_mark) < (T1-6));
 			*FastPin<FIRST_PIN>::cport() = FIX_BITS(nword);
 
@@ -117,7 +128,7 @@ public:
 
   	// This method is made static to force making register Y available to use for data on AVR - if the method is non-static, then
 	// gcc will use register Y for the this pointer.
-	static uint32_t IRAM_ATTR showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) {
+	static u32 FL_IRAM showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) FL_NOEXCEPT {
 
 		// Setup the pixel controller and load/scale the first byte
 		Lines b0;
@@ -128,8 +139,8 @@ public:
 		allpixels.preStepFirstByteDithering();
 
 		os_intr_lock();
-		uint32_t _start = __clock_cycles();
-		uint32_t last_mark = _start;
+		u32 _start = __clock_cycles();
+		u32 last_mark = _start;
 
 		while(allpixels.has(1)) {
 			// Write first byte, read next byte
@@ -151,8 +162,8 @@ public:
 		#if (FASTLED_ALLOW_INTERRUPTS == 1)
 			os_intr_lock();
 			// if interrupts took longer than 45µs, punt on the current frame
-			if((int32_t)(__clock_cycles()-last_mark) > 0) {
-				if((int32_t)(__clock_cycles()-last_mark) > (T1+T2+T3+((WAIT_TIME-INTERRUPT_THRESHOLD)*CLKS_PER_US))) { os_intr_unlock(); return 0; }
+			if((i32)(__clock_cycles()-last_mark) > 0) {
+				if((i32)(__clock_cycles()-last_mark) > (T1+T2+T3+((WAIT_TIME-INTERRUPT_THRESHOLD)*CLKS_PER_US))) { os_intr_unlock(); return 0; }
 			}
 		#endif
 		};
@@ -164,6 +175,8 @@ public:
 		return __clock_cycles() - _start;
 	}
 };
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
+
 #endif

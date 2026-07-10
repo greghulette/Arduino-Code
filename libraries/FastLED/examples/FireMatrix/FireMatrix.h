@@ -1,5 +1,3 @@
-
-
 /*
 This demo is best viewed using the FastLED compiler.
 
@@ -14,8 +12,8 @@ all the UI elements you see below.
 
 OVERVIEW:
 This sketch creates a fire effect using Perlin noise on a matrix of LEDs.
-The fire appears to move upward with colors transitioning from black at the bottom
-to white at the top, with red and yellow in between (for the default palette).
+The fire appears to move upward with colors transitioning from white and yellow at the bottom, 
+through orange in the middle, to red at the top, with black space above (for the default palette).
 */
 
 // Perlin noise fire procedure
@@ -41,11 +39,11 @@ void loop() {}
 #else
 
 #include "FastLED.h"     // Main FastLED library for controlling LEDs
-#include "fl/ui.h"       // UI components for the FastLED web compiler (sliders, etc.)
-#include "fl/xymap.h"    // Mapping between 1D LED array and 2D coordinates
-#include "fx/time.h"     // Time manipulation utilities
+#include "fl/ui/ui.h"       // UI components for the FastLED web compiler (sliders, etc.)
+#include "fl/math/xymap.h"    // Mapping between 1D LED array and 2D coordinates
+#include "fl/fx/time.h"     // Time manipulation utilities
 
-using namespace fl;      // Use the FastLED namespace for convenience
+// Use the FastLED namespace for convenience
 
 // Matrix dimensions - this defines the size of our virtual LED grid
 #define HEIGHT 100       // Number of rows in the matrix
@@ -53,48 +51,48 @@ using namespace fl;      // Use the FastLED namespace for convenience
 #define SERPENTINE true  // Whether the LED strip zigzags back and forth (common in matrix layouts)
 #define BRIGHTNESS 255   // Maximum brightness level (0-255)
 
-// TimeWarp helps control animation speed - it tracks time and allows speed adjustments
-TimeWarp timeScale(0, 1.0f);  // Initialize with 0 starting time and 1.0 speed multiplier
+// fl::TimeWarp helps control animation speed - it tracks time and allows speed adjustments
+fl::TimeWarp timeScale(0, 1.0f);  // Initialize with 0 starting time and 1.0 speed multiplier
 
 // UI Controls that appear in the FastLED web compiler interface:
-UISlider scaleXY("Scale", 20, 1, 100, 1);             // Controls the size of the fire pattern
-UISlider speedY("SpeedY", 1, 1, 6, .1);               // Controls how fast the fire moves upward
-UISlider invSpeedZ("Inverse SpeedZ", 20, 1, 100, 1);  // Controls how fast the fire pattern changes over time (higher = slower)
-UISlider brightness("Brightness", 255, 0, 255, 1);     // Controls overall brightness
+fl::UISlider scaleXY("Scale", 20, 1, 100, 1);             // Controls the size of the fire pattern
+fl::UISlider speedY("SpeedY", 1, 1, 6, .1);               // Controls how fast the fire moves upward
+fl::UISlider invSpeedZ("Inverse SpeedZ", 20, 1, 100, 1);  // Controls how fast the fire pattern changes over time (higher = slower)
+fl::UISlider brightness("Brightness", 255, 0, 255, 1);     // Controls overall brightness
 UINumberField palette("Palette", 0, 0, 2);             // Selects which color palette to use (0=fire, 1=green, 2=blue)
 
-// Array to hold all LED color values - one CRGB struct per LED
-CRGB leds[HEIGHT * WIDTH];
+// Array to hold all LED color values - one fl::CRGB struct per LED
+fl::CRGB leds[HEIGHT * WIDTH];
 
 // Color palettes define the gradient of colors used for the fire effect
 // Each entry has the format: position (0-255), R, G, B
 
 DEFINE_GRADIENT_PALETTE(firepal){
-    // Traditional fire palette - transitions from black to red to yellow to white
-    0,   0,   0,   0,  // black (bottom of fire)
-    32,  255, 0,   0,  // red (base of flames)
+    // Traditional fire palette - transitions from white to yellow to red
+    0,   0,   0,   0,  // black (space above fire)
+    32,  255, 0,   0,  // red (tips of flames)
     190, 255, 255, 0,  // yellow (middle of flames)
-    255, 255, 255, 255 // white (hottest part/tips of flames)
+    255, 255, 255, 255 // white (hottest part/base of flames)
 };
 
 DEFINE_GRADIENT_PALETTE(electricGreenFirePal){
     // Green fire palette - for a toxic/alien look
-    0,   0,   0,   0,  // black (bottom)
-    32,  0,   70,  0,  // dark green (base)
-    190, 57,  255, 20, // electric neon green (middle)
-    255, 255, 255, 255 // white (hottest part)
+    0,   0,   0,   0,  // black (space above fire)
+    32,  0,   70,  0,  // dark green (tips of flames)
+    190, 57,  255, 20, // electric neon green (middle of flames)
+    255, 255, 255, 255 // white (hottest part/base of flames)
 };
 
 DEFINE_GRADIENT_PALETTE(electricBlueFirePal) {
     // Blue fire palette - for a cold/ice fire look
-    0,   0,   0,   0,    // Black (bottom)
-    32,  0,   0,  70,    // Dark blue (base)
-    128, 20, 57, 255,    // Electric blue (middle)
-    255, 255, 255, 255   // White (hottest part)
+    0,   0,   0,   0,    // Black (space above fire)
+    32,  0,   0,  70,    // Dark blue (tips of flames)
+    128, 20, 57, 255,    // Electric blue (middle of flames)
+    255, 255, 255, 255   // White (hottest part/base of flames)
 };
 
-// Create a mapping between 1D array positions and 2D x,y coordinates
-XYMap xyMap(WIDTH, HEIGHT, SERPENTINE);
+// Create a mapping between 1D fl::array positions and 2D x,y coordinates
+fl::XYMap xyMap(WIDTH, HEIGHT, SERPENTINE);
 
 void setup() {
     Serial.begin(115200);  // Initialize serial communication for debugging
@@ -141,7 +139,7 @@ uint8_t getPaletteIndex(uint32_t millis32, int i, int j, uint32_t y_speed) {
     return qsub8(noise_val, subtraction_factor);
 }
 
-CRGBPalette16 getPalette() {
+fl::CRGBPalette16 getPalette() {
     // This function returns the appropriate color palette based on the UI selection
     switch (palette) {
     case 0:
@@ -162,10 +160,10 @@ void loop() {
     FastLED.setBrightness(brightness);
     
     // Get the selected color palette
-    CRGBPalette16 myPal = getPalette();
-    
+    fl::CRGBPalette16 myPal = getPalette();
+
     // Get the current time in milliseconds
-    uint32_t now = millis();
+    uint32_t now = fl::millis();
     
     // Update the animation speed from the UI slider
     timeScale.setSpeed(speedY);
@@ -181,14 +179,14 @@ void loop() {
             
             // Get the actual RGB color from the palette
             // BRIGHTNESS ensures we use the full brightness range
-            CRGB c = ColorFromPalette(myPal, palette_index, BRIGHTNESS);
+            fl::CRGB c = ColorFromPalette(myPal, palette_index, BRIGHTNESS);
             
-            // Convert our 2D coordinates (i,j) to the 1D array index
+            // Convert our 2D coordinates (i,j) to the 1D fl::array index
             // We use (WIDTH-1)-i and (HEIGHT-1)-j to flip the coordinates
             // This makes the fire appear to rise from the bottom
             int index = xyMap((WIDTH - 1) - i, (HEIGHT - 1) - j);
             
-            // Set the LED color in our array
+            // Set the LED color in our fl::array
             leds[index] = c;
         }
     }

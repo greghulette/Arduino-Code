@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 """
 WARNING: sys.stdout.flush() causes blocking issues on Windows with QEMU/subprocess processes!
@@ -7,21 +10,43 @@ while maintaining real-time output visibility on Unix systems.
 
 import _thread
 import os
+
+
+# Force UTF-8 with replace error handler for child processes (including Meson) on Windows.
+# Without this, Meson's mtest.py crashes with UnicodeEncodeError when test output
+# contains non-ASCII characters (e.g., ✓) and the console uses cp1252.
+if os.name == "nt":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8:replace")
+
 import queue
 import re
 import subprocess
 import sys
 import threading
 import time
-import traceback
 from dataclasses import dataclass
-from pathlib import Path
 from queue import Queue
-from typing import Any, Callable, List, Optional, Pattern, Protocol, cast
 
-from typeguard import typechecked
+# Import for type annotation only
+from typing import TYPE_CHECKING, Callable, Optional
 
-from ci.util.running_process import EndOfStream, RunningProcess
+from running_process import RunningProcess
+
+
+if TYPE_CHECKING:
+    from typeguard import typechecked
+else:
+
+    def typechecked(f):  # type: ignore[no-redef]
+        return f
+
+
+from ci.util.color_output import print_cache_hit
+
+
+if TYPE_CHECKING:
+    from ci.util.fingerprint import FingerprintManager
+from ci.util.output_formatter import TimestampFormatter
 from ci.util.test_exceptions import (
     TestExecutionFailedException,
     TestFailureInfo,
@@ -35,82 +60,194 @@ from ci.util.test_types import (
     TestSuiteResult,
     determine_test_categories,
 )
+from ci.util.timestamp_print import ts_print
+
+
+@dataclass(slots=True)
+class TestCounts:
+    unit_test_count: int
+    example_count: int
+    python_test_count: int
 
 
 _IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 _TIMEOUT = 600 if _IS_GITHUB_ACTIONS else 240
-_GLOBAL_TIMEOUT = 600 if _IS_GITHUB_ACTIONS else 300
+_GLOBAL_TIMEOUT = (
+    600 if _IS_GITHUB_ACTIONS else 600
+)  # Increased to 600s for local uno compilation
 
 # Abort threshold for total failures across all processes (unit + examples)
 MAX_FAILURES_BEFORE_ABORT = 3
+
+
+def get_test_counts() -> TestCounts:
+    """
+    Get accurate counts of unit tests, examples, and Python tests.
+
+    Returns:
+        TestCounts with unit_test_count, example_count, and python_test_count.
+    """
+    try:
+        from pathlib import Path
+
+        from ci.util.smart_selector import discover_all_tests
+
+        # Get unit tests and examples
+        unit_tests, examples = discover_all_tests(Path.cwd())
+        unit_count = len(unit_tests)
+        example_count = len(examples)
+
+        # Count Python tests by running pytest --collect-only
+        python_count = 0
+        try:
+            result = RunningProcess.run(
+                ["uv", "run", "pytest", "--collect-only", "-q", "ci/tests"],
+                cwd=None,
+                check=False,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                # Parse output to count tests
+                # pytest --collect-only -q outputs lines like "test_foo.py::test_bar"
+                lines = result.stdout.strip().split("\n")
+                python_count = sum(1 for line in lines if "::" in line)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
+        except (subprocess.SubprocessError, RuntimeError):
+            # If counting fails, use 0 as fallback
+            python_count = 0
+
+        return TestCounts(
+            unit_test_count=unit_count,
+            example_count=example_count,
+            python_test_count=python_count,
+        )
+
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
+    except Exception:
+        # If discovery fails, return zeros
+        return TestCounts(unit_test_count=0, example_count=0, python_test_count=0)
+
+
+# Pre-compiled patterns for detecting real error lines (not compiler flags).
+# These are module-level to avoid re-compilation on every call.
+_REAL_ERROR_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(
+        r"(?<![/-])error\s*:", re.IGNORECASE
+    ),  # "error:" not preceded by -W or /
+    re.compile(
+        r"(?<![/-])fatal\s*:", re.IGNORECASE
+    ),  # "fatal:" not preceded by flag chars
+    re.compile(r"\bFAILED\s*:", re.IGNORECASE),  # ninja "FAILED:" lines
+    re.compile(r"\bundefined reference\b", re.IGNORECASE),  # linker errors
+    re.compile(r"\bcannot find\b", re.IGNORECASE),  # missing file/symbol errors
+    re.compile(r"\bno such file\b", re.IGNORECASE),  # missing file errors
+    re.compile(r"^\s*FAIL\b"),  # test failure lines (start of line)
+    re.compile(r"\bninja:\s.*\bfailed\b", re.IGNORECASE),  # ninja summary failures
+    re.compile(r"\bSegmentation fault\b", re.IGNORECASE),  # crashes
+    re.compile(r"\bAborted\b"),  # ASAN/assertion aborts
+    re.compile(r"==\d+==.*\bAddressSanitizer\b"),  # ASAN error reports
+    re.compile(r"==\d+==.*\bLeakSanitizer\b"),  # LSAN error reports
+    re.compile(r"==\d+==.*\bUndefinedBehaviorSanitizer\b"),  # UBSAN error reports
+    re.compile(r"\bERROR SUMMARY:\s*[1-9]"),  # valgrind/sanitizer summary with errors
+]
+
+
+def _is_real_error_line(line: str) -> bool:
+    """Check if a line contains a real error indicator, not just compiler flags.
+
+    Returns True for actual error messages like:
+      - "error: undeclared identifier 'foo'"
+      - "FAILED: examples/example-Blink.so"
+      - "fatal error: file not found"
+      - "undefined reference to 'bar'"
+
+    Returns False for compiler flag noise like:
+      - "-Werror=unused-variable"
+      - "--print-errorlogs"
+    """
+    for pattern in _REAL_ERROR_PATTERNS:
+        if pattern.search(line):
+            return True
+    return False
 
 
 def extract_error_snippet(accumulated_output: list[str], context_lines: int = 5) -> str:
     """
     Extract relevant error snippets from process output.
 
-    Searches for lines containing "error" (case insensitive) and extracts
-    a small context window around the first few error occurrences.
+    Searches for lines containing actual error messages (not compiler flags
+    like -Werror) and extracts context around the first few occurrences.
+    Always includes the tail of the output to ensure failure summaries are
+    visible.
 
     Args:
         accumulated_output: List of output lines from the process
         context_lines: Number of lines to capture before/after each error line (default: 5)
 
     Returns:
-        Formatted string containing error snippets with minimal context
+        Formatted string containing error snippets with tail context
     """
     if not accumulated_output:
         return "No output captured"
 
     error_snippets: list[str] = []
-    error_pattern = re.compile(r"error", re.IGNORECASE)
 
-    # Find all lines that contain "error" (case insensitive)
+    # Find all lines that contain real error indicators
     error_line_indices: list[int] = []
     for i, line in enumerate(accumulated_output):
-        if error_pattern.search(line):
+        if _is_real_error_line(line):
             error_line_indices.append(i)
 
+    # Always capture tail of output (last 30 lines) for failure summaries
+    tail_count = 30
+    tail_start = max(0, len(accumulated_output) - tail_count)
+
     if not error_line_indices:
-        # No specific errors found, return last 10 lines which might contain useful info
-        max_lines = min(10, len(accumulated_output))
+        # No specific errors found, return tail which often has useful info
+        max_lines = min(tail_count, len(accumulated_output))
         return (
-            "No 'error' keyword found. Last "
+            "No specific error lines found. Last "
             + str(max_lines)
             + " lines:\n"
             + "\n".join(accumulated_output[-max_lines:])
         )
 
-    # Extract context around first 5 errors (increased from 2 for better visibility)
-    max_errors_to_show = 5
-    for i, error_idx in enumerate(error_line_indices[:max_errors_to_show]):
-        # Calculate context window (5 lines before to 5 lines after the error)
+    # Extract context around first 10 errors
+    max_errors_to_show = 10
+    shown_lines: set[int] = set()
+
+    for error_idx in error_line_indices[:max_errors_to_show]:
         start_idx = max(0, error_idx - context_lines)
         end_idx = min(len(accumulated_output), error_idx + context_lines + 1)
 
         snippet_lines: list[str] = []
-
         for j in range(start_idx, end_idx):
-            line_marker = "➤ " if j == error_idx else "  "  # Mark the actual error line
-            snippet_lines.append(f"{line_marker}{accumulated_output[j]}")
+            if j not in shown_lines:
+                line_marker = "➤ " if j == error_idx else "  "
+                snippet_lines.append(f"{line_marker}{accumulated_output[j]}")
+                shown_lines.add(j)
 
-        error_snippets.append("\n".join(snippet_lines))
+        if snippet_lines:
+            error_snippets.append("\n".join(snippet_lines))
 
-    # Add summary if there are more errors - but show the actual error lines
+    # Summary of remaining errors
     if len(error_line_indices) > max_errors_to_show:
-        remaining_errors = error_line_indices[max_errors_to_show:]
-        additional_error_lines: list[str] = []
-        for error_idx in remaining_errors[:3]:  # Show up to 3 more error lines
-            additional_error_lines.append(f"➤ {accumulated_output[error_idx]}")
+        remaining_count = len(error_line_indices) - max_errors_to_show
+        error_snippets.append(f"... and {remaining_count} more error(s) found")
 
-        if additional_error_lines:
-            error_snippets.append("Additional errors found:")
-            error_snippets.append("\n".join(additional_error_lines))
-
-        if len(remaining_errors) > 3:
-            error_snippets.append(
-                f"... and {len(remaining_errors) - 3} more error(s) found"
-            )
+    # Always append tail of output for context (skip lines already shown)
+    tail_lines: list[str] = []
+    for j in range(tail_start, len(accumulated_output)):
+        if j not in shown_lines:
+            tail_lines.append(f"  {accumulated_output[j]}")
+    if tail_lines:
+        error_snippets.append(
+            f"--- Last {len(tail_lines)} lines of output ---\n" + "\n".join(tail_lines)
+        )
 
     return "\n\n".join(error_snippets)
 
@@ -122,6 +259,17 @@ class ProcessTiming:
     name: str
     duration: float
     command: str
+    skipped: bool = False
+    # Phase timing breakdown for Meson tests (seconds) - None if not applicable
+    meson_setup_time: Optional[float] = None
+    ninja_maintenance_time: Optional[float] = None
+    compile_time: Optional[float] = None
+    test_execution_time: Optional[float] = None
+    # Compilation sub-phase breakdown (seconds) - None if not applicable
+    compile_core_time: Optional[float] = None
+    compile_objects_time: Optional[float] = None
+    compile_example_link_time: Optional[float] = None
+    compile_test_link_time: Optional[float] = None
 
 
 @dataclass
@@ -184,7 +332,7 @@ class TestOutputFormatter:
         msg += f"{color}{result.message}\033[0m"
 
         # Print with indentation
-        print(f"  {msg}")
+        ts_print(f"  {msg}")
 
     def _should_display(self, result: TestResult) -> bool:
         """Determine if a result should be displayed"""
@@ -218,7 +366,7 @@ class TestProcessConfig:
     command: str | list[str]
     echo: bool = True
     auto_run: bool = False
-    timeout: int | None = None
+    timeout: Optional[int] = None
     enable_stack_trace: bool = True
     description: str = ""
     parallel_safe: bool = True  # Whether this process can run in parallel with others
@@ -232,7 +380,7 @@ class ProcessOutputHandler:
 
     def __init__(self, verbose: bool = False):
         self.formatter = TestOutputFormatter(verbose=verbose)
-        self.current_command: str | None = None
+        self.current_command: Optional[str] = None
         self.header_printed = False
 
     def handle_output_line(self, line: str, process_name: str) -> None:
@@ -286,7 +434,7 @@ class ProcessOutputHandler:
                 "All parallel tests",
                 "JSON parsing failed",
                 "readFrameAt failed",
-                "ByteStreamMemory",
+                "MemoryFileHandle",
                 "C:\\Users\\",
                 "\\dev\\fastled\\",
                 "\\tests\\",
@@ -380,20 +528,6 @@ class ProcessOutputHandler:
         )
 
 
-class ReconfigurableIO(Protocol):
-    def reconfigure(self, *, encoding: str, errors: str) -> None: ...
-
-
-def create_namespace_check_process(enable_stack_trace: bool) -> RunningProcess:
-    """Create a namespace check process without starting it"""
-    return RunningProcess(
-        "uv run python ci/tests/no_using_namespace_fl_in_headers.py",
-        shell=True,
-        auto_run=False,  # Don't auto-start - will be started in parallel later
-        enable_stack_trace=enable_stack_trace,
-    )
-
-
 def create_unit_test_process(
     args: TestArgs, enable_stack_trace: bool
 ) -> RunningProcess:
@@ -424,8 +558,6 @@ def create_unit_test_process(
         compile_cmd.append("--clang")
     if args.gcc:
         compile_cmd.append("--gcc")
-    if args.no_unity:
-        compile_cmd.append("--no-unity")
     if args.no_pch:
         compile_cmd.append("--no-pch")
     if args.debug:
@@ -439,58 +571,60 @@ def create_unit_test_process(
         test_cmd.extend(["--test", str(args.test)])
     if args.verbose:
         test_cmd.append("--verbose")
-
-    both_cmds: list[str] = []
-    both_cmds.extend(compile_cmd)
-    both_cmds.extend(["&&"])
-    both_cmds.extend(test_cmd)
-    cmd_str = subprocess.list2cmdline(both_cmds)
+    if enable_stack_trace:
+        test_cmd.append("--stack-trace")
 
     return RunningProcess(
-        cmd_str,
-        enable_stack_trace=enable_stack_trace,
+        test_cmd,
         timeout=_TIMEOUT,  # 2 minutes timeout
         auto_run=True,
+        output_formatter=TimestampFormatter(),
     )
 
 
 def create_examples_test_process(
     args: TestArgs, enable_stack_trace: bool
 ) -> RunningProcess:
-    """Create an examples test process without starting it"""
-    cmd = ["uv", "run", "python", "-u", "ci/compiler/test_example_compilation.py"]
+    """Create an examples test process using Meson build system"""
+    # Use Meson-based example compilation instead of Python compiler
+    cmd = ["uv", "run", "python", "-u", "ci/util/meson_example_runner.py"]
+
+    # Add example names if specified
     if args.examples is not None:
         cmd.extend(args.examples)
+
+    # Map command-line arguments to meson_example_runner.py
     if args.clean:
         cmd.append("--clean")
     if args.no_pch:
-        cmd.append("--no-pch")
-    if args.unity:
-        cmd.append("--unity")
-    if args.full and args.examples is not None:
-        cmd.append("--full")
-    elif args.examples is not None:
-        # Auto-enable full mode for examples to include execution
-        cmd.append("--full")
+        cmd.append("--no-pch")  # Ignored by Meson (PCH always enabled)
     if args.no_parallel:
         cmd.append("--no-parallel")
     if args.verbose:
         cmd.append("--verbose")
+    if args.debug:
+        cmd.append("--debug")
+    if args.build_mode:
+        cmd.extend(["--build-mode", args.build_mode])
+
+    # Auto-enable full mode for examples to include execution
+    if args.full or args.examples is not None:
+        cmd.append("--full")
+    if args.log_failures is not None:
+        cmd.extend(["--log-failures", str(args.log_failures)])
 
     # Use longer timeout for no-parallel mode since sequential compilation takes much longer
     timeout = (
         1800 if args.no_parallel else 600
     )  # 30 minutes for sequential, 10 minutes for parallel
 
-    cmd_str = subprocess.list2cmdline(cmd)
-
     return RunningProcess(
-        cmd_str, auto_run=False, enable_stack_trace=enable_stack_trace, timeout=timeout
+        cmd, auto_run=False, timeout=timeout, output_formatter=TimestampFormatter()
     )
 
 
 def create_python_test_process(
-    enable_stack_trace: bool, full_tests: bool = False
+    enable_stack_trace: bool, run_slow: bool = False, verbose: bool = False
 ) -> RunningProcess:
     """Create a Python test process without starting it"""
     # Use list format for better environment handling
@@ -498,24 +632,28 @@ def create_python_test_process(
         "uv",
         "run",
         "pytest",
-        "-s",  # Don't capture stdout/stderr
-        "-v",  # Verbose output
         "--tb=short",  # Shorter traceback format
-        "--durations=0",  # Show all durations
         "ci/tests",  # Test directory
     ]
 
-    # If not running full tests, exclude tests marked with @pytest.mark.full
-    if not full_tests:
-        cmd.extend(["-m", "not full"])
+    # Add verbose flags only if requested
+    if verbose:
+        cmd.extend(["-s", "-v"])  # Don't capture stdout/stderr, verbose output
+
+    # Always show test durations
+    cmd.append("--durations=0")
+
+    # If running slow tests, add --runslow flag (handled by conftest.py)
+    if run_slow:
+        cmd.append("--runslow")
 
     cmd_str = subprocess.list2cmdline(cmd)
 
     return RunningProcess(
         cmd_str,
         auto_run=False,  # Don't auto-start - will be started in parallel later
-        enable_stack_trace=False,  # Always disable stack traces for Python tests
         timeout=_TIMEOUT,  # 2 minute timeout for Python tests
+        output_formatter=TimestampFormatter(),
     )
 
 
@@ -529,7 +667,7 @@ def create_integration_test_process(
         cmd.extend(["-k", "TestFullProgramLinking"])
     if args.verbose:
         cmd.append("-v")
-    return RunningProcess(cmd, auto_run=False, enable_stack_trace=enable_stack_trace)
+    return RunningProcess(cmd, auto_run=False, output_formatter=TimestampFormatter())
 
 
 def create_compile_uno_test_process(enable_stack_trace: bool = True) -> RunningProcess:
@@ -544,8 +682,34 @@ def create_compile_uno_test_process(enable_stack_trace: bool = True) -> RunningP
         "--examples",
         "Blink",
         "--no-interactive",
+        "--local",
     ]
-    return RunningProcess(cmd, auto_run=False, enable_stack_trace=enable_stack_trace)
+
+    # Force local compilation to avoid Docker detection hangs in test environment
+    # Docker auto-detection can timeout if Docker is installed but not running
+
+    # Use 15 minute timeout for platform compilation (as per CLAUDE.md guidelines)
+    # Docker compilation may take longer during initial rsync sync without producing output
+    return RunningProcess(
+        cmd, auto_run=False, timeout=900, output_formatter=TimestampFormatter()
+    )
+
+
+def create_wasm_test_process(enable_stack_trace: bool = True) -> RunningProcess:
+    """Create a WASM compilation test process without starting it"""
+    cmd = [
+        "uv",
+        "run",
+        "python",
+        "ci/wasm_compile.py",
+        "examples/wasm",
+        "--run",
+    ]
+
+    # Use 5 minute timeout for WASM compilation and testing
+    return RunningProcess(
+        cmd, auto_run=False, timeout=300, output_formatter=TimestampFormatter()
+    )
 
 
 def get_cpp_test_processes(
@@ -553,9 +717,6 @@ def get_cpp_test_processes(
 ) -> list[RunningProcess]:
     """Return all processes needed for C++ tests"""
     processes: list[RunningProcess] = []
-
-    # Always include namespace check
-    processes.append(create_namespace_check_process(enable_stack_trace))
 
     if test_categories.unit:
         processes.append(create_unit_test_process(args, enable_stack_trace))
@@ -567,11 +728,11 @@ def get_cpp_test_processes(
 
 
 def get_python_test_processes(
-    enable_stack_trace: bool, full_tests: bool = False
+    enable_stack_trace: bool, run_slow: bool = False, verbose: bool = False
 ) -> list[RunningProcess]:
     """Return all processes needed for Python tests"""
     return [
-        create_python_test_process(False, full_tests)
+        create_python_test_process(False, run_slow, verbose)
     ]  # Disable stack trace for Python tests
 
 
@@ -591,9 +752,6 @@ def get_all_test_processes(
     """Return all processes needed for all tests"""
     processes: list[RunningProcess] = []
 
-    # Always include namespace check
-    processes.append(create_namespace_check_process(enable_stack_trace))
-
     # Add test processes based on categories
     if test_categories.unit:
         processes.append(create_unit_test_process(args, enable_stack_trace))
@@ -601,7 +759,7 @@ def get_all_test_processes(
         processes.append(create_examples_test_process(args, enable_stack_trace))
     if test_categories.py:
         processes.append(
-            create_python_test_process(False)
+            create_python_test_process(False, run_slow=False, verbose=args.verbose)
         )  # Disable stack trace for Python tests
     if test_categories.integration:
         processes.append(create_integration_test_process(args, enable_stack_trace))
@@ -651,6 +809,34 @@ def _extract_test_name(command: str | list[str]) -> str:
     return "unknown_test"
 
 
+def _create_skipped_timing(
+    test_name: str, command: str = "", cached_summary: str = ""
+) -> ProcessTiming:
+    """Create a ProcessTiming entry for a skipped test"""
+    # Include cached summary in the name if available
+    display_name = f"{test_name} ({cached_summary})" if cached_summary else test_name
+    return ProcessTiming(name=display_name, duration=0.0, command=command, skipped=True)
+
+
+def _format_cache_hit_message(
+    fingerprint_manager: Optional["FingerprintManager"],
+    fingerprint_name: str,
+    default_message: str,
+) -> str:
+    """Format cache hit message with test metadata if available"""
+    if fingerprint_manager is None:
+        return default_message
+
+    prev_fp = fingerprint_manager.get_prev_fingerprint(fingerprint_name)
+    if prev_fp is None:
+        return default_message
+
+    summary = prev_fp.get_cache_summary()
+    if summary:
+        return f"{default_message} [{summary}]"
+    return default_message
+
+
 def _get_friendly_test_name(command: str | list[str]) -> str:
     """Extract a user-friendly test name for display in summary table"""
     if isinstance(command, list):
@@ -659,6 +845,26 @@ def _get_friendly_test_name(command: str | list[str]) -> str:
     # Simplify common command patterns to friendly names
     if "cpp_test_run" in command and "ci.run_tests" in command:
         return "unit_tests"
+    elif "meson_example_runner.py" in command:
+        # Extract specific example names from command (after the .py script)
+        tokens = command.split()
+        example_names: list[str] = []
+        found_script = False
+        for tok in tokens:
+            # Find the script first
+            if "meson_example_runner" in tok:
+                found_script = True
+                continue
+            if not found_script:
+                continue
+            # Skip flags
+            if tok.startswith("-"):
+                continue
+            # This is likely an example name (after the script)
+            example_names.append(tok)
+        if example_names:
+            return ", ".join(example_names)
+        return "examples"
     elif "test_example_compilation.py" in command:
         # Show script name plus example targets, e.g. "test_example_compilation.py Luminova"
         try:
@@ -678,6 +884,9 @@ def _get_friendly_test_name(command: str | list[str]) -> str:
                     if example_parts:
                         return f"{script_name} {' '.join(example_parts)}"
                     return script_name
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception:
             # Fall back to generic extraction on any unexpected parsing issue
             pass
@@ -688,45 +897,218 @@ def _get_friendly_test_name(command: str | list[str]) -> str:
         return "integration_tests"
     elif "ci-compile" in command and "uno" in command:
         return "uno_compilation"
+    elif "wasm_compile.py" in command:
+        return "wasm_compilation"
     else:
         # Fallback to the existing extraction logic
         return _extract_test_name(command)
 
 
-def _format_timing_summary(process_timings: List[ProcessTiming]) -> str:
-    """Format a summary table of process execution times"""
+@dataclass
+class FailedTestEntry:
+    """A test that failed during a test run."""
+
+    name: str
+    category: str  # "unit" or "example"
+
+    @property
+    def clean_name(self) -> str:
+        """Strip suite prefix (e.g., 'fastled:test_name' -> 'test_name')."""
+        return self.name.split(":")[-1] if ":" in self.name else self.name
+
+    @property
+    def rerun_cmd(self) -> str:
+        if self.category == "example":
+            return f"bash test {self.clean_name} --examples"
+        return f"bash test {self.clean_name} --cpp"
+
+    @property
+    def debug_cmd(self) -> str:
+        if self.category == "example":
+            return f"bash test {self.clean_name} --examples --debug"
+        return f"bash test {self.clean_name} --debug"
+
+
+def _format_failure_summary(
+    failed_tests: list[FailedTestEntry],
+) -> str:
+    """Format a summary table of failed tests with re-run commands.
+
+    Args:
+        failed_tests: List of FailedTestEntry objects.
+
+    Returns:
+        Formatted string with failure summary table.
+    """
+    if not failed_tests:
+        return ""
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append("\033[91m" + "=" * 60 + "\033[0m")
+    lines.append("\033[91mFAILED TESTS SUMMARY\033[0m")
+    lines.append("\033[91m" + "=" * 60 + "\033[0m")
+
+    # Table header
+    max_name = max(len(ft.clean_name) for ft in failed_tests)
+    max_name = max(max_name, 4)  # min width for "Test"
+    header = f"  {'Test':<{max_name}} | {'Category':<8} | Re-run command"
+    sep = f"  {'-' * max_name}-+-{'-' * 8}-+-{'-' * 30}"
+    lines.append(header)
+    lines.append(sep)
+
+    for ft in failed_tests:
+        lines.append(
+            f"  {ft.clean_name:<{max_name}} | {ft.category:<8} | {ft.rerun_cmd}"
+        )
+
+    lines.append("")
+    lines.append("To re-run failed tests:")
+    for ft in failed_tests:
+        lines.append(f"  {ft.rerun_cmd}")
+    lines.append("")
+
+    # Loud banner for debug re-run — this is critical for AI agents to notice
+    max_debug_show = 3
+    lines.append("\033[93m" + "!" * 60 + "\033[0m")
+    lines.append(
+        "\033[93m!!  AGENT ACTION REQUIRED: RE-RUN FAILED TESTS IN DEBUG  !!\033[0m"
+    )
+    lines.append("\033[93m" + "!" * 60 + "\033[0m")
+    lines.append("")
+    lines.append("Quick mode does NOT enable sanitizers (ASAN/LSAN/UBSAN).")
+    lines.append("You MUST re-run each failed test in --debug mode to get")
+    lines.append("full diagnostics (stack traces, memory errors, UB detection).")
+    lines.append("")
+    lines.append("\033[93mRun these commands NOW:\033[0m")
+    for ft in failed_tests[:max_debug_show]:
+        lines.append(f"  \033[1m{ft.debug_cmd}\033[0m")
+    if len(failed_tests) > max_debug_show:
+        lines.append(
+            f"  ... and {len(failed_tests) - max_debug_show} more failed tests"
+        )
+    lines.append("")
+    lines.append("\033[93m" + "!" * 60 + "\033[0m")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_timing_summary(process_timings: list[ProcessTiming]) -> str:
+    """Format a summary of process execution times with optional phase breakdown.
+
+    Always returns a table format for consistent display.
+    """
     if not process_timings:
         return ""
 
-    # Sort by duration (longest first)
-    sorted_timings = sorted(process_timings, key=lambda x: x.duration, reverse=True)
+    # Sort by skipped status first (non-skipped first), then by duration (longest first)
+    sorted_timings = sorted(process_timings, key=lambda x: (x.skipped, -x.duration))
+
+    # Check if any timing has phase data (for Meson tests)
+    has_phases = any(
+        t.meson_setup_time and t.meson_setup_time > 0 for t in sorted_timings
+    )
+
+    # Build timing rows (main tests + phases if available)
+    timing_rows: list[tuple[str, str]] = []
+
+    # First pass: add all main test entries
+    for timing in sorted_timings:
+        if timing.skipped:
+            duration_str = "skipped"
+        else:
+            duration_str = f"{timing.duration:.2f}s"
+        timing_rows.append((timing.name, duration_str))
+
+        # Second pass: add phase breakdown if available
+        if has_phases and not timing.skipped:
+            phases = []
+            if timing.meson_setup_time and timing.meson_setup_time > 0:
+                phases.append(("  ├─ Meson Setup", f"{timing.meson_setup_time:.2f}s"))
+            if timing.compile_time and timing.compile_time > 0:
+                # Check if we have compile sub-phases
+                has_sub_phases = any(
+                    [
+                        timing.compile_core_time and timing.compile_core_time > 0,
+                        timing.compile_objects_time and timing.compile_objects_time > 0,
+                        timing.compile_example_link_time
+                        and timing.compile_example_link_time > 0,
+                        timing.compile_test_link_time
+                        and timing.compile_test_link_time > 0,
+                    ]
+                )
+                phases.append(("  ├─ Compilation", f"{timing.compile_time:.2f}s"))
+                if has_sub_phases:
+                    sub = []
+                    if timing.compile_core_time and timing.compile_core_time > 0:
+                        sub.append(
+                            ("  │   ├─ Core + PCH", f"{timing.compile_core_time:.2f}s")
+                        )
+                    if timing.compile_objects_time and timing.compile_objects_time > 0:
+                        sub.append(
+                            (
+                                "  │   ├─ Object files",
+                                f"{timing.compile_objects_time:.2f}s",
+                            )
+                        )
+                    if (
+                        timing.compile_example_link_time
+                        and timing.compile_example_link_time > 0
+                    ):
+                        sub.append(
+                            (
+                                "  │   ├─ Example linking",
+                                f"{timing.compile_example_link_time:.2f}s",
+                            )
+                        )
+                    if (
+                        timing.compile_test_link_time
+                        and timing.compile_test_link_time > 0
+                    ):
+                        sub.append(
+                            (
+                                "  │   └─ Test linking",
+                                f"{timing.compile_test_link_time:.2f}s",
+                            )
+                        )
+                    # Fix last sub-phase connector
+                    if sub:
+                        name, dur = sub[-1]
+                        sub[-1] = (name.replace("  │   ├─", "  │   └─"), dur)
+                    phases.extend(sub)
+            if timing.test_execution_time and timing.test_execution_time > 0:
+                phases.append(
+                    ("  └─ Test Execution", f"{timing.test_execution_time:.2f}s")
+                )
+
+            # Add phase rows
+            for phase_name, phase_duration in phases:
+                timing_rows.append((phase_name, phase_duration))
 
     # Calculate column widths
-    max_name_width = max(len(timing.name) for timing in sorted_timings)
-    max_name_width = max(max_name_width, len("Test Name"))  # Ensure header fits
+    max_name_width = max(len(name) for name, _ in timing_rows)
+    max_name_width = max(max_name_width, len("Test"))
 
-    # Create header
-    header = f"{'Test Name':<{max_name_width}} | {'Duration':>10}"
-    separator = f"{'-' * max_name_width}-+-{'-' * 10}"
+    max_duration_width = max(len(duration) for _, duration in timing_rows)
+    max_duration_width = max(max_duration_width, len("Duration"))
 
-    # Create rows
+    # Create header with compact formatting
+    header = f"{'Test':<{max_name_width}} | {'Duration':<{max_duration_width}}"
+    separator = f"{'-' * max_name_width}-+-{'-' * max_duration_width}"
+
+    # Create rows with compact formatting
     rows: list[str] = []
-    for timing in sorted_timings:
-        duration_str = f"{timing.duration:.2f}s"
-        row = f"{timing.name:<{max_name_width}} | {duration_str:>10}"
+    for name, duration_str in timing_rows:
+        row = f"{name:<{max_name_width}} | {duration_str:<{max_duration_width}}"
         rows.append(row)
 
-    # Combine all parts
-    table_lines = (
-        [
-            "\nTest Execution Summary:",
-            separator,
-            header,
-            separator,
-        ]
-        + rows
-        + [separator]
-    )
+    # Combine all parts (header before separator, no bottom border)
+    table_lines = [
+        "Results:",
+        header,
+        separator,
+    ] + rows
 
     return "\n".join(table_lines)
 
@@ -734,7 +1116,7 @@ def _format_timing_summary(process_timings: List[ProcessTiming]) -> str:
 def _handle_process_completion(
     proc_state: ProcessState,
     active_processes: list[RunningProcess],
-    completed_timings: List[ProcessTiming],
+    completed_timings: list[ProcessTiming],
     last_activity_time: dict[RunningProcess, float],
 ) -> None:
     """
@@ -758,19 +1140,22 @@ def _handle_process_completion(
         returncode = proc.wait()
         if returncode != 0:
             test_name = _extract_test_name(cmd)
-            print(f"\nCommand failed: {cmd} with return code {returncode}")
-            print(f"\033[91m###### ERROR ######\033[0m")
-            print(f"Test failed: {test_name}")
+            ts_print(f"\nCommand failed: {cmd} with return code {returncode}")
+            ts_print("\033[91m###### ERROR ######\033[0m")
+            ts_print(f"Test failed: {test_name}")
 
             # Capture the actual output from the failed process
             try:
                 actual_output = proc.stdout
                 if actual_output.strip():
-                    print(f"\n=== ACTUAL OUTPUT FROM FAILED PROCESS ===")
-                    print(actual_output)
-                    print(f"=== END OF OUTPUT ===")
+                    ts_print("\n=== ACTUAL OUTPUT FROM FAILED PROCESS ===")
+                    ts_print(actual_output)
+                    ts_print("=== END OF OUTPUT ===")
                 else:
                     actual_output = "No output captured from failed process"
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception as e:
                 actual_output = f"Error capturing output: {e}"
 
@@ -792,7 +1177,7 @@ def _handle_process_completion(
         active_processes.remove(proc)
         if proc in last_activity_time:
             del last_activity_time[proc]  # Clean up tracking
-        print(f"Process completed: {cmd}")
+        # Process completion is shown in the timing summary table, no separate message needed
 
         # Collect timing data for summary
         if proc.duration is not None:
@@ -807,22 +1192,28 @@ def _handle_process_completion(
         if os.name != "nt":  # Only flush on non-Windows systems
             sys.stdout.flush()
 
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
     except Exception as e:
         test_name = _extract_test_name(cmd)
-        print(f"\nError waiting for process: {cmd}")
-        print(f"Error: {e}")
-        print(f"\033[91m###### ERROR ######\033[0m")
-        print(f"Test error: {test_name}")
+        ts_print(f"\nError waiting for process: {cmd}")
+        ts_print(f"Error: {e}")
+        ts_print("\033[91m###### ERROR ######\033[0m")
+        ts_print(f"Test error: {test_name}")
 
         # Try to capture any available output
         try:
             actual_output = proc.stdout
             if actual_output.strip():
-                print(f"\n=== PROCESS OUTPUT BEFORE ERROR ===")
-                print(actual_output)
-                print(f"=== END OF OUTPUT ===")
+                ts_print("\n=== PROCESS OUTPUT BEFORE ERROR ===")
+                ts_print(actual_output)
+                ts_print("=== END OF OUTPUT ===")
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as output_error:
-            print(f"Could not capture process output: {output_error}")
+            ts_print(f"Could not capture process output: {output_error}")
 
         failures: list[TestFailureInfo] = []
         for p in active_processes:
@@ -830,6 +1221,9 @@ def _handle_process_completion(
             # Try to capture output from this process too
             try:
                 process_output = p.stdout if hasattr(p, "stdout") else str(e)
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception:
                 process_output = str(e)
 
@@ -911,9 +1305,11 @@ class ProcessStuckMonitor:
                     return
 
                 # Check if we have recent stdout activity
-                stdout_time = process.time_last_stdout_line()
-                if stdout_time is not None:
-                    last_activity_time = stdout_time
+                if process.has_pending_output():
+                    # Drain pending output to detect ongoing activity
+                    while process.has_pending_output():
+                        process.get_next_line_non_blocking()
+                    last_activity_time = time.time()
 
                 # Check if process is stuck
                 current_time = time.time()
@@ -928,17 +1324,17 @@ class ProcessStuckMonitor:
                 # Sleep briefly before next check
                 time.sleep(1.0)  # Check every second
 
-        except KeyboardInterrupt:
-            print(f"🛑 Thread {thread_id} ({thread_name}) caught KeyboardInterrupt")
-            print(f"📍 Stack trace for thread {thread_id}:")
-            traceback.print_exc()
-            _thread.interrupt_main()
-            raise
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
         except Exception as e:
-            print(f"❌ Thread {thread_id} ({thread_name}) unexpected error: {e}")
+            # Monitor thread hit an unexpected error (e.g., race with process
+            # cleanup). Log it but do NOT interrupt the main thread — this is a
+            # monitoring thread, not a critical path. Interrupting main here
+            # causes spurious "Interrupt signal received" on normal exits.
+            ts_print(f"❌ Thread {thread_id} ({thread_name}) unexpected error: {e}")
+            import traceback  # noqa: PLC0415 - lazy: only imported on error path
+
             traceback.print_exc()
-            _thread.interrupt_main()
-            raise
 
 
 def _handle_stuck_processes(
@@ -959,10 +1355,10 @@ def _handle_stuck_processes(
     for signal in stuck_signals:
         proc = signal.process
         if proc in active_processes:
-            print(
+            ts_print(
                 f"\nProcess appears stuck (no output for {signal.timeout_duration}s): {proc.command}"
             )
-            print("Killing stuck process and its children...")
+            ts_print("Killing stuck process and its children...")
             proc.kill()  # This now kills the entire process tree
 
             # Track this as a failure
@@ -970,313 +1366,12 @@ def _handle_stuck_processes(
 
             active_processes.remove(proc)
             monitor.stop_monitoring(proc)
-            print(f"Killed stuck process: {proc.command}")
-
-
-def _run_processes_parallel(
-    processes: list[RunningProcess], verbose: bool = False
-) -> List[ProcessTiming]:
-    """
-    DEPRECATED: Use RunningProcessGroup instead.
-
-    This function has been replaced by RunningProcessGroup.run()
-    for better maintainability and consistency.
-
-    Run multiple test processes in parallel and handle their output
-
-    Args:
-        processes: List of RunningProcess objects to execute
-
-    Returns:
-        List of ProcessTiming objects with execution times
-    """
-    if not processes:
-        return []
-
-    # Create a shared output handler for formatting
-    output_handler = ProcessOutputHandler(verbose=verbose)
-
-    # Configure Windows console for UTF-8 output if needed
-    if os.name == "nt":  # Windows
-        if hasattr(sys.stdout, "reconfigure"):
-            cast(ReconfigurableIO, sys.stdout).reconfigure(
-                encoding="utf-8", errors="replace"
-            )
-        if hasattr(sys.stderr, "reconfigure"):
-            cast(ReconfigurableIO, sys.stderr).reconfigure(
-                encoding="utf-8", errors="replace"
-            )
-
-    # Start processes that aren't already running
-    for proc in processes:
-        cmd_str = proc.get_command_str()
-        if proc.proc is None:  # Only start if not already running
-            proc.run()
-            print(f"Started: {cmd_str}")
-        else:
-            print(f"Process already running: {cmd_str}")
-
-    # Monitor all processes for output and completion
-    active_processes = processes.copy()
-    start_time = time.time()
-
-    runner_timeouts: list[int] = [p.timeout for p in processes if p.timeout is not None]
-    global_timeout: int | None = None
-    if runner_timeouts:
-        global_timeout = max(runner_timeouts) + 60  # Add 1 minute buffer
-
-    # Track last activity time for each process to detect stuck processes
-    last_activity_time = {proc: time.time() for proc in active_processes}
-    stuck_process_timeout = _GLOBAL_TIMEOUT
-
-    # Track failed processes for proper error reporting
-    failed_processes: list[str] = []  # Processes killed due to timeout/stuck
-    exit_failed_processes: list[
-        tuple[RunningProcess, int]
-    ] = []  # Processes that failed with non-zero exit code
-
-    # Track completed processes for timing summary
-    completed_timings: List[ProcessTiming] = []
-
-    # Create thread-based stuck process monitor
-    stuck_monitor = ProcessStuckMonitor(stuck_process_timeout)
-
-    try:
-        # Start monitoring threads for each process
-        for proc in active_processes:
-            stuck_monitor.start_monitoring(proc)
-
-        def time_expired() -> bool:
-            if global_timeout is None:
-                return False
-            assert global_timeout is not None
-            return time.time() - start_time > global_timeout
-
-        while active_processes:
-            # Check global timeout
-            if time_expired():
-                assert global_timeout is not None
-                print(f"\nGlobal timeout reached after {global_timeout} seconds")
-                print("\033[91m###### ERROR ######\033[0m")
-                print("Tests failed due to global timeout")
-                failures: list[TestFailureInfo] = []
-                for p in active_processes:
-                    failed_processes.append(
-                        subprocess.list2cmdline(p.command)
-                    )  # Track all active processes as failed
-                    p.kill()
-                    failures.append(
-                        TestFailureInfo(
-                            test_name=_extract_test_name(p.command),
-                            command=str(p.command),
-                            return_code=1,
-                            output="Process killed due to global timeout",
-                            error_type="global_timeout",
-                        )
-                    )
-                raise TestTimeoutException("Global timeout reached", failures)
-
-            # Check for stuck processes (using threaded monitoring)
-            stuck_signals = stuck_monitor.check_for_stuck_processes()
-            if stuck_signals:
-                _handle_stuck_processes(
-                    stuck_signals, active_processes, failed_processes, stuck_monitor
-                )
-
-                # Early abort if failure threshold reached via stuck processes
-                if (
-                    len(exit_failed_processes) + len(failed_processes)
-                ) >= MAX_FAILURES_BEFORE_ABORT:
-                    print(
-                        f"\nExceeded failure threshold ({MAX_FAILURES_BEFORE_ABORT}). Aborting remaining tests."
-                    )
-                    # Kill any remaining active processes
-                    for p in active_processes:
-                        p.kill()
-                    # Build detailed failures
-                    failures: list[TestFailureInfo] = []
-                    for proc, exit_code in exit_failed_processes:
-                        error_snippet = extract_error_snippet(proc.accumulated_output)
-                        failures.append(
-                            TestFailureInfo(
-                                test_name=_extract_test_name(proc.command),
-                                command=str(proc.command),
-                                return_code=exit_code,
-                                output=error_snippet,
-                                error_type="exit_failure",
-                            )
-                        )
-                    for cmd in failed_processes:
-                        cmd = subprocess.list2cmdline(cmd)
-                        failures.append(
-                            TestFailureInfo(
-                                test_name=_extract_test_name(cmd),
-                                command=str(cmd),
-                                return_code=1,
-                                output="Process was killed due to timeout/stuck detection",
-                                error_type="killed_process",
-                            )
-                        )
-                    raise TestExecutionFailedException(
-                        "Exceeded failure threshold", failures
-                    )
-
-            # Process each active test individually
-            # Iterate backwards to safely remove processes from the list
-            any_activity = False
-            for i in range(len(active_processes) - 1, -1, -1):
-                proc = active_processes[i]
-
-                if verbose:
-                    with proc.line_iter(timeout=60) as line_iter:
-                        for line in line_iter:
-                            print(line)
-
-                # Check if process has finished
-                if proc.finished:
-                    # Get the exit code to check for failure
-                    exit_code = proc.wait()
-
-                    # Process completed, remove from active list
-                    active_processes.remove(proc)
-                    # Stop monitoring this process
-                    stuck_monitor.stop_monitoring(proc)
-
-                    # Check for non-zero exit code (failure)
-                    if exit_code != 0:
-                        print(
-                            f"Process failed with exit code {exit_code}: {proc.command}"
-                        )
-                        exit_failed_processes.append((proc, exit_code))
-                        # Early abort if we reached the failure threshold
-                        if (
-                            len(exit_failed_processes) + len(failed_processes)
-                        ) >= MAX_FAILURES_BEFORE_ABORT:
-                            print(
-                                f"\nExceeded failure threshold ({MAX_FAILURES_BEFORE_ABORT}). Aborting remaining tests."
-                            )
-                            # Kill remaining active processes
-                            for p in active_processes:
-                                if p is not proc:
-                                    p.kill()
-                            # Prepare failures with snippets
-                            failures: list[TestFailureInfo] = []
-                            for p, code in exit_failed_processes:
-                                error_snippet = extract_error_snippet(
-                                    p.accumulated_output
-                                )
-                                failures.append(
-                                    TestFailureInfo(
-                                        test_name=_extract_test_name(p.command),
-                                        command=str(p.command),
-                                        return_code=code,
-                                        output=error_snippet,
-                                        error_type="exit_failure",
-                                    )
-                                )
-                            for cmd in failed_processes:
-                                cmd_str = subprocess.list2cmdline(cmd)
-                                failures.append(
-                                    TestFailureInfo(
-                                        test_name=_extract_test_name(cmd_str),
-                                        command=cmd_str,
-                                        return_code=1,
-                                        output="Process was killed due to timeout/stuck detection",
-                                        error_type="killed_process",
-                                    )
-                                )
-                            raise TestExecutionFailedException(
-                                "Exceeded failure threshold", failures
-                            )
-                        any_activity = True
-                        continue
-
-                    # Update timing information
-                    # Calculate duration properly - if process duration is None, calculate it manually
-                    if proc.duration is not None:
-                        duration = proc.duration
-                    elif proc.start_time is not None:
-                        # Calculate duration from start time to now
-                        duration = time.time() - proc.start_time
-                    else:
-                        duration = 0.0
-
-                    timing = ProcessTiming(
-                        name=_get_friendly_test_name(proc.command),
-                        command=subprocess.list2cmdline(proc.command),
-                        duration=duration,
-                    )
-                    completed_timings.append(timing)
-                    print(f"Process completed: {proc.get_command_str()}")
-                    any_activity = True
-                    continue
-
-                # Update last activity time if we have stdout activity
-                stdout_time = proc.time_last_stdout_line()
-                if stdout_time is not None:
-                    last_activity_time[proc] = stdout_time
-                    any_activity = True
-
-            # Only sleep if no activity was detected, and use a shorter sleep
-            # This prevents excessive CPU usage while maintaining responsiveness
-            if not any_activity:
-                time.sleep(0.01)  # 10ms sleep only when no activity
-
-        # Check for processes that failed with non-zero exit codes
-        if exit_failed_processes:
-            print(f"\n\033[91m###### ERROR ######\033[0m")
-            print(
-                f"Tests failed due to {len(exit_failed_processes)} process(es) with non-zero exit codes:"
-            )
-            for proc, exit_code in exit_failed_processes:
-                print(f"  - {proc.command} (exit code {exit_code})")
-            failures: list[TestFailureInfo] = []
-            for proc, exit_code in exit_failed_processes:
-                # Extract error snippet from process output
-                error_snippet = extract_error_snippet(proc.accumulated_output)
-
-                failures.append(
-                    TestFailureInfo(
-                        test_name=_extract_test_name(proc.command),
-                        command=str(proc.command),
-                        return_code=exit_code,
-                        output=error_snippet,
-                        error_type="exit_failure",
-                    )
-                )
-            raise TestExecutionFailedException("Tests failed", failures)
-
-        # Check for failed processes - CRITICAL FIX
-        if failed_processes:
-            print(f"\n\033[91m###### ERROR ######\033[0m")
-            print(f"Tests failed due to {len(failed_processes)} killed process(es):")
-            for cmd in failed_processes:
-                print(f"  - {cmd}")
-            print("Processes were killed due to timeout/stuck detection")
-            failures: list[TestFailureInfo] = []
-            for cmd in failed_processes:
-                failures.append(
-                    TestFailureInfo(
-                        test_name=_extract_test_name(cmd),
-                        command=str(cmd),
-                        return_code=1,
-                        output="Process was killed due to timeout/stuck detection",
-                        error_type="killed_process",
-                    )
-                )
-            raise TestExecutionFailedException("Processes were killed", failures)
-
-        print("\nAll parallel tests completed successfully")
-        return completed_timings
-
-    finally:
-        # Always shutdown stuck monitoring threads, even on exception
-        stuck_monitor.shutdown()
+            ts_print(f"Killed stuck process: {proc.command}")
 
 
 def run_test_processes(
     processes: list[RunningProcess], parallel: bool = True, verbose: bool = False
-) -> List[ProcessTiming]:
+) -> list[ProcessTiming]:
     """
     Run multiple test processes using RunningProcessGroup
 
@@ -1301,8 +1396,7 @@ def run_test_processes(
         parallel = False
 
     if not processes:
-        print("\033[92m###### SUCCESS ######\033[0m")
-        print("No tests to run")
+        ts_print("\n✓ No tests to run")
         return []
 
     try:
@@ -1340,6 +1434,9 @@ def run_test_processes(
                 )
             except ImportError:
                 pass  # Fall back to normal execution if display not available
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception:
                 pass  # Fall back to normal execution on any display error
 
@@ -1353,82 +1450,397 @@ def run_test_processes(
         # Success message for sequential execution
         if not parallel:
             elapsed = time.time() - start_time
-            print(f"\033[92m### SUCCESS ({elapsed:.2f}s) ###\033[0m")
+            ts_print(f"\n✓ Tests completed ({elapsed:.2f}s)")
 
         return timings
 
     except (TestExecutionFailedException, TestTimeoutException) as e:
         # Tests failed - print detailed info and re-raise for proper handling
-        print("\n" + "=" * 60)
-        print("FASTLED TEST RUNNER FAILURE DETAILS")
-        print("=" * 60)
-        print(e.get_detailed_failure_info())
-        print("=" * 60)
+        ts_print("\n" + "=" * 60)
+        ts_print("FASTLED TEST RUNNER FAILURE DETAILS")
+        ts_print("=" * 60)
+        ts_print(e.get_detailed_failure_info())
+        ts_print("=" * 60)
         raise
     except SystemExit as e:
         # Tests failed - extract command name from the error
         if e.code != 0:
-            print("\033[91m###### ERROR ######\033[0m")
-            print(f"Tests failed with exit code {e.code}")
+            ts_print("\033[91m###### ERROR ######\033[0m")
+            ts_print(f"Tests failed with exit code {e.code}")
         raise
 
 
-def runner(args: TestArgs, src_code_change: bool = True) -> None:
+def runner(
+    args: TestArgs,
+    src_code_change: bool = True,
+    cpp_test_change: bool = True,
+    examples_change: bool = True,
+    python_test_change: bool = True,
+    wasm_change: bool = True,
+    fingerprint_manager: Optional["FingerprintManager"] = None,
+) -> None:
     """
     Main test runner function that determines what to run and executes tests
 
     Args:
         args: Parsed command line arguments
         src_code_change: Whether source code has changed since last run
+        cpp_test_change: Whether C++ test-related files (src/ or tests/) have changed
+        examples_change: Whether example-related files have changed
+        python_test_change: Whether Python test-related files have changed
+        wasm_change: Whether WASM-related files have changed
+        fingerprint_manager: Optional fingerprint manager for test metadata
     """
-    print(f"[TEST_RUNNER] Starting runner function")
-    print(f"[TEST_RUNNER] Args: {args}")
-    print(f"[TEST_RUNNER] Source code changed: {src_code_change}")
+    # Debug logging - only shown in verbose mode to reduce UI clutter
+    if args.verbose:
+        # Show only active/non-default flags instead of full TestArgs dump
+        active_flags: list[str] = []
+        if args.test:
+            active_flags.append(f"test={args.test}")
+        if args.examples:
+            # Format list as comma-separated values instead of Python list syntax
+            active_flags.append(f"examples={','.join(args.examples)}")
+        if args.debug:
+            active_flags.append("debug")
+        if args.clean:
+            active_flags.append("clean")
+        if args.full:
+            active_flags.append("full")
+        if args.no_parallel:
+            active_flags.append("no-parallel")
+        if args.build_mode:
+            active_flags.append(f"build_mode={args.build_mode}")
+        if args.no_fingerprint:
+            active_flags.append("no-fingerprint")
+        if args.no_pch:
+            active_flags.append("no-pch")
+
+        if active_flags:
+            ts_print(f"Active flags: {', '.join(active_flags)}")
+
+    # Clear zccache stats at start to show only metrics from this build
+    from ci.util.zccache_config import clear_zccache_stats
+
+    clear_zccache_stats()
+
+    # Determine test categories first to check if we should use meson
+    test_categories = determine_test_categories(args)
+
+    # Always use Meson build system for unit tests (Python build system has been removed)
+    # Only return early if unit tests are the ONLY thing running (unit_only mode)
+    # Skip if fingerprint cache indicates no changes
+    if test_categories.unit_only:
+        if cpp_test_change:
+            from ci.meson.runner import run_meson_build_and_test
+            from ci.util.paths import PROJECT_ROOT
+
+            build_dir = PROJECT_ROOT / ".build" / "meson"
+            test_name = args.test if args.test else None
+
+            # Extract .hpp filename if user requested a specific detector file
+            test_file_filter = None
+            if args.raw_test_query and args.raw_test_query.endswith(".hpp"):
+                # Extract just the filename (e.g., "backbeat.hpp" from "tests/fl/audio/detectors/backbeat.hpp")
+                test_file_filter = args.raw_test_query.split("/")[-1]
+
+            result = run_meson_build_and_test(
+                source_dir=PROJECT_ROOT,
+                build_dir=build_dir,
+                test_name=test_name,
+                clean=args.clean,
+                verbose=args.verbose,
+                debug=args.debug,
+                build_mode=args.build_mode,
+                check=args.check,
+                exclude_suites=[
+                    "fastled:examples"
+                ],  # Exclude examples in unit-test-only mode
+                test_file_filter=test_file_filter,
+                log_failures=args.log_failures,
+            )
+
+            if not result.success:
+                if result.failed_test_names:
+                    summary = _format_failure_summary(
+                        [
+                            FailedTestEntry(name=name, category="unit")
+                            for name in result.failed_test_names
+                        ]
+                    )
+                    print(summary)
+                sys.exit(1)
+
+            # Update fingerprint metadata for cache display on next run
+            if fingerprint_manager is not None:
+                fingerprint_manager.update_test_metadata(
+                    "cpp_test",
+                    num_tests_run=result.num_tests_run,
+                    num_tests_passed=result.num_tests_passed,
+                    duration_seconds=result.duration,
+                    test_name="cpp_unit_tests",
+                )
+
+            # Print timing summary table for unit-only mode
+            # Skip zccache stats when test result came from cache (no compilation occurred)
+            if not result.compilation_skipped:
+                from ci.util.zccache_config import show_zccache_stats  # noqa: PLC0415
+
+                show_zccache_stats()
+            unit_timing = ProcessTiming(
+                name=f"cpp_unit_tests ({result.num_tests_passed}/{result.num_tests_run} passed)",
+                duration=result.duration,
+                command="meson test",
+                skipped=False,
+                meson_setup_time=result.meson_setup_time,
+                ninja_maintenance_time=result.ninja_maintenance_time,
+                compile_time=result.compile_time,
+                test_execution_time=result.test_execution_time,
+                compile_core_time=result.compile_core_time,
+                compile_objects_time=result.compile_objects_time,
+                compile_example_link_time=result.compile_example_link_time,
+                compile_test_link_time=result.compile_test_link_time,
+            )
+            summary = _format_timing_summary([unit_timing])
+            print(summary)
+        else:
+            # Fingerprint cache hit - skip unit tests
+            cache_msg = _format_cache_hit_message(
+                fingerprint_manager,
+                "cpp_test",
+                "Fingerprint cache valid - skipping C++ unit tests (no changes detected)",
+            )
+            print_cache_hit(cache_msg)
+
+        return
+
+    # For mixed test modes (unit + examples, etc.), run unit tests via Meson but continue to other tests
+    # Skip if fingerprint cache indicates no changes
+    # Track Meson test timing for summary
+    meson_test_timing: Optional[ProcessTiming] = None
+
+    if test_categories.unit and not test_categories.unit_only:
+        if cpp_test_change:
+            from ci.meson.runner import run_meson_build_and_test
+            from ci.util.paths import PROJECT_ROOT
+
+            build_dir = PROJECT_ROOT / ".build" / "meson"
+            test_name = args.test if args.test else None
+
+            # Extract .hpp filename if user requested a specific detector file
+            test_file_filter = None
+            if args.raw_test_query and args.raw_test_query.endswith(".hpp"):
+                # Extract just the filename (e.g., "backbeat.hpp" from "tests/fl/audio/detectors/backbeat.hpp")
+                test_file_filter = args.raw_test_query.split("/")[-1]
+
+            result = run_meson_build_and_test(
+                source_dir=PROJECT_ROOT,
+                build_dir=build_dir,
+                test_name=test_name,
+                clean=args.clean,
+                verbose=args.verbose,
+                debug=args.debug,
+                build_mode=args.build_mode,
+                check=args.check,
+                test_file_filter=test_file_filter,
+                log_failures=args.log_failures,
+            )
+
+            # Create timing entry for summary
+            meson_test_timing = ProcessTiming(
+                name=f"cpp_unit_tests ({result.num_tests_passed}/{result.num_tests_run} passed)",
+                duration=result.duration,
+                command="meson test",
+                skipped=False,
+                meson_setup_time=result.meson_setup_time,
+                ninja_maintenance_time=result.ninja_maintenance_time,
+                compile_time=result.compile_time,
+                test_execution_time=result.test_execution_time,
+                compile_core_time=result.compile_core_time,
+                compile_objects_time=result.compile_objects_time,
+                compile_example_link_time=result.compile_example_link_time,
+                compile_test_link_time=result.compile_test_link_time,
+            )
+
+            # Update fingerprint metadata for cache display on next run
+            if fingerprint_manager is not None:
+                fingerprint_manager.update_test_metadata(
+                    "cpp_test",
+                    num_tests_run=result.num_tests_run,
+                    num_tests_passed=result.num_tests_passed,
+                    duration_seconds=result.duration,
+                    test_name="cpp_unit_tests",
+                )
+
+            if not result.success:
+                if result.failed_test_names:
+                    summary = _format_failure_summary(
+                        [
+                            FailedTestEntry(name=name, category="unit")
+                            for name in result.failed_test_names
+                        ]
+                    )
+                    print(summary)
+                sys.exit(1)
+
+            # Save full-run cache after successful complete test suite run
+            # so the CASE 2 ultra-early exit can fire on next invocation.
+            if result.num_tests_run and result.num_tests_run == result.num_tests_passed:
+                try:
+                    from ci.meson.cache_utils import save_full_run_result
+                    from ci.util.paths import PROJECT_ROOT
+
+                    _build_mode_save = getattr(args, "build_mode", None) or (
+                        "debug" if getattr(args, "debug", False) else "quick"
+                    )
+                    _build_dir_save = (
+                        PROJECT_ROOT / ".build" / f"meson-{_build_mode_save}"
+                    )
+                    save_full_run_result(
+                        _build_dir_save,
+                        result.num_tests_passed,
+                        result.num_tests_run,
+                        result.duration,
+                    )
+                except KeyboardInterrupt as ki:
+                    handle_keyboard_interrupt(ki)
+                except Exception:
+                    pass  # Non-critical
+        else:
+            # Fingerprint cache hit - skip unit tests
+            cache_msg = _format_cache_hit_message(
+                fingerprint_manager,
+                "cpp_test",
+                "Fingerprint cache valid - skipping C++ unit tests (no changes detected)",
+            )
+            print_cache_hit(cache_msg)
+            # Get cached summary for the skipped timing display
+            cached_summary = ""
+            if fingerprint_manager:
+                prev_fp = fingerprint_manager.get_prev_fingerprint("cpp_test")
+                if prev_fp:
+                    cached_summary = prev_fp.get_cache_summary()
+            meson_test_timing = _create_skipped_timing(
+                "cpp_unit_tests", cached_summary=cached_summary
+            )
+
+        # Continue to run other tests (examples, Python, etc.) - don't return
+
     try:
-        # Determine test categories
-        test_categories = determine_test_categories(args)
-        enable_stack_trace = not args.no_stack_trace
+        # Test categories already determined above (for meson check)
+        # Handle stack trace flags: --stack-trace overrides --no-stack-trace, default is enabled
+        if args.stack_trace:
+            enable_stack_trace = True
+        elif args.no_stack_trace:
+            enable_stack_trace = False
+        else:
+            enable_stack_trace = True  # Default: enabled
 
         # Build up unified list of all processes to run
         processes: list[RunningProcess] = []
+        skipped_timings: list[ProcessTiming] = []
 
-        # Always start with namespace check
-        processes.append(create_namespace_check_process(enable_stack_trace))
-
-        # Add unit tests if needed
-        if test_categories.unit or test_categories.unit_only:
-            processes.append(create_unit_test_process(args, enable_stack_trace))
+        # Note: Unit tests are now exclusively handled by Meson (see lines 1412-1450)
+        # This avoids the call to the removed ci.compiler.cpp_test_run module
 
         # Add integration tests if needed
         if test_categories.integration or test_categories.integration_only:
             processes.append(create_integration_test_process(args, enable_stack_trace))
 
-        # Add uno compilation test if source changed
-        if src_code_change and not test_categories.py_only:
-            processes.append(create_compile_uno_test_process(enable_stack_trace))
+        # Add example compilation test if examples fingerprint indicates change
+        # The examples_change parameter respects fingerprint caching:
+        # - False when fingerprint matches (no code changes in examples/ or src/)
+        # - True when fingerprint differs OR user explicitly requested examples
+        #
+        # Skip the separate examples process when run_meson_build_and_test()
+        # already compiled and executed examples in a single Ninja invocation
+        # (mixed mode: unit + examples with cpp_test_change).
+        examples_already_handled = (
+            test_categories.unit and not test_categories.unit_only and cpp_test_change
+        )
+        should_compile_examples = (
+            examples_change
+            and not test_categories.py_only
+            and not examples_already_handled
+        )
+        if should_compile_examples:
+            processes.append(create_examples_test_process(args, enable_stack_trace))
 
-        # Add Python tests if needed
-        if test_categories.py or test_categories.py_only:
-            # Pass full_tests=True if we're running integration tests or any form of full tests
-            full_tests = (
+        # Add Python tests if needed and Python test files have changed
+        if (test_categories.py or test_categories.py_only) and python_test_change:
+            # Pass run_slow=True if we're running integration tests or any form of full tests
+            run_slow = (
                 test_categories.integration
                 or test_categories.integration_only
                 or args.full
             )
 
             processes.append(
-                create_python_test_process(False, full_tests)
+                create_python_test_process(False, run_slow, verbose=args.verbose)
             )  # Disable stack trace for Python tests
+        elif (test_categories.py or test_categories.py_only) and not python_test_change:
+            cache_msg = _format_cache_hit_message(
+                fingerprint_manager,
+                "python_test",
+                "Fingerprint cache valid - skipping Python tests (no changes detected)",
+            )
+            print_cache_hit(cache_msg)
+            # Get cached summary for the skipped timing display
+            cached_summary = ""
+            if fingerprint_manager:
+                prev_fp = fingerprint_manager.get_prev_fingerprint("python_test")
+                if prev_fp:
+                    cached_summary = prev_fp.get_cache_summary()
+            skipped_timings.append(
+                _create_skipped_timing("python_tests", cached_summary=cached_summary)
+            )
 
-        # Add example tests if needed
-        if test_categories.examples or test_categories.examples_only:
-            processes.append(create_examples_test_process(args, enable_stack_trace))
+        # Add WASM compilation test if WASM is enabled and files have changed
+        # WASM runs by default unless specific test flags are used
+        if (test_categories.wasm or test_categories.wasm_only) and wasm_change:
+            processes.append(create_wasm_test_process(enable_stack_trace))
+        elif (test_categories.wasm or test_categories.wasm_only) and not wasm_change:
+            cache_msg = _format_cache_hit_message(
+                fingerprint_manager,
+                "wasm",
+                "Fingerprint cache valid - skipping WASM compilation (no changes detected)",
+            )
+            print_cache_hit(cache_msg)
+            # Get cached summary for the skipped timing display
+            cached_summary = ""
+            if fingerprint_manager:
+                prev_fp = fingerprint_manager.get_prev_fingerprint("wasm")
+                if prev_fp:
+                    cached_summary = prev_fp.get_cache_summary()
+            skipped_timings.append(
+                _create_skipped_timing("wasm", cached_summary=cached_summary)
+            )
+
+        # Examples are now compiled via uno compilation test (ci-compile.py)
+        # The uno compilation test above already covers example compilation
+        # So we just track skipped status if needed
+        if (
+            test_categories.examples or test_categories.examples_only
+        ) and not examples_change:
+            cache_msg = _format_cache_hit_message(
+                fingerprint_manager,
+                "examples",
+                "Fingerprint cache valid - skipping examples (no changes detected)",
+            )
+            print_cache_hit(cache_msg)
+            # Get cached summary for the skipped timing display
+            cached_summary = ""
+            if fingerprint_manager:
+                prev_fp = fingerprint_manager.get_prev_fingerprint("examples")
+                if prev_fp:
+                    cached_summary = prev_fp.get_cache_summary()
+            skipped_timings.append(
+                _create_skipped_timing("examples", cached_summary=cached_summary)
+            )
 
         # Determine if we'll run in parallel
         will_run_parallel = not bool(os.environ.get("NO_PARALLEL"))
 
         # Print summary of what we're about to run
-        execution_mode = "in parallel" if will_run_parallel else "sequentially"
 
         # Run processes (parallel unless NO_PARALLEL is set)
         timings = run_test_processes(
@@ -1438,13 +1850,80 @@ def runner(args: TestArgs, src_code_change: bool = True) -> None:
         )
 
         # Display timing summary
-        if timings:
-            summary = _format_timing_summary(timings)
+        all_timings = timings + skipped_timings
+        # Add Meson test timing if it was run
+        if meson_test_timing:
+            all_timings.insert(0, meson_test_timing)  # Put unit tests first
+        if all_timings:
+            # Show zccache statistics only when actual compilation occurred.
+            # Skip when all tests were fingerprint-cached (no subprocess compilation ran).
+            # timings is non-empty when at least one process (examples, python, wasm) ran.
+            # meson_test_timing.skipped=False when meson tests actually compiled+ran.
+            _did_compile = bool(timings) or (
+                meson_test_timing is not None and not meson_test_timing.skipped
+            )
+            if _did_compile:
+                from ci.util.zccache_config import show_zccache_stats  # noqa: PLC0415
+
+                show_zccache_stats()
+            else:
+                # All tests were fingerprint-cached — refresh the full run cache so
+                # the next invocation's CASE 2 ultra-early exit can fire even if
+                # meson has reconfigured (updated build.ninja) since the last full run.
+                # We re-save the previous result with the current build state.
+                if not getattr(args, "check", False):
+                    try:
+                        import json as _json
+
+                        from ci.meson.cache_utils import (
+                            get_full_run_cache_file,
+                            save_full_run_result,
+                        )
+                        from ci.util.paths import PROJECT_ROOT
+
+                        _build_mode_tr = getattr(args, "build_mode", None) or (
+                            "debug" if getattr(args, "debug", False) else "quick"
+                        )
+                        _build_dir_tr = (
+                            PROJECT_ROOT / ".build" / f"meson-{_build_mode_tr}"
+                        )
+                        _cache_file_tr = get_full_run_cache_file(_build_dir_tr)
+                        if _cache_file_tr.exists():
+                            _saved_tr = _json.loads(_cache_file_tr.read_text())
+                            if _saved_tr.get("result") == "pass":
+                                save_full_run_result(
+                                    _build_dir_tr,
+                                    _saved_tr.get("num_passed", 0),
+                                    _saved_tr.get("num_tests", 0),
+                                    _saved_tr.get("duration", 0.0),
+                                )
+                    except KeyboardInterrupt as ki:
+                        handle_keyboard_interrupt(ki)
+                    except Exception:
+                        pass  # Non-critical optimization; fail silently
+            summary = _format_timing_summary(all_timings)
+            # Use print() instead of ts_print() to avoid orphan timestamps
+            # before multi-line content (the summary starts with \n)
             print(summary)
     except (TestExecutionFailedException, TestTimeoutException) as e:
+        # Print failure summary table from exception details
+        if e.failures:
+            failed_tests: list[FailedTestEntry] = []
+            for failure in e.failures:
+                # Determine category from test name or command
+                category = (
+                    "example" if "example" in failure.test_name.lower() else "unit"
+                )
+                failed_tests.append(
+                    FailedTestEntry(name=failure.test_name, category=category)
+                )
+            if failed_tests:
+                summary = _format_failure_summary(failed_tests)
+                print(summary)
+
         # Print summary and exit with proper code
-        print(f"\n\033[91m###### ERROR ######\033[0m")
-        print(f"Tests failed with {len(e.failures)} failure(s)")
+        ts_print("\033[91m###### ERROR ######\033[0m")
+        ts_print(f"Tests failed with {len(e.failures)} failure(s)")
 
         # Exit with appropriate code
         if e.failures:

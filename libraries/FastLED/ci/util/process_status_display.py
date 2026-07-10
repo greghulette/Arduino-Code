@@ -6,7 +6,9 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
+
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 
 
 if TYPE_CHECKING:
@@ -63,8 +65,13 @@ class ProcessStatusDisplay(ABC):
     def _display_loop(self) -> None:
         """Main display loop running in background thread."""
         spinner_index = 0
-        last_status_time = 0
-        status_interval = 2  # Show status every 2 seconds
+        # Initialize to current time so first status only shows after 5s of activity
+        # This prevents duplicate "Running:" messages from appearing immediately
+        last_status_time = time.time()
+        status_interval = (
+            5  # Show status every 5 seconds (reduced noise for short tasks)
+        )
+        last_printed_message: Optional[str] = None  # Track last message to avoid spam
 
         while not self._stop_event.is_set():
             try:
@@ -82,16 +89,37 @@ class ProcessStatusDisplay(ABC):
                     completed_count = group_status.completed_processes
 
                     if running_count > 0:
-                        # Show a brief status update
-                        spinner_char = ["|", "/", "-", "\\\\"][spinner_index % 4]
-                        print(
-                            f"{spinner_char} Progress: {completed_count}/{group_status.total_processes} completed, {running_count} running..."
+                        # Show a clean status update (no spinner noise)
+                        running_names = [
+                            p.name for p in group_status.processes if p.is_alive
+                        ]
+                        running_list = (
+                            ", ".join(running_names) if running_names else "none"
                         )
+                        total = group_status.total_processes
+                        # For single item, omit counter; for multiple, use 1-indexed current position
+                        if total == 1:
+                            status_msg = f"  Running: {running_list}"
+                        else:
+                            # Show 1-indexed "current/total" (e.g., [1/3] when first is running)
+                            current = completed_count + 1
+                            status_msg = (
+                                f"  [{current}/{total}] Running: {running_list}"
+                            )
+
+                        # Only print if status changed to avoid spam
+                        if status_msg != last_printed_message:
+                            print(status_msg, flush=True)
+                            last_printed_message = status_msg
+
                         last_status_time = current_time
 
                 spinner_index = (spinner_index + 1) % 4
                 time.sleep(1.0)  # Check every second but only print every 5 seconds
 
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception as e:
                 logger.warning(f"Display update error: {e}")
                 time.sleep(1.0)
@@ -119,7 +147,7 @@ class ASCIIStatusDisplay(ProcessStatusDisplay):
         self, group_status: "GroupStatus", spinner_index: int
     ) -> str:
         """Format status display using ASCII characters."""
-        lines: List[str] = []
+        lines: list[str] = []
 
         # Header
         lines.append(
@@ -179,12 +207,7 @@ class RichStatusDisplay(ProcessStatusDisplay):
         try:
             from rich.console import Console
             from rich.live import Live
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                TimeElapsedColumn,
-            )
+            from rich.progress import Progress
             from rich.table import Table
 
             self.Progress = Progress
@@ -222,6 +245,9 @@ class RichStatusDisplay(ProcessStatusDisplay):
 
         try:
             return self._format_rich_display(group_status, spinner_index)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             logger.warning(f"Rich formatting failed, using ASCII fallback: {e}")
             return self._format_ascii_fallback(group_status, spinner_index)
@@ -284,7 +310,7 @@ class RichStatusDisplay(ProcessStatusDisplay):
         self, group_status: "GroupStatus", spinner_index: int
     ) -> str:
         """Fallback ASCII formatting when Rich fails."""
-        lines: List[str] = []
+        lines: list[str] = []
 
         # Header
         lines.append(
@@ -333,11 +359,11 @@ class RichStatusDisplay(ProcessStatusDisplay):
 
 def get_display_format() -> DisplayConfig:
     """Auto-detect best display format for current environment."""
+    import sys
+
     try:
         # Test Rich availability
-        import sys
-
-        import rich
+        import rich  # noqa: F401
 
         if sys.stdout.encoding and sys.stdout.encoding.lower() in ["utf-8", "utf8"]:
             return DisplayConfig(format_type="rich")
@@ -360,6 +386,9 @@ def create_status_display(
     if display_type == "rich":
         try:
             return RichStatusDisplay(group)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             logger.warning(f"Rich display creation failed, falling back to ASCII: {e}")
             return ASCIIStatusDisplay(group)

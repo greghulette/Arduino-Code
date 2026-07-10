@@ -1,15 +1,20 @@
+// ok no namespace fl
 #pragma once
 
+// IWYU pragma: private
+
 #if defined(FASTLED_FORCE_SOFTWARE_PINS)
-#warning "Software pin support forced, pin access will be sloightly slower."
+#warning "Software pin support forced, pin access will be slightly slower."
 #define NO_HARDWARE_PIN_SUPPORT
 #undef HAS_HARDWARE_PIN_SUPPORT
 #else
 
 #ifndef USE_NEW_STM32_PIN_DEFINITIONS
-// Use new pin definitions for all STM32F1 variants to fix pin mapping issues
+// Use new pin definitions for STM32F1 and STM32F4 variants to fix pin mapping issues
 // The legacy definitions use incorrect Arduino pin numbers instead of STM32 pin names
-#if defined(ARDUINO_BLUEPILL_F103C8) || defined(ARDUINO_MAPLE_MINI) || defined(ARDUINO_GENERIC_STM32F103T) || defined(STM32F103TBU6) || defined(STM32F103TB) || defined(__STM32F1__) || defined(STM32F1) || defined(STM32F103C8) || defined(ARDUINO_GENERIC_STM32F103C8) || defined(ARDUINO_GENERIC_F103C8TX)
+// STM32F1: Blue Pill, Maple Mini, etc.
+// STM32F4: Black Pill, Nucleo, Discovery, etc.
+#if defined(ARDUINO_BLUEPILL_F103C8) || defined(ARDUINO_MAPLE_MINI) || defined(ARDUINO_GENERIC_STM32F103T) || defined(STM32F103TBU6) || defined(STM32F103TB) || defined(__STM32F1__) || defined(STM32F1) || defined(STM32F103C8) || defined(ARDUINO_GENERIC_STM32F103C8) || defined(ARDUINO_GENERIC_F103C8TX) || defined(STM32F4) || defined(STM32F4xx) || defined(ARDUINO_UNO_Q) || defined(CONFIG_BOARD_ARDUINO_UNO_Q)
 #if !defined(ARDUINO_HY_TINYSTM103TB)
 #define USE_NEW_STM32_PIN_DEFINITIONS
 #endif
@@ -18,10 +23,14 @@
 
 #if defined(USE_NEW_STM32_PIN_DEFINITIONS)
 // from https://github.com/13rac1/FastLED-STM32
-#include "fastpin_arm_stm_new.h"
+// IWYU pragma: begin_keep
+#include "pins/fastpin_dispatcher.h"
+// IWYU pragma: end_keep
 #else
 // Legacy fastled pin definitions
-#include "fastpin_arm_stm_legacy.h"
+// IWYU pragma: begin_keep
+#include "pins/fastpin_legacy.h"
+// IWYU pragma: end_keep
 #endif
 
 #endif  // FASTLED_FORCE_SOFTWARE_PINS

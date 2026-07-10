@@ -1,9 +1,12 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __INC_FASTLED_STUB_H
 #define __INC_FASTLED_STUB_H
 
 // fastpin_stub.h isn't needed (as it's not used by clockless)
-#include "fastspi_stub.h"
-#include "clockless_stub.h"
+#include "platforms/stub/fastspi_stub.h"
+#include "platforms/stub/clockless_stub.h"
 
 /**
  * Could avoid clockless and fastspi with

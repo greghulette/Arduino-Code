@@ -1,21 +1,19 @@
+// ok no namespace fl
 #pragma once
 
-#include "fl/stdint.h"
+// IWYU pragma: private
+
+#include "fl/stl/stdint.h"
+#include "fl/stl/noexcept.h"
 
 
 // Needed or the wasm compiler will strip them out.
 // Provide missing functions for WebAssembly build.
+// NOTE: millis(), micros(), delayMicroseconds() moved to platform_time.cpp.hpp
 extern "C" {
-
-// Replacement for 'millis' in WebAssembly context
-uint32_t millis();
-
-// Replacement for 'micros' in WebAssembly context
-uint32_t micros();
-
-// Replacement for 'delay' in WebAssembly context
-void delay(int ms);
-void delayMicroseconds(int micros);
+// Timer functions declared in timer.cpp.hpp
+fl::u32 millis() FL_NOEXCEPT;
+fl::u32 micros() FL_NOEXCEPT;
 }
 
 //////////////////////////////////////////////////////////////////////////

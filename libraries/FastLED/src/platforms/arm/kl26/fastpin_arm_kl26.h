@@ -1,12 +1,17 @@
+// IWYU pragma: private
+
 #ifndef __FASTPIN_ARM_KL26_H
 #define __FASTPIN_ARM_KL26_H
 
-#include "fl/force_inline.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/system/fastpin_base.h"
+#include "fl/system/pin.h"  // For PinMode, PinValue enums
 
-FASTLED_NAMESPACE_BEGIN
-
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+namespace fl {
 #if defined(FASTLED_FORCE_SOFTWARE_PINS)
-#warning "Software pin support forced, pin access will be sloightly slower."
+#warning "Software pin support forced, pin access will be slightly slower."
 #define NO_HARDWARE_PIN_SUPPORT
 #undef HAS_HARDWARE_PIN_SUPPORT
 
@@ -17,13 +22,13 @@ FASTLED_NAMESPACE_BEGIN
 /// uses the full port GPIO registers.  In theory, in some way, bit-band register access -should- be faster, however I have found
 /// that something about the way gcc does register allocation results in the bit-band code being slower.  It will need more fine tuning.
 /// The registers are data output, set output, clear output, toggle output, input, and direction
-template<uint8_t PIN, uint32_t _MASK, typename _PDOR, typename _PSOR, typename _PCOR, typename _PTOR, typename _PDIR, typename _PDDR> class _ARMPIN {
+template<u8 PIN, u32 _MASK, typename _PDOR, typename _PSOR, typename _PCOR, typename _PTOR, typename _PDIR, typename _PDDR> class _ARMPIN : public ValidPinBase {
 public:
-  typedef volatile uint32_t * port_ptr_t;
-  typedef uint32_t port_t;
+  typedef volatile u32 * port_ptr_t;
+  typedef u32 port_t;
 
-  inline static void setOutput() { pinMode(PIN, OUTPUT); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
-  inline static void setInput() { pinMode(PIN, INPUT); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
+  inline static void setOutput() { pinMode(PIN, PinMode::Output); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
+  inline static void setInput() { pinMode(PIN, PinMode::Input); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
 
   inline static void hi() __attribute__ ((always_inline)) { _PSOR::r() = _MASK; }
   inline static void lo() __attribute__ ((always_inline)) { _PCOR::r() = _MASK; }
@@ -46,8 +51,8 @@ public:
 };
 
 // Macros for kl26 pin access/definition
-#define GPIO_BITBAND_ADDR(reg, bit) (((uint32_t)&(reg) - 0x40000000) * 32 + (bit) * 4 + 0x42000000)
-#define GPIO_BITBAND_PTR(reg, bit) ((uint32_t *)GPIO_BITBAND_ADDR((reg), (bit)))
+#define GPIO_BITBAND_ADDR(reg, bit) (((u32)&(reg) - 0x40000000) * 32 + (bit) * 4 + 0x42000000)
+#define GPIO_BITBAND_PTR(reg, bit) ((u32 *)GPIO_BITBAND_ADDR((reg), (bit)))
 
 #define _R(T) struct __gen_struct_ ## T
 #define _RD32(T) struct __gen_struct_ ## T { static FASTLED_FORCE_INLINE reg32_t r() { return T; } \
@@ -84,7 +89,8 @@ _FL_DEFPIN(24, 20, E); _FL_DEFPIN(25, 21, E); _FL_DEFPIN(26, 30, E);
 #endif
 
 #endif // FASTLED_FORCE_SOFTWARE_PINS
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
 
 #endif // __INC_FASTPIN_ARM_K20

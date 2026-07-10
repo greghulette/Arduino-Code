@@ -1,9 +1,6 @@
-#include "fl/sketch_macros.h"
+// @filter: (memory is large)
 
-#if SKETCH_HAS_LOTS_OF_MEMORY
+// FastLED.h must be included first to trigger precompiled headers for FastLED's build system
+#include "FastLED.h"
+
 #include "Luminova.h"
-#else
-void setup(){}
-void loop(){}
-
-#endif

@@ -38,7 +38,7 @@
         "type": "git",
         "url": "https://github.com/FastLED/FastLED.git"
     },
-    "version": "3.10.3",
+    "version": "3.10.5",
     "license": "MIT",
     "homepage": "http://fastled.io",
     "frameworks": "arduino",
@@ -60,24 +60,11 @@
     },
     "build": {
         "srcFilter": [
-            "+<*.c>",
-            "+<*.cpp>",
+            "-<**/*.cpp>",
+            "+<fl/build/*.cpp>",
             "+<*.h>",
-            "+<platforms/*.cpp>",
-            "+<platforms/arm/k20/**/*.cpp>",
-            "+<platforms/arm/mgm240/**/*.cpp>",
-            "+<platforms/esp/32/**/*.cpp>",
-            "+<platforms/stub/**/*.cpp>",
-            "+<platforms/wasm/**/*.cpp>",
-            "+<platforms/shared/**.cpp>",
-            "+<platforms/arduino/**.cpp>",
-            "+<platforms/adafruit/**/*.cpp>",
-            "+<third_party/**/*.cpp>",
-            "+<third_party/**/*.c>",
-            "+<fx/**/*.cpp>",
-            "+<fl/**/*.cpp>",
-            "+<fl/*.cpp>",
-            "+<sensors/**/*.cpp>"
+            "+<third_party/libhelix_mp3/real/arm/*.S>",
+            "+<platforms/esp/32/drivers/gpio_isr_rx/*.S>"
         ],
         "libArchive": true
     }

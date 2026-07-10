@@ -1,5 +1,6 @@
 #include <FastLED.h>
 
+
 // ===== matrix + LED config =====
 #define WIDTH 32
 #define HEIGHT 32
@@ -84,9 +85,9 @@ inline void plotDot(int x, int y, uint8_t v) {
 void plotSoftDot(float fx, float fy, float s) {
     // map s (decays from 5) to a pixel radius 1..3
     float r = constrain(s * 0.5f, 1.0f, 3.0f);
-    int R = (int)ceilf(r);
-    int cx = (int)roundf(fx);
-    int cy = (int)roundf(fy);
+    int R = (int)fl::ceilf(r);
+    int cx = (int)fl::roundf(fx);
+    int cy = (int)fl::roundf(fy);
     float r2 = r * r;
     for (int dy = -R; dy <= R; ++dy) {
         for (int dx = -R; dx <= R; ++dx) {
@@ -157,8 +158,8 @@ void loop() {
 
         // x += cos((a)*f), y += sin(a*f)   (original had (a+=...)*f inside cos)
         float aa = p.a * (float)p.f;
-        p.x += cosf(aa);
-        p.y += sinf(aa);
+        p.x += fl::cosf(aa);
+        p.y += fl::sinf(aa);
 
         // draw white point with softness according to s
         plotSoftDot(p.x, p.y, p.s);

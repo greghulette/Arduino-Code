@@ -1,21 +1,39 @@
+// IWYU pragma: private
+
 #ifndef __INC_CLOCKLESS_ARM_SAM_H
 #define __INC_CLOCKLESS_ARM_SAM_H
 
-FASTLED_NAMESPACE_BEGIN
+#include "platforms/arm/sam/is_sam.h"
 
+// SAM/Due platform: Set this FIRST before any includes to prevent generic controller alias
+#if defined(FL_IS_SAM)
+#define FL_CLOCKLESS_CONTROLLER_DEFINED 1
+#endif
+
+#include "fl/chipsets/timing_traits.h"
+#include "fastled_delay.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/noexcept.h"
+
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+namespace fl {
 // Definition for a single channel clockless controller for the sam family of arm chips, like that used in the due and rfduino
 // See clockless.h for detailed info on how the template parameters are used.
 
-#if defined(__SAM3X8E__)
+#if defined(FL_IS_SAM)
 
-
-#define TADJUST 0
-#define TOTAL ( (T1+TADJUST) + (T2+TADJUST) + (T3+TADJUST) )
-
-#define FASTLED_HAS_CLOCKLESS 1
-
-template <uint8_t DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
-class ClocklessController : public CPixelLEDController<RGB_ORDER> {
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
+class ClocklessSAMHardware : public CPixelLEDController<RGB_ORDER> {
+	// Extract timing values from ChipsetTiming struct and convert from nanoseconds to clock cycles
+	// Formula: cycles = (nanoseconds * CPU_MHz + 500) / 1000
+	// The +500 provides rounding to nearest integer
+	// SAM Due uses hardware timer at F_CPU (84MHz)
+	static constexpr u32 T1 = (TIMING::T1 * (F_CPU / 1000000UL) + 500) / 1000;
+	static constexpr u32 T2 = (TIMING::T2 * (F_CPU / 1000000UL) + 500) / 1000;
+	static constexpr u32 T3 = (TIMING::T3 * (F_CPU / 1000000UL) + 500) / 1000;
+	#define TADJUST 0
+	#define TOTAL ( (T1+TADJUST) + (T2+TADJUST) + (T3+TADJUST) )
 	typedef typename FastPinBB<DATA_PIN>::port_ptr_t data_ptr_t;
 	typedef typename FastPinBB<DATA_PIN>::port_t data_t;
 
@@ -24,16 +42,16 @@ class ClocklessController : public CPixelLEDController<RGB_ORDER> {
 	CMinWait<WAIT_TIME> mWait;
 
 public:
-	virtual void init() {
+	virtual void init() FL_NOEXCEPT {
 		FastPinBB<DATA_PIN>::setOutput();
 		mPinMask = FastPinBB<DATA_PIN>::mask();
 		mPort = FastPinBB<DATA_PIN>::port();
 	}
 
-	virtual uint16_t getMaxRefreshRate() const { return 400; }
+	virtual u16 getMaxRefreshRate() const { return 400; }
 
 protected:
-    virtual void showPixels(PixelController<RGB_ORDER> & pixels) {
+    virtual void showPixels(PixelController<RGB_ORDER> & pixels) FL_NOEXCEPT {
         mWait.wait();
         if(!showRGBInternal(pixels)) {
             sei(); delayMicroseconds(WAIT_TIME); cli();
@@ -42,13 +60,13 @@ protected:
         mWait.mark();
     }
 
-	template<int BITS>  __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER uint32_t & next_mark, FASTLED_REGISTER data_ptr_t port, FASTLED_REGISTER uint8_t & b) {
+	template<int BITS>  __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER u32 & next_mark, FASTLED_REGISTER data_ptr_t port, FASTLED_REGISTER u8 & b) FL_NOEXCEPT {
 		// Make sure we don't slot into a wrapping spot, this will delay up to 12.5µs for WS2812
 		// bool bShift=0;
 		// while(VAL < (TOTAL*10)) { bShift=true; }
 		// if(bShift) { next_mark = (VAL-TOTAL); };
 
-		for(FASTLED_REGISTER uint32_t i = BITS; i > 0; --i) {
+		for(FASTLED_REGISTER u32 i = BITS; i > 0; --i) {
 			// wait to start the bit, then set the pin high
 			while(DUE_TIMER_VAL < next_mark);
 			next_mark = (DUE_TIMER_VAL+TOTAL);
@@ -70,20 +88,20 @@ protected:
 #define FORCE_REFERENCE(var)  asm volatile( "" : : "r" (var) )
 	// This method is made static to force making register Y available to use for data on AVR - if the method is non-static, then
 	// gcc will use register Y for the this pointer.
-	static uint32_t showRGBInternal(PixelController<RGB_ORDER> pixels) {
+	static u32 showRGBInternal(PixelController<RGB_ORDER> pixels) FL_NOEXCEPT {
 		// Setup and start the clock
-		TC_Configure(DUE_TIMER,DUE_TIMER_CHANNEL,TC_CMR_TCCLKS_TIMER_CLOCK1);
+		TC_Configure(DUE_TIMER,DUE_TIMER_CHANNEL,TC_CMR_TCCLKS_TIMER_CLOCK1) FL_NOEXCEPT;
 		pmc_enable_periph_clk(DUE_TIMER_ID);
-		TC_Start(DUE_TIMER,DUE_TIMER_CHANNEL);
+		TC_Start(DUE_TIMER,DUE_TIMER_CHANNEL) FL_NOEXCEPT;
 
-		FASTLED_REGISTER data_ptr_t port asm("r7") = FastPinBB<DATA_PIN>::port(); FORCE_REFERENCE(port);
+		FASTLED_REGISTER data_ptr_t port asm("r7") FL_NOEXCEPT = FastPinBB<DATA_PIN>::port(); FORCE_REFERENCE(port);
 		*port = 0;
 
 		// Setup the pixel controller and load/scale the first byte
 		pixels.preStepFirstByteDithering();
-		uint8_t b = pixels.loadAndScale0();
+		u8 b = pixels.loadAndScale0();
 
-		uint32_t next_mark = (DUE_TIMER_VAL + (TOTAL));
+		u32 next_mark = (DUE_TIMER_VAL + (TOTAL));
 		while(pixels.has(1)) {
 			pixels.stepDithering();
 
@@ -110,13 +128,19 @@ protected:
 			#endif
 		};
 
-		TC_Stop(DUE_TIMER,DUE_TIMER_CHANNEL);
+		TC_Stop(DUE_TIMER,DUE_TIMER_CHANNEL) FL_NOEXCEPT;
 		return DUE_TIMER_VAL;
 	}
 };
 
-#endif
+// Make ClocklessSAMHardware the default ClocklessController for SAM platforms
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 0>
+using ClocklessController = ClocklessSAMHardware<DATA_PIN, TIMING, RGB_ORDER, XTRA0, FLIP, WAIT_TIME>;
 
-FASTLED_NAMESPACE_END
+#endif  // defined(FL_IS_SAM)
 
-#endif
+}  // namespace fl
+
+FL_DISABLE_WARNING_POP
+
+#endif  // __INC_CLOCKLESS_ARM_SAM_H

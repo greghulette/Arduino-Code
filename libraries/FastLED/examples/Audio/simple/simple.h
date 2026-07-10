@@ -24,25 +24,24 @@ all the UI elements you see below.
 #include <Arduino.h>
 #include <FastLED.h>
 
-#include "fl/audio.h"
-#include "fl/downscale.h"
-#include "fl/draw_visitor.h"
+#include "fl/audio/audio.h"
+#include "fl/gfx/downscale.h"
+#include "fl/gfx/draw_visitor.h"
 #include "fl/fft.h"
-#include "fl/math.h"
-#include "fl/math_macros.h"
-#include "fl/raster.h"
-#include "fl/time_alpha.h"
-#include "fl/ui.h"
-#include "fl/xypath.h"
-#include "fl/unused.h"
-#include "fx/time.h"
-#include "fl/function.h"
+#include "fl/math/math.h"
+#include "fl/math/math.h"
+#include "fl/gfx/raster.h"
+#include "fl/math/time_alpha.h"
+#include "fl/ui/ui.h"
+#include "fl/gfx/xypath.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/fx/time.h"
+#include "fl/stl/function.h"
 
 // Sketch.
 #include "fx_audio.h"
 
-#include "fl/memfill.h"
-using namespace fl;
+#include "fl/stl/cstring.h"
 
 #define HEIGHT 128
 #define WIDTH 128
@@ -51,37 +50,38 @@ using namespace fl;
 #define TIME_ANIMATION 1000 // ms
 #define PIN_DATA 3
 
-UITitle title("Simple control of an xy path");
-UIDescription description("This is more of a test for new features.");
-UICheckbox enableVolumeVis("Enable volume visualization", false);
-UICheckbox enableRMS("Enable RMS visualization", false);
-UICheckbox enableFFT("Enable FFT visualization", true);
-UICheckbox freeze("Freeze frame", false);
-UIButton advanceFrame("Advance frame");
-UISlider decayTimeSeconds("Fade time Seconds", .1, 0, 4, .02);
-UISlider attackTimeSeconds("Attack time Seconds", .1, 0, 4, .02);
-UISlider outputTimeSec("outputTimeSec", .17, 0, 2, .01);
+fl::UITitle title("Simple control of an xy path");
+fl::UIDescription description("This is more of a test for new features.");
+fl::UICheckbox enableVolumeVis("Enable volume visualization", false);
+fl::UICheckbox enableRMS("Enable RMS visualization", false);
+fl::UICheckbox enableFFT("Enable FFT visualization", true);
+fl::UICheckbox enablePitchDetect("Enable pitch detection", false);
+fl::UICheckbox freeze("Freeze frame", false);
+fl::UIButton advanceFrame("Advance frame");
+fl::UISlider decayTimeSeconds("Fade time Seconds", .1, 0, 4, .02);
+fl::UISlider attackTimeSeconds("Attack time Seconds", .1, 0, 4, .02);
+fl::UISlider outputTimeSec("outputTimeSec", .17, 0, 2, .01);
 
-UIAudio audio("Audio");
-UISlider fadeToBlack("Fade to black by", 5, 0, 20, 1);
+fl::UIAudio audio("Audio");
+fl::UISlider fadeToBlack("Fade to black by", 5, 0, 20, 1);
 
 // Group related UI elements using UIGroup template multi-argument constructor
-UIGroup visualizationControls("Visualization", enableVolumeVis, enableRMS, enableFFT);
-UIGroup audioProcessingControls("Audio Processing", decayTimeSeconds, attackTimeSeconds, outputTimeSec);
-UIGroup generalControls("General Controls", freeze, advanceFrame, fadeToBlack);
+fl::UIGroup visualizationControls("Visualization", enableVolumeVis, enableRMS, enableFFT, enablePitchDetect);
+fl::UIGroup audioProcessingControls("Audio Processing", decayTimeSeconds, attackTimeSeconds, outputTimeSec);
+fl::UIGroup generalControls("General Controls", freeze, advanceFrame, fadeToBlack);
 
-MaxFadeTracker audioFadeTracker(attackTimeSeconds.value(),
+fl::MaxFadeTracker audioFadeTracker(attackTimeSeconds.value(),
                                 decayTimeSeconds.value(), outputTimeSec.value(),
                                 44100);
 
-CRGB framebuffer[NUM_LEDS];
-XYMap frameBufferXY(WIDTH, HEIGHT, IS_SERPINTINE);
+fl::CRGB framebuffer[NUM_LEDS];
+fl::XYMap frameBufferXY(WIDTH, HEIGHT, IS_SERPINTINE);
 
-CRGB leds[NUM_LEDS / 4]; // Downscaled buffer
-XYMap ledsXY(WIDTH / 2, HEIGHT / 2,
+fl::CRGB leds[NUM_LEDS / 4]; // Downscaled buffer
+fl::XYMap ledsXY(WIDTH / 2, HEIGHT / 2,
              IS_SERPINTINE); // Framebuffer is regular rectangle LED matrix.
 
-FFTBins fftOut(WIDTH); // 2x width due to super sampling.
+fl::audio::fft::Bins fftOut(WIDTH); // 2x width due to super sampling.
 
 // CRGB framebuffer[NUM_LEDS];
 // CRGB framebuffer[WIDTH_2X * HEIGHT_2X];  // 2x super sampling.
@@ -93,16 +93,22 @@ int x = 0;
 int y = 0;
 bool triggered = false;
 
-SoundLevelMeter soundLevelMeter(.0, 0.0);
+fl::audio::SoundLevelMeter soundLevelMeter(.0, 0.0);
 
-float rms(Slice<const int16_t> data) {
+// Pitch detection engine
+fl::SoundToMIDI pitchConfig;
+fl::SoundToMIDIEngine* pitchEngine = nullptr;
+uint8_t currentMIDINote = 0;
+bool noteIsOn = false;
+
+float rms(fl::span<const int16_t> data) {
     double sumSq = 0.0;
     const int N = data.size();
     for (int i = 0; i < N; ++i) {
         int32_t x32 = int32_t(data[i]);
         sumSq += x32 * x32;
     }
-    float rms = sqrt(float(sumSq) / N);
+    float rms = fl::sqrt(float(sumSq) / N);
     return rms;
 }
 
@@ -117,16 +123,34 @@ void setup() {
 
     decayTimeSeconds.onChanged([](float value) {
         audioFadeTracker.setDecayTime(value);
-        FASTLED_WARN("Fade time seconds: " << value);
+        FL_WARN("Fade time seconds: " << value);
     });
     attackTimeSeconds.onChanged([](float value) {
         audioFadeTracker.setAttackTime(value);
-        FASTLED_WARN("Attack time seconds: " << value);
+        FL_WARN("Attack time seconds: " << value);
     });
     outputTimeSec.onChanged([](float value) {
         audioFadeTracker.setOutputTime(value);
-        FASTLED_WARN("Output time seconds: " << value);
+        FL_WARN("Output time seconds: " << value);
     });
+
+    // Initialize pitch detection
+    pitchConfig.sample_rate_hz = 44100.0f;
+    pitchEngine = new fl::SoundToMIDIEngine(pitchConfig);  // ok bare allocation
+    pitchEngine->onNoteOn = [](uint8_t note, uint8_t velocity) {
+        currentMIDINote = note;
+        noteIsOn = true;
+        Serial.print("Note ON: ");
+        Serial.print(note);
+        Serial.print(" vel: ");
+        Serial.println(velocity);
+    };
+    pitchEngine->onNoteOff = [](uint8_t note) {
+        noteIsOn = false;
+        Serial.print("Note OFF: ");
+        Serial.println(note);
+    };
+
     FastLED.addLeds<NEOPIXEL, PIN_DATA>(leds, ledsXY.getTotal())
         .setScreenMap(screenmap);
 }
@@ -142,12 +166,12 @@ void shiftUp() {
     }
 
     for (int y = HEIGHT - 1; y > 0; --y) {
-        CRGB* row1 = &framebuffer[frameBufferXY(0, y)];
-        CRGB* row2 = &framebuffer[frameBufferXY(0, y - 1)];
-        memcpy(row1, row2, WIDTH * sizeof(CRGB));
+        fl::CRGB* row1 = &framebuffer[frameBufferXY(0, y)];
+        fl::CRGB* row2 = &framebuffer[frameBufferXY(0, y - 1)];
+        fl::memcopy(row1, row2, WIDTH * sizeof(fl::CRGB));
     }
-    CRGB* row = &framebuffer[frameBufferXY(0, 0)];
-    fl::memfill(row, 0, sizeof(CRGB) * WIDTH);
+    fl::CRGB* row = &framebuffer[frameBufferXY(0, 0)];
+    fl::memset(row, 0, sizeof(fl::CRGB) * WIDTH);
 }
 
 
@@ -163,7 +187,7 @@ bool doFrame() {
 
 void loop() {
     if (triggered) {
-        FASTLED_WARN("Triggered");
+        FL_WARN("Triggered");
     }
 
     // x = pointX.as_int();
@@ -171,18 +195,30 @@ void loop() {
 
     bool do_frame = doFrame();
 
-    while (AudioSample sample = audio.next()) {
+    while (fl::audio::Sample sample = audio.next()) {
         if (!do_frame) {
             continue;
         }
+
+        // Process pitch detection if enabled
+        if (enablePitchDetect && pitchEngine) {
+            // Convert int16_t samples to float for pitch detection
+            static float floatBuffer[512];
+            size_t numSamples = fl::min(sample.pcm().size(), (size_t)512);
+            for (size_t i = 0; i < numSamples; i++) {
+                floatBuffer[i] = sample.pcm()[i] / 32768.0f;
+            }
+            pitchEngine->processFrame(floatBuffer, numSamples);
+        }
+
         float fade = audioFadeTracker(sample.pcm().data(), sample.pcm().size());
         shiftUp();
-        // FASTLED_WARN("Audio sample size: " << sample.pcm().size());
+        // FL_WARN("Audio sample size: " << sample.pcm().size());
         soundLevelMeter.processBlock(sample.pcm());
-        // FASTLED_WARN("")
+        // FL_WARN("")
         auto dbfs = soundLevelMeter.getDBFS();
         FASTLED_UNUSED(dbfs);
-        // FASTLED_WARN("getDBFS: " << dbfs);
+        // FL_WARN("getDBFS: " << dbfs);
         int32_t max = 0;
         for (size_t i = 0; i < sample.pcm().size(); ++i) {
             int32_t x = ABS(sample.pcm()[i]);
@@ -195,53 +231,62 @@ void loop() {
         anim = fl::clamp(anim, 0.0f, 1.0f);
 
         x = fl::map_range<float, float>(anim, 0.0f, 1.0f, 0.0f, WIDTH - 1);
-        // FASTLED_WARN("x: " << x);
+        // FL_WARN("x: " << x);
 
         // fft.run(sample.pcm(), &fftOut);
         sample.fft(&fftOut);
 
-        // FASTLED_ASSERT(fftOut.bins_raw.size() == WIDTH_2X,
-        //                "FFT bins size mismatch");
-
         if (enableFFT) {
-            auto max_x = fftOut.bins_raw.size() - 1;
+            auto max_x = fftOut.raw().size() - 1;
             FASTLED_UNUSED(max_x);
-            for (size_t i = 0; i < fftOut.bins_raw.size(); ++i) {
+            for (size_t i = 0; i < fftOut.raw().size(); ++i) {
                 auto x = i;
-                auto v = fftOut.bins_db[i];
+                auto v = fftOut.db()[i];
                 // Map audio intensity to a position in the heat palette (0-255)
                 v = fl::map_range<float, float>(v, 45, 70, 0, 1.f);
                 v = fl::clamp(v, 0.0f, 1.0f);
                 uint8_t heatIndex =
                     fl::map_range<float, uint8_t>(v, 0, 1, 0, 255);
 
-                // FASTLED_WARN(v);
+                // FL_WARN(v);
 
                 // Use FastLED's built-in HeatColors palette
                 auto c = ColorFromPalette(HeatColors_p, heatIndex);
                 c.fadeToBlackBy(255 - heatIndex);
                 framebuffer[frameBufferXY(x, 0)] = c;
-                // FASTLED_WARN("y: " << i << " b: " << b);
+                // FL_WARN("y: " << i << " b: " << b);
             }
         }
 
         if (enableVolumeVis) {
-            framebuffer[frameBufferXY(x, HEIGHT / 2)] = CRGB(0, 255, 0);
+            framebuffer[frameBufferXY(x, HEIGHT / 2)] = fl::CRGB(0, 255, 0);
         }
 
         if (enableRMS) {
             float rms = sample.rms();
-            FASTLED_WARN("RMS: " << rms);
+            FL_WARN("RMS: " << rms);
             rms = fl::map_range<float, float>(rms, 0.0f, 32768.0f, 0.0f, 1.0f);
             rms = fl::clamp(rms, 0.0f, 1.0f) * WIDTH;
-            framebuffer[frameBufferXY(rms, HEIGHT * 3 / 4)] = CRGB(0, 0, 255);
+            framebuffer[frameBufferXY(rms, HEIGHT * 3 / 4)] = fl::CRGB(0, 0, 255);
         }
+
+        // Display pitch detection result
+        if (enablePitchDetect && noteIsOn) {
+            // Map MIDI note to position (common range: 40-88)
+            float notePos = fl::map_range<float, float>(currentMIDINote, 40.0f, 88.0f, 0.0f, 1.0f);
+            notePos = fl::clamp(notePos, 0.0f, 1.0f);
+            uint16_t note_x = notePos * (WIDTH - 1);
+            uint16_t h = HEIGHT / 8;
+            // magenta color for pitch
+            framebuffer[frameBufferXY(note_x, h)] = fl::CRGB(255, 0, 255);
+        }
+
         if (true) {
             uint16_t fade_width = fade * (WIDTH - 1);
             uint16_t h = HEIGHT / 4;
             // yellow
             int index = frameBufferXY(fade_width, h);
-            auto c = CRGB(255, 255, 0);
+            auto c = fl::CRGB(255, 255, 0);
             framebuffer[index] = c;
         }
     }

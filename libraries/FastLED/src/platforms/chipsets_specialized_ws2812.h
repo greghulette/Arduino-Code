@@ -1,4 +1,7 @@
+// ok no namespace fl
 #pragma once
+
+#include "platforms/esp/is_esp.h"
 
 // The WS2812 family of chipsets is special! Why?
 // Because it's super cheap. So we optimize it heavily.
@@ -8,43 +11,39 @@
 // If FASTLED_WS2812_HAS_SPECIAL_DRIVER is 0, then a default driver
 // will be used, otherwise the platform provides a special driver.
 
-#include "fl/int.h"
+#include "fl/stl/int.h"
 #include "eorder.h"
 
 #ifndef FASTLED_OVERCLOCK
 #error "This needs to be included by chipsets.h when FASTLED_OVERCLOCK is defined"
 #endif
 
-
-#if defined(__IMXRT1062__) && !defined(FASTLED_NOT_USES_OBJECTFLED)
-#if defined(FASTLED_USES_OBJECTFLED)
-#warning "FASTLED_USES_OBJECTFLED is now implicit for Teensy 4.0/4.1 for WS2812 and is no longer needed."
-#endif
-#include "platforms/arm/k20/clockless_objectfled.h"
-template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::GRB>
-class WS2812Controller800Khz:
-	public fl::ClocklessController_ObjectFLED_WS2812<
-		DATA_PIN,
-		RGB_ORDER> {
- public:
-    typedef fl::ClocklessController_ObjectFLED_WS2812<DATA_PIN, RGB_ORDER> Base;
-	WS2812Controller800Khz(): Base(FASTLED_OVERCLOCK) {}
-};
-#define FASTLED_WS2812_HAS_SPECIAL_DRIVER 1
-#elif defined(FASTLED_USES_ESP32S3_I2S)
-#include "platforms/esp/32/clockless_i2s_esp32s3.h"
-template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::GRB>
-class WS2812Controller800Khz:
-	public fl::ClocklessController_I2S_Esp32_WS2812<
+// NOTE: FASTLED_ESP32_LCD_DRIVER and FASTLED_USES_ESP32S3_I2S are now handled
+// by the channel driver priority system. Define these macros to force the
+// I2S LCD_CAM driver to highest priority (see enabled.h for details).
+// The old per-controller template overrides have been removed.
+#if (defined(PICO_RP2040) || defined(PICO_RP2350) || defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_RP2350)) && defined(FASTLED_RP2040_CLOCKLESS_PIO_AUTO)
+#include "platforms/arm/rp/rpcommon/clockless_rp_pio_auto.h"
+// Explicit name for RP2040/RP2350 PIO automatic parallel WS2812 controller
+template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::EOrder::GRB>
+class WS2812RP2040Auto:
+	public fl::ClocklessController_RP2040_PIO_WS2812<
 		DATA_PIN,
 		RGB_ORDER
 	> {};
+// Default WS2812 controller typedef (selects automatic parallel PIO on RP2040/RP2350)
+template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::EOrder::GRB>
+using WS2812Controller800Khz = WS2812RP2040Auto<DATA_PIN, RGB_ORDER>;
 #define FASTLED_WS2812_HAS_SPECIAL_DRIVER 1
 #elif defined(FASTLED_USE_ADAFRUIT_NEOPIXEL)
 #include "platforms/adafruit/clockless.h"
-template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::GRB>
-class WS2812Controller800Khz : public fl::AdafruitWS2812Controller<DATA_PIN, RGB_ORDER> {};
+// Explicit name for Adafruit NeoPixel-based WS2812 controller
+template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::EOrder::GRB>
+class WS2812Adafruit : public fl::AdafruitWS2812Controller<DATA_PIN, RGB_ORDER> {};
+// Default WS2812 controller typedef (selects Adafruit driver)
+template <fl::u8 DATA_PIN, EOrder RGB_ORDER = fl::EOrder::GRB>
+using WS2812Controller800Khz = WS2812Adafruit<DATA_PIN, RGB_ORDER>;
 #define FASTLED_WS2812_HAS_SPECIAL_DRIVER 1
 #else
 #define FASTLED_WS2812_HAS_SPECIAL_DRIVER 0
-#endif  // defined(FASTLED_USES_OBJECTFLED)
+#endif  // platform-specific WS2812 drivers

@@ -1,18 +1,11 @@
+// @filter: (memory is large) and not (platform is stm32)
+
 /// This is a work in progress showcasing a complex MIDI keyboard
 /// visualizer.
 /// To run this compiler use
 /// > pip install fastled
 /// Then go to your sketch directory and run
 /// > fastled
-
-#include "shared/defs.h"
-
-#if !ENABLE_SKETCH
-// avr can't compile this, neither can the esp8266.
-void setup() {}
-void loop() {}
-#else
-
 
 //#define DEBUG_PAINTER
 //#define DEBUG_KEYBOARD 1
@@ -37,9 +30,9 @@ void loop() {}
 #include "arduino/LedRopeTCL.h"
 #include "arduino/ui_state.h"
 #include "shared/dprint.h"
-#include "fl/dbg.h"
-#include "fl/ui.h"
-#include "fl/unused.h"
+#include "fl/log/log.h"
+#include "fl/ui/ui.h"
+#include "fl/stl/compiler_control.h"
 
 // Spoof the midi library so it thinks it's running on an arduino.
 //#ifndef ARDUINO
@@ -75,8 +68,8 @@ KeyboardState keyboard;
 //  velocity - Value between 0-127
 void HandleNoteOn(byte channel, byte midi_note, byte velocity) {
   FL_UNUSED(channel);
-  FASTLED_DBG("HandleNoteOn: midi_note = " << int(midi_note) << ", velocity = " << int(velocity));
-  keyboard.HandleNoteOn(midi_note, velocity, color_selector.curr_val(), millis());
+  FL_DBG("HandleNoteOn: midi_note = " << int(midi_note) << ", velocity = " << int(velocity));
+  keyboard.HandleNoteOn(midi_note, velocity, color_selector.curr_val(), fl::millis());
 }
 
 /////////////////////////////////////////////////////////
@@ -87,15 +80,15 @@ void HandleNoteOn(byte channel, byte midi_note, byte velocity) {
 //  velocity - Value between 0-127
 void HandleNoteOff(byte channel, byte midi_note, byte velocity) {
   FL_UNUSED(channel);
-  FASTLED_DBG("HandleNoteOn: midi_note = " << int(midi_note) << ", velocity = " << int(velocity));
-  keyboard.HandleNoteOff(midi_note, velocity, millis());
+  FL_DBG("HandleNoteOn: midi_note = " << int(midi_note) << ", velocity = " << int(velocity));
+  keyboard.HandleNoteOff(midi_note, velocity, fl::millis());
 }
 
 /////////////////////////////////////////////////////////
 // This is uninmplemented because the test keyboard didn't
 // have this functionality. Right now the only thing it does is
 // print out that the key was pressed.
-void HandleAfterTouchPoly(byte channel, byte note, byte pressure) { 
+void HandleAfterTouchPoly(byte channel, byte note, byte pressure) {
   FL_UNUSED(channel);
   keyboard.HandleAfterTouchPoly(note, pressure);
 }
@@ -126,13 +119,13 @@ void HandleAfterTouchChannel(byte channel, byte pressure) {
 /////////////////////////////////////////////////////////
 // Called once when the app starts.
 void setup() {
-  FASTLED_DBG("setup");
+  FL_DBG("setup");
   // Serial port for logging.
   Serial.begin(57600);
   //start serial with midi baudrate 31250
   // Initiate MIDI communications, listen to all channels
   MY_MIDI.begin(MIDI_CHANNEL_OMNI);
-  
+
   // Connect the HandleNoteOn function to the library, so it is called upon reception of a NoteOn.
   MY_MIDI.setHandleNoteOn(HandleNoteOn);
   MY_MIDI.setHandleNoteOff(HandleNoteOff);
@@ -154,7 +147,7 @@ void DbgDoSimulatedKeyboardPress() {
   // Just force it on whenever this function is called.
   is_debugging = true;
 
-  uint32_t now = millis();
+  uint32_t now = fl::millis();
   uint32_t delta_time = now - start_time;
 
 
@@ -178,14 +171,14 @@ void DbgDoSimulatedKeyboardPress() {
 /////////////////////////////////////////////////////////;p
 // Repeatedly called by the app.
 void loop() {
-  //FASTLED_DBG("loop");
+  //FL_DBG("loop");
 
 
   // Calculate dt.
   static uint32_t s_prev_time = 0;
   uint32_t prev_time = 0;
   FASTLED_UNUSED(prev_time);  // actually used in perf tests.
-  uint32_t now_ms = millis();
+  uint32_t now_ms = fl::millis();
   uint32_t delta_ms = now_ms - s_prev_time;
   s_prev_time = now_ms;
 
@@ -199,36 +192,36 @@ void loop() {
   }
 
   DbgDoSimulatedKeyboardPress();
-  
-  const unsigned long start_time = millis();
+
+  const unsigned long start_time = fl::millis();
   // Each frame we call the midi processor 100 times to make sure that all notes
   // are processed.
   for (int i = 0; i < 100; ++i) {
     MY_MIDI.read();
   }
- 
-  const unsigned long midi_time = millis() - start_time;
-  
+
+  const unsigned long midi_time = fl::millis() - start_time;
+
   // Updates keyboard: releases sustained keys that.
 
-  const uint32_t keyboard_time_start = millis();
+  const uint32_t keyboard_time_start = fl::millis();
 
   // This is kind of a hack... but give the keyboard a future time
   // so that all keys just pressed get a value > 0 for their time
   // durations.
   keyboard.Update(now_ms + delta_ms, delta_ms);
-  const uint32_t keyboard_delta_time = millis() - keyboard_time_start;
-  
+  const uint32_t keyboard_delta_time = fl::millis() - keyboard_time_start;
+
   ui_state ui_st = ui_update(now_ms, delta_ms);
 
   //dprint("vis selector = ");
   //dprintln(vis_state);
-  
-  
+
+
   // These int values are for desting the performance of the
   // app. If the app ever runs slow then set kShowFps to 1
   // in the settings.h file.
-  const unsigned long start_painting = millis();
+  const unsigned long start_painting = fl::millis();
   FASTLED_UNUSED(start_painting);
 
 
@@ -236,9 +229,9 @@ void loop() {
   Painter::VisState which_vis = Painter::VisState(ui_st.which_visualizer);
   Painter::Paint(now_ms, delta_ms, which_vis, &keyboard, &led_rope);
 
-  const unsigned long paint_time = millis() - start_time;
+  const unsigned long paint_time = fl::millis() - start_time;
   const unsigned long total_time = midi_time + paint_time + keyboard_delta_time;
-  
+
   if (kShowFps) {
     float fps = 1.0f/(float(total_time) / 1000.f);
     Serial.print("fps                  - "); Serial.println(fps);
@@ -248,12 +241,10 @@ void loop() {
   }
 
   EVERY_N_SECONDS(1) {
-    FASTLED_DBG("is_debugging = " << is_debugging);
+    FL_DBG("is_debugging = " << is_debugging);
   }
 
 
   FastLED.show();
 }
 
-
-#endif  // __AVR__

@@ -1,13 +1,16 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifdef FASTLED_STUB_IMPL  // Only use this if explicitly defined.
 
 #include "platforms/stub/led_sysdefs_stub.h"
-#include "fl/unused.h"
-#include "fl/compiler_control.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/noexcept.h"
 
 
 // No timing-related includes needed here anymore
 
-void pinMode(uint8_t pin, uint8_t mode) {
+void pinMode(fl::u8 pin, fl::u8 mode) FL_NOEXCEPT {
     // Empty stub as we don't actually ever write anything
     FASTLED_UNUSED(pin);
     FASTLED_UNUSED(mode);

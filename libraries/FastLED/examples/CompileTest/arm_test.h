@@ -3,8 +3,8 @@
 #include "FastLED.h"
 
 void arm_tests() {
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM should be defined for ARM platforms"
+#ifndef FL_IS_ARM
+#error "FL_IS_ARM should be defined for ARM platforms"
 #endif
 
 #if FASTLED_USE_PROGMEM != 0 && FASTLED_USE_PROGMEM != 1
@@ -13,13 +13,31 @@ void arm_tests() {
 
 #if defined(ARDUINO_TEENSYLC) || defined(ARDUINO_TEENSY30) || defined(__MK20DX128__) || defined(__MK20DX256__) || defined(ARDUINO_ARCH_RENESAS_UNO) || defined(STM32F1)
     // Teensy LC, Teensy 3.0, Teensy 3.1/3.2, Renesas UNO, and STM32F1 have limited memory
-    #if SKETCH_HAS_LOTS_OF_MEMORY != 0
-    #error "SKETCH_HAS_LOTS_OF_MEMORY should be 0 for Teensy LC, Teensy 3.0, Teensy 3.1/3.2, Renesas UNO, and STM32F1"
+    #if SKETCH_HAS_LARGE_MEMORY != 0
+    #error "SKETCH_HAS_LARGE_MEMORY should be 0 for Teensy LC, Teensy 3.0, Teensy 3.1/3.2, Renesas UNO, and STM32F1"
+    #endif
+    #if SKETCH_HAS_HUGE_MEMORY != 0
+    #error "SKETCH_HAS_HUGE_MEMORY should be 0 for Teensy LC, Teensy 3.0, Teensy 3.1/3.2, Renesas UNO, and STM32F1"
+    #endif
+#elif defined(FL_IS_TEENSY_35) || defined(FL_IS_TEENSY_36) || defined(FL_IS_TEENSY_4X) \
+   || defined(ARDUINO_ARCH_RP2040) || defined(PICO_RP2040) || defined(PICO_RP2350) \
+   || defined(__SAMD51__) \
+   || defined(STM32F4xx) || defined(STM32H7xx) || defined(ARDUINO_GIGA)
+    // Huge memory ARM platforms (>= 256KB RAM)
+    #if SKETCH_HAS_LARGE_MEMORY != 1
+    #error "SKETCH_HAS_LARGE_MEMORY should be 1 for huge ARM platforms"
+    #endif
+    #if SKETCH_HAS_HUGE_MEMORY != 1
+    #error "SKETCH_HAS_HUGE_MEMORY should be 1 for huge ARM platforms"
     #endif
 #else
-    // Most other ARM platforms have lots of memory
-    #if SKETCH_HAS_LOTS_OF_MEMORY != 1
-    #error "SKETCH_HAS_LOTS_OF_MEMORY should be 1 for most ARM platforms"
+    // Most other ARM platforms have large memory but are not "huge"
+    // (e.g., SAMD21, nRF52, generic Cortex-M)
+    #if SKETCH_HAS_LARGE_MEMORY != 1
+    #error "SKETCH_HAS_LARGE_MEMORY should be 1 for most ARM platforms"
+    #endif
+    #if SKETCH_HAS_HUGE_MEMORY != 0
+    #error "SKETCH_HAS_HUGE_MEMORY should be 0 for generic ARM platforms (high tier, not huge)"
     #endif
 #endif
 
@@ -74,5 +92,12 @@ void arm_tests() {
     #ifndef CLOCKLESS_FREQUENCY
     #error "NRF52 should have CLOCKLESS_FREQUENCY defined"
     #endif
+#endif
+
+// DEFAULT macro must survive FastLED.h inclusion (used by analogReference)
+#if defined(ARDUINO)
+#ifndef DEFAULT
+#error "DEFAULT macro should be defined after including FastLED.h on ARM Arduino platforms"
+#endif
 #endif
 }

@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 import threading
-from typing import List
+from typing import Optional
 
 # Import at runtime since this module is part of util package and used broadly
-from ci.util.running_process import RunningProcess
+from running_process import RunningProcess
+
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 
 
 class RunningProcessManager:
@@ -41,19 +41,20 @@ class RunningProcessManager:
 
         now = time.time()
         for idx, p in enumerate(active, 1):
-            pid: int | None = None
+            pid: Optional[int] = None
             try:
                 if p.proc is not None:
                     pid = p.proc.pid
+            except KeyboardInterrupt as ki:
+                handle_keyboard_interrupt(ki)
+                raise
             except Exception:
                 pid = None
 
             start = p.start_time
-            last_out = p.time_last_stdout_line()
             duration_str = f"{(now - start):.1f}s" if start is not None else "?"
-            since_out_str = (
-                f"{(now - last_out):.1f}s" if last_out is not None else "no-output"
-            )
+            has_output = bool(p.stdout) if p.finished or p.is_running() else False
+            since_out_str = "has-output" if has_output else "no-output"
 
             print(
                 f"  {idx}. cmd={p.command} pid={pid} duration={duration_str} last_output={since_out_str}"

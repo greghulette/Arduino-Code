@@ -1,10 +1,13 @@
 #pragma once
 
-#include "fl/engine_events.h"
-#include "fl/str.h"
+// IWYU pragma: private
+
+#include "fl/system/engine_events.h"
+#include "fl/stl/string.h"
 #include "platforms/shared/ui/json/ui_internal.h"
-#include "fl/json.h"
-#include "fl/ptr.h" // For fl::shared_ptr
+#include "fl/stl/json.h"
+#include "fl/stl/shared_ptr.h" // For fl::shared_ptr
+#include "fl/stl/noexcept.h"
 
 namespace fl {
 
@@ -13,29 +16,29 @@ class JsonUiButtonInternal;
 
 class JsonButtonImpl {
   public:
-    JsonButtonImpl(const fl::string &name);
+    JsonButtonImpl(const fl::string &name) FL_NOEXCEPT;
     ~JsonButtonImpl();
-    JsonButtonImpl &Group(const fl::string &name);
+    JsonButtonImpl &Group(const fl::string &name) FL_NOEXCEPT;
 
-    const fl::string &name() const;
-    void toJson(fl::Json &json) const;
-    bool isPressed() const;
-    bool clicked() const;
-    int clickedCount() const;
-    const fl::string &groupName() const;
+    const fl::string &name() const FL_NOEXCEPT;
+    void toJson(fl::json &json) const FL_NOEXCEPT;
+    bool isPressed() const FL_NOEXCEPT;
+    bool clicked() const FL_NOEXCEPT;
+    int clickedCount() const FL_NOEXCEPT;
+    fl::string groupName() const FL_NOEXCEPT;
     
     // Method to allow parent UIElement class to set the group
-    void setGroup(const fl::string &groupName);
+    void setGroup(const fl::string &groupName) FL_NOEXCEPT;
 
-    void click();
+    void click() FL_NOEXCEPT;
 
-    int id() const;
+    int id() const FL_NOEXCEPT;
 
   private:
     struct Updater : fl::EngineEvents::Listener {
-        void init(JsonButtonImpl *owner);
+        void init(JsonButtonImpl *owner) FL_NOEXCEPT;
         ~Updater();
-        void onPlatformPreLoop2() override;
+        void onPlatformPreLoop2() FL_NOEXCEPT override;
         JsonButtonImpl *mOwner = nullptr;
     };
 

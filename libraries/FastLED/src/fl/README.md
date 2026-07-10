@@ -57,20 +57,20 @@ Common types to reach for:
 - Strings and streams: `fl::string`, `fl::ostream`, `fl::sstream`, `fl::printf`
 - Optionals and variants: `fl::optional<T>`, `fl::variant<...>`
 - Memory/ownership: `fl::unique_ptr<T>`, `fl::shared_ptr<T>`, `fl::weak_ptr<T>`
-- Functional: `fl::function<Signature>`, `fl::function_list<Signature>`
+- Functional: `fl::function<Signature>` (in `fl/stl/function.h`), `fl::function_list<Signature>` (in `fl/stl/function.h`)
 - Concurrency: `fl::thread`, `fl::mutex`, `fl::thread_local`
 - Async: `fl::promise<T>`, `fl::task`
 - Math: `fl::math`, `fl::sin32`, `fl::random`, `fl::gamma`, `fl::gradient`
 - Graphics: `fl::raster`, `fl::screenmap`, `fl::rectangular_draw_buffer`, `fl::downscale`, `fl::supersample`
 - Color: `fl::hsv`, `fl::hsv16`, `fl::colorutils`
-- JSON: `fl::Json` with safe defaults and ergonomic access
+- JSON: `fl::json` with safe defaults and ergonomic access
 
 Example: using containers, views, and ownership
 
 ```cpp
-#include "fl/vector.h"
-#include "fl/span.h"
-#include "fl/memory.h"   // for fl::make_unique
+#include "fl/stl/vector.h"
+#include "fl/stl/span.h"
+#include "fl/stl/memory.h"   // for fl::make_unique
 
 void process(fl::span<const int> values) {
     // Non-owning view over contiguous data
@@ -92,10 +92,10 @@ void example() {
 Example: JSON with safe default access
 
 ```cpp
-#include "fl/json.h"
+#include "fl/stl/json.h"
 
 void json_example(const fl::string& jsonStr) {
-    fl::Json json = fl::Json::parse(jsonStr);
+    fl::json json = fl::json::parse(jsonStr);
     int brightness = json["config"]["brightness"] | 128;  // default if missing
     bool enabled = json["enabled"] | false;
 }
@@ -109,13 +109,14 @@ void json_example(const fl::string& jsonStr) {
 
 Containers, views, algorithms, compile‑time utilities, memory/ownership, portability helpers.
 
-- Containers: `vector.h`, `deque.h`, `queue.h`, `priority_queue.h`, `set.h`, `map.h`, `unordered_set.h`, `hash_map.h`, `hash_set.h`, `rbtree.h`, `bitset.h`, `bitset_dynamic.h`
+- Containers: `vector.h`, `deque.h`, `queue.h`, `priority_queue.h`, `set.h`, `map.h`, `unordered_set.h`, `hash_map.h`, `hash_set.h`, `rbtree.h`, `stl/bitset.h`, `stl/bitset_dynamic.h`
 - Views and ranges: `span.h`, `slice.h`, `range_access.h`
 - Tuples and algebraic types: `tuple.h`, `pair.h`, `optional.h`, `variant.h`
 - Algorithms and helpers: `algorithm.h`, `transform.h`, `comparators.h`, `range_access.h`
-- Types and traits: `types.h`, `type_traits.h`, `initializer_list.h`, `utility.h`, `move.h`, `template_magic.h`, `stdint.h`, `cstddef.h`, `namespace.h`
-- Memory/ownership: `unique_ptr.h`, `shared_ptr.h`, `weak_ptr.h`, `scoped_ptr.h`, `scoped_array.h`, `ptr.h`, `ptr_impl.h`, `referent.h`, `allocator.h`, `memory.h`, `memfill.h`, `inplacenew.h`
-- Portability and compiler control: `compiler_control.h`, `force_inline.h`, `virtual_if_not_avr.h`, `has_define.h`, `register.h`, `warn.h`, `trace.h`, `dbg.h`, `assert.h`, `unused.h`, `export.h`, `dll.h`, `deprecated.h`, `avr_disallowed.h`, `bit_cast.h`, `id_tracker.h`, `insert_result.h`, `singleton.h`
+- SIMD and optimization primitives: `stl/simd.h`
+- Types and traits: `types.h`, `type_traits.h`, `initializer_list.h`, `utility.h`, `move.h`, `template_magic.h`, `stdint.h`, `cstddef.h`
+- Memory/ownership: `unique_ptr.h`, `shared_ptr.h`, `weak_ptr.h`, `scoped_ptr.h`, `scoped_array.h`, `referent.h`, `allocator.h`, `memory.h`, `memfill.h`, `inplacenew.h`
+- Portability and compiler control: `compiler_control.h`, `force_inline.h`, `virtual_if_not_avr.h`, `has_define.h`, `register.h`, `warn.h`, `trace.h`, `dbg.h`, `log.h`, `assert.h`, `unused.h`, `export.h`, `dll.h`, `deprecated.h`, `avr_disallowed.h`, `bit_cast.h`, `singleton.h`
 
 Per‑header quick descriptions:
 
@@ -129,8 +130,8 @@ Per‑header quick descriptions:
 - `hash_map.h`: Hash‑based key‑value container tuned for embedded use.
 - `hash_set.h`: Hash set implementation complementing `hash_map.h`.
 - `rbtree.h`: Balanced tree primitive used by ordered containers.
-- `bitset.h`: Fixed‑size compile‑time bitset operations.
-- `bitset_dynamic.h`: Runtime‑sized bitset for flexible masks.
+- `stl/bitset.h`: Fixed‑size compile‑time bitset operations.
+- `stl/bitset_dynamic.h`: Runtime‑sized bitset for flexible masks.
 - `span.h`: Non‑owning view over contiguous memory (preferred function parameter).
 - `slice.h`: Strided or sub‑range view utilities for buffers.
 - `range_access.h`: Helpers to unify begin/end access over custom ranges.
@@ -141,6 +142,7 @@ Per‑header quick descriptions:
 - `algorithm.h`: Core algorithms (search, sort helpers, transforms) adapted to `fl::` containers.
 - `transform.h`: Functional style element‑wise transformations with spans/ranges.
 - `comparators.h`: Reusable comparator utilities for ordering operations.
+- `stl/simd.h`: SIMD-accelerated register operations for cache-friendly pipelines (u8x16, u32x4, f32x4 vectors with platform delegation).
 - `types.h`: Canonical type aliases and shared type definitions.
 - `type_traits.h`: Compile‑time type inspection and enable_if‑style utilities.
 - `initializer_list.h`: Lightweight initializer list support for container construction.
@@ -149,13 +151,11 @@ Per‑header quick descriptions:
 - `template_magic.h`: Metaprogramming helpers to simplify template code.
 - `stdint.h`: Fixed‑width integer definitions for cross‑compiler consistency.
 - `cstddef.h`: Size/ptrdiff and nullptr utilities for portability.
-- `namespace.h`: Internal macros/utilities for managing `fl::` namespaces safely.
 - `unique_ptr.h`: Exclusive ownership smart pointer with RAII semantics.
 - `shared_ptr.h`: Reference‑counted shared ownership smart pointer.
 - `weak_ptr.h`: Non‑owning reference to `shared_ptr`‑managed objects.
 - `scoped_ptr.h`: Scope‑bound ownership (no move) for simple RAII cleanup.
 - `scoped_array.h`: RAII wrapper for array allocations.
-- `ptr.h`/`ptr_impl.h`: Pointer abstractions and shared machinery for smart pointers.
 - `referent.h`: Base support for referent/observer relationships.
 - `allocator.h`: Custom allocators tailored for embedded constraints.
 - `memory.h`: Low‑level memory helpers (construct/destroy, address utilities).
@@ -166,15 +166,16 @@ Per‑header quick descriptions:
 - `virtual_if_not_avr.h`: Virtual specifier abstraction for AVR compatibility.
 - `has_define.h`: Preprocessor feature checks and conditional compilation helpers.
 - `register.h`: Register annotation shims for portability.
-- `warn.h`/`trace.h`/`dbg.h`: Logging, tracing, and diagnostics helpers.
+- `warn.h`: Always‑on warnings for issues detected at runtime (respects memory constraints).
+- `trace.h`: Platform tracing utilities for debugging and performance analysis.
+- `dbg.h`: General‑purpose debug output, controllable at compile-time via `FASTLED_FORCE_DBG`.
+- `log.h`: Category‑based runtime logging system for selective subsystem diagnostics (SPI, RMT, VIDEO, I2S, LCD, UART, TIMING) with zero overhead when disabled.
 - `assert.h`: Assertions suited for embedded/testing builds.
 - `unused.h`: Intentional unused variable/function annotations.
 - `export.h`/`dll.h`: Visibility/export macros for shared library boundaries.
 - `deprecated.h`: Cross‑compiler deprecation annotations.
 - `avr_disallowed.h`: Guardrails to prevent unsupported usage on AVR.
 - `bit_cast.h`: Safe bit reinterpretation where supported, with fallbacks.
-- `id_tracker.h`: ID generation/tracking utility for object registries.
-- `insert_result.h`: Standardized result type for associative container inserts.
 - `singleton.h`: Simple singleton helper for cases requiring global access.
 
 ### 2) Graphics, geometry, and rendering
@@ -220,7 +221,7 @@ Per‑header quick descriptions:
 Color models, gradients, gamma, math helpers, random, noise, mapping, and basic DSP.
 
 - Color and palettes: `colorutils.h`, `colorutils_misc.h`, `hsv.h`, `hsv16.h`, `gradient.h`, `fill.h`, `five_bit_hd_gamma.h`, `gamma.h`
-- Math and mapping: `math.h`, `math_macros.h`, `sin32.h`, `map_range.h`, `random.h`, `lut.h`, `clamp.h`, `clear.h`, `splat.h`, `transform.h`
+- Math and mapping: `math.h`, `math_macros.h`, `math/sin32.h`, `map_range.h`, `random.h`, `lut.h`, `clamp.h`, `clear.h`, `splat.h`, `transform.h`
 - Noise and waves: `noise_woryley.h`, `wave_simulation.h`, `wave_simulation_real.h`
 - DSP and audio: `fft.h`, `fft_impl.h`, `audio.h`, `audio_reactive.h`
 - Time utilities: `time.h`, `time_alpha.h`
@@ -235,7 +236,7 @@ Per‑header quick descriptions:
 - `five_bit_hd_gamma.h`: Gamma correction tables tuned for high‑definition 5‑bit channels.
 - `gamma.h`: Gamma correction functions and LUT helpers.
 - `math.h` / `math_macros.h`: Core math primitives/macros for consistent numerics.
-- `sin32.h`: Fast fixed‑point sine approximations for animations.
+- `math/sin32.h`: Fast fixed‑point sine approximations for animations.
 - `map_range.h`: Linear mapping and clamping between numeric ranges.
 - `random.h`: Pseudorandom utilities for effects and dithering.
 - `lut.h`: Lookup table helpers for precomputed transforms.
@@ -257,8 +258,9 @@ Threads, synchronization, async primitives, eventing, and callable utilities.
 
 - Threads and sync: `thread.h`, `mutex.h`, `thread_local.h`
 - Async primitives: `promise.h`, `promise_result.h`, `task.h`, `async.h`
-- Functional: `function.h`, `function_list.h`, `functional.h`
+- Functional: `function.h` (in `fl/stl/`), `functional.h`
 - Events and engine hooks: `engine_events.h`
+- Interrupt service routines: `isr.h`
 
 Per‑header quick descriptions:
 
@@ -269,10 +271,10 @@ Per‑header quick descriptions:
 - `promise_result.h`: Result type accompanying promises/futures.
 - `task.h`: Lightweight async task primitive for orchestration.
 - `async.h`: Helpers for async composition and coordination.
-- `function.h`: Type‑erased callable wrapper analogous to `std::function`.
-- `function_list.h`: Multicast list of callables with simple invoke semantics.
+- `fl/stl/function.h`: Type‑erased callable wrapper analogous to `std::function`, and `function_list` for multicast callbacks.
 - `functional.h`: Adapters, binders, and predicates for composing callables.
 - `engine_events.h`: Event channel definitions for engine‑style systems.
+- `isr.h`: Cross-platform interrupt service routine (ISR) attachment API for timer and GPIO interrupts.
 
 ### 5) I/O, JSON, and text/formatting
 
@@ -288,7 +290,7 @@ Per‑header quick descriptions:
 - `ostream.h` / `istream.h`: Output/input stream interfaces for host builds.
 - `sstream.h` / `strstream.h`: String‑backed stream buffers and helpers.
 - `printf.h`: Small, portable formatted print utilities.
-- `json.h`: Safe, ergonomic `fl::Json` API with defaulting operator (`|`).
+- `json.h`: Safe, ergonomic `fl::json` API with defaulting operator (`|`).
 - `bytestream.h`: Sequential byte I/O abstraction for buffers/streams.
 - `bytestreammemory.h`: In‑memory byte stream implementation.
 - `io.h`: General I/O helpers for files/streams where available.
@@ -306,8 +308,8 @@ This section groups headers by domain, explains their role, and shows minimal us
 Why: Embedded‑aware containers with predictable behavior across platforms. Prefer passing `fl::span<T>` to functions.
 
 ```cpp
-#include "fl/vector.h"
-#include "fl/span.h"
+#include "fl/stl/vector.h"
+#include "fl/stl/span.h"
 
 size_t count_nonzero(fl::span<const uint8_t> bytes) {
     size_t count = 0;
@@ -340,7 +342,7 @@ fl::string greet(const fl::string& name) {
 Why: RAII ownership with explicit semantics. Prefer `fl::make_shared<T>()`/`fl::make_unique<T>()` patterns where available, or direct constructors provided by these headers.
 
 ```cpp
-#include "fl/shared_ptr.h"
+#include "../fl/stl/shared_ptr.h"
 
 struct Widget { int value; };
 
@@ -352,12 +354,12 @@ void ownership_example() {
 
 ### Functional Utilities
 
-- Callables and lists: `function.h`, `function_list.h`, `functional.h`
+- Callables and lists: `fl/stl/function.h`, `functional.h`
 
 Why: Store callbacks and multicast them safely.
 
 ```cpp
-#include "fl/function_list.h"
+#include "fl/stl/function.h"
 
 void on_event(int code) { /* ... */ }
 
@@ -372,18 +374,262 @@ void register_handlers() {
 
 - Threads and synchronization: `thread.h`, `mutex.h`, `thread_local.h`
 - Async primitives: `promise.h`, `promise_result.h`, `task.h`
+- Interrupt service routines: `isr.h`
 
 Why: Lightweight foundations for parallel work or async orchestration where supported.
 
 ```cpp
-#include "fl/promise.h"
+#include "fl/task/promise.h"
 
-fl::promise<int> compute_async(); // returns a moveable wrapper around a future-like result
+fl::task::promise<int> compute_async(); // returns a moveable wrapper around a future-like result
 ```
+
+### Interrupt Service Routines (ISR)
+
+- Cross-platform ISR API: `isr.h`
+
+Why: Unified interrupt handling across ESP32, Teensy, AVR, STM32, and other platforms. Provides timer-based and GPIO-based interrupt attachment with consistent configuration and lifecycle management.
+
+**Key features:**
+- Timer-based interrupts with configurable frequencies (platform-dependent range)
+- GPIO-based external interrupts with edge/level triggering
+- Priority control and platform-specific flags
+- Enable/disable without detachment
+- User data context passing
+- Platform capabilities query (frequency ranges, priority levels)
+
+**Platform support:**
+- ESP32 (Xtensa/RISC-V): Hardware timer groups, 1 Hz - 80 MHz, priorities 1-7
+- Teensy: IntervalTimer, up to ~150 kHz
+- AVR: Timer1, frequency via prescaler
+- STM32: Hardware timers with NVIC priorities
+- Stub: Software simulation for testing
+
+Basic timer interrupt example:
+
+```cpp
+#include "fl/stl/isr.h"
+
+// Counter updated from ISR (use atomic or volatile for shared state)
+static volatile uint32_t tick_count = 0;
+
+// ISR handler - must be fast and IRAM-safe on ESP32
+static void my_timer_isr(void* user_data) {
+    tick_count++;
+}
+
+void setup() {
+    // Configure a 1 kHz (1000 Hz) timer interrupt
+    fl::isr::config config;
+    config.handler = my_timer_isr;
+    config.user_data = nullptr;
+    config.frequency_hz = 1000;  // 1 kHz
+    config.priority = fl::isr::ISR_PRIORITY_MEDIUM;
+    config.flags = fl::isr::ISR_FLAG_IRAM_SAFE;  // Required for ESP32
+
+    fl::isr::handle handle;
+    int result = fl::isr::attach_timer_handler(config, &handle);
+
+    if (result == 0) {
+        // ISR is now active
+        FL_DBG("Timer ISR attached successfully");
+    } else {
+        FL_WARN("Failed to attach ISR: " << fl::isr::get_error_string(result));
+    }
+}
+```
+
+Advanced example with user data and enable/disable:
+
+```cpp
+#include "fl/stl/isr.h"
+
+struct ISRContext {
+    volatile uint32_t count;
+    volatile uint32_t max_count;
+};
+
+static void counting_isr(void* user_data) {
+    ISRContext* ctx = static_cast<ISRContext*>(user_data);
+    if (ctx->count < ctx->max_count) {
+        ctx->count++;
+    }
+}
+
+void example_with_control() {
+    ISRContext ctx = { 0, 1000 };
+
+    // Configure 10 kHz timer with user context
+    fl::isr::config config;
+    config.handler = counting_isr;
+    config.user_data = &ctx;
+    config.frequency_hz = 10000;  // 10 kHz
+    config.priority = fl::isr::ISR_PRIORITY_HIGH;
+    config.flags = fl::isr::ISR_FLAG_IRAM_SAFE;
+
+    fl::isr::handle handle;
+    if (fl::isr::attach_timer_handler(config, &handle) == 0) {
+        // Run for a while
+        delay(100);
+
+        // Temporarily disable ISR
+        fl::isr::disable_handler(handle);
+        FL_DBG("ISR disabled, count: " << ctx.count);
+
+        delay(100);
+
+        // Re-enable ISR
+        fl::isr::enable_handler(handle);
+        FL_DBG("ISR re-enabled");
+
+        delay(100);
+
+        // Clean up when done
+        fl::isr::detach_handler(handle);
+        FL_DBG("Final count: " << ctx.count);
+    }
+}
+```
+
+GPIO interrupt example:
+
+```cpp
+#include "fl/stl/isr.h"
+
+static void button_isr(void* user_data) {
+    // Handle button press (keep this fast!)
+    FL_DBG("Button pressed!");
+}
+
+void setup_gpio_interrupt() {
+    fl::isr::config config;
+    config.handler = button_isr;
+    config.user_data = nullptr;
+    config.priority = fl::isr::ISR_PRIORITY_MEDIUM;
+    config.flags = fl::isr::ISR_FLAG_EDGE_RISING;  // Trigger on rising edge
+
+    fl::isr::handle handle;
+    uint8_t button_pin = 2;  // GPIO pin number
+
+    if (fl::isr::attach_external_handler(button_pin, config, &handle) == 0) {
+        FL_DBG("Button ISR attached to pin " << button_pin);
+    }
+}
+```
+
+Platform capability queries:
+
+```cpp
+#include "fl/stl/isr.h"
+
+void print_platform_info() {
+    FL_DBG("Platform: " << fl::isr::get_platform_name());
+    FL_DBG("Max timer frequency: " << fl::isr::get_max_timer_frequency() << " Hz");
+    FL_DBG("Min timer frequency: " << fl::isr::get_min_timer_frequency() << " Hz");
+    FL_DBG("Max priority: " << fl::isr::get_max_priority());
+
+    if (fl::isr::requires_assembly_handler(fl::isr::ISR_PRIORITY_MAX)) {
+        FL_DBG("Maximum priority requires assembly handler");
+    }
+}
+```
+
+**Important ISR handler requirements:**
+- Must execute quickly (typically <10μs)
+- No blocking operations (no delay, sleep, or waiting for locks)
+- No dynamic memory allocation (malloc/free)
+- On ESP32: mark as IRAM-safe and use `ISR_FLAG_IRAM_SAFE` flag
+- Use atomic types or proper synchronization for shared state
+- Platform-specific restrictions may apply (see `fl/isr.h` for details)
+
+**Priority guidelines:**
+- `ISR_PRIORITY_LOW` (1): Non-critical background tasks
+- `ISR_PRIORITY_MEDIUM` (2): Normal LED timing operations
+- `ISR_PRIORITY_HIGH` (3): Critical timing-sensitive operations (recommended max)
+- `ISR_PRIORITY_CRITICAL` (4+): Experimental, may require assembly on some platforms
+
+See `src/fl/isr.h` for complete API documentation and platform-specific configuration flags.
+
+### Category-Based Logging
+
+- Category logging system: `log.h`, integrated via `dbg.h`
+
+**What it is:** A compile-time selective logging system that enables detailed diagnostics for specific subsystems (SPI, RMT, I2S, GPIO, PIO, DMA, TIMER, and many more) with **zero overhead when disabled**. Unlike `FL_DBG` (general-purpose), category logging provides structured, category-specific diagnostics by enabling only the categories you need.
+
+**Key features:**
+- **Compile-time control**: Enable/disable categories via preprocessor defines (`-DFASTLED_LOG_<CATEGORY>_ENABLED`)
+- **Zero overhead disabled**: Disabled categories compile to nothing (~0 bytes, ~0 cycles)
+- **Stream formatting**: Same syntax as `FL_WARN`: `FL_LOG_SPI("msg: " << value)`
+- **No runtime state**: Clean, stateless implementation with zero memory overhead
+- **Platform-aware**: Uses `FL_WARN` internally, respects platform constraints and memory limits
+
+**Available categories:**
+
+Hardware interfaces:
+- `FL_LOG_SPI` - Serial Peripheral Interface operations
+- `FL_LOG_RMT` - ESP32 RMT peripheral
+- `FL_LOG_PARLIO` - ESP32-P4 parallel I/O
+- `FL_LOG_FLEXIO` - Teensy 4.x FlexIO peripheral
+- `FL_LOG_OBJECTFLED` - Teensy 4.x ObjectFLED DMA
+
+
+**Comparison with alternatives:**
+
+| Feature | `FL_DBG` | `FL_WARN` | `FL_LOG_*` |
+|---------|----------|-----------|-----------|
+| Purpose | General debug | Critical warnings | Category diagnostics |
+| Selective enable | No (all-or-nothing) | No | Yes (per-category) |
+| Default state | Memory-dependent | Always enabled | Always disabled |
+| Memory | ~5KB | Variable | 0 bytes |
+| Control mechanism | Compile-time | N/A | Compile-time only |
+
+**How to enable logging:**
+
+Add to `platformio.ini` or Arduino IDE build flags:
+
+```ini
+# Enable SPI logging code
+build_flags = -DFASTLED_LOG_SPI_ENABLED
+
+# Enable multiple categories
+build_flags =
+    -DFASTLED_LOG_SPI_ENABLED
+    -DFASTLED_LOG_I2S_ENABLED
+    -DFASTLED_LOG_TIMER_ENABLED
+
+# Enable multiple categories (alternative syntax)
+build_flags =
+    -DFASTLED_LOG_SPI_ENABLED
+    -DFASTLED_LOG_RMT_ENABLED
+    -DFASTLED_LOG_VIDEO_ENABLED
+```
+
+**Logging in your code:**
+
+```cpp
+#include "fl/log/log.h"
+
+void myCustomDriver::initialize(uint32_t freq_hz) {
+    FL_LOG_I2S("I2S initialized");
+    FL_LOG_I2S("  Frequency: " << freq_hz << " Hz");
+    FL_LOG_I2S("  Buffer size: " << mBufferSize << " bytes");
+}
+
+void myCustomDriver::transmit(fl::span<const uint8_t> data) {
+    FL_LOG_I2S("Transmitting " << data.size() << " bytes");
+}
+```
+
+**Implementation details:**
+- Pure compile-time control via preprocessor
+- Zero-overhead disabled logs: Compile to `FL_DBG_NO_OP(...)` → eliminated by optimizer
+- Enabled logs: Direct output to `FL_WARN`
+- No runtime state, no memory overhead, no performance cost
+- Users can implement their own runtime control if needed via wrapper functions
 
 ### Math, Random, and DSP
 
-- Core math and helpers: `math.h`, `math_macros.h`, `sin32.h`, `random.h`, `map_range.h`
+- Core math and helpers: `math.h`, `math_macros.h`, `math/sin32.h`, `random.h`, `map_range.h`
 - Color math: `gamma.h`, `gradient.h`, `colorutils.h`, `colorutils_misc.h`, `hsv.h`, `hsv16.h`, `fill.h`
 - FFT and analysis: `fft.h`, `fft_impl.h`
 
@@ -509,7 +755,7 @@ This section explains how the major graphics utilities fit together and how to u
 
     ```cpp
     #include <FastLED.h>
-    #include "fl/corkscrew.h"
+    #include "fl/math/corkscrew.h"
     #include "fl/grid.h"
     #include "fl/time.h"
 
@@ -574,7 +820,7 @@ This section explains how the major graphics utilities fit together and how to u
     }
 
     void loop() {
-        uint32_t t = fl::time();
+        uint32_t t = fl::millis();
         draw_pattern(t);
         project_to_strip();
         FastLED.show();
@@ -589,7 +835,7 @@ This section explains how the major graphics utilities fit together and how to u
     #include <FastLED.h>
     #include "fl/task.h"
     #include "fl/async.h"
-    #include "fl/corkscrew.h"
+    #include "fl/math/corkscrew.h"
     #include "fl/grid.h"
 
     constexpr uint16_t NUM_LEDS = 144;
@@ -608,7 +854,7 @@ This section explains how the major graphics utilities fit together and how to u
 
         // Register a before_frame task that runs immediately before each render
         fl::task::before_frame().then([&](){
-            uint32_t t = fl::time();
+            uint32_t t = fl::millis();
             draw_pattern(t, rect);
             project_to_strip(cork, rect, leds, NUM_LEDS);
         });
@@ -648,10 +894,10 @@ This section explains how the major graphics utilities fit together and how to u
 
 - Safe JSON access: `json.h`
 
-Why: Ergonomic, crash‑resistant access with defaulting operator (`|`). Prefer the `fl::Json` API for new code.
+Why: Ergonomic, crash‑resistant access with defaulting operator (`|`). Prefer the `fl::json` API for new code.
 
 ```cpp
-fl::Json cfg = fl::Json::parse("{\"enabled\":true}");
+fl::json cfg = fl::json::parse("{\"enabled\":true}");
 bool enabled = cfg["enabled"] | false;
 ```
 
@@ -665,7 +911,7 @@ Why: Cross‑platform text formatting, buffered I/O, and optional file access on
 ### Algorithms and Utilities
 
 - Algorithms and transforms: `algorithm.h`, `transform.h`, `range_access.h`
-- Compile‑time utilities: `type_traits.h`, `tuple.h`, `variant.h`, `optional.h`, `utility.h`, `initializer_list.h`, `template_magic.h`, `types.h`, `stdint.h`, `namespace.h`
+- Compile‑time utilities: `type_traits.h`, `tuple.h`, `variant.h`, `optional.h`, `utility.h`, `initializer_list.h`, `template_magic.h`, `types.h`, `stdint.h`
 - Platform shims and control: `compiler_control.h`, `force_inline.h`, `virtual_if_not_avr.h`, `has_define.h`, `register.h`, `warn.h`, `trace.h`, `dbg.h`, `assert.h`, `unused.h`, `export.h`, `dll.h`
 
 Why: Familiar patterns with embedded‑appropriate implementations and compiler‑portable controls.
@@ -683,7 +929,7 @@ FastLED includes a JSON‑driven UI layer that can expose controls (sliders, but
 
 - **Key headers and switches**
   - `platforms/ui_defs.h`: controls `FASTLED_USE_JSON_UI` (defaults to 1 on WASM, 0 elsewhere).
-  - `fl/ui.h`: C++ UI element classes (UISlider, UIButton, UICheckbox, UINumberField, UIDropdown, UITitle, UIDescription, UIHelp, UIAudio, UIGroup).
+  - `fl/ui/ui.h`: C++ UI element classes (UISlider, UIButton, UICheckbox, UINumberField, UIDropdown, UITitle, UIDescription, UIHelp, UIAudio, UIGroup).
   - `platforms/shared/ui/json/ui_manager.h`: platform‑agnostic JSON UI manager that integrates with `EngineEvents`.
   - `platforms/shared/ui/json/readme.md`: implementation guide and JSON protocol.
 
@@ -706,7 +952,7 @@ FastLED includes a JSON‑driven UI layer that can expose controls (sliders, but
 
   ```cpp
   #include <FastLED.h>
-  #include "fl/ui.h"
+  #include "fl/ui/ui.h"
 
   UISlider brightness("Brightness", 128, 0, 255);
   UICheckbox enabled("Enabled", true);
@@ -785,7 +1031,7 @@ Why: Build effects that respond to input signals.
 - If you are writing sketches: include `FastLED.h` and follow examples in `examples/`. The `fl::` headers power those features under the hood.
 - If you are extending FastLED internals or building advanced effects: prefer `fl::` containers and `fl::span` over STL equivalents to maintain portability.
 - Favor smart pointers and moveable wrappers for resource management. Avoid raw pointers and manual `delete`.
-- Use `fl::Json` for robust JSON handling with safe defaults.
+- Use `fl::json` for robust JSON handling with safe defaults.
 
 ## Guidance for C++ Developers
 

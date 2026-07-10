@@ -1,7 +1,6 @@
 import os
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
 
 from ci.util.paths import PROJECT_ROOT
 
@@ -19,8 +18,8 @@ WRONG_DEFINES: dict[str, str] = {
 
 
 class TestWrongDefines(unittest.TestCase):
-    def check_file(self, file_path: str) -> List[str]:
-        failings: List[str] = []
+    def check_file(self, file_path: str) -> list[str]:
+        failings: list[str] = []
         with open(file_path, "r", encoding="utf-8") as f:
             for line_number, line in enumerate(f, 1):
                 line = line.strip()
@@ -28,12 +27,18 @@ class TestWrongDefines(unittest.TestCase):
                     continue
                 for needle, message in WRONG_DEFINES.items():
                     if needle in line:
+                        # Exception: Allow "#if defined(FASTLED_RMT5)" when followed by value checks
+                        # e.g., "#if defined(FASTLED_RMT5) && FASTLED_RMT5 == 0"
+                        if needle == "#if defined(FASTLED_RMT5)":
+                            # Skip if it's a value check pattern (contains == or !=)
+                            if "==" in line or "!=" in line:
+                                continue
                         failings.append(f"{file_path}:{line_number}: {message}")
         return failings
 
     def test_no_bad_defines(self) -> None:
         """Searches through the program files to check for banned headers, excluding src/platforms."""
-        files_to_check: List[str] = []
+        files_to_check: list[str] = []
         for root, _, files in os.walk(SRC_ROOT):
             for file in files:
                 if file.endswith(
@@ -42,7 +47,7 @@ class TestWrongDefines(unittest.TestCase):
                     file_path = os.path.join(root, file)
                     files_to_check.append(file_path)
 
-        all_failings: List[str] = []
+        all_failings: list[str] = []
         with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             futures = [
                 executor.submit(self.check_file, file_path)

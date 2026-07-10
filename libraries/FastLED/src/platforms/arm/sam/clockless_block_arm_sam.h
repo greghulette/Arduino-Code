@@ -1,8 +1,19 @@
+// IWYU pragma: private
+
  #ifndef __INC_BLOCK_CLOCKLESS_H
 #define __INC_BLOCK_CLOCKLESS_H
 
-FASTLED_NAMESPACE_BEGIN
+#include "fl/chipsets/timing_traits.h"
+#include "fastled_delay.h"
+#include "bitswap.h"
+#include "platforms/arm/sam/is_sam.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/stl/static_assert.h"
+#include "fl/stl/noexcept.h"
 
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+namespace fl {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Base template for clockless controllers.  These controllers have 3 control points in their cycle for each bit.  The first point
@@ -11,7 +22,7 @@ FASTLED_NAMESPACE_BEGIN
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if defined(__SAM3X8E__)
+#if defined(FL_IS_SAM)
 #define PORT_MASK (((1<<LANES)-1) & ((FIRST_PIN==2) ? 0xFF : 0xFF))
 
 #define FASTLED_HAS_BLOCKLESS 1
@@ -21,16 +32,22 @@ FASTLED_NAMESPACE_BEGIN
 #define PORTB_FIRST_PIN 90
 
 typedef union {
-    uint8_t bytes[8];
-    uint32_t raw[2];
+    u8 bytes[8];
+    u32 raw[2];
 } Lines;
 
-#define TADJUST 0
-#define TOTAL ( (T1+TADJUST) + (T2+TADJUST) + (T3+TADJUST) )
-#define T1_MARK (TOTAL - (T1+TADJUST))
-#define T2_MARK (T1_MARK - (T2+TADJUST))
-template <uint8_t LANES, int FIRST_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 280>
+template <u8 LANES, int FIRST_PIN, typename TIMING, EOrder RGB_ORDER = RGB, int XTRA0 = 0, bool FLIP = false>
 class InlineBlockClocklessController : public CPixelLEDController<RGB_ORDER, LANES, PORT_MASK> {
+	enum : u32 {
+		T1 = TIMING::T1,
+		T2 = TIMING::T2,
+		T3 = TIMING::T3,
+		WAIT_TIME = TIMING::RESET
+	};
+	#define TADJUST 0
+	#define TOTAL ( (T1+TADJUST) + (T2+TADJUST) + (T3+TADJUST) )
+	#define T1_MARK (TOTAL - (T1+TADJUST))
+	#define T2_MARK (T1_MARK - (T2+TADJUST))
 	typedef typename FastPin<FIRST_PIN>::port_ptr_t data_ptr_t;
 	typedef typename FastPin<FIRST_PIN>::port_t data_t;
 
@@ -40,8 +57,8 @@ class InlineBlockClocklessController : public CPixelLEDController<RGB_ORDER, LAN
 
 public:
 	virtual int size() { return CLEDController::size() * LANES; }
-	virtual void init() {
-        static_assert(LANES <= 8, "Maximum of 8 lanes for Due parallel controllers!");
+	virtual void init() FL_NOEXCEPT {
+        FL_STATIC_ASSERT(LANES <= 8, "Maximum of 8 lanes for Due parallel controllers!");
         if(FIRST_PIN == PORTA_FIRST_PIN) {
             switch(LANES) {
                 case 8: FastPin<31>::setOutput();
@@ -80,16 +97,16 @@ public:
         mPort = FastPin<FIRST_PIN>::port();
     }
 
-    virtual uint16_t getMaxRefreshRate() const { return 400; }
+    virtual u16 getMaxRefreshRate() const { return 400; }
 
-    virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) {
+    virtual void showPixels(PixelController<RGB_ORDER, LANES, PORT_MASK> & pixels) FL_NOEXCEPT {
         mWait.wait();
         showRGBInternal(pixels);
         sei();
         mWait.mark();
     }
 
-    static uint32_t showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) {
+    static u32 showRGBInternal(PixelController<RGB_ORDER, LANES, PORT_MASK> &allpixels) FL_NOEXCEPT {
         // Serial.println("Entering show");
 
         int nLeds = allpixels.mLen;
@@ -98,19 +115,19 @@ public:
         Lines b0,b1,b2;
 
         allpixels.preStepFirstByteDithering();
-        for(uint8_t i = 0; i < LANES; i++) {
+        for(u8 i = 0; i < LANES; i++) {
             b0.bytes[i] = allpixels.loadAndScale0(i);
         }
 
         // Setup and start the clock
-        TC_Configure(DUE_TIMER,DUE_TIMER_CHANNEL,TC_CMR_TCCLKS_TIMER_CLOCK1);
+        TC_Configure(DUE_TIMER,DUE_TIMER_CHANNEL,TC_CMR_TCCLKS_TIMER_CLOCK1) FL_NOEXCEPT;
         pmc_enable_periph_clk(DUE_TIMER_ID);
-        TC_Start(DUE_TIMER,DUE_TIMER_CHANNEL);
+        TC_Start(DUE_TIMER,DUE_TIMER_CHANNEL) FL_NOEXCEPT;
 
         #if (FASTLED_ALLOW_INTERRUPTS == 1)
         cli();
         #endif
-        uint32_t next_mark = (DUE_TIMER_VAL + (TOTAL));
+        u32 next_mark = (DUE_TIMER_VAL + (TOTAL));
         while(nLeds--) {
             allpixels.stepDithering();
             #if (FASTLED_ALLOW_INTERRUPTS == 1)
@@ -140,14 +157,14 @@ public:
         return DUE_TIMER_VAL;
     }
 
-    template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER uint32_t & next_mark, FASTLED_REGISTER Lines & b, Lines & b3, PixelController<RGB_ORDER,LANES, PORT_MASK> &pixels) { // , FASTLED_REGISTER uint32_t & b2)  {
+    template<int BITS,int PX> __attribute__ ((always_inline)) inline static void writeBits(FASTLED_REGISTER u32 & next_mark, FASTLED_REGISTER Lines & b, Lines & b3, PixelController<RGB_ORDER,LANES, PORT_MASK> &pixels) FL_NOEXCEPT { // , FASTLED_REGISTER uint32_t & b2)  {
         Lines b2;
-        transpose8x1(b.bytes,b2.bytes);
+        fl::transpose8x1(b.bytes,b2.bytes);
 
-        FASTLED_REGISTER uint8_t d = pixels.template getd<PX>(pixels);
-        FASTLED_REGISTER uint8_t scale = pixels.template getscale<PX>(pixels);
+        FASTLED_REGISTER u8 d = pixels.template getd<PX>(pixels);
+        FASTLED_REGISTER u8 scale = pixels.template getscale<PX>(pixels);
 
-        for(uint32_t i = 0; (i < LANES) && (i<8); i++) {
+        for(u32 i = 0; (i < LANES) && (i<8); i++) {
             while(DUE_TIMER_VAL < next_mark);
             next_mark = (DUE_TIMER_VAL+TOTAL);
 
@@ -162,7 +179,7 @@ public:
             b3.bytes[i] = pixels.template loadAndScale<PX>(pixels,i,d,scale);
         }
 
-        for(uint32_t i = LANES; i < 8; i++) {
+        for(u32 i = LANES; i < 8; i++) {
             while(DUE_TIMER_VAL < next_mark);
             next_mark = (DUE_TIMER_VAL+TOTAL);
             *FastPin<FIRST_PIN>::sport() = PORT_MASK;
@@ -177,7 +194,8 @@ public:
 };
 
 #endif
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
+FL_DISABLE_WARNING_POP
 
 #endif

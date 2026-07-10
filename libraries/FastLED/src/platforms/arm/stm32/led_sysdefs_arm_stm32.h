@@ -1,51 +1,65 @@
-#ifndef __INC_LED_SYSDEFS_ARM_SAM_H
-#define __INC_LED_SYSDEFS_ARM_SAM_H
+// ok no namespace fl
+#pragma once
 
-#if defined(STM32F10X_MD) || defined(STM32F2XX)
+// IWYU pragma: private
 
-#include <application.h>
-#include "fl/stdint.h"
+/// @file led_sysdefs_arm_stm32.h
+/// LED system definitions trampoline for STM32 platforms
+///
+/// This is a dispatch header that routes to core-specific implementations:
+/// - led_sysdefs_stm32_particle.h  - Particle Photon/Electron (STM32F2)
+/// - led_sysdefs_stm32_libmaple.h  - Arduino_STM32 (Roger Clark libmaple)
+/// - led_sysdefs_stm32duino.h      - Official STM32duino core
+/// - led_sysdefs_stm32_mbed.h      - Arduino Mbed OS framework for STM32
+/// - led_sysdefs_stm32_zephyr.h    - ArduinoCore-zephyr STM32 boards
+///
+/// Each core-specific header defines:
+/// - F_CPU clock frequency
+///
+/// Interrupt control (cli/sei) is handled separately by interrupts_stm32.h
+/// to avoid collisions when including arduino.h
 
-#include "fl/namespace.h"
+#include "platforms/is_platform.h"
+#include "fl/stl/stdint.h"
 
-#ifndef FASTLED_NAMESPACE_BEGIN
-#define FASTLED_NAMESPACE_BEGIN namespace NSFastLED {
-#define FASTLED_NAMESPACE_END }
-#define FASTLED_USING_NAMESPACE using namespace NSFastLED;
-#else
-FASTLED_USING_NAMESPACE
-#endif  // FASTLED_NAMESPACE_BEGIN
-
-// reusing/abusing cli/sei defs for due
-#define cli()  __disable_irq(); __disable_fault_irq();
-#define sei() __enable_irq(); __enable_fault_irq();
-
-#elif defined (__STM32F1__)
-
-#include "cm3_regs.h"
-
-#define cli() nvic_globalirq_disable()
-#define sei() nvic_globalirq_enable()
-
-#elif defined(STM32F1) || defined(STM32F4)
-// stm32duino
-
-#define cli() noInterrupts()
-#define sei() interrupts()
-
-#else
-#error "Platform not supported"
+#ifndef FL_IS_ARM
+#error "This is not an arm board."
 #endif
 
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
+// ============================================================================
+// Core Detection and Dispatch
+// ============================================================================
+
+#if defined(FL_IS_STM32_PARTICLE)
+    #include "platforms/arm/stm32/led_sysdefs/led_sysdefs_stm32_particle.h"
+#elif defined(FL_IS_STM32_LIBMAPLE)
+    #include "platforms/arm/stm32/led_sysdefs/led_sysdefs_stm32_libmaple.h"
+#elif defined(FL_IS_STM32_STMDUINO)
+    #include "platforms/arm/stm32/led_sysdefs/led_sysdefs_stm32duino.h"
+#elif defined(FL_IS_STM32_MBED)
+    #include "platforms/arm/stm32/led_sysdefs/led_sysdefs_stm32_mbed.h"
+#elif defined(FL_IS_STM32_ZEPHYR)
+    #include "platforms/arm/stm32/led_sysdefs/led_sysdefs_stm32_zephyr.h"
+#else
+    #error "Unknown STM32 core - cannot configure LED system definitions"
 #endif
 
+// ============================================================================
+// Interrupt Control (cli/sei)
+// ============================================================================
+// Separate from led_sysdefs to avoid collisions with arduino.h
+#include "platforms/arm/stm32/interrupts_stm32.h"
+
+// ============================================================================
+// Common Definitions (all STM32 cores)
+// ============================================================================
+
+// Interrupt threshold
 #ifndef INTERRUPT_THRESHOLD
 #define INTERRUPT_THRESHOLD 1
 #endif
 
-// Default to allowing interrupts
+// Default to NOT allowing interrupts
 #ifndef FASTLED_ALLOW_INTERRUPTS
 #define FASTLED_ALLOW_INTERRUPTS 0
 #endif
@@ -54,44 +68,26 @@ FASTLED_USING_NAMESPACE
 #define FASTLED_ACCURATE_CLOCK
 #endif
 
-// pgmspace definitions
-#define PROGMEM
+// Register type definitions
+typedef volatile fl::u8 RoReg; /**< Read only 8-bit register (volatile const unsigned int) */
+typedef volatile fl::u8 RwReg; /**< Read-Write 8-bit register (volatile unsigned int) */
 
-#if !defined(STM32F1) && !defined(STM32F4)
-// The stm32duino core already defines these
-#define pgm_read_dword(addr) (*(const unsigned long *)(addr))
-#define pgm_read_dword_near(addr) pgm_read_dword(addr)
-#endif
-
-// Default to NOT using PROGMEM here
-#ifndef FASTLED_USE_PROGMEM
-#define FASTLED_USE_PROGMEM 0
-#endif
-
-// data type defs
-typedef volatile       uint8_t RoReg; /**< Read only 8-bit register (volatile const unsigned int) */
-typedef volatile       uint8_t RwReg; /**< Read-Write 8-bit register (volatile unsigned int) */
-
+// Pin map - STM32 uses dynamic pin mapping
 #define FASTLED_NO_PINMAP
 
-#if defined(STM32F2XX)
-#define F_CPU 120000000
-#elif defined(STM32F1)
-// F_CPU is already defined on stm32duino, but it's not constant.
-#undef F_CPU
-#define F_CPU 72000000
-#elif defined(STM32F4)
-// F_CPU is already defined on stm32duino, but it's not constant.
-#undef F_CPU
-#define F_CPU 100000000
-#else
-#define F_CPU 72000000
-#endif
+// ============================================================================
+// FL_IRAM - Fast RAM Placement
+// ============================================================================
+// Places code in fast RAM section (.text_ram) for time-critical functions
+// Uses __COUNTER__ to generate unique section names for better debugging
+#ifndef FL_IRAM
+  // Helper macros for stringification
+  #ifndef _FL_IRAM_STRINGIFY2
+    #define _FL_IRAM_STRINGIFY2(x) #x
+    #define _FL_IRAM_STRINGIFY(x) _FL_IRAM_STRINGIFY2(x)
+  #endif
 
-#if defined(STM32F2XX)
-// Photon doesn't provide yield
-#define FASTLED_NEEDS_YIELD
-extern "C" void yield();
-#endif
-
+  // Generate unique section name using __COUNTER__ (e.g., .text_ram.0, .text_ram.1)
+  #define _FL_IRAM_SECTION_NAME(counter) ".text_ram." _FL_IRAM_STRINGIFY(counter)
+  #define FL_IRAM __attribute__((section(_FL_IRAM_SECTION_NAME(__COUNTER__))))
 #endif

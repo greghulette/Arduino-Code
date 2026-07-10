@@ -1,9 +1,14 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __INC_LED_SYSDEFS_ARM_MXRT1062_H
 #define __INC_LED_SYSDEFS_ARM_MXRT1062_H
 
 #define FASTLED_TEENSY4
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
+#include "platforms/arm/is_arm.h"
+
+#ifndef FL_IS_ARM
+#error "FL_IS_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
 #endif
 
 #ifndef INTERRUPT_THRESHOLD
@@ -24,13 +29,15 @@
 #endif
 
 // Get some system include files
+// IWYU pragma: begin_keep
 #include <avr/io.h>
 #include <avr/interrupt.h> // for cli/se definitions
-
+// IWYU pragma: end_keep
+#include "fl/stl/stdint.h"
 // Define the register types
 #if defined(ARDUINO) // && ARDUINO < 150
-typedef volatile       uint32_t RoReg; /**< Read only 8-bit register (volatile const unsigned int) */
-typedef volatile       uint32_t RwReg; /**< Read-Write 8-bit register (volatile unsigned int) */
+typedef volatile       fl::u32 RoReg; /**< Read only 8-bit register (volatile const unsigned int) */
+typedef volatile       fl::u32 RwReg; /**< Read-Write 8-bit register (volatile unsigned int) */
 #endif
 
 // extern volatile uint32_t systick_millis_count;

@@ -2,15 +2,21 @@
 
 #pragma once
 
+// IWYU pragma: private
+
+// IWYU pragma: begin_keep
 #include <driver/gpio.h>
 #include <driver/i2s_std.h>
+// IWYU pragma: end_keep
 
-#include "fl/assert.h"
-#include "fl/int.h"
-#include "fl/sstream.h"
-#include "fl/vector.h"
-#include "fl/warn.h"
-#include "fl/audio_input.h"
+#include "fl/stl/assert.h"
+#include "fl/stl/int.h"
+#include "fl/stl/sstream.h"
+#include "fl/stl/vector.h"
+#include "fl/log/log.h"
+#include "fl/audio/audio_input.h"
+#include "fl/stl/noexcept.h"
+#include "platforms/esp/esp_version.h"
 
 #define I2S_INTR_ALLOC_FLAGS 0
 
@@ -25,27 +31,27 @@ struct I2SContext {
     i2s_std_config_t std_config;
 };
 
-I2SContext make_context(const AudioConfigI2S &config) {
-    auto detect_slot_mode = [](AudioChannel value) -> i2s_slot_mode_t {
+I2SContext make_context(const audio::ConfigI2S &config) FL_NOEXCEPT {
+    auto detect_slot_mode = [](audio::AudioChannel value) -> i2s_slot_mode_t {
         switch (value) {
-        case Left:
+        case audio::AudioChannel::Left:
             return I2S_SLOT_MODE_MONO;
-        case Right:
+        case audio::AudioChannel::Right:
             return I2S_SLOT_MODE_MONO;
-        case Both:
+        case audio::AudioChannel::Both:
             return I2S_SLOT_MODE_STEREO;
         }
         FL_ASSERT(false, "Invalid mic channel");
         return I2S_SLOT_MODE_STEREO;
     };
 
-    auto detect_slot_mask = [](AudioChannel value) -> i2s_std_slot_mask_t {
+    auto detect_slot_mask = [](audio::AudioChannel value) -> i2s_std_slot_mask_t {
         switch (value) {
-        case Left:
+        case audio::AudioChannel::Left:
             return I2S_STD_SLOT_LEFT;
-        case Right:
+        case audio::AudioChannel::Right:
             return I2S_STD_SLOT_RIGHT;
-        case Both:
+        case audio::AudioChannel::Both:
             return I2S_STD_SLOT_BOTH;
         }
         FL_ASSERT(false, "Invalid mic channel");
@@ -104,26 +110,35 @@ I2SContext make_context(const AudioConfigI2S &config) {
                 .bit_order_lsb = false,
             },
 #endif
-        .gpio_cfg = {.bclk = static_cast<gpio_num_t>(pin_clk),
+        .gpio_cfg = {.mclk = GPIO_NUM_NC,
+                     .bclk = static_cast<gpio_num_t>(pin_clk),
                      .ws = static_cast<gpio_num_t>(pin_ws),
                      .dout = GPIO_NUM_NC,
-                     .din = static_cast<gpio_num_t>(pin_sd)}};
+                     .din = static_cast<gpio_num_t>(pin_sd),
+                     .invert_flags = {.mclk_inv = false,
+                                      .bclk_inv = false,
+                                      .ws_inv = false}}};
 
     I2SContext out = {nullptr, std_cfg};
     return out;
 }
 
-I2SContext i2s_audio_init(const AudioConfigI2S &config) {
+I2SContext i2s_audio_init(const audio::ConfigI2S &config) FL_NOEXCEPT {
     I2SContext ctx = make_context(config);
 
     // Create I2S channel configuration with DMA buffer settings
+#if ESP_IDF_VERSION_6_OR_HIGHER
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(
+        config.mI2sNum, I2S_ROLE_MASTER);
+#else
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(
         static_cast<i2s_port_t>(config.mI2sNum), I2S_ROLE_MASTER);
+#endif
     chan_cfg.dma_desc_num = AUDIO_DMA_BUFFER_COUNT;
     chan_cfg.dma_frame_num = I2S_AUDIO_BUFFER_LEN;
 
     // Create RX channel
-    esp_err_t ret = i2s_new_channel(&chan_cfg, NULL, &ctx.rx_handle);
+    esp_err_t ret = i2s_new_channel(&chan_cfg, nullptr, &ctx.rx_handle);
     FL_ASSERT(ret == ESP_OK, "Failed to create I2S channel");
 
     // Initialize channel with standard mode configuration
@@ -138,7 +153,7 @@ I2SContext i2s_audio_init(const AudioConfigI2S &config) {
 }
 
 size_t i2s_read_raw_samples(const I2SContext &ctx,
-                            audio_sample_t (&buffer)[I2S_AUDIO_BUFFER_LEN]) {
+                            audio_sample_t (&buffer)[I2S_AUDIO_BUFFER_LEN]) FL_NOEXCEPT {
     size_t bytes_read = 0;
 
     esp_err_t result =
@@ -153,7 +168,7 @@ size_t i2s_read_raw_samples(const I2SContext &ctx,
     return 0;
 }
 
-void i2s_audio_destroy(const I2SContext &ctx) {
+void i2s_audio_destroy(const I2SContext &ctx) FL_NOEXCEPT {
     if (ctx.rx_handle != nullptr) {
         // Disable the channel first
         i2s_channel_disable(ctx.rx_handle);

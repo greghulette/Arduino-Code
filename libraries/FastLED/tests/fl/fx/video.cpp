@@ -1,0 +1,301 @@
+
+// g++ --std=c++11 test.cpp
+
+
+
+#include "crgb.h"
+#include "fl/stl/detail/memory_file_handle.h"
+#include "fl/stl/shared_ptr.h"
+#include "fl/fx/video.h"
+#include "fl/stl/cstddef.h"
+#include "fl/stl/stdint.h"
+#include "fl/stl/new.h"
+#include "fl/stl/vector.h"
+#include "test.h"
+#include "fl/system/file_system.h"
+#include "fl/gfx/crgb.h"
+#include "fl/fx/fx.h"
+#include "fl/fx/fx2d.h"
+#include "fl/stl/move.h"
+#include "fl/stl/string.h"
+#include "fl/math/xymap.h"
+#include "FastLED.h"
+
+FL_TEST_FILE(FL_FILEPATH) {
+
+#define FPS 30
+#define FRAME_TIME 1000 / FPS
+#define VIDEO_WIDTH 10
+#define VIDEO_HEIGHT 10
+#define LEDS_PER_FRAME VIDEO_WIDTH *VIDEO_HEIGHT
+
+FASTLED_SHARED_PTR(FakeFilebuf);
+
+
+class FakeFilebuf : public fl::filebuf {
+  public:
+    virtual ~FakeFilebuf() {}
+    bool is_open() const override { return true; }
+    bool available() const override { return mPos < data.size(); }
+    size_t size() const override { return data.size(); }
+
+    size_t writeData(const uint8_t *src, size_t len) {
+        data.insert(data.end(), src, src + len);
+        return len;
+    }
+    size_t writeCRGB(const CRGB *src, size_t len) {
+        size_t bytes_written = writeData((const uint8_t *)src, len * 3);
+        return bytes_written / 3;
+    }
+    size_t read(char *dst, size_t bytesToRead) override {
+        size_t bytesRead = 0;
+        while (bytesRead < bytesToRead && mPos < data.size()) {
+            dst[bytesRead] = static_cast<char>(data[mPos]);
+            bytesRead++;
+            mPos++;
+        }
+        return bytesRead;
+    }
+    using fl::filebuf::read; // u8 overload
+    size_t write(const char *dat, size_t count) override {
+        (void)dat; (void)count;
+        return 0;
+    }
+    size_t tell() override { return mPos; }
+    const char *path() const override { return "fake"; }
+    bool seek(size_t pos, fl::seek_dir dir) override {
+        if (dir == fl::seek_dir::beg) { this->mPos = pos; }
+        else if (dir == fl::seek_dir::cur) { this->mPos += pos; }
+        else { this->mPos = data.size() + pos; }
+        return true;
+    }
+    using fl::filebuf::seek; // single-arg overload
+    void close() override {}
+    bool is_eof() const override { return mPos >= data.size(); }
+    bool has_error() const override { return false; }
+    void clear_error() override {}
+    int error_code() const override { return 0; }
+    const char *error_message() const override { return "No error"; }
+
+    fl::vector<uint8_t> data;
+    size_t mPos = 0;
+};
+
+FL_TEST_CASE("video with memory stream") {
+    // fl::Video video(LEDS_PER_FRAME, FPS);
+    fl::Video video(LEDS_PER_FRAME, FPS, 1);
+    video.setFade(0, 0);
+    fl::memorybufPtr memoryStream =
+        fl::make_shared<fl::memorybuf>(LEDS_PER_FRAME * 3);
+    CRGB testData[LEDS_PER_FRAME] = {};
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        testData[i] = i % 2 == 0 ? CRGB::Red : CRGB::Black;
+    }
+    size_t pixels_written = memoryStream->writeCRGB(testData, LEDS_PER_FRAME);
+    FL_REQUIRE_EQ(pixels_written, LEDS_PER_FRAME);
+    video.begin(memoryStream);
+    CRGB leds[LEDS_PER_FRAME];
+    bool ok = video.draw(FRAME_TIME + 1, leds);
+    FL_REQUIRE(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_CHECK_EQ(leds[i], testData[i]);
+    }
+    ok = video.draw(2 * FRAME_TIME + 1, leds);
+    FL_REQUIRE(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        // FL_CHECK_EQ(leds[i], testData[i]);
+        FL_REQUIRE_EQ(leds[i].r, testData[i].r);
+        FL_REQUIRE_EQ(leds[i].g, testData[i].g);
+        FL_REQUIRE_EQ(leds[i].b, testData[i].b);
+    }
+}
+
+FL_TEST_CASE("video with memory stream, interpolated") {
+    // fl::Video video(LEDS_PER_FRAME, FPS);
+    fl::Video video(LEDS_PER_FRAME, 1);
+    video.setFade(0, 0);
+    fl::memorybufPtr memoryStream =
+        fl::make_shared<fl::memorybuf>(LEDS_PER_FRAME * sizeof(CRGB) * 2);
+    CRGB testData[LEDS_PER_FRAME] = {};
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        testData[i] = CRGB::Red;
+    }
+    size_t pixels_written = memoryStream->writeCRGB(testData, LEDS_PER_FRAME);
+    FL_CHECK_EQ(pixels_written, LEDS_PER_FRAME);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        testData[i] = CRGB::Black;
+    }
+    pixels_written = memoryStream->writeCRGB(testData, LEDS_PER_FRAME);
+    FL_CHECK_EQ(pixels_written, LEDS_PER_FRAME);
+    video.begin(memoryStream); // One frame per second.
+    CRGB leds[LEDS_PER_FRAME];
+    bool ok = video.draw(0, leds); // First frame starts time 0.
+    ok = video.draw(500, leds);    // Half a frame.
+    FL_CHECK(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        int r = leds[i].r;
+        int g = leds[i].g;
+        int b = leds[i].b;
+        FL_REQUIRE_EQ(128, r); // We expect the color to be interpolated to 128.
+        FL_REQUIRE_EQ(0, g);
+        FL_REQUIRE_EQ(0, b);
+    }
+}
+
+FL_TEST_CASE("video with file handle") {
+    // fl::Video video(LEDS_PER_FRAME, FPS);
+    fl::Video video(LEDS_PER_FRAME, FPS);
+    video.setFade(0, 0);
+    FakeFilebufPtr fileHandle = fl::make_shared<FakeFilebuf>();
+    CRGB led_frame[LEDS_PER_FRAME];
+    // alternate between red and black
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        led_frame[i] = i % 2 == 0 ? CRGB::Red : CRGB::Black;
+    }
+    // now write the data
+    size_t leds_written = fileHandle->writeCRGB(led_frame, LEDS_PER_FRAME);
+    FL_CHECK_EQ(leds_written, LEDS_PER_FRAME);
+    video.begin(fileHandle);
+    CRGB leds[LEDS_PER_FRAME];
+    bool ok = video.draw(FRAME_TIME + 1, leds);
+    FL_REQUIRE(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_CHECK_EQ(leds[i], led_frame[i]);
+    }
+    ok = video.draw(2 * FRAME_TIME + 1, leds);
+    FL_CHECK(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_CHECK_EQ(leds[i], led_frame[i]);
+    }
+}
+
+FL_TEST_CASE("Video duration") {
+    fl::Video video(LEDS_PER_FRAME, FPS);
+    FakeFilebufPtr fileHandle = fl::make_shared<FakeFilebuf>();
+    CRGB led_frame[LEDS_PER_FRAME];
+    // just set all the leds to white
+
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        led_frame[i] = CRGB::White;
+    }
+    // fill frames for all of one second
+    for (uint32_t i = 0; i < FPS; i++) {
+        size_t leds_written = fileHandle->writeCRGB(led_frame, LEDS_PER_FRAME);
+        FL_CHECK_EQ(leds_written, LEDS_PER_FRAME);
+    }
+
+    video.begin(fileHandle);
+    int32_t duration = video.durationMicros();
+    float duration_f = duration / 1000.0;
+    FL_CHECK_EQ(1000, uint32_t(duration_f + 0.5));
+}
+
+FL_TEST_CASE("video with end frame fadeout") {
+    fl::Video video(LEDS_PER_FRAME, FPS);
+    video.setFade(0, 1000);
+    FakeFilebufPtr fileHandle = fl::make_shared<FakeFilebuf>();
+    CRGB led_frame[LEDS_PER_FRAME];
+    // just set all the leds to white
+
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        led_frame[i] = CRGB::White;
+    }
+    // fill frames for all of one second
+    for (uint32_t i = 0; i < FPS; i++) {
+        size_t leds_written = fileHandle->writeCRGB(led_frame, LEDS_PER_FRAME);
+        FL_CHECK_EQ(leds_written, LEDS_PER_FRAME);
+    }
+
+    video.begin(fileHandle);
+    CRGB leds[LEDS_PER_FRAME];
+    bool ok = video.draw(0, leds);
+    FL_REQUIRE(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_CHECK_EQ(leds[i], led_frame[i]);
+    }
+    ok = video.draw(500, leds);
+    // test that the leds are about half as bright
+    FL_REQUIRE(ok);
+
+
+
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        // This is what the values should be but we don't do inter-frame
+        // interpolation yet. FL_CHECK_EQ(leds[i].r, 127); FL_CHECK_EQ(leds[i].g,
+        // 127); FL_CHECK_EQ(leds[i].b, 127);
+        FL_CHECK_EQ(leds[i].r, 110);
+        FL_CHECK_EQ(leds[i].g, 110);
+        FL_CHECK_EQ(leds[i].b, 110);
+    }
+
+    ok = video.draw(900, leds); // close to last frame
+    FL_REQUIRE(ok);
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_CHECK_EQ(leds[i].r, 8);
+        FL_CHECK_EQ(leds[i].g, 8);
+        FL_CHECK_EQ(leds[i].b, 8);
+    }
+
+    ok = video.draw(965, leds); // Last frame
+    FL_REQUIRE(ok);
+    // test that the leds are almost black
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_REQUIRE_EQ(leds[i], CRGB(0, 0, 0));
+    }
+    #if 0  // Bug - we do not handle wrapping around
+    ok = video.draw(1000, leds); // Bug - we have to let the buffer drain with one frame.
+    ok = video.draw(1000, leds); // After last frame we flip around
+    for (uint32_t i = 0; i < LEDS_PER_FRAME; i++) {
+        FL_REQUIRE_EQ(leds[i], CRGB(4, 4, 4));
+    }
+    #endif  //
+}
+
+// VideoFxWrapper tests
+
+namespace {
+
+FASTLED_SHARED_PTR(Fake2d);
+
+// Simple Fx2d object which writes a single red pixel to the first LED
+// with the red component being the intensity of the frame counter.
+class Fake2d : public fl::Fx2d {
+  public:
+    Fake2d() : Fx2d(XYMap::constructRectangularGrid(1,1)) {}
+
+    void draw(DrawContext context) override {
+        CRGB c = mColors[mFrameCounter % mColors.size()];
+        context.leds[0] = c;
+        mFrameCounter++;
+    }
+
+    bool hasFixedFrameRate(float *fps) const override {
+        *fps = 1;
+        return true;
+    }
+
+    fl::string fxName() const override { return "Fake2d"; }
+    uint8_t mFrameCounter = 0;
+    fl::FixedVector<CRGB, 5> mColors;
+};
+
+} // anonymous namespace
+
+FL_TEST_CASE("test_fixed_fps") {
+    Fake2dPtr fake = fl::make_shared<Fake2d>();
+    fake->mColors.push_back(CRGB(0, 0, 0));
+    fake->mColors.push_back(CRGB(255, 0, 0));
+    fl::VideoFxWrapper wrapper(fake);
+    wrapper.setFade(0, 0);
+    CRGB leds[1];
+    fl::Fx::DrawContext context(0, leds);
+    wrapper.draw(context);
+    FL_CHECK_EQ(1, fake->mFrameCounter);
+    FL_CHECK_EQ(leds[0], CRGB(0, 0, 0));
+    context.now = 500;
+    wrapper.draw(context);
+    FL_CHECK_EQ(2, fake->mFrameCounter);
+    FL_CHECK_EQ(leds[0], CRGB(127, 0, 0));
+}
+
+} // FL_TEST_FILE

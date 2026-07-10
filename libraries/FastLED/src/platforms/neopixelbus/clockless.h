@@ -1,5 +1,7 @@
 #pragma once
 
+// IWYU pragma: private
+
 /// @file clockless.h
 /// NeoPixelBus-based clockless controller implementation
 /// 
@@ -12,7 +14,7 @@
 /// - NeoPixelBus library must be included before FastLED
 /// - The controller is only available when NeoPixelBus.h is detected
 
-#include "fl/has_include.h"
+#include "fl/stl/has_include.h"
 
 #ifndef FASTLED_USE_NEOPIXEL_BUS
 #ifdef FASTLED_DOXYGEN
@@ -29,26 +31,30 @@
 
 #if FASTLED_USE_NEOPIXEL_BUS
 
-#include "NeoPixelBus.h"
-#include "fl/namespace.h"
-#include "fl/memory.h"
+// IWYU pragma: begin_keep
+#include <NeoPixelBus.h>
+// IWYU pragma: end_keep
+#include "fl/stl/memory.h"
 #include "controller.h"
 #include "pixel_controller.h"
 #include "color.h"
 #include "fastled_config.h"
+#include "fl/chipsets/timing_traits.h"
+#include "platforms/is_platform.h"
+#include "fl/stl/noexcept.h"
 
 namespace fl {
 
 // Forward declarations for method selection
 template<int DATA_PIN>
 struct NeoPixelBusMethodSelector {
-#if defined(ESP32)
+#if defined(FL_IS_ESP32)
     using DefaultMethod = NeoEsp32Rmt0800KbpsMethod;
-#elif defined(ESP8266)  
+#elif defined(FL_IS_ESP8266)
     using DefaultMethod = NeoEsp8266Uart1800KbpsMethod;
-#elif defined(__AVR__)
+#elif defined(FL_IS_AVR)
     using DefaultMethod = NeoAvr800KbpsMethod;
-#elif defined(__arm__)
+#elif defined(FL_IS_ARM)
     using DefaultMethod = NeoArm800KbpsMethod;
 #else
     using DefaultMethod = NeoBitBangMethod;
@@ -106,7 +112,7 @@ struct NeoPixelBusColorFeature<GBR> {
 /// @tparam XTRA0 extra parameter (ignored, for template compatibility)
 /// @tparam FLIP flip parameter (ignored, for template compatibility)
 /// @tparam WAIT_TIME wait time parameter (ignored, for template compatibility)
-template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = GRB, 
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = GRB,
           int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 0>
 class NeoPixelBusLikeClocklessT : public CPixelLEDController<RGB_ORDER> {
 public:
@@ -127,7 +133,7 @@ public:
 
     /// Initialize the controller
     /// Creates the NeoPixelBus instance with appropriate color feature and method
-    virtual void init() override {
+    virtual void init() FL_NOEXCEPT override {
         if (!mInitialized) {
             try {
                 // Create NeoPixelBus instance
@@ -153,7 +159,7 @@ public:
     /// Output pixels to the LED strip
     /// Converts FastLED pixel data to NeoPixelBus format and displays
     /// @param pixels the pixel controller containing LED data
-    virtual void showPixels(PixelController<RGB_ORDER> &pixels) override {
+    virtual void showPixels(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT override {
         if (!mPixelBus || !mInitialized) {
             return;
         }
@@ -191,12 +197,12 @@ public:
 
 protected:
     /// Get the NeoPixelBus instance (for derived classes)
-    BusType* getPixelBus() const {
+    BusType* getPixelBus() const FL_NOEXCEPT {
         return mPixelBus.get();
     }
     
     /// Check if the controller is initialized
-    bool isInitialized() const {
+    bool isInitialized() const FL_NOEXCEPT {
         return mInitialized;
     }
     
@@ -204,34 +210,34 @@ protected:
     /// Override this in derived classes to customize bus creation
     /// @param pixelCount number of pixels (0 for default)
     /// @return unique pointer to the created bus
-    virtual fl::unique_ptr<BusType> createPixelBus(uint16_t pixelCount = 0) {
+    virtual fl::unique_ptr<BusType> createPixelBus(u16 pixelCount = 0) FL_NOEXCEPT {
         return fl::make_unique<BusType>(pixelCount, DATA_PIN);
     }
     
     /// Called after successful initialization
     /// Override in derived classes for additional setup
-    virtual void onInitialized() {
+    virtual void onInitialized() FL_NOEXCEPT {
         // Default: no additional initialization
     }
     
     /// Called before showing pixels
     /// Override in derived classes for pre-show operations
     /// @param pixels the pixel controller containing LED data
-    virtual void beforeShow(PixelController<RGB_ORDER> &pixels) {
+    virtual void beforeShow(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no pre-show operations
     }
     
     /// Convert and set pixels in the NeoPixelBus instance
     /// Override in derived classes to customize pixel conversion
     /// @param pixels the pixel controller containing LED data
-    virtual void convertAndSetPixels(PixelController<RGB_ORDER> &pixels) {
+    virtual void convertAndSetPixels(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         auto iterator = pixels.as_iterator(RgbwInvalid());
         for (int i = 0; iterator.has(1); ++i) {
-            fl::u8 r, g, b;
+            u8 r, g, b;
             iterator.loadAndScaleRGB(&r, &g, &b);
             
             // Convert to NeoPixelBus color type
-            RgbColor color(r, g, b);
+            RgbColor color(r, g, b) FL_NOEXCEPT;
             mPixelBus->SetPixelColor(i, color);
             
             iterator.advanceData();
@@ -241,14 +247,14 @@ protected:
     /// Called after pixel conversion but before show()
     /// Override in derived classes for post-conversion operations
     /// @param pixels the pixel controller containing LED data
-    virtual void afterConversion(PixelController<RGB_ORDER> &pixels) {
+    virtual void afterConversion(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no post-conversion operations
     }
     
     /// Called after showing pixels
     /// Override in derived classes for post-show operations
     /// @param pixels the pixel controller containing LED data
-    virtual void afterShow(PixelController<RGB_ORDER> &pixels) {
+    virtual void afterShow(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no post-show operations
     }
 };
@@ -269,9 +275,9 @@ protected:
 /// @tparam FLIP flip parameter (ignored, for template compatibility)
 /// @tparam WAIT_TIME wait time parameter (ignored, for template compatibility)
 /// @see https://github.com/Makuna/NeoPixelBus
-template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = GRB, 
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = GRB,
           int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 0>
-class ClocklessController : public NeoPixelBusLikeClocklessT<DATA_PIN, T1, T2, T3, RGB_ORDER, XTRA0, FLIP, WAIT_TIME> {
+class ClocklessController : public NeoPixelBusLikeClocklessT<DATA_PIN, TIMING, RGB_ORDER, XTRA0, FLIP, WAIT_TIME> {
 public:
     /// Constructor - creates uninitialized controller
     ClocklessController() = default;
@@ -293,7 +299,7 @@ public:
 /// @tparam T2 timing parameter (ignored, for template compatibility) 
 /// @tparam T3 timing parameter (ignored, for template compatibility)
 /// @tparam RGB_ORDER the RGB ordering for the LEDs
-template <int DATA_PIN, int T1, int T2, int T3, EOrder RGB_ORDER = GRB, 
+template <int DATA_PIN, typename TIMING, EOrder RGB_ORDER = GRB,
           int XTRA0 = 0, bool FLIP = false, int WAIT_TIME = 0>
 class NeoPixelBusRGBWController : public CPixelLEDController<RGB_ORDER> {
 public:
@@ -312,7 +318,7 @@ public:
     virtual ~NeoPixelBusRGBWController() = default;
 
     /// Initialize the controller
-    virtual void init() override {
+    virtual void init() FL_NOEXCEPT override {
         if (!mInitialized) {
             try {
                 mPixelBus = fl::make_unique<BusType>(0, DATA_PIN);
@@ -333,7 +339,7 @@ public:
     }
 
     /// Output pixels to the LED strip with RGBW conversion
-    virtual void showPixels(PixelController<RGB_ORDER> &pixels) override {
+    virtual void showPixels(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT override {
         if (!mPixelBus || !mInitialized) {
             return;
         }
@@ -362,40 +368,40 @@ public:
 
 protected:
     /// Get the NeoPixelBus instance (for derived classes)
-    BusType* getPixelBus() const {
+    BusType* getPixelBus() const FL_NOEXCEPT {
         return mPixelBus.get();
     }
     
     /// Check if the controller is initialized
-    bool isInitialized() const {
+    bool isInitialized() const FL_NOEXCEPT {
         return mInitialized;
     }
     
     /// Called after successful initialization
-    virtual void onInitialized() {
+    virtual void onInitialized() FL_NOEXCEPT {
         // Default: no additional initialization
     }
     
     /// Called before showing pixels
-    virtual void beforeShow(PixelController<RGB_ORDER> &pixels) {
+    virtual void beforeShow(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no pre-show operations
     }
     
     /// Convert RGB to RGBW with white channel extraction
-    virtual void convertAndSetPixels(PixelController<RGB_ORDER> &pixels) {
+    virtual void convertAndSetPixels(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         auto iterator = pixels.as_iterator(RgbwInvalid());
         for (int i = 0; iterator.has(1); ++i) {
-            fl::u8 r, g, b;
+            u8 r, g, b;
             iterator.loadAndScaleRGB(&r, &g, &b);
             
             // Extract white component (simple algorithm - minimum of RGB)
-            fl::u8 white = fl::min(r, fl::min(g, b));
+            u8 white = fl::min(r, fl::min(g, b));
             r -= white; 
             g -= white; 
             b -= white;
             
             // Convert to NeoPixelBus RGBW color type
-            RgbwColor color(r, g, b, white);
+            RgbwColor color(r, g, b, white) FL_NOEXCEPT;
             mPixelBus->SetPixelColor(i, color);
             
             iterator.advanceData();
@@ -403,12 +409,12 @@ protected:
     }
     
     /// Called after pixel conversion but before show()
-    virtual void afterConversion(PixelController<RGB_ORDER> &pixels) {
+    virtual void afterConversion(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no post-conversion operations
     }
     
     /// Called after showing pixels
-    virtual void afterShow(PixelController<RGB_ORDER> &pixels) {
+    virtual void afterShow(PixelController<RGB_ORDER> &pixels) FL_NOEXCEPT {
         // Default: no post-show operations
     }
 };

@@ -1,29 +1,26 @@
-/// @file    AudioReactive.ino
+/// @file    Reactive.ino
 /// @brief   Audio reactive visualization with multiple modes
-/// @example AudioReactive.ino
+/// @example Reactive.ino
 
 #include <Arduino.h>
 #include <FastLED.h>
 
 
 
-#include "fl/ui.h"
-#include "fl/audio.h"
+#include "fl/ui/ui.h"
+#include "fl/audio/audio.h"
 #include "fl/fft.h"
-#include "fl/xymap.h"
-#include "fl/math.h"
-#include "fl/math_macros.h"
+#include "fl/math/xymap.h"
+#include "fl/math/math.h"
+#include "fl/math/math.h"
 
-#include "fl/compiler_control.h"
+#include "fl/stl/compiler_control.h"
 
 // This is used by fastled because we have extremely strict compiler settings.
 // Stock Arduino/Platformio does not need these.
 FL_DISABLE_WARNING_PUSH
 FL_DISABLE_WARNING(float-conversion)
 FL_DISABLE_WARNING(sign-conversion)
-
-
-using namespace fl;
 
 // Display configuration
 // For WebAssembly, use a smaller display to avoid memory issues
@@ -44,38 +41,42 @@ using namespace fl;
 #define FFT_SIZE 512
 
 // UI Elements
-UITitle title("Audio Reactive Visualizations");
-UIDescription description("Real-time audio visualizations with beat detection and multiple modes");
+fl::UITitle title("Audio Reactive Visualizations");
+fl::UIDescription description("Real-time audio visualizations with beat detection and multiple modes");
 
 // Master controls
-UICheckbox enableAudio("Enable Audio", true);
-UIDropdown visualMode("Visualization Mode", 
+fl::UICheckbox enableAudio("Enable Audio", true);
+fl::UIDropdown visualMode("Visualization Mode",
     {"Spectrum Bars", "Radial Spectrum", "Waveform", "VU Meter", "Matrix Rain", "Fire Effect", "Plasma Wave"});
 
 // Audio controls
-UISlider audioGain("Audio Gain", 1.0f, 0.1f, 5.0f, 0.1f);
-UISlider noiseFloor("Noise Floor", 0.1f, 0.0f, 1.0f, 0.01f);
-UICheckbox autoGain("Auto Gain", true);
+fl::UISlider audioGain("Audio Gain", 1.0f, 0.1f, 5.0f, 0.1f);
+fl::UISlider noiseFloor("Noise Floor", 0.1f, 0.0f, 1.0f, 0.01f);
+fl::UICheckbox autoGain("Auto Gain", true);
 
 // Visual controls
-UISlider brightness("Brightness", 128, 0, 255, 1);
-UISlider fadeSpeed("Fade Speed", 20, 0, 255, 1);
-UIDropdown colorPalette("Color Palette", 
+fl::UISlider brightness("Brightness", 128, 0, 255, 1);
+fl::UISlider fadeSpeed("Fade Speed", 20, 0, 255, 1);
+fl::UIDropdown colorPalette("Color Palette",
     {"Rainbow", "Heat", "Ocean", "Forest", "Party", "Lava", "Cloud"});
-UICheckbox mirrorMode("Mirror Mode", false);
+fl::UICheckbox mirrorMode("Mirror Mode", false);
 
 // Beat detection
-UICheckbox beatDetect("Beat Detection", true);
-UISlider beatSensitivity("Beat Sensitivity", 1.5f, 0.5f, 3.0f, 0.1f);
-UICheckbox beatFlash("Beat Flash", true);
+fl::UICheckbox beatDetect("Beat Detection", true);
+fl::UISlider beatSensitivity("Beat Sensitivity", 1.5f, 0.5f, 3.0f, 0.1f);
+fl::UICheckbox beatFlash("Beat Flash", true);
+
+// Pitch detection
+fl::UICheckbox pitchDetectEnable("Pitch Detection", false);
+fl::UICheckbox pitchVisualizer("Show Pitch Visualizer", false);
 
 // Audio input
-UIAudio audio("Audio Input");
+fl::UIAudio audio("Audio Input");
 
 // Global variables
-CRGB leds[NUM_LEDS];
-XYMap xyMap(WIDTH, HEIGHT, false);
-SoundLevelMeter soundMeter(0.0, 0.0);
+fl::CRGB leds[NUM_LEDS];
+fl::XYMap xyMap(WIDTH, HEIGHT, false);
+fl::audio::SoundLevelMeter soundMeter(0.0, 0.0);
 
 // Audio processing variables - keep these smaller for WebAssembly
 static const int NUM_BANDS = 16;  // Reduced from 32
@@ -97,17 +98,24 @@ float plasma[WIDTH][HEIGHT] = {{0}};
 uint8_t fireBuffer[WIDTH][HEIGHT] = {{0}};
 #endif
 
+// Pitch detection engine
+fl::SoundToMIDI pitchConfig;
+fl::SoundToMIDIEngine* pitchEngine = nullptr;
+uint8_t currentMIDINote = 0;
+uint8_t currentVelocity = 0;
+bool noteIsOn = false;
+
 // Get current color palette
-CRGBPalette16 getCurrentPalette() {
+fl::CRGBPalette16 getCurrentPalette() {
     switch(colorPalette.as_int()) {
-        case 0: return CRGBPalette16(RainbowColors_p);
-        case 1: return CRGBPalette16(HeatColors_p);
-        case 2: return CRGBPalette16(OceanColors_p);
-        case 3: return CRGBPalette16(ForestColors_p);
-        case 4: return CRGBPalette16(PartyColors_p);
-        case 5: return CRGBPalette16(LavaColors_p);
-        case 6: return CRGBPalette16(CloudColors_p);
-        default: return CRGBPalette16(RainbowColors_p);
+        case 0: return fl::CRGBPalette16(fl::RainbowColors_p);
+        case 1: return fl::CRGBPalette16(fl::HeatColors_p);
+        case 2: return fl::CRGBPalette16(fl::OceanColors_p);
+        case 3: return fl::CRGBPalette16(fl::ForestColors_p);
+        case 4: return fl::CRGBPalette16(fl::PartyColors_p);
+        case 5: return fl::CRGBPalette16(fl::LavaColors_p);
+        case 6: return fl::CRGBPalette16(fl::CloudColors_p);
+        default: return fl::CRGBPalette16(fl::RainbowColors_p);
     }
 }
 
@@ -132,7 +140,7 @@ bool detectBeat(float energy) {
     beatVariance /= 20.0f;
     
     // Detect beat
-    float threshold = beatAverage + (beatSensitivity.value() * sqrt(beatVariance));
+    float threshold = beatAverage + (beatSensitivity.value() * fl::sqrt(beatVariance));
     uint32_t currentTime = millis();
     
     if (energy > threshold && (currentTime - lastBeatTime) > 80) {
@@ -164,25 +172,27 @@ void updateAutoGain(float level) {
 // Clear display
 void clearDisplay() {
     if (fadeSpeed.as_int() == 0) {
-        fill_solid(leds, NUM_LEDS, CRGB::Black);
+        fill_solid(leds, NUM_LEDS, fl::CRGB::Black);
     } else {
         fadeToBlackBy(leds, NUM_LEDS, fadeSpeed.as_int());
     }
 }
 
 // Visualization: Spectrum Bars
-void drawSpectrumBars(FFTBins* fft, float /* peak */) {
+void drawSpectrumBars(fl::audio::fft::Bins* fft, float /* peak */) {
     clearDisplay();
-    CRGBPalette16 palette = getCurrentPalette();
+    fl::CRGBPalette16 palette = getCurrentPalette();
     
     int barWidth = WIDTH / NUM_BANDS;
+
+    auto bands = fft->db();
     
-    for (size_t band = 0; band < NUM_BANDS && band < fft->bins_db.size(); band++) {
-        float magnitude = fft->bins_db[band];
+    for (size_t band = 0; band < NUM_BANDS && band < bands.size(); band++) {
+        float magnitude = bands[band];
         
         // Apply noise floor
         magnitude = magnitude / 100.0f;  // Normalize from dB
-        magnitude = MAX(0.0f, magnitude - noiseFloor.value());
+        magnitude = fl::max(0.0f, magnitude - noiseFloor.value());
         
         // Smooth the FFT
         fftSmooth[band] = fftSmooth[band] * 0.8f + magnitude * 0.2f;
@@ -195,12 +205,12 @@ void drawSpectrumBars(FFTBins* fft, float /* peak */) {
         int barHeight = magnitude * HEIGHT;
         int xStart = band * barWidth;
         
-        for (int x = 0; x < barWidth - 1; x++) {
+        for (int x = 0; x < fl::max(barWidth, 1); x++) {
             for (int y = 0; y < barHeight; y++) {
                 uint8_t colorIndex = fl::map_range<float, uint8_t>(
                     float(y) / HEIGHT, 0, 1, 0, 255
                 );
-                CRGB color = ColorFromPalette(palette, colorIndex + hue);
+                fl::CRGB color = ColorFromPalette(palette, colorIndex + hue);
                 
                 int ledIndex = xyMap(xStart + x, y);
                 if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
@@ -219,27 +229,29 @@ void drawSpectrumBars(FFTBins* fft, float /* peak */) {
 }
 
 // Visualization: Radial Spectrum
-void drawRadialSpectrum(FFTBins* fft, float /* peak */) {
+void drawRadialSpectrum(fl::audio::fft::Bins* fft, float /* peak */) {
     clearDisplay();
-    CRGBPalette16 palette = getCurrentPalette();
+    fl::CRGBPalette16 palette = getCurrentPalette();
     
     int centerX = WIDTH / 2;
     int centerY = HEIGHT / 2;
+
+    auto bands = fft->db();
     
     for (size_t angle = 0; angle < 360; angle += 6) {  // Reduced resolution
         size_t band = (angle / 6) % NUM_BANDS;
-        if (band >= fft->bins_db.size()) continue;
+        if (band >= bands.size()) continue;
         
-        float magnitude = fft->bins_db[band] / 100.0f;
-        magnitude = MAX(0.0f, magnitude - noiseFloor.value());
+        float magnitude = bands[band] / 100.0f;
+        magnitude = fl::max(0.0f, magnitude - noiseFloor.value());
         magnitude *= audioGain.value() * autoGainValue;
         magnitude = fl::clamp(magnitude, 0.0f, 1.0f);
         
-        int radius = magnitude * (MIN(WIDTH, HEIGHT) / 2);
+        int radius = magnitude * (fl::min(WIDTH, HEIGHT) / 2);
         
         for (int r = 0; r < radius; r++) {
-            int x = centerX + (r * cosf(angle * PI / 180.0f));
-            int y = centerY + (r * sinf(angle * PI / 180.0f));
+            int x = centerX + (r * fl::cosf(angle * FL_PI / 180.0f));
+            int y = centerY + (r * fl::sinf(angle * FL_PI / 180.0f));
             
             if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
                 uint8_t colorIndex = fl::map_range<int, uint8_t>(r, 0, radius, 255, 0);
@@ -253,9 +265,9 @@ void drawRadialSpectrum(FFTBins* fft, float /* peak */) {
 }
 
 // Visualization: Logarithmic Waveform (prevents saturation)
-void drawWaveform(const Slice<const int16_t>& pcm, float /* peak */) {
+void drawWaveform(const fl::span<const int16_t>& pcm, float /* peak */) {
     clearDisplay();
-    CRGBPalette16 palette = getCurrentPalette();
+    fl::CRGBPalette16 palette = getCurrentPalette();
     
     int samplesPerPixel = pcm.size() / WIDTH;
     int centerY = HEIGHT / 2;
@@ -268,17 +280,17 @@ void drawWaveform(const Slice<const int16_t>& pcm, float /* peak */) {
         float sample = float(pcm[sampleIndex]) / 32768.0f;  // Normalize to -1.0 to 1.0
         
         // Apply logarithmic scaling to prevent saturation
-        float absSample = fabsf(sample);
+        float absSample = fl::fabsf(sample);
         float logAmplitude = 0.0f;
-        
+
         if (absSample > 0.001f) {  // Avoid log(0)
             // Logarithmic compression: log10(1 + gain * sample)
             float scaledSample = absSample * audioGain.value() * autoGainValue;
-            logAmplitude = log10f(1.0f + scaledSample * 9.0f) / log10f(10.0f);  // Normalize to 0-1
+            logAmplitude = fl::log10f(1.0f + scaledSample * 9.0f) / fl::log10f(10.0f);  // Normalize to 0-1
         }
-        
+
         // Apply smooth sensitivity curve
-        logAmplitude = powf(logAmplitude, 0.7f);  // Gamma correction for better visual response
+        logAmplitude = fl::powf(logAmplitude, 0.7f);  // Gamma correction for better visual response
         
         // Calculate amplitude in pixels
         int amplitude = int(logAmplitude * (HEIGHT / 2));
@@ -289,13 +301,13 @@ void drawWaveform(const Slice<const int16_t>& pcm, float /* peak */) {
         
         // Color mapping based on amplitude intensity
         uint8_t colorIndex = fl::map_range<int, uint8_t>(abs(amplitude), 0, HEIGHT/2, 40, 255);
-        CRGB color = ColorFromPalette(palette, colorIndex + hue);
-        
+        fl::CRGB color = ColorFromPalette(palette, colorIndex + hue);
+
         // Apply brightness scaling for low amplitudes
         if (abs(amplitude) < HEIGHT / 4) {
             color.fadeToBlackBy(128 - (abs(amplitude) * 512 / HEIGHT));
         }
-        
+
         // Draw vertical line from center
         if (amplitude == 0) {
             // Draw center point for zero amplitude
@@ -307,13 +319,13 @@ void drawWaveform(const Slice<const int16_t>& pcm, float /* peak */) {
             // Draw line from center to amplitude
             int startY = (amplitude > 0) ? centerY : centerY + amplitude;
             int endY = (amplitude > 0) ? centerY + amplitude : centerY;
-            
+
             for (int y = startY; y <= endY; y++) {
                 if (y >= 0 && y < HEIGHT) {
                     int ledIndex = xyMap(x, y);
                     if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
                         // Fade edges for smoother appearance
-                        CRGB pixelColor = color;
+                        fl::CRGB pixelColor = color;
                         if (y == startY || y == endY) {
                             pixelColor.fadeToBlackBy(100);
                         }
@@ -328,11 +340,11 @@ void drawWaveform(const Slice<const int16_t>& pcm, float /* peak */) {
 // Visualization: VU Meter
 void drawVUMeter(float rms, float peak) {
     clearDisplay();
-    CRGBPalette16 palette = getCurrentPalette();
+    fl::CRGBPalette16 palette = getCurrentPalette();
     
     // RMS level bar
     int rmsWidth = rms * WIDTH * audioGain.value() * autoGainValue;
-    rmsWidth = MIN(rmsWidth, WIDTH);
+    rmsWidth = fl::min(rmsWidth, WIDTH);
     
     for (int x = 0; x < rmsWidth; x++) {
         for (int y = HEIGHT/3; y < 2*HEIGHT/3; y++) {
@@ -346,22 +358,22 @@ void drawVUMeter(float rms, float peak) {
     
     // Peak indicator
     int peakX = peak * WIDTH * audioGain.value() * autoGainValue;
-    peakX = MIN(peakX, WIDTH - 1);
+    peakX = fl::min(peakX, WIDTH - 1);
     
     for (int y = HEIGHT/4; y < 3*HEIGHT/4; y++) {
         int ledIndex = xyMap(peakX, y);
         if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
-            leds[ledIndex] = CRGB::White;
+            leds[ledIndex] = fl::CRGB::White;
         }
     }
-    
+
     // Beat indicator
     if (isBeat && beatFlash) {
         for (int x = 0; x < WIDTH; x++) {
             int ledIndex1 = xyMap(x, 0);
             int ledIndex2 = xyMap(x, HEIGHT - 1);
-            if (ledIndex1 >= 0 && ledIndex1 < NUM_LEDS) leds[ledIndex1] = CRGB::White;
-            if (ledIndex2 >= 0 && ledIndex2 < NUM_LEDS) leds[ledIndex2] = CRGB::White;
+            if (ledIndex1 >= 0 && ledIndex1 < NUM_LEDS) leds[ledIndex1] = fl::CRGB::White;
+            if (ledIndex2 >= 0 && ledIndex2 < NUM_LEDS) leds[ledIndex2] = fl::CRGB::White;
         }
     }
 }
@@ -399,14 +411,14 @@ void drawFireEffect(float peak) {
     
     // Add heat at bottom based on audio
     int heat = 100 + (peak * 155 * audioGain.value() * autoGainValue);
-    heat = MIN(heat, 255);
+    heat = fl::min(heat, 255);
     
     for (int x = 0; x < WIDTH; x++) {
         for (int y = 0; y < HEIGHT; y++) {
             // Simple gradient from bottom to top
             int heatLevel = heat * (HEIGHT - y) / HEIGHT;
             heatLevel = heatLevel * random(80, 120) / 100;  // Add randomness
-            heatLevel = MIN(heatLevel, 255);
+            heatLevel = fl::min(heatLevel, 255);
             
             int ledIndex = xyMap(x, y);
             if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
@@ -418,17 +430,17 @@ void drawFireEffect(float peak) {
 
 // Visualization: Plasma Wave
 void drawPlasmaWave(float peak) {
-    static float time = 0;
+    static float time = 0; // okay static in header
     time += 0.05f + (peak * 0.2f);
-    
-    CRGBPalette16 palette = getCurrentPalette();
+
+    fl::CRGBPalette16 palette = getCurrentPalette();
     
     for (int x = 0; x < WIDTH; x++) {
         for (int y = 0; y < HEIGHT; y++) {
-            float value = sinf(x * 0.1f + time) + 
-                         sinf(y * 0.1f - time) +
-                         sinf((x + y) * 0.1f + time) +
-                         sinf(sqrtf(x * x + y * y) * 0.1f - time);
+            float value = fl::sinf(x * 0.1f + time) +
+                         fl::sinf(y * 0.1f - time) +
+                         fl::sinf((x + y) * 0.1f + time) +
+                         fl::sinf(fl::sqrtf(x * x + y * y) * 0.1f - time);
             
             value = (value + 4) / 8;  // Normalize to 0-1
             value *= audioGain.value() * autoGainValue;
@@ -445,25 +457,44 @@ void drawPlasmaWave(float peak) {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    
+
     Serial.println("Audio Reactive Visualizations");
     Serial.println("Initializing...");
     Serial.print("Display size: ");
     Serial.print(WIDTH);
     Serial.print("x");
     Serial.println(HEIGHT);
-    
+
     // Initialize LEDs
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
     FastLED.setBrightness(brightness.as_int());
     FastLED.clear();
     FastLED.show();
-    
+
     // Set up UI callbacks
     brightness.onChanged([](float value) {
         FastLED.setBrightness(value);
     });
-    
+
+    // Initialize pitch detection
+    pitchConfig.sample_rate_hz = SAMPLE_RATE;
+    pitchEngine = new fl::SoundToMIDIEngine(pitchConfig);  // ok bare allocation
+    pitchEngine->onNoteOn = [](uint8_t note, uint8_t velocity) {
+        currentMIDINote = note;
+        currentVelocity = velocity;
+        noteIsOn = true;
+        Serial.print("Note ON: ");
+        Serial.print(note);
+        Serial.print(" (vel: ");
+        Serial.print(velocity);
+        Serial.println(")");
+    };
+    pitchEngine->onNoteOff = [](uint8_t note) {
+        noteIsOn = false;
+        Serial.print("Note OFF: ");
+        Serial.println(note);
+    };
+
     Serial.println("Setup complete!");
 }
 
@@ -478,8 +509,19 @@ void loop() {
     }
     
     // Process only one audio sample per frame to avoid accumulation
-    AudioSample sample = audio.next();
+    fl::audio::Sample sample = audio.next();
     if (sample.isValid()) {
+        // Process pitch detection if enabled
+        if (pitchDetectEnable && pitchEngine) {
+            // Convert int16_t samples to float for pitch detection
+            static float floatBuffer[FFT_SIZE];
+            size_t numSamples = fl::min(sample.pcm().size(), (size_t)FFT_SIZE);
+            for (size_t i = 0; i < numSamples; i++) {
+                floatBuffer[i] = sample.pcm()[i] / 32768.0f;
+            }
+            pitchEngine->processFrame(floatBuffer, numSamples);
+        }
+
         // Update sound meter
         soundMeter.processBlock(sample.pcm());
         
@@ -489,7 +531,7 @@ void loop() {
         // Calculate peak
         int32_t maxSample = 0;
         for (size_t i = 0; i < sample.pcm().size(); i++) {
-            int32_t absSample = fabsf(sample.pcm()[i]);
+            int32_t absSample = fl::fabsf(sample.pcm()[i]);
             if (absSample > maxSample) {
                 maxSample = absSample;
             }
@@ -505,8 +547,8 @@ void loop() {
             isBeat = detectBeat(peak);
         }
         
-        // Get FFT data - create local FFTBins to avoid accumulation
-        FFTBins fftBins(NUM_BANDS);
+        // Get FFT data - create local Bins to avoid accumulation
+        fl::audio::fft::Bins fftBins(NUM_BANDS);
         sample.fft(&fftBins);
         
         // Update color animation
@@ -549,8 +591,44 @@ void loop() {
                 drawPlasmaWave(peakLevel);
                 break;
         }
+
+        // Add pitch visualizer overlay if enabled
+        if (pitchVisualizer && pitchDetectEnable && noteIsOn) {
+            // Display pitch as a horizontal line at a specific height
+            int noteY = HEIGHT - 4;  // Near the top
+
+            // Map MIDI note to X position (common singing range: 40-88)
+            float notePos = fl::map_range<float, float>(currentMIDINote, 40.0f, 88.0f, 0.0f, 1.0f);
+            notePos = fl::clamp(notePos, 0.0f, 1.0f);
+            int noteX = notePos * (WIDTH - 1);
+
+            // Draw pitch indicator - brightness based on velocity
+            uint8_t brightness = fl::map_range<uint8_t, uint8_t>(currentVelocity, 0, 127, 50, 255);
+            fl::CRGB pitchColor = fl::CRGB(255, 0, 255);  // Magenta
+            pitchColor.fadeToBlackBy(255 - brightness);
+
+            // Draw a small cross at the pitch position
+            for (int dx = -2; dx <= 2; dx++) {
+                int x = noteX + dx;
+                if (x >= 0 && x < WIDTH) {
+                    int ledIndex = xyMap(x, noteY);
+                    if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
+                        leds[ledIndex] = pitchColor;
+                    }
+                }
+            }
+            for (int dy = -2; dy <= 2; dy++) {
+                int y = noteY + dy;
+                if (y >= 0 && y < HEIGHT) {
+                    int ledIndex = xyMap(noteX, y);
+                    if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
+                        leds[ledIndex] = pitchColor;
+                    }
+                }
+            }
+        }
     }
-    
+
     FastLED.show();
     
     // Add a small delay to prevent tight loops in WebAssembly

@@ -108,6 +108,8 @@ static constexpr const char T_username[] = "username";
 static constexpr const char T_WS[] = "websocket";
 static constexpr const char T_WWW_AUTH[] = "WWW-Authenticate";
 static constexpr const char T_X_Expected_Entity_Length[] = "X-Expected-Entity-Length";
+static constexpr const char T_BOUNDARY[] = "boundary=";
+static constexpr size_t T_BOUNDARY_LEN = sizeof(T_BOUNDARY) - 1;
 
 // HTTP Methods
 static constexpr const char T_GET[] = "GET";

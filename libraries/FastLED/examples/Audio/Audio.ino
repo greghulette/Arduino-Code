@@ -1,39 +1,59 @@
 /// @file    Audio.ino
-/// @brief   Audio visualization example with XY mapping
+/// @brief   Audio reactive 180-LED circle with 3 segments responding to bass/mid/treble
 /// @example Audio.ino
-///
-/// This sketch is fully compatible with the FastLED web compiler. To use it do the following:
-/// 1. Install Fastled: `pip install fastled`
-/// 2. cd into this examples page.  
-/// 3. Run the FastLED web compiler at root: `fastled`
-/// 4. When the compiler is done a web page will open.
 
-/*
-This demo is best viewed using the FastLED compiler.
-
-Windows/MacOS binaries: https://github.com/FastLED/FastLED/releases
-
-Python
-
-Install: pip install fastled
-Run: fastled <this sketch directory>
-This will compile and preview the sketch in the browser, and enable
-all the UI elements you see below.
-*/
-
-// #define SIMPLE_EXAMPLE
-
+// @filter: (mem is large) and ((platform is teensy) or (platform is esp32))
 
 #include <FastLED.h>
 
-#if !SKETCH_HAS_LOTS_OF_MEMORY
-// Platform does not have enough memory
+#if defined(FL_IS_TEENSY)
+// Keep fbuild's library scanner aware of PJRC Audio sources for Teensy.
+#include <Audio.h>
+#endif
+
+#if !SKETCH_HAS_LARGE_MEMORY
 void setup() {}
 void loop() {}
 #else
-#ifdef SIMPLE_EXAMPLE
-#include "simple/simple.h"
-#else
-#include "advanced/advanced.h"
-#endif
+
+#include "fl/ui/ui.h"
+
+#define NUM_LEDS 180
+#define LEDS_PER_SEGMENT 60
+#define DATA_PIN 3
+
+fl::CRGB leds[NUM_LEDS];
+fl::UIAudio audio_ui("Audio Input");
+
+void setup() {
+    Serial.begin(115200);
+    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.setBrightness(128);
+}
+
+void loop() {
+    fadeToBlackBy(leds, NUM_LEDS, 30);
+
+    // Lazily registers with FastLED on first call, cached thereafter
+    auto audio = audio_ui.processor();
+
+    float bass = audio->getVibeBass();
+    float mid = audio->getVibeMid();
+    float treb = audio->getVibeTreb();
+
+    // Segment 1 (LEDs 0-59): Bass - red/orange
+    uint8_t bassVal = fl::clamp(bass * 200.0f, 0.0f, 255.0f);
+    fill_solid(leds, LEDS_PER_SEGMENT, CHSV(0, 255, bassVal));
+
+    // Segment 2 (LEDs 60-119): Mid - green
+    uint8_t midVal = fl::clamp(mid * 200.0f, 0.0f, 255.0f);
+    fill_solid(leds + LEDS_PER_SEGMENT, LEDS_PER_SEGMENT, CHSV(96, 255, midVal));
+
+    // Segment 3 (LEDs 120-179): Treble - blue
+    uint8_t trebVal = fl::clamp(treb * 200.0f, 0.0f, 255.0f);
+    fill_solid(leds + 2 * LEDS_PER_SEGMENT, LEDS_PER_SEGMENT, CHSV(160, 255, trebVal));
+
+    FastLED.show();
+}
+
 #endif

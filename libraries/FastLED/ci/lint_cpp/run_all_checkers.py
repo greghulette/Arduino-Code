@@ -1,0 +1,979 @@
+#!/usr/bin/env python3
+"""
+Unified C++ linter runner.
+
+Loads all checker modules and runs them in a single file-loading pass.
+This dramatically improves performance by loading each file only once
+instead of K times (where K is the number of checkers).
+"""
+
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
+
+from ci.lint_cpp.arduino_macro_usage_checker import ArduinoMacroUsageChecker
+from ci.lint_cpp.asm_js_location_checker import AsmJsLocationChecker
+from ci.lint_cpp.attribute_checker import AttributeChecker
+from ci.lint_cpp.banned_define_checker import BannedDefineChecker
+from ci.lint_cpp.banned_headers_checker import (
+    BANNED_HEADERS_COMMON,
+    BANNED_HEADERS_CORE,
+    BANNED_HEADERS_PLATFORMS,
+    BannedHeadersChecker,
+)
+from ci.lint_cpp.banned_macros_checker import BannedMacrosChecker
+from ci.lint_cpp.banned_namespace_checker import BannedNamespaceChecker
+from ci.lint_cpp.bare_allocation_checker import BareAllocationChecker
+from ci.lint_cpp.bare_libm_checker import BareLibmChecker
+from ci.lint_cpp.bare_noinline_checker import BareNoInlineChecker
+from ci.lint_cpp.bare_snprintf_checker import BareSnprintfChecker
+from ci.lint_cpp.bare_using_checker import BareUsingChecker
+from ci.lint_cpp.builtin_memcpy_checker import BuiltinMemcpyChecker
+
+# Import all checker classes
+from ci.lint_cpp.check_namespace_includes import NamespaceIncludesChecker
+from ci.lint_cpp.check_platform_includes import PlatformTrampolineChecker
+from ci.lint_cpp.check_platforms_fl_namespace import PlatformsFlNamespaceChecker
+from ci.lint_cpp.check_using_namespace import UsingNamespaceChecker
+from ci.lint_cpp.cpp_hpp_header_pair_checker import CppHppHeaderPairChecker
+from ci.lint_cpp.cpp_hpp_includes_checker import CppHppIncludesChecker
+from ci.lint_cpp.cpp_include_checker import CppIncludeChecker
+from ci.lint_cpp.ctype_global_checker import CtypeGlobalChecker
+from ci.lint_cpp.enum_class_checker import EnumClassChecker
+from ci.lint_cpp.esp_rom_printf_checker import EspRomPrintfChecker
+from ci.lint_cpp.example_serial_checker import ExampleSerialChecker
+from ci.lint_cpp.fastled_header_usage_checker import FastLEDHeaderUsageChecker
+from ci.lint_cpp.fl_is_defined_checker import FlIsDefinedChecker
+from ci.lint_cpp.headers_exist_checker import HeadersExistChecker
+from ci.lint_cpp.impl_hpp_includes_checker import ImplHppIncludesChecker
+from ci.lint_cpp.include_after_namespace_checker import IncludeAfterNamespaceChecker
+from ci.lint_cpp.include_paths_checker import IncludePathsChecker
+from ci.lint_cpp.is_header_include_checker import IsHeaderIncludeChecker
+from ci.lint_cpp.iwyu_pragma_block_checker import IwyuPragmaBlockChecker
+from ci.lint_cpp.logging_in_iram_checker import LoggingInIramChecker
+from ci.lint_cpp.member_style_checker import MemberStyleChecker
+from ci.lint_cpp.namespace_platforms_checker import NamespacePlatformsChecker
+from ci.lint_cpp.native_platform_defines_checker import NativePlatformDefinesChecker
+from ci.lint_cpp.no_namespace_fl_declaration import NamespaceFlDeclarationChecker
+from ci.lint_cpp.no_using_namespace_fl_in_headers import UsingNamespaceFlChecker
+from ci.lint_cpp.noexcept_special_members_checker import NoexceptSpecialMembersChecker
+from ci.lint_cpp.numeric_limit_macros_checker import NumericLimitMacroChecker
+from ci.lint_cpp.pch_file_checker import check as check_pch_files
+from ci.lint_cpp.platform_includes_checker import PlatformIncludesChecker
+from ci.lint_cpp.platform_pragma_checker import PlatformPragmaChecker
+from ci.lint_cpp.pragma_once_checker import PragmaOnceChecker
+from ci.lint_cpp.public_settings_pattern_checker import PublicSettingsPatternChecker
+from ci.lint_cpp.raw_noexcept_checker import RawNoexceptChecker
+from ci.lint_cpp.raw_pragma_checker import RawPragmaChecker
+from ci.lint_cpp.reinterpret_cast_checker import ReinterpretCastChecker
+from ci.lint_cpp.relative_include_checker import RelativeIncludeChecker
+from ci.lint_cpp.rust_bridge import (
+    merge_checker_results,
+    remove_rust_supported_checkers,
+    run_rust_ab_check,
+    run_rust_linter,
+)
+from ci.lint_cpp.serial_printf_checker import SerialPrintfChecker
+from ci.lint_cpp.simd_intrinsics_checker import SimdIntrinsicsChecker
+from ci.lint_cpp.singleton_in_headers_checker import SingletonInHeadersChecker
+from ci.lint_cpp.sleep_for_checker import SleepForChecker
+from ci.lint_cpp.span_from_pointer_checker import SpanFromPointerChecker
+from ci.lint_cpp.static_in_headers_checker import StaticInHeaderChecker
+from ci.lint_cpp.std_namespace_checker import StdNamespaceChecker
+from ci.lint_cpp.stdint_type_checker import (
+    StdintTypeChecker,
+)
+from ci.lint_cpp.subdir_namespace_checker import SubdirNamespaceChecker
+from ci.lint_cpp.test_aggregation_checker import TestAggregationChecker
+from ci.lint_cpp.test_aggregation_checker import check as check_test_aggregation
+from ci.lint_cpp.test_aggregation_checker import (
+    check_single_file as check_test_aggregation_single_file,
+)
+from ci.lint_cpp.test_include_paths_checker import TestIncludePathsChecker
+from ci.lint_cpp.test_path_structure_checker import TestPathStructureChecker
+from ci.lint_cpp.test_unity_build import check as check_unity_build
+from ci.lint_cpp.test_unity_build import (
+    check_single_file as check_unity_build_single_file,
+)
+from ci.lint_cpp.thread_local_keyword_checker import ThreadLocalKeywordChecker
+from ci.lint_cpp.unit_test_checker import UnitTestChecker
+from ci.lint_cpp.using_namespace_fl_in_examples_checker import (
+    UsingNamespaceFlInExamplesChecker,
+)
+from ci.lint_cpp.weak_attribute_checker import WeakAttributeChecker
+from ci.util.check_files import (
+    CheckerResults,
+    FileContentChecker,
+    MultiCheckerFileProcessor,
+    collect_files_to_check,
+)
+from ci.util.paths import PROJECT_ROOT
+
+
+SRC_ROOT = PROJECT_ROOT / "src"
+EXAMPLES_ROOT = PROJECT_ROOT / "examples"
+TESTS_ROOT = PROJECT_ROOT / "tests"
+
+
+def collect_all_files_by_directory() -> dict[str, list[str]]:
+    """Collect files organized by directory for targeted checker application."""
+    files_by_dir: dict[str, list[str]] = {}
+
+    # Collect src/ files (all subdirectories)
+    files_by_dir["src"] = collect_files_to_check([str(SRC_ROOT)])
+
+    # Collect examples/ files (including .ino files)
+    files_by_dir["examples"] = collect_files_to_check(
+        [str(EXAMPLES_ROOT)], extensions=[".cpp", ".h", ".hpp", ".ino"]
+    )
+
+    # Collect tests/ files
+    files_by_dir["tests"] = collect_files_to_check([str(TESTS_ROOT)])
+
+    # Collect specific subdirectories for targeted checking
+    fl_dir = SRC_ROOT / "fl"
+    if fl_dir.exists():
+        files_by_dir["fl"] = collect_files_to_check([str(fl_dir)])
+
+    lib8tion_dir = SRC_ROOT / "lib8tion"
+    if lib8tion_dir.exists():
+        files_by_dir["lib8tion"] = collect_files_to_check([str(lib8tion_dir)])
+
+    fx_dir = SRC_ROOT / "fx"
+    if fx_dir.exists():
+        files_by_dir["fx"] = collect_files_to_check([str(fx_dir)])
+
+    sensors_dir = SRC_ROOT / "sensors"
+    if sensors_dir.exists():
+        files_by_dir["sensors"] = collect_files_to_check([str(sensors_dir)])
+
+    platforms_shared_dir = SRC_ROOT / "platforms" / "shared"
+    if platforms_shared_dir.exists():
+        files_by_dir["platforms_shared"] = collect_files_to_check(
+            [str(platforms_shared_dir)]
+        )
+
+    platforms_dir = SRC_ROOT / "platforms"
+    if platforms_dir.exists():
+        files_by_dir["platforms"] = collect_files_to_check([str(platforms_dir)])
+
+    third_party_dir = SRC_ROOT / "third_party"
+    if third_party_dir.exists():
+        files_by_dir["third_party"] = collect_files_to_check([str(third_party_dir)])
+
+    return files_by_dir
+
+
+def create_checkers(
+    all_headers: frozenset[str] | None = None,
+) -> dict[str, list[FileContentChecker]]:
+    """Create all checker instances organized by which files they should check.
+
+    Args:
+        all_headers: Optional frozenset of all header file paths in the project
+                    (used for cross-file validation in some checkers)
+    """
+    checkers_by_scope: dict[str, list[FileContentChecker]] = {}
+
+    # Global checkers (run on all src/, examples/, tests/ files)
+    checkers_by_scope["global"] = [
+        CppIncludeChecker(),
+        CppHppIncludesChecker(),
+        ImplHppIncludesChecker(),
+        IncludeAfterNamespaceChecker(),
+        MemberStyleChecker(),
+        NumericLimitMacroChecker(),
+        StaticInHeaderChecker(),
+        LoggingInIramChecker(),
+        PlatformIncludesChecker(),
+        PlatformTrampolineChecker(),  # Enforce trampoline architecture in src/fl/** and root src/
+        WeakAttributeChecker(),
+        AttributeChecker(),  # Checks all C++ standard attributes (replaces MaybeUnusedChecker)
+        AsmJsLocationChecker(),  # Checks EM_JS / EM_ASYNC_JS / EM_ASM live only in *.js.cpp.hpp
+        BannedMacrosChecker(),  # Checks for banned preprocessor macros like __has_include
+        BuiltinMemcpyChecker(),  # Checks for raw __builtin_memcpy — use FL_BUILTIN_MEMCPY
+        EspRomPrintfChecker(),  # Checks for raw esp_rom_printf — use FastLED logging
+        FlIsDefinedChecker(),
+        BannedNamespaceChecker(),  # Checks for banned namespace patterns like fl::fl
+        SingletonInHeadersChecker(),  # Checks for Singleton<T> in headers (must use SingletonShared<T>)
+        SpanFromPointerChecker(),  # Checks for span<T>(container.data(), container.size()) → span<T>(container)
+        BareAllocationChecker(),  # Checks for bare new/delete/malloc/free — use fl::unique_ptr/fl::shared_ptr
+        BareSnprintfChecker(),  # Bans bare C ::snprintf/::printf/::sprintf in src/ — use fl::snprintf (#2773 item 1.5)
+        BareLibmChecker(),  # Bans bare C libm calls (::sqrtf, ::atan2, ::powf, ::ldexpf, ...) — use fl::sqrt/fl::atan2/... (#3002, #3012)
+        BareNoInlineChecker(),  # Bans bare __attribute__((noinline)) in src/ — use FL_NO_INLINE (#2773 item 2.1 follow-up)
+        SleepForChecker(),  # Checks for sleep_for() — bypasses async runner, use fl::yield/fl::async_run
+        ThreadLocalKeywordChecker(),  # Checks for thread_local keyword — use fl::SingletonThreadLocal<T>::instance()
+        BannedDefineChecker(),  # Checks for wrong #if patterns (e.g., #if ESP32 → #ifdef ESP32)
+        PlatformPragmaChecker(),  # Checks for raw #pragma GCC/clang/warning — use FL_DISABLE_WARNING macros
+        RawPragmaChecker(),  # Checks for raw _Pragma() — use FL_DISABLE_WARNING macros
+        RawNoexceptChecker(),  # Checks for raw noexcept keyword — use FL_NOEXCEPT macro
+        # Note: Private libc++ headers checking is now integrated into BannedHeadersChecker
+        # Note: _build.hpp hierarchy checking is now integrated into test_unity_build.py
+    ]
+
+    # Src-only checkers
+    checkers_by_scope["src"] = [
+        ArduinoMacroUsageChecker(),  # Checks for banned Arduino macros (INPUT, OUTPUT, DEFAULT)
+        UsingNamespaceFlChecker(),
+        StdNamespaceChecker(),
+        NamespaceIncludesChecker(),
+        ReinterpretCastChecker(),
+        RelativeIncludeChecker(),
+        FastLEDHeaderUsageChecker(),
+        StdintTypeChecker(),  # Covers all src/ (excludes third_party/ internally)
+        CtypeGlobalChecker(),  # Checks for global-scope ctype functions (use fl:: variants)
+        SimdIntrinsicsChecker(),  # Checks for direct platform SIMD intrinsics — use fl::simd
+        PragmaOnceChecker(),  # Checks headers have #pragma once, .cpp files don't
+    ]
+
+    # Platforms-specific checkers
+    checkers_by_scope["platforms"] = [
+        PlatformsFlNamespaceChecker(),
+        NamespacePlatformsChecker(),
+        IsHeaderIncludeChecker(),
+        IwyuPragmaBlockChecker(all_headers=all_headers),
+        EnumClassChecker(),  # Checks for plain enum — use enum class for type safety
+    ]
+
+    # Native platform defines checker — runs on ALL src/ files (including third_party/)
+    # (the checker internally filters to src/ and excludes dispatch headers,
+    # is_*.h detection headers, etc.)
+    checkers_by_scope["native_platform_defines"] = [
+        NativePlatformDefinesChecker(),
+    ]
+
+    # Include paths checker (for fl/ and platforms/ directories)
+    # Ensures include paths use "fl/", "platforms/", etc. prefixes
+    checkers_by_scope["fl_platforms_include_paths"] = [
+        IncludePathsChecker(),
+    ]
+
+    # Src root-only checkers
+    checkers_by_scope["src_root"] = [
+        NamespaceFlDeclarationChecker(),
+    ]
+
+    # Examples-only checkers
+    checkers_by_scope["examples"] = [
+        SerialPrintfChecker(),
+        ExampleSerialChecker(),
+        UsingNamespaceFlInExamplesChecker(),
+    ]
+
+    # fl/ directory checkers with STRICT enforcement
+    checkers_by_scope["fl"] = [
+        BannedHeadersChecker(banned_headers_list=BANNED_HEADERS_CORE, strict_mode=True),
+        CppHppHeaderPairChecker(),  # Checks that *.cpp.hpp files have corresponding *.h headers
+        IwyuPragmaBlockChecker(all_headers=all_headers),
+        BareUsingChecker(),  # Checks for bare using declarations in headers (unity build safety)
+        SubdirNamespaceChecker(
+            "net"
+        ),  # Checks fl/net/ headers use proper fl::net:: namespaces
+        SubdirNamespaceChecker(
+            "video"
+        ),  # Checks fl/video/ headers use proper fl::video:: namespaces
+        SubdirNamespaceChecker(
+            "task"
+        ),  # Checks fl/task/ headers use proper fl::task:: namespaces
+        # NOTE: fl/math/ is NOT checked — types there intentionally live in fl::
+        # namespace for backward compatibility. Using inline namespace math
+        # causes cascading ambiguity with fl::detail, fl::simd, etc.
+        EnumClassChecker(),  # Checks for plain enum — use enum class for type safety
+        NoexceptSpecialMembersChecker(),  # Checks special member functions have FL_NOEXCEPT
+        PublicSettingsPatternChecker(),  # Checks fl::set_*/enable_*/disable_*/use_* free functions have CFastLED wrappers
+    ]
+
+    # lib8tion/ directory checkers with STRICT enforcement
+    checkers_by_scope["lib8tion"] = [
+        BannedHeadersChecker(banned_headers_list=BANNED_HEADERS_CORE, strict_mode=True),
+    ]
+
+    # fx/, sensors/, platforms/shared/ checkers
+    checkers_by_scope["fx_sensors_platforms_shared"] = [
+        BannedHeadersChecker(
+            banned_headers_list=BANNED_HEADERS_CORE, strict_mode=False
+        ),
+    ]
+
+    # platforms/ directory checkers
+    checkers_by_scope["platforms_banned"] = [
+        BannedHeadersChecker(
+            banned_headers_list=BANNED_HEADERS_PLATFORMS, strict_mode=False
+        ),
+    ]
+
+    # examples/ directory checkers
+    checkers_by_scope["examples_banned"] = [
+        BannedHeadersChecker(
+            banned_headers_list=BANNED_HEADERS_COMMON, strict_mode=False
+        ),
+    ]
+
+    # third_party/ directory checkers
+    checkers_by_scope["third_party"] = [
+        BannedHeadersChecker(
+            banned_headers_list=BANNED_HEADERS_COMMON, strict_mode=True
+        ),
+    ]
+
+    # Specialized checker for src/fl/ header files only
+    checkers_by_scope["fl_headers"] = [
+        UsingNamespaceChecker(),
+    ]
+
+    # Tests-only checkers - FL compatibility now enforced
+    checkers_by_scope["tests"] = [
+        HeadersExistChecker(),
+        BannedHeadersChecker(
+            banned_headers_list=BANNED_HEADERS_CORE, strict_mode=False
+        ),
+        StdNamespaceChecker(),
+        TestPathStructureChecker(),
+        UnitTestChecker(),
+        CtypeGlobalChecker(),  # Checks for bare C ctype/cstring functions (use fl:: variants)
+        TestAggregationChecker(),  # Checks that .hpp files in excluded test dirs have parent aggregators
+        TestIncludePathsChecker(),  # Checks for bare/relative includes in tests (use full paths)
+    ]
+
+    return checkers_by_scope
+
+
+def run_checkers(
+    files_by_dir: dict[str, list[str]],
+    checkers_by_scope: dict[str, list[FileContentChecker]],
+) -> dict[str, CheckerResults]:
+    """Run all checkers - MULTI-PASS approach for performance (minimizes should_process_file() calls)."""
+    processor = MultiCheckerFileProcessor()
+    all_results: dict[str, CheckerResults] = {}
+
+    # MULTI-PASS: Process each scope separately with pre-filtered files
+    # This minimizes the number of should_process_file() calls compared to single-pass
+
+    # Run global checkers on src/, examples/, tests/
+    global_files = (
+        files_by_dir.get("src", [])
+        + files_by_dir.get("examples", [])
+        + files_by_dir.get("tests", [])
+    )
+    global_checkers = checkers_by_scope.get("global", [])
+    if global_files and global_checkers:
+        processor.process_files_with_checkers(global_files, global_checkers)
+
+    # Run src-only checkers
+    src_files = files_by_dir.get("src", [])
+    src_checkers = checkers_by_scope.get("src", [])
+    if src_files and src_checkers:
+        processor.process_files_with_checkers(src_files, src_checkers)
+
+    # Run platforms checkers
+    platforms_files = files_by_dir.get("platforms", [])
+    platforms_checkers = checkers_by_scope.get("platforms", [])
+    if platforms_files and platforms_checkers:
+        processor.process_files_with_checkers(platforms_files, platforms_checkers)
+
+    # Run native platform defines checker on ALL src/ files
+    # (checker internally filters to relevant files and excludes dispatch headers)
+    native_defines_checkers = checkers_by_scope.get("native_platform_defines", [])
+    if src_files and native_defines_checkers:
+        processor.process_files_with_checkers(src_files, native_defines_checkers)
+
+    # Run src root checkers
+    src_root_checkers = checkers_by_scope.get("src_root", [])
+    if src_root_checkers:
+        # Collect only files directly in src/ (not subdirectories)
+        src_root_files = [f for f in src_files if Path(f).parent.name == "src"]
+        if src_root_files:
+            processor.process_files_with_checkers(src_root_files, src_root_checkers)
+
+    # Run examples-only checkers
+    examples_files = files_by_dir.get("examples", [])
+    examples_checkers = checkers_by_scope.get("examples", [])
+    if examples_files and examples_checkers:
+        processor.process_files_with_checkers(examples_files, examples_checkers)
+
+    # Run fl/ directory checkers
+    fl_files = files_by_dir.get("fl", [])
+    fl_checkers = checkers_by_scope.get("fl", [])
+    if fl_files and fl_checkers:
+        processor.process_files_with_checkers(fl_files, fl_checkers)
+
+    # Run fl/ header-only checker
+    fl_headers_checkers = checkers_by_scope.get("fl_headers", [])
+    if fl_files and fl_headers_checkers:
+        fl_header_files = [
+            f for f in fl_files if f.endswith((".h", ".hpp", ".hxx", ".hh"))
+        ]
+        if fl_header_files:
+            processor.process_files_with_checkers(fl_header_files, fl_headers_checkers)
+
+    # Run include paths checker on fl/ and platforms/
+    fl_platforms_files = fl_files + platforms_files
+    fl_platforms_include_paths_checkers = checkers_by_scope.get(
+        "fl_platforms_include_paths", []
+    )
+    if fl_platforms_files and fl_platforms_include_paths_checkers:
+        processor.process_files_with_checkers(
+            fl_platforms_files, fl_platforms_include_paths_checkers
+        )
+
+    # Run lib8tion/ directory checkers
+    lib8tion_files = files_by_dir.get("lib8tion", [])
+    lib8tion_checkers = checkers_by_scope.get("lib8tion", [])
+    if lib8tion_files and lib8tion_checkers:
+        processor.process_files_with_checkers(lib8tion_files, lib8tion_checkers)
+
+    # Run fx/, sensors/, platforms/shared/ checkers
+    fx_sensors_platforms_files = (
+        files_by_dir.get("fx", [])
+        + files_by_dir.get("sensors", [])
+        + files_by_dir.get("platforms_shared", [])
+    )
+    fx_sensors_platforms_checkers = checkers_by_scope.get(
+        "fx_sensors_platforms_shared", []
+    )
+    if fx_sensors_platforms_files and fx_sensors_platforms_checkers:
+        processor.process_files_with_checkers(
+            fx_sensors_platforms_files, fx_sensors_platforms_checkers
+        )
+
+    # Run platforms/ banned headers checker
+    platforms_banned_checkers = checkers_by_scope.get("platforms_banned", [])
+    if platforms_files and platforms_banned_checkers:
+        processor.process_files_with_checkers(
+            platforms_files, platforms_banned_checkers
+        )
+
+    # Run examples banned headers checker
+    examples_banned_checkers = checkers_by_scope.get("examples_banned", [])
+    if examples_files and examples_banned_checkers:
+        processor.process_files_with_checkers(examples_files, examples_banned_checkers)
+
+    # Run third_party checkers
+    third_party_files = files_by_dir.get("third_party", [])
+    third_party_checkers = checkers_by_scope.get("third_party", [])
+    if third_party_files and third_party_checkers:
+        processor.process_files_with_checkers(third_party_files, third_party_checkers)
+
+    # Run tests-only checkers
+    tests_files = files_by_dir.get("tests", [])
+    tests_checkers = checkers_by_scope.get("tests", [])
+    if tests_files and tests_checkers:
+        processor.process_files_with_checkers(tests_files, tests_checkers)
+
+    # Collect all violations from all checkers
+    all_checkers: list[FileContentChecker] = []
+    for scope_checkers in checkers_by_scope.values():
+        all_checkers.extend(scope_checkers)
+
+    return _collect_violations_from_checkers(all_checkers)
+
+
+def format_and_print_results(
+    results: dict[str, CheckerResults], max_violations_per_checker: int = 10
+) -> int:
+    """Format and print all violations. Returns exit code (0 = success, 1 = failures).
+
+    Args:
+        results: Checker results to format.
+        max_violations_per_checker: Maximum violations to print per checker before
+            truncating output. Set to 0 for unlimited.
+    """
+    total_violations = 0
+
+    for checker_name, checker_results in sorted(results.items()):
+        if not checker_results.has_violations():
+            continue
+
+        file_count = checker_results.file_count()
+        violation_count = checker_results.total_violations()
+        total_violations += violation_count
+
+        print(f"\n{'=' * 80}")
+        print(
+            f"[{checker_name}] Found {violation_count} violation(s) in {file_count} file(s):"
+        )
+        print("=" * 80)
+
+        printed_violations = 0
+        truncated = False
+        for file_path in sorted(checker_results.violations.keys()):
+            if (
+                max_violations_per_checker > 0
+                and printed_violations >= max_violations_per_checker
+            ):
+                truncated = True
+                break
+            rel_path = os.path.relpath(file_path, PROJECT_ROOT)
+            # Normalize to forward slashes for consistent cross-platform output
+            rel_path = rel_path.replace("\\", "/")
+            file_violations = checker_results.violations[file_path]
+
+            print(f"\n{rel_path}:")
+            for violation in file_violations.violations:
+                if (
+                    max_violations_per_checker > 0
+                    and printed_violations >= max_violations_per_checker
+                ):
+                    truncated = True
+                    break
+                print(f"  Line {violation.line_number}: {violation.content}")
+                printed_violations += 1
+
+        if truncated:
+            remaining = violation_count - printed_violations
+            print(
+                f"\n  ... stopped after {max_violations_per_checker} violations"
+                f" ({remaining} more not shown)"
+            )
+
+    if total_violations > 0:
+        print(f"\n{'=' * 80}")
+        print(f"❌ Total violations: {total_violations}")
+        print("=" * 80)
+        return 1
+    else:
+        print("\n" + "=" * 80)
+        print("✅ All C++ linting checks passed!")
+        print("=" * 80)
+        return 0
+
+
+def run_unity_build_check() -> tuple[int, list[str]]:
+    """Run unity build structure check (formerly standalone test_unity_build.py).
+
+    Returns:
+        (violation_count, violation_messages)
+    """
+    result = check_unity_build()
+    return (len(result.violations), result.violations)
+
+
+def run_test_aggregation_check() -> tuple[int, list[str]]:
+    """Run test aggregation structure check.
+
+    Returns:
+        (violation_count, violation_messages)
+    """
+    success, violations = check_test_aggregation()
+    return (len(violations), violations)
+
+
+def run_noexcept_ast_check(file_path: str | None = None) -> CheckerResults:
+    """Run the clang-query FL_NOEXCEPT ratchet used by default C++ lint."""
+    from ci.tools.check_noexcept import (
+        DEFAULT_BASELINE,
+        NoexceptCheckError,
+        diff_against_baseline,
+        find_missing_noexcept,
+        load_baseline,
+    )
+
+    results = CheckerResults()
+
+    scope = "all"
+    rel_file: str | None = None
+    if file_path is not None:
+        rel_file = os.path.relpath(str(Path(file_path).resolve()), PROJECT_ROOT)
+        rel_file = rel_file.replace("\\", "/")
+        if rel_file.startswith("src/fl/"):
+            scope = "fl"
+        elif rel_file.startswith("src/platforms/"):
+            scope = "platforms"
+        elif rel_file.startswith("src/third_party/"):
+            scope = "third_party"
+        else:
+            # Outside owned src scopes — nothing to check for this file.
+            return results
+
+    try:
+        hits = find_missing_noexcept(scope)
+    except NoexceptCheckError as exc:
+        results.add_violation("ci/tools/check_noexcept.py", 0, str(exc))
+        return results
+
+    if rel_file is not None:
+        hits = [hit for hit in hits if hit.path == rel_file]
+
+    new_hits, _stale = diff_against_baseline(hits, load_baseline(DEFAULT_BASELINE))
+    for hit in new_hits:
+        abs_path = str(PROJECT_ROOT / hit.path)
+        results.add_violation(
+            abs_path, hit.line, f"Missing FL_NOEXCEPT: {hit.line_text}"
+        )
+
+    return results
+
+
+@dataclass(frozen=True)
+class LegacyViolationLineContent:
+    line_number: int
+    message: str
+
+
+def _legacy_violation_item_to_line_content(raw: Any) -> LegacyViolationLineContent:
+    if isinstance(raw, tuple):
+        tuple_item = cast(tuple[Any, ...], raw)
+        if len(tuple_item) >= 2:
+            line_num_raw: Any = tuple_item[0]
+            content_raw: Any = tuple_item[1]
+            return LegacyViolationLineContent(
+                line_number=int(line_num_raw), message=str(content_raw)
+            )
+        return _build_line_content_from_attrs(tuple_item)
+
+    return _build_line_content_from_attrs(raw)
+
+
+def _build_line_content_from_attrs(item: Any) -> LegacyViolationLineContent:
+    """Build a line-content record from a duck-typed legacy violation object."""
+    include_line: Any = getattr(item, "include_line", None)
+    include_snippet: Any = getattr(item, "include_snippet", None)
+    if include_line is None or include_snippet is None:
+        raise ValueError(
+            f"Unsupported violation item shape: {item!r} ({type(item).__name__})"
+        )
+
+    message = str(include_snippet)
+    namespace_info: Any = getattr(item, "namespace_info", None)
+    if namespace_info is not None:
+        namespace_line: Any = getattr(namespace_info, "line_number", None)
+        namespace_snippet: Any = getattr(namespace_info, "snippet", None)
+        if namespace_line is not None and namespace_snippet is not None:
+            message = (
+                f"{message} (namespace declared at line {int(namespace_line)}: "
+                f"{namespace_snippet})"
+            )
+    return LegacyViolationLineContent(line_number=int(include_line), message=message)
+
+
+def _convert_violations_to_results(violations: Any) -> CheckerResults:
+    """Convert checker violations (dict or CheckerResults) to CheckerResults format.
+
+    Args:
+        violations: Either a CheckerResults object or legacy dict format
+
+    Returns:
+        CheckerResults object
+    """
+    if isinstance(violations, CheckerResults):
+        return violations
+
+    # Legacy dict format conversion
+    results = CheckerResults()
+    for file_path, violation_list in violations.items():
+        if isinstance(violation_list, list):
+            for item in violation_list:  # type: ignore[reportUnknownVariableType]
+                converted = _legacy_violation_item_to_line_content(item)
+                results.add_violation(
+                    file_path, converted.line_number, converted.message
+                )
+        elif isinstance(violation_list, str):
+            results.add_violation(file_path, 0, violation_list)
+
+    return results
+
+
+def _collect_violations_from_checkers(
+    checkers: list[FileContentChecker],
+) -> dict[str, CheckerResults]:
+    """Collect violations from a list of checkers.
+
+    Args:
+        checkers: List of checker instances to collect violations from
+
+    Returns:
+        Dictionary mapping checker class name to CheckerResults
+    """
+    all_results: dict[str, CheckerResults] = {}
+
+    for checker in checkers:
+        checker_name = checker.__class__.__name__
+        violations = getattr(checker, "violations", None)
+        if not violations:
+            continue
+
+        results = _convert_violations_to_results(violations)
+
+        # Merge violations from multiple checkers with same name
+        if checker_name not in all_results:
+            all_results[checker_name] = results
+        else:
+            # Merge into existing results
+            for file_path, file_violations in results.violations.items():
+                for violation in file_violations.violations:
+                    all_results[checker_name].add_violation(
+                        file_path, violation.line_number, violation.content
+                    )
+
+    return all_results
+
+
+def _determine_file_scopes(file_path: str) -> set[str]:
+    """Determine which checker scopes apply to a file.
+
+    Args:
+        file_path: Absolute path to the file
+
+    Returns:
+        Set of scope names that apply to this file
+    """
+    normalized_path = str(Path(file_path).resolve())
+    posix_path = normalized_path.replace("\\", "/")
+    scopes: set[str] = set()
+
+    # Determine file characteristics
+    is_src = "/src/" in posix_path
+    is_example = "/examples/" in posix_path
+    is_test = "/tests/" in posix_path
+    is_fl = "/src/fl/" in posix_path
+    is_lib8tion = "/src/lib8tion/" in posix_path
+    is_fx = "/src/fx/" in posix_path
+    is_sensors = "/src/sensors/" in posix_path
+    is_platforms = "/src/platforms/" in posix_path
+    is_platforms_shared = "/src/platforms/shared/" in posix_path
+    is_third_party = "/src/third_party/" in posix_path
+
+    # Add scopes based on file location
+    if is_src or is_example or is_test:
+        scopes.add("global")
+
+    if is_src:
+        scopes.add("src")
+        scopes.add("native_platform_defines")
+
+    if is_platforms:
+        scopes.add("platforms")
+        scopes.add("platforms_banned")
+
+    if is_example:
+        scopes.add("examples")
+        scopes.add("examples_banned")
+
+    if is_fl:
+        scopes.add("fl")
+        scopes.add("fl_platforms_include_paths")
+        if normalized_path.endswith((".h", ".hpp", ".hxx", ".hh")):
+            scopes.add("fl_headers")
+
+    if is_lib8tion:
+        scopes.add("lib8tion")
+
+    if is_fx or is_sensors or is_platforms_shared:
+        scopes.add("fx_sensors_platforms_shared")
+
+    if is_platforms:
+        scopes.add("fl_platforms_include_paths")
+
+    if is_third_party:
+        scopes.add("third_party")
+
+    if is_test:
+        scopes.add("tests")
+
+    # Check for src root files
+    if is_src and Path(normalized_path).parent.resolve() == SRC_ROOT.resolve():
+        scopes.add("src_root")
+
+    return scopes
+
+
+def _collect_all_headers(files_by_dir: dict[str, list[str]]) -> frozenset[str]:
+    """Collect all header files from the project for cross-file validation.
+
+    Args:
+        files_by_dir: Dictionary of files organized by directory
+
+    Returns:
+        Immutable frozenset of all header file paths
+    """
+    all_headers: set[str] = set()
+
+    # Collect all header files from all directories
+    for file_list in files_by_dir.values():
+        for file_path in file_list:
+            if file_path.endswith((".h", ".hpp", ".hh", ".hxx")):
+                all_headers.add(file_path)
+
+    return frozenset(all_headers)
+
+
+def run_checkers_on_single_file(
+    file_path: str, checkers_by_scope: dict[str, list[FileContentChecker]]
+) -> dict[str, CheckerResults]:
+    """Run all applicable checkers on a single file.
+
+    Args:
+        file_path: Absolute path to the file to check
+        checkers_by_scope: Dictionary of checkers organized by scope
+
+    Returns:
+        Dictionary mapping checker class name to CheckerResults
+    """
+    processor = MultiCheckerFileProcessor()
+    normalized_path = str(Path(file_path).resolve())
+
+    # Determine which scopes apply to this file
+    applicable_scopes = _determine_file_scopes(normalized_path)
+
+    # Collect all checkers for the applicable scopes
+    applicable_checkers: list[FileContentChecker] = []
+    for scope in applicable_scopes:
+        applicable_checkers.extend(checkers_by_scope.get(scope, []))
+
+    # Remove duplicate checkers (same instance may be added from multiple scopes)
+    seen_checkers: set[int] = set()
+    unique_checkers: list[FileContentChecker] = []
+    for checker in applicable_checkers:
+        checker_id = id(checker)
+        if checker_id not in seen_checkers:
+            seen_checkers.add(checker_id)
+            unique_checkers.append(checker)
+
+    # Run all applicable checkers on this single file
+    if unique_checkers:
+        processor.process_files_with_checkers([normalized_path], unique_checkers)
+        return _collect_violations_from_checkers(unique_checkers)
+
+    return {}
+
+
+def main() -> int:
+    """Main entry point for unified C++ linting."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run unified C++ linting checks on all files or a single file"
+    )
+    parser.add_argument(
+        "file", nargs="?", help="Optional: single file to check (faster)"
+    )
+    parser.add_argument(
+        "--rust",
+        action="store_true",
+        help="Use the Rust linter for the checker subset it currently supports",
+    )
+    args = parser.parse_args()
+    rust_ab = os.environ.get("FL_LINT_AB") == "1"
+    use_rust_fast_path = args.rust and not rust_ab
+
+    if args.file:
+        # Single file mode
+        file_path = Path(args.file).resolve()
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            return 1
+
+        print(f"Running unified C++ linting checks on single file...")
+        print(f"File: {file_path}")
+        print()
+
+        # Collect all headers for cross-file validation (even in single-file mode)
+        files_by_dir = collect_all_files_by_directory()
+        all_headers = _collect_all_headers(files_by_dir)
+
+        # Create all checker instances
+        checkers_by_scope = create_checkers(all_headers=all_headers)
+        rust_results: dict[str, CheckerResults] = {}
+        if use_rust_fast_path:
+            rust_results = run_rust_linter([str(file_path)])
+            remove_rust_supported_checkers(checkers_by_scope)
+
+        # Run all applicable checkers on the single file
+        results = run_checkers_on_single_file(str(file_path), checkers_by_scope)
+        merge_checker_results(results, rust_results)
+
+        # Run targeted unity build check for .cpp.hpp files and build files in src/fl/build/
+        is_build_file = "/fl/build/" in str(file_path).replace("\\", "/")
+        if file_path.name.endswith(".cpp.hpp") or is_build_file:
+            unity_result = check_unity_build_single_file(file_path)
+            if not unity_result.success:
+                unity_checker_results = CheckerResults()
+                for violation in unity_result.violations:
+                    unity_checker_results.add_violation(
+                        "unity_build_structure", 0, violation
+                    )
+                results["UnityBuildChecker"] = unity_checker_results
+
+        # Run targeted test aggregation check for test .cpp/.hpp files
+        if "/tests/" in str(file_path).replace("\\", "/"):
+            agg_success, agg_violations = check_test_aggregation_single_file(file_path)
+            if not agg_success:
+                agg_results = CheckerResults()
+                for violation in agg_violations:
+                    agg_results.add_violation("test_aggregation", 0, violation)
+                results["TestAggregationChecker"] = agg_results
+
+        noexcept_results = run_noexcept_ast_check(str(file_path))
+        if noexcept_results.has_violations():
+            results["NoexceptAstChecker"] = noexcept_results
+
+        # Format and print results
+        if rust_ab and not run_rust_ab_check(results, [str(file_path)]):
+            return 1
+        exit_code = format_and_print_results(results)
+
+        return exit_code
+    else:
+        # Normal mode - check all files
+        print("Running unified C++ linting checks...")
+        print(f"Project root: {PROJECT_ROOT}")
+        print()
+
+        # Collect all files by directory
+        files_by_dir = collect_all_files_by_directory()
+
+        # Extract all headers for cross-file validation
+        all_headers = _collect_all_headers(files_by_dir)
+
+        # Create all checker instances
+        checkers_by_scope = create_checkers(all_headers=all_headers)
+        rust_results: dict[str, CheckerResults] = {}
+        if use_rust_fast_path:
+            rust_results = run_rust_linter(None)
+            remove_rust_supported_checkers(checkers_by_scope)
+
+        # Run all checkers in a single pass per scope
+        results = run_checkers(files_by_dir, checkers_by_scope)
+        merge_checker_results(results, rust_results)
+
+        # Run unity build structure check (formerly standalone subprocess)
+        unity_violation_count, unity_violations = run_unity_build_check()
+        if unity_violation_count > 0:
+            unity_results = CheckerResults()
+            for violation in unity_violations:
+                unity_results.add_violation("unity_build_structure", 0, violation)
+            results["UnityBuildChecker"] = unity_results
+
+        # Run test aggregation structure check
+        agg_count, agg_violations = run_test_aggregation_check()
+        if agg_count > 0:
+            agg_results = CheckerResults()
+            for violation in agg_violations:
+                agg_results.add_violation("test_aggregation", 0, violation)
+            results["TestAggregationChecker"] = agg_results
+
+        # Run .pch file check (precompiled headers should not be in the repo)
+        pch_success, pch_violations = check_pch_files()
+        if not pch_success:
+            pch_results = CheckerResults()
+            for violation in pch_violations:
+                pch_results.add_violation("pch_files", 0, violation)
+            results["PchFileChecker"] = pch_results
+
+        # Run AST-backed FL_NOEXCEPT enforcement from normal C++ lint.
+        noexcept_results = run_noexcept_ast_check()
+        if noexcept_results.has_violations():
+            results["NoexceptAstChecker"] = noexcept_results
+
+        # Format and print results
+        if rust_ab and not run_rust_ab_check(results, None):
+            return 1
+        exit_code = format_and_print_results(results)
+
+        return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

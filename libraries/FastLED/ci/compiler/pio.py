@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 """
 PlatformIO Builder for FastLED
@@ -5,1070 +8,80 @@ PlatformIO Builder for FastLED
 Provides a clean interface for building FastLED projects with PlatformIO.
 """
 
-import json
-import os
+import gc
+import hashlib
 import platform
-import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
 import warnings
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Optional
 
-import fasteners
-from dirsync import sync  # type: ignore
+from running_process import EndOfStream, RunningProcess
 
-from ci.boards import ALL, Board, create_board
-from ci.compiler.compiler import CacheType, Compiler, InitResult, SketchResult
-from ci.util.create_build_dir import insert_tool_aliases
-from ci.util.output_formatter import create_sketch_path_formatter
-from ci.util.running_process import EndOfStream, RunningProcess
+from ci.boards import Board, create_board
 
-
-_HERE = Path(__file__).parent.resolve()
-_PROJECT_ROOT = _HERE.parent.parent.resolve()
-
-
-assert (_PROJECT_ROOT / "library.json").exists(), (
-    f"Library JSON not found at {_PROJECT_ROOT / 'library.json'}"
+# Import from new modules
+from ci.compiler.build_config import (
+    apply_board_specific_config,
+    generate_build_info_json_from_existing_build,
+    get_root_platformio_build_flags,
 )
-
-
-def _ensure_platform_installed(board: Board) -> bool:
-    """Ensure the required platform is installed for the board."""
-    if not board.platform_needs_install:
-        return True
-
-    # Platform installation is handled by existing platform management code
-    # This is a placeholder for future platform installation logic
-    print(f"Platform installation needed for {board.board_name}: {board.platform}")
-    return True
-
-
-def _generate_build_info_json_from_existing_build(
-    build_dir: Path, board: Board
-) -> bool:
-    """Generate build_info.json from an existing PlatformIO build.
-
-    Args:
-        build_dir: Build directory containing the PlatformIO project
-        board: Board configuration
-
-    Returns:
-        True if build_info.json was successfully generated
-    """
-    try:
-        # Use existing project to get metadata (no temporary project needed)
-        metadata_cmd = ["pio", "project", "metadata", "--json-output"]
-        metadata_result = subprocess.run(
-            metadata_cmd,
-            capture_output=True,
-            text=True,
-            cwd=build_dir,
-            timeout=60,
-        )
-
-        if metadata_result.returncode != 0:
-            print(
-                f"Warning: Failed to get metadata for build_info.json: {metadata_result.stderr}"
-            )
-            return False
-
-        # Parse and save the metadata
-        try:
-            data = json.loads(metadata_result.stdout)
-
-            # Add tool aliases for symbol analysis and debugging
-            insert_tool_aliases(data)
-
-            # Save to build_info.json
-            build_info_path = build_dir / "build_info.json"
-            with open(build_info_path, "w") as f:
-                json.dump(data, f, indent=4, sort_keys=True)
-
-            print(f"✅ Generated build_info.json at {build_info_path}")
-            return True
-
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse metadata JSON for build_info.json: {e}")
-            return False
-
-    except subprocess.TimeoutExpired:
-        print(f"Warning: Timeout generating build_info.json")
-        return False
-    except Exception as e:
-        print(f"Warning: Exception generating build_info.json: {e}")
-        return False
-
-
-def _apply_board_specific_config(
-    board: Board,
-    platformio_ini_path: Path,
-    example: str,
-    paths: "FastLEDPaths",
-    additional_defines: list[str] | None = None,
-    additional_include_dirs: list[str] | None = None,
-    additional_libs: list[str] | None = None,
-    cache_type: CacheType = CacheType.NO_CACHE,
-) -> bool:
-    """Apply board-specific build configuration from Board class."""
-    # Use provided paths object (which may have overrides)
-    paths.ensure_directories_exist()
-
-    # Generate platformio.ini content using the enhanced Board method
-    config_content = board.to_platformio_ini(
-        additional_defines=additional_defines,
-        additional_include_dirs=additional_include_dirs,
-        additional_libs=additional_libs,
-        include_platformio_section=True,
-        core_dir=str(paths.core_dir),
-        packages_dir=str(paths.packages_dir),
-        project_root=str(_PROJECT_ROOT),
-        build_cache_dir=str(paths.build_cache_dir),
-        extra_scripts=["post:cache_setup.scons"]
-        if cache_type != CacheType.NO_CACHE
-        else None,
-    )
-
-    # Apply PlatformIO cache optimization to speed up builds
-    try:
-        from ci.compiler.platformio_cache import PlatformIOCache
-        from ci.compiler.platformio_ini import PlatformIOIni
-
-        # Parse the generated INI content
-        pio_ini = PlatformIOIni.parseString(config_content)
-
-        # Set up global PlatformIO cache
-        cache = PlatformIOCache(paths.global_platformio_cache_dir)
-
-        # Optimize by downloading and caching packages, replacing URLs with local file:// paths
-        pio_ini.optimize(cache)
-
-        # Use the optimized content
-        config_content = str(pio_ini)
-        print(
-            f"Applied PlatformIO cache optimization using cache directory: {paths.global_platformio_cache_dir}"
-        )
-
-    except Exception as e:
-        # Graceful fallback to original URLs on cache failures
-        print(
-            f"Warning: PlatformIO cache optimization failed, using original URLs: {e}"
-        )
-        # config_content remains unchanged (original URLs)
-
-    platformio_ini_path.write_text(config_content)
-
-    # Log applied configurations for debugging
-    if board.build_flags:
-        print(f"Applied build_flags: {board.build_flags}")
-    if board.defines:
-        print(f"Applied defines: {board.defines}")
-    if additional_defines:
-        print(f"Applied additional defines: {additional_defines}")
-    if additional_include_dirs:
-        print(f"Applied additional include dirs: {additional_include_dirs}")
-    if board.platform_packages:
-        print(f"Using platform_packages: {board.platform_packages}")
-
-    return True
-
-
-def _setup_ccache_environment(board_name: str) -> bool:
-    """Set up ccache environment variables for the current process."""
-    import shutil
-
-    # Check if ccache is available
-    ccache_path = shutil.which("ccache")
-    if not ccache_path:
-        print("CCACHE not found in PATH, compilation will proceed without caching")
-        return False
-
-    print(f"Setting up CCACHE environment: {ccache_path}")
-
-    # Set up ccache directory in the global .fastled directory
-    # Shared across all boards for maximum cache efficiency
-    paths = FastLEDPaths(board_name)
-    ccache_dir = paths.fastled_root / "ccache"
-    ccache_dir.mkdir(parents=True, exist_ok=True)
-
-    # Configure ccache environment variables
-    os.environ["CCACHE_DIR"] = str(ccache_dir)
-    os.environ["CCACHE_MAXSIZE"] = "2G"
-
-    print(f"CCACHE cache directory: {ccache_dir}")
-
-    # Set compiler wrapper environment variables that PlatformIO will use
-    # PlatformIO respects these environment variables for compiler selection
-    original_cc = os.environ.get("CC", "")
-    original_cxx = os.environ.get("CXX", "")
-
-    # Only wrap if not already wrapped
-    if "ccache" not in original_cc:
-        # Set environment variables that PlatformIO/SCons will use
-        os.environ["CC"] = (
-            f'"{ccache_path}" {original_cc}' if original_cc else f'"{ccache_path}" gcc'
-        )
-        os.environ["CXX"] = (
-            f'"{ccache_path}" {original_cxx}'
-            if original_cxx
-            else f'"{ccache_path}" g++'
-        )
-
-        print(f"Set CC environment variable: {os.environ['CC']}")
-        print(f"Set CXX environment variable: {os.environ['CXX']}")
-
-    print(f"CCACHE cache directory: {ccache_dir}")
-    print(f"CCACHE cache size limit: 2G")
-
-    # Show ccache statistics if available
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            [ccache_path, "--show-stats"], capture_output=True, text=True, check=False
-        )
-        if result.returncode == 0:
-            print("CCACHE Statistics:")
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    print(f"   {line}")
-        else:
-            print("CCACHE stats not available (cache empty or first run)")
-    except Exception as e:
-        print(f"Could not retrieve CCACHE stats: {e}")
-
-    return True
-
-
-def _copy_cache_build_script(build_dir: Path, cache_config: dict[str, str]) -> None:
-    """Copy the standalone cache setup script and set environment variables for configuration."""
-    import shutil
-
-    # Source script location
-    project_root = _resolve_project_root()
-    source_script = project_root / "ci" / "compiler" / "cache_setup.scons"
-    dest_script = build_dir / "cache_setup.scons"
-
-    # Copy the standalone script
-    if not source_script.exists():
-        raise RuntimeError(f"Cache setup script not found: {source_script}")
-
-    shutil.copy2(source_script, dest_script)
-    print(f"Copied cache setup script: {source_script} -> {dest_script}")
-
-    # Set environment variables for cache configuration
-    # These will be read by the cache_setup.scons script
-    cache_type = cache_config.get("CACHE_TYPE", "sccache")
-
-    os.environ["FASTLED_CACHE_TYPE"] = cache_type
-    os.environ["FASTLED_SCCACHE_DIR"] = cache_config.get("SCCACHE_DIR", "")
-    os.environ["FASTLED_SCCACHE_CACHE_SIZE"] = cache_config.get(
-        "SCCACHE_CACHE_SIZE", "2G"
-    )
-    os.environ["FASTLED_CACHE_DEBUG"] = (
-        "1" if os.environ.get("XCACHE_DEBUG") == "1" else "0"
-    )
-
-    if cache_type == "xcache":
-        os.environ["FASTLED_CACHE_EXECUTABLE"] = cache_config.get(
-            "CACHE_EXECUTABLE", ""
-        )
-        os.environ["FASTLED_SCCACHE_PATH"] = cache_config.get("SCCACHE_PATH", "")
-        os.environ["FASTLED_XCACHE_PATH"] = cache_config.get("XCACHE_PATH", "")
-    elif cache_type == "sccache":
-        os.environ["FASTLED_CACHE_EXECUTABLE"] = cache_config.get("SCCACHE_PATH", "")
-        os.environ["FASTLED_SCCACHE_PATH"] = cache_config.get("SCCACHE_PATH", "")
-    else:
-        os.environ["FASTLED_CACHE_EXECUTABLE"] = cache_config.get("CCACHE_PATH", "")
-
-    print(f"Set cache environment variables for {cache_type} configuration")
-
-
-def _find_platform_path_from_board(
-    board: "Board", paths: "FastLEDPaths"
-) -> Path | None:
-    """Find the platform path from board's platform URL using cache directory naming."""
-    from ci.boards import Board
-    from ci.util.url_utils import sanitize_url_for_path
-
-    if not board.platform:
-        print(f"No platform URL defined for board {board.board_name}")
-        return None
-
-    print(f"Looking for platform cache: {board.platform}")
-
-    # Convert platform URL to expected cache directory name
-    expected_cache_name = sanitize_url_for_path(board.platform)
-    print(f"Expected cache directory: {expected_cache_name}")
-
-    # Search in global cache directory
-    cache_dir = paths.global_platformio_cache_dir
-    expected_cache_path = cache_dir / expected_cache_name / "extracted"
-
-    if (
-        expected_cache_path.exists()
-        and (expected_cache_path / "platform.json").exists()
-    ):
-        print(f"Found platform cache: {expected_cache_path}")
-        return expected_cache_path
-
-    # Fallback: search for any directory that contains the platform name
-    # Extract platform name from URL (e.g., "platform-espressif32" from github URL)
-    platform_name = None
-    if "platform-" in board.platform:
-        # Extract platform name from URL path
-        parts = board.platform.split("/")
-        for part in parts:
-            if (
-                "platform-" in part
-                and not part.endswith(".git")
-                and not part.endswith(".zip")
-            ):
-                platform_name = part
-                break
-
-    if platform_name:
-        print(f"Searching for platform by name: {platform_name}")
-        for cache_item in cache_dir.glob(f"*{platform_name}*"):
-            extracted_path = cache_item / "extracted"
-            if extracted_path.exists() and (extracted_path / "platform.json").exists():
-                print(f"Found platform by name search: {extracted_path}")
-                return extracted_path
-
-    print(f"Platform cache not found for {board.board_name}")
-    return None
-
-
-def get_platform_required_packages(platform_path: Path) -> list[str]:
-    """Extract required package names from platform.json."""
-    import json
-
-    try:
-        platform_json = platform_path / "platform.json"
-        if not platform_json.exists():
-            return []
-
-        with open(platform_json, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        packages = data.get("packages", {})
-        # Return all package names from the platform
-        return list(packages.keys())
-    except Exception as e:
-        print(f"Warning: Could not parse platform.json: {e}")
-        return []
-
-
-def get_installed_packages_from_pio() -> Dict[str, str]:
-    """Get installed packages using PlatformIO CLI."""
-    import re
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["pio", "pkg", "list", "--global"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-
-        if result.returncode != 0:
-            print(f"Warning: pio pkg list failed: {result.stderr}")
-            return {}
-
-        packages: Dict[str, str] = {}
-        # Parse output like: "├── framework-arduinoespressif32-libs @ 5.3.0+sha.083aad99cf"
-        for line in result.stdout.split("\n"):
-            match = re.search(r"[├└]── ([^@\s]+)\s*@\s*([^\s]+)", line)
-            if match:
-                package_name, version = match.groups()
-                packages[package_name] = version
-
-        return packages
-    except Exception as e:
-        print(f"Warning: Could not get installed packages: {e}")
-        return {}
-
-
-def detect_and_fix_corrupted_packages_dynamic(
-    paths: "FastLEDPaths", board_name: str, platform_path: Path | None = None
-) -> Dict[str, bool]:
-    """Dynamically detect and fix corrupted packages based on platform requirements."""
-    import shutil
-
-    print("=== Dynamic Package Corruption Detection & Fix ===")
-    print(f"Board: {board_name}")
-    print(f"Packages dir: {paths.packages_dir}")
-
-    results: Dict[str, bool] = {}
-
-    # Get required packages from platform.json if available
-    platform_packages = []
-    if platform_path and platform_path.exists():
-        platform_packages = get_platform_required_packages(platform_path)
-        print(f"Platform packages found: {len(platform_packages)}")
-        if platform_packages:
-            print(
-                f"  Required packages: {', '.join(platform_packages[:5])}{'...' if len(platform_packages) > 5 else ''}"
-            )
-
-    # Get installed packages from PIO CLI
-    installed_packages = get_installed_packages_from_pio()
-    print(f"Installed packages found: {len(installed_packages)}")
-
-    # If we have platform info, focus on those packages, otherwise scan all installed
-    packages_to_check = []
-    if platform_packages:
-        # Check intersection of platform requirements and installed packages
-        packages_to_check = [
-            pkg for pkg in platform_packages if pkg in installed_packages
-        ]
-        print(
-            f"Checking {len(packages_to_check)} packages that are both required and installed"
-        )
-    else:
-        # Fallback: check all installed packages that look like frameworks
-        packages_to_check = [
-            pkg
-            for pkg in installed_packages.keys()
-            if "framework" in pkg.lower() or "toolchain" in pkg.lower()
-        ]
-        print(
-            f"Fallback: Checking {len(packages_to_check)} framework/toolchain packages"
-        )
-
-    if not packages_to_check:
-        print("No packages to check - using fallback hardcoded list")
-        packages_to_check = ["framework-arduinoespressif32-libs"]
-
-    # Check each package for corruption
-    for package_name in packages_to_check:
-        print(f"Checking package: {package_name}")
-        package_path = paths.packages_dir / package_name
-        print(f"  Package path: {package_path}")
-
-        exists = package_path.exists()
-        piopm_exists = (package_path / ".piopm").exists() if exists else False
-        manifest_exists = (package_path / "package.json").exists() if exists else False
-
-        print(f"  Package exists: {exists}")
-        print(f"  .piopm exists: {piopm_exists}")
-        print(f"  package.json exists: {manifest_exists}")
-
-        is_corrupted = exists and piopm_exists and not manifest_exists
-        if is_corrupted:
-            print(f"  -> CORRUPTED: Has .piopm but missing package.json")
-            print(f"  -> FIXING: Removing corrupted package...")
-            try:
-                # Safe deletion with lock already held by caller
-                shutil.rmtree(package_path)
-                print(f"  -> SUCCESS: Removed {package_name}")
-                print(f"  -> PlatformIO will re-download package automatically")
-                results[package_name] = True  # Was corrupted, now fixed
-            except Exception as e:
-                print(f"  -> ERROR: Failed to remove {package_name}: {e}")
-                results[package_name] = False  # Still corrupted
-        else:
-            print(f"  -> OK: Not corrupted")
-            results[package_name] = False  # Not corrupted
-
-    print("=== Dynamic Detection & Fix Complete ===")
-    return results
-
-
-class FastLEDPaths:
-    """Centralized path management for FastLED board-specific directories and files."""
-
-    def __init__(self, board_name: str, project_root: Path | None = None) -> None:
-        self.board_name = board_name
-        self.project_root = project_root or _resolve_project_root()
-        self.home_dir = Path.home()
-
-        # Base FastLED directory
-        self.fastled_root = self.home_dir / ".fastled"
-        # Initialize the optional cache directory override
-        self._global_platformio_cache_dir: Path | None = None
-
-    @property
-    def build_dir(self) -> Path:
-        """Project-local build directory for this board."""
-        return self.project_root / ".build" / "pio" / self.board_name
-
-    @property
-    def build_cache_dir(self) -> Path:
-        """Project-local build cache directory for this board."""
-        return self.build_dir / "build_cache"
-
-    @property
-    def platform_lock_file(self) -> Path:
-        """Platform-specific build lock file."""
-        return self.build_dir.parent / f"{self.board_name}.lock"
-
-    @property
-    def global_package_lock_file(self) -> Path:
-        """Global package installation lock file."""
-        packages_lock_root = self.fastled_root / "pio" / "packages"
-        return packages_lock_root / f"{self.board_name}_global.lock"
-
-    @property
-    def core_dir(self) -> Path:
-        """PlatformIO core directory (build cache, platforms)."""
-        return self.fastled_root / "compile" / "pio" / self.board_name
-
-    @property
-    def packages_dir(self) -> Path:
-        """PlatformIO packages directory (toolchains, frameworks)."""
-        return self.home_dir / ".platformio" / "packages"
-
-    @property
-    def global_platformio_cache_dir(self) -> Path:
-        """Global PlatformIO package cache directory (shared across all boards)."""
-        if self._global_platformio_cache_dir is not None:
-            return self._global_platformio_cache_dir
-        return self.fastled_root / "platformio_cache"
-
-    def ensure_directories_exist(self) -> None:
-        """Create all necessary directories."""
-        self.build_dir.mkdir(parents=True, exist_ok=True)
-        self.global_package_lock_file.parent.mkdir(parents=True, exist_ok=True)
-        self.core_dir.mkdir(parents=True, exist_ok=True)
-        self.packages_dir.mkdir(parents=True, exist_ok=True)
-        self.global_platformio_cache_dir.mkdir(parents=True, exist_ok=True)
-
-
-class GlobalPackageLock:
-    """A process lock for global package installation per board. Acquired once during first build and released after completion."""
-
-    def __init__(self, platform_name: str) -> None:
-        self.platform_name = platform_name
-
-        # Use centralized path management
-        self.paths = FastLEDPaths(platform_name)
-        self.lock_file = self.paths.global_package_lock_file
-        self._file_lock = fasteners.InterProcessLock(str(self.lock_file))
-        self._is_acquired = False
-
-    def acquire(self) -> None:
-        """Acquire the global package installation lock for this board."""
-        if self._is_acquired:
-            return  # Already acquired
-
-        start_time = time.time()
-        warning_shown = False
-
-        while True:
-            # Try to acquire with very short timeout (non-blocking)
-            try:
-                success = self._file_lock.acquire(blocking=True, timeout=0.1)
-                if success:
-                    self._is_acquired = True
-                    print(
-                        f"Acquired global package lock for platform {self.platform_name}"
-                    )
-                    return
-            except Exception:
-                # Handle timeout or other exceptions as failed acquisition (continue loop)
-                pass  # Continue the loop to check elapsed time and try again
-
-            # Check if we should show warning (after 1 second)
-            elapsed = time.time() - start_time
-            if not warning_shown and elapsed >= 1.0:
-                yellow = "\033[33m"
-                reset = "\033[0m"
-                print(
-                    f"{yellow}Platform {self.platform_name} is waiting to acquire global package lock at {self.lock_file.parent}{reset}"
-                )
-                warning_shown = True
-
-            # Check for timeout (after 10 seconds - longer for package installation)
-            if elapsed >= 10.0:
-                raise TimeoutError(
-                    f"Failed to acquire global package lock for platform {self.platform_name} within 10 seconds. "
-                    f"Lock file: {self.lock_file}. "
-                    f"This may indicate another process is installing packages or a deadlock occurred."
-                )
-
-            # Small sleep to prevent excessive CPU usage while allowing interrupts
-            time.sleep(0.1)
-
-    def release(self) -> None:
-        """Release the global package installation lock."""
-        if not self._is_acquired:
-            return  # Not acquired
-
-        try:
-            self._file_lock.release()
-            self._is_acquired = False
-            print(f"Released global package lock for platform {self.platform_name}")
-        except Exception as e:
-            warnings.warn(
-                f"Failed to release global package lock for {self.platform_name}: {e}"
-            )
-
-    def is_acquired(self) -> bool:
-        """Check if the lock is currently acquired."""
-        return self._is_acquired
-
-
-# Remove duplicate dataclass definitions - use the ones from compiler.py
-
-
-def _resolve_project_root() -> Path:
-    """Resolve the FastLED project root directory."""
-    current = Path(
-        __file__
-    ).parent.parent.parent.resolve()  # Go up from ci/compiler/pio.py
-    while current != current.parent:
-        if (current / "src" / "FastLED.h").exists():
-            return current
-        current = current.parent
-    raise RuntimeError("Could not find FastLED project root")
-
-
-def _create_building_banner(example: str) -> str:
-    """Create a building banner for the given example."""
-    banner_text = f"BUILDING {example}"
-    border_char = "="
-    padding = 2
-    text_width = len(banner_text)
-    total_width = text_width + (padding * 2)
-
-    top_border = border_char * (total_width + 4)
-    middle_line = (
-        f"{border_char} {' ' * padding}{banner_text}{' ' * padding} {border_char}"
-    )
-    bottom_border = border_char * (total_width + 4)
-
-    banner = f"{top_border}\n{middle_line}\n{bottom_border}"
-
-    # Apply blue color using ANSI escape codes
-    blue_color = "\033[34m"
-    reset_color = "\033[0m"
-    return f"{blue_color}{banner}{reset_color}"
-
-
-def _get_example_error_message(project_root: Path, example: str) -> str:
-    """Generate appropriate error message for missing example.
-
-    Args:
-        project_root: FastLED project root directory
-        example: Example name or path that was not found
-
-    Returns:
-        Error message describing where the example was expected
-    """
-    example_path = Path(example)
-
-    if example_path.is_absolute():
-        return f"Example directory not found: {example}"
-    elif "/" in example or "\\" in example:
-        return f"Example directory not found: {example_path.resolve()}"
-    else:
-        return f"Example not found: {project_root / 'examples' / example}"
-
-
-def _copy_example_source(project_root: Path, build_dir: Path, example: str) -> bool:
-    """Copy example source to the build directory with sketch subdirectory structure.
-
-    Args:
-        project_root: FastLED project root directory
-        build_dir: Build directory for the target
-        example: Name of the example to copy, or path to example directory
-
-    Returns:
-        True if successful, False if example not found
-    """
-    # Configure example source - handle both names and paths
-    example_path = Path(example)
-
-    if example_path.is_absolute():
-        # Absolute path - use as-is
-        if not example_path.exists():
-            return False
-    elif "/" in example or "\\" in example:
-        # Relative path - resolve relative to current directory
-        example_path = example_path.resolve()
-        if not example_path.exists():
-            return False
-    else:
-        # Just a name - resolve to examples directory
-        example_path = project_root / "examples" / example
-        if not example_path.exists():
-            return False
-
-    # Create src and sketch directories (PlatformIO requirement with sketch subdirectory)
-    src_dir = build_dir / "src"
-    sketch_dir = src_dir / "sketch"
-
-    # Create directories if they don't exist, but don't remove existing src_dir
-    src_dir.mkdir(exist_ok=True)
-
-    # Clean and recreate sketch subdirectory for fresh .ino files
-    if sketch_dir.exists():
-        shutil.rmtree(sketch_dir)
-    sketch_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy all files and subdirectories from example directory to sketch subdirectory
-    ino_files: list[str] = []
-    for file_path in example_path.iterdir():
-        if "fastled_js" in str(file_path):
-            # skip fastled_js output folder.
-            continue
-
-        if file_path.is_file():
-            shutil.copy2(file_path, sketch_dir)
-            # Calculate relative paths for cleaner output
-            try:
-                rel_source = file_path.relative_to(Path.cwd())
-                rel_dest = sketch_dir.relative_to(Path.cwd())
-                print(f"Copied {rel_source} to {rel_dest}")
-            except ValueError:
-                # Fallback to absolute paths if relative calculation fails
-                print(f"Copied {file_path} to {sketch_dir}")
-            if file_path.suffix == ".ino":
-                ino_files.append(file_path.name)
-        elif file_path.is_dir():
-            # Recursively sync subdirectories for better caching
-            dest_subdir = sketch_dir / file_path.name
-            dest_subdir.mkdir(parents=True, exist_ok=True)
-            sync(str(file_path), str(dest_subdir), "sync", purge=True)
-            try:
-                rel_source = file_path.relative_to(Path.cwd())
-                rel_dest = dest_subdir.relative_to(Path.cwd())
-                print(f"Synced directory {rel_source} to {rel_dest}")
-            except ValueError:
-                print(f"Synced directory {file_path} to {dest_subdir}")
-
-    # espidf builds create the CMakeLists.txt automatically if not present
-    # need to delete the old file to ensure that all folders are included in the new file
-
-    oldCMakelist = ".build/pio/esp32c2/src/CMakeLists.txt"
-    if os.path.exists(oldCMakelist):
-        os.remove(oldCMakelist)
-        print(f"Removed old CMakeList.txt: {oldCMakelist}")
-
-    # Create or update stub main.cpp that includes the .ino files
-    main_cpp_content = _generate_main_cpp(ino_files)
-    main_cpp_path = src_dir / "main.cpp"
-
-    # Only write main.cpp if content has changed to avoid triggering rebuilds
-    should_write = True
-    if main_cpp_path.exists():
-        try:
-            existing_content = main_cpp_path.read_text(encoding="utf-8")
-            should_write = existing_content != main_cpp_content
-        except (OSError, UnicodeDecodeError):
-            # If we can't read the existing file, write new content
-            should_write = True
-
-    if should_write:
-        main_cpp_path.write_text(main_cpp_content, encoding="utf-8")
-
-    return True
-
-
-def _generate_main_cpp(ino_files: list[str]) -> str:
-    """Generate stub main.cpp content that includes .ino files from sketch directory.
-
-    Args:
-        ino_files: List of .ino filenames to include
-
-    Returns:
-        Content for main.cpp file
-    """
-    includes: list[str] = []
-    for ino_file in sorted(ino_files):
-        includes.append(f"#include <Arduino.h>")
-        includes.append(f'#include "sketch/{ino_file}"')
-
-    include_lines = "\n".join(includes)
-
-    int_main = """
-__attribute__((weak)) int main() {{
-    setup();
-    while (true) {{
-        loop();
-    }}
-}}
-"""
-
-    main_cpp_content = f"""// Auto-generated main.cpp stub for PlatformIO
-// This file includes all .ino files from the sketch directory
-
-{include_lines}
-
-// main.cpp is required by PlatformIO but Arduino-style sketches
-// use setup() and loop() functions which are called automatically
-// by the FastLED/Arduino framework
-//
-//
-{int_main}
-"""
-    return main_cpp_content
-
-
-def _copy_boards_directory(project_root: Path, build_dir: Path) -> bool:
-    """Copy boards directory to the build directory."""
-    boards_src = project_root / "ci" / "boards"
-    boards_dst = build_dir / "boards"
-
-    if not boards_src.exists():
-        warnings.warn(f"Boards directory not found: {boards_src}")
-        return False
-
-    try:
-        # Ensure target directory exists for dirsync
-        boards_dst.mkdir(parents=True, exist_ok=True)
-
-        # Use sync for better caching - purge=True removes extra files
-        sync(str(boards_src), str(boards_dst), "sync", purge=True)
-    except Exception as e:
-        warnings.warn(f"Failed to sync boards directory: {e}")
-        return False
-
-    return True
-
-
-def _get_cache_build_flags(board_name: str, cache_type: CacheType) -> dict[str, str]:
-    """Get environment variables for compiler cache configuration."""
-    if cache_type == CacheType.NO_CACHE:
-        print("No compiler cache configured")
-        return {}
-    elif cache_type == CacheType.SCCACHE:
-        return _get_sccache_build_flags(board_name)
-    elif cache_type == CacheType.CCACHE:
-        return _get_ccache_build_flags(board_name)
-    else:
-        print(f"Unknown cache type: {cache_type}")
-        return {}
-
-
-def _get_sccache_build_flags(board_name: str) -> dict[str, str]:
-    """Get build flags for SCCACHE configuration with xcache wrapper support."""
-    import shutil
-    from pathlib import Path
-
-    # Check if sccache is available
-    sccache_path = shutil.which("sccache")
-    if not sccache_path:
-        print("SCCACHE not found in PATH, compilation will proceed without caching")
-        return {}
-
-    print(f"Setting up SCCACHE build flags: {sccache_path}")
-
-    # Set up sccache directory in the global .fastled directory
-    # Shared across all boards for maximum cache efficiency
-    paths = FastLEDPaths(board_name)
-    sccache_dir = paths.fastled_root / "sccache"
-    sccache_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"SCCACHE cache directory: {sccache_dir}")
-    print(f"SCCACHE cache size limit: 2G")
-
-    # Get xcache wrapper path
-    project_root = _resolve_project_root()
-    xcache_path = project_root / "ci" / "util" / "xcache.py"
-
-    if xcache_path.exists():
-        print(f"Using xcache wrapper for ESP32S3 response file support: {xcache_path}")
-        cache_type = "xcache"
-        cache_executable_path = f"python {xcache_path}"
-    else:
-        print(f"xcache not found at {xcache_path}, using direct sccache")
-        cache_type = "sccache"
-        cache_executable_path = sccache_path
-
-    # Return the cache configuration
-    config = {
-        "CACHE_TYPE": cache_type,
-        "SCCACHE_DIR": str(sccache_dir),
-        "SCCACHE_CACHE_SIZE": "2G",
-        "SCCACHE_PATH": sccache_path,
-        "XCACHE_PATH": str(xcache_path) if xcache_path.exists() else "",
-        "CACHE_EXECUTABLE": cache_executable_path,
-    }
-
-    return config
-
-
-def _get_ccache_build_flags(board_name: str) -> dict[str, str]:
-    """Get environment variables for CCACHE configuration."""
-    import shutil
-
-    # Check if ccache is available
-    ccache_path = shutil.which("ccache")
-    if not ccache_path:
-        print("CCACHE not found in PATH, compilation will proceed without caching")
-        return {}
-
-    print(f"Setting up CCACHE build environment: {ccache_path}")
-
-    # Set up ccache directory in the global .fastled directory
-    # Shared across all boards for maximum cache efficiency
-    paths = FastLEDPaths(board_name)
-    ccache_dir = paths.fastled_root / "ccache"
-    ccache_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"CCACHE cache directory: {ccache_dir}")
-    print(f"CCACHE cache size limit: 2G")
-
-    # Return environment variables that PlatformIO will use
-    env_vars = {
-        "CACHE_TYPE": "ccache",
-        "CCACHE_DIR": str(ccache_dir),
-        "CCACHE_MAXSIZE": "2G",
-        "CCACHE_PATH": ccache_path,
-    }
-
-    return env_vars
-
-
-def _setup_sccache_environment(board_name: str) -> bool:
-    """Set up sccache environment variables for the current process."""
-    import shutil
-
-    # Check if sccache is available
-    sccache_path = shutil.which("sccache")
-    if not sccache_path:
-        print("SCCACHE not found in PATH, compilation will proceed without caching")
-        return False
-
-    print(f"Setting up SCCACHE environment: {sccache_path}")
-
-    # Set up sccache directory in the global .fastled directory
-    # Shared across all boards for maximum cache efficiency
-    paths = FastLEDPaths(board_name)
-    sccache_dir = paths.fastled_root / "sccache"
-    sccache_dir.mkdir(parents=True, exist_ok=True)
-
-    # Configure sccache environment variables
-    os.environ["SCCACHE_DIR"] = str(sccache_dir)
-    os.environ["SCCACHE_CACHE_SIZE"] = "2G"
-
-    print(f"SCCACHE cache directory: {sccache_dir}")
-
-    # Set compiler wrapper environment variables that PlatformIO will use
-    # PlatformIO respects these environment variables for compiler selection
-    original_cc = os.environ.get("CC", "")
-    original_cxx = os.environ.get("CXX", "")
-
-    # Only wrap if not already wrapped
-    if "sccache" not in original_cc:
-        # Set environment variables that PlatformIO/SCons will use
-        os.environ["CC"] = (
-            f'"{sccache_path}" {original_cc}'
-            if original_cc
-            else f'"{sccache_path}" gcc'
-        )
-        os.environ["CXX"] = (
-            f'"{sccache_path}" {original_cxx}'
-            if original_cxx
-            else f'"{sccache_path}" g++'
-        )
-
-        print(f"Set CC environment variable: {os.environ['CC']}")
-        print(f"Set CXX environment variable: {os.environ['CXX']}")
-
-    print(f"SCCACHE cache directory: {sccache_dir}")
-    print(f"SCCACHE cache size limit: 2G")
-
-    # Show sccache statistics if available
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            [sccache_path, "--show-stats"], capture_output=True, text=True, check=False
-        )
-        if result.returncode == 0:
-            print("SCCACHE Statistics:")
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    print(f"   {line}")
-        else:
-            print("SCCACHE stats not available (cache empty or first run)")
-    except Exception as e:
-        print(f"Could not retrieve SCCACHE stats: {e}")
-
-    return True
-
-
-def _copy_fastled_library(project_root: Path, build_dir: Path) -> bool:
-    """Copy FastLED library to build directory with proper library.json structure."""
-    lib_dir = build_dir / "lib" / "FastLED"
-    lib_parent = build_dir / "lib"
-
-    # Remove existing FastLED directory if it exists
-    if lib_dir.exists():
-        if lib_dir.is_symlink():
-            lib_dir.unlink()
-        else:
-            shutil.rmtree(lib_dir)
-
-    # Create lib directory if it doesn't exist
-    lib_parent.mkdir(parents=True, exist_ok=True)
-
-    # Copy src/ directory into lib/FastLED using dirsync for better caching
-    fastled_src_path = project_root / "src"
-    try:
-        # Ensure target directory exists for dirsync
-        lib_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use dirsync.sync for efficient incremental synchronization
-        sync(str(fastled_src_path), str(lib_dir), "sync", purge=True)
-
-        # Copy library.json to the root of lib/FastLED
-        library_json_src = project_root / "library.json"
-        library_json_dst = lib_dir / "library.json"
-        if library_json_src.exists():
-            shutil.copy2(library_json_src, library_json_dst)
-
-        # Calculate relative paths for cleaner output
-        try:
-            rel_lib_dir = lib_dir.relative_to(Path.cwd())
-            rel_src_path = fastled_src_path.relative_to(Path.cwd())
-            print(f"Synced FastLED library: {rel_src_path} -> {rel_lib_dir}")
-            if library_json_src.exists():
-                print(f"Copied library.json to {rel_lib_dir}")
-        except ValueError:
-            # Fallback to absolute paths if relative calculation fails
-            print(f"Synced FastLED library to {lib_dir}")
-            if library_json_src.exists():
-                print(f"Copied library.json to {lib_dir}")
-    except Exception as sync_error:
-        warnings.warn(f"Failed to sync FastLED library: {sync_error}")
-        return False
-
-    return True
+from ci.compiler.build_utils import (
+    create_building_banner,
+    get_example_error_message,
+    get_pio_execution_env,
+)
+from ci.compiler.compiler import Compiler, InitResult, SketchResult
+from ci.compiler.lock_manager import PlatformLock
+from ci.compiler.package_manager import (
+    aggressive_clean_pio_packages,
+    detect_and_fix_corrupted_packages_dynamic,
+    detect_package_exception_in_output,
+    ensure_platform_installed,
+    find_platform_path_from_board,
+)
+from ci.compiler.path_manager import FastLEDPaths, resolve_project_root
+from ci.compiler.source_manager import (
+    copy_boards_directory,
+    copy_example_source,
+    copy_fastled_library,
+)
+from ci.util.output_formatter import create_sketch_path_formatter
 
 
 def _init_platformio_build(
     board: Board,
     verbose: bool,
     example: str,
-    paths: "FastLEDPaths",
-    additional_defines: list[str] | None = None,
-    additional_include_dirs: list[str] | None = None,
-    additional_libs: list[str] | None = None,
-    cache_type: CacheType = CacheType.NO_CACHE,
+    paths: FastLEDPaths,
+    build_dir: Optional[Path] = None,
+    additional_defines: Optional[list[str]] = None,
+    additional_include_dirs: Optional[list[str]] = None,
+    additional_libs: Optional[list[str]] = None,
+    use_fbuild: bool = False,
 ) -> InitResult:
-    """Initialize the PlatformIO build directory. Assumes lock is already held by caller."""
-    project_root = _resolve_project_root()
-    build_dir = project_root / ".build" / "pio" / board.board_name
+    """Initialize the PlatformIO build directory. Assumes lock is already held by caller.
 
-    # Check for and fix corrupted packages before building
-    # Find platform path based on board's platform URL (works for any platform)
-    platform_path = _find_platform_path_from_board(board, paths)
-    fixed_packages = detect_and_fix_corrupted_packages_dynamic(
-        paths, board.board_name, platform_path
-    )
+    When use_fbuild=True, skips PIO-specific package management and the pio run build.
+    The build directory, platformio.ini, and source files are still set up since fbuild
+    uses the same project structure.
+    """
+    project_root = resolve_project_root()
+    build_dir = build_dir or (project_root / ".build" / "pio" / board.board_name)
+
+    if not use_fbuild:
+        # Check for and fix corrupted packages before building
+        # Find platform path based on board's platform URL (works for any platform)
+        platform_path = find_platform_path_from_board(board, paths)
+        detect_and_fix_corrupted_packages_dynamic(
+            paths, board.board_name, platform_path
+        )
 
     # Lock is already held by build() - no need to acquire again
 
@@ -1076,76 +89,86 @@ def _init_platformio_build(
     build_dir.mkdir(parents=True, exist_ok=True)
     platformio_ini = build_dir / "platformio.ini"
 
-    # Ensure platform is installed if needed
-    if not _ensure_platform_installed(board):
-        return InitResult(
-            success=False,
-            output=f"Failed to install platform for {board.board_name}",
-            build_dir=build_dir,
-        )
+    if not use_fbuild:
+        # Ensure platform is installed if needed (fbuild handles this itself)
+        if not ensure_platform_installed(board):
+            return InitResult(
+                success=False,
+                output=f"Failed to install platform for {board.board_name}",
+                build_dir=build_dir,
+            )
 
-    # Clone board and add sketch directory include path (enables "shared/file.h" style includes)
     board_with_sketch_include = board.clone()
     if board_with_sketch_include.build_flags is None:
         board_with_sketch_include.build_flags = []
-    else:
-        board_with_sketch_include.build_flags = list(
-            board_with_sketch_include.build_flags
-        )
-    board_with_sketch_include.build_flags.append("-Isrc/sketch")
 
-    # Set up compiler cache through build_flags if enabled and available
-    cache_config = _get_cache_build_flags(board.board_name, cache_type)
-    if cache_config:
-        print(f"Applied cache configuration: {list(cache_config.keys())}")
+    # Make the staged source roots available as include roots so sketch-relative
+    # includes resolve consistently under both PlatformIO and fbuild.
+    default_include_dirs = [
+        (build_dir / "src").resolve().as_posix(),
+        (build_dir / "src" / "sketch").resolve().as_posix(),
+    ]
+    merged_include_dirs = list(default_include_dirs)
+    if additional_include_dirs:
+        merged_include_dirs.extend(additional_include_dirs)
 
-        # Add compiler launcher build flags directly
-        sccache_path = cache_config.get("SCCACHE_PATH")
-        if sccache_path:
-            # Add build flags to use sccache as compiler launcher
-            launcher_flags = [f'-DCACHE_LAUNCHER="{sccache_path}"']
-            board_with_sketch_include.build_flags.extend(launcher_flags)
-            print(f"Added cache launcher flags: {launcher_flags}")
-
-        # Create build script that will set up cache environment
-        _copy_cache_build_script(build_dir, cache_config)
-
-    # Optimization report generation is available but OFF by default
-    # To enable optimization reports, add these flags to your board configuration:
-    # - "-fopt-info-all=optimization_report.txt" for detailed optimization info
-    # - "-Wl,-Map,firmware.map" for memory map analysis
+    # Optimization report (`-fopt-info-all`) is OPT-IN per board because the
+    # report file accumulates across every example in the matrix and can
+    # exceed 100 MB on no-LTO platforms — that overwhelmed the GHA log
+    # buffer and shut down the nrf52840 runners (see PR #2658 for the
+    # downstream cap and PR opening this gate). Set
+    # `generate_optimization_report=True` on the Board to opt in.
     #
-    # Note: The infrastructure is in place to support optimization reports when needed
-
-    # Always generate optimization artifacts into the board build directory
-    # Use absolute paths to ensure GCC/LD write into a known location even when the
-    # working directory changes inside PlatformIO builds.
+    # The linker map (`-Wl,-Map,firmware.map`) stays unconditional; it's a
+    # small per-example file and is consumed by size-analysis tooling.
     try:
-        opt_report_path = (build_dir / "optimization_report.txt").resolve()
-        # GCC writes reports relative to the current working directory; provide absolute path
+        # Generate linker map in the board build directory using absolute path
+        # (relative paths are unreliable — the linker CWD varies across PIO versions)
+        map_path = (build_dir / "firmware.map").resolve()
+        board_with_sketch_include.build_flags.append(f"-Wl,-Map,{map_path.as_posix()}")
 
-        # ESP32-C2 platform cannot work with -fopt-info-all, suppress it for this platform
-        if board.board_name != "esp32c2":
+        # ESP32-C2 and AVR platforms cannot work with -fopt-info-all even when
+        # opted in — preserve the original suppression list.
+        if (
+            getattr(board, "generate_optimization_report", False)
+            and board.board_name != "esp32c2"
+            and board.platform != "atmelavr"
+        ):
+            opt_report_path = (build_dir / "optimization_report.txt").resolve()
             board_with_sketch_include.build_flags.append(
                 f"-fopt-info-all={opt_report_path.as_posix()}"
             )
-
-        # Generate linker map in the board directory (file name is sufficient; PIO writes here)
-        board_with_sketch_include.build_flags.append("-Wl,-Map,firmware.map")
-    except Exception as _e:
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
+    except Exception:
         # Non-fatal: continue without optimization artifacts if path resolution fails
         pass
 
+    # Merge any per-env build_flags the user has declared in the root
+    # platformio.ini (issue #2664). Without this step, flags in
+    # [env:<board>].build_flags of the root file are silently discarded
+    # when bash compile --backend platformio synthesises a fresh project
+    # from ci/boards.py. Board flags come first, root flags are appended,
+    # so root values take precedence per PlatformIO's "last wins" semantics
+    # for repeated -D / linker flags.
+    root_build_flags = get_root_platformio_build_flags(board.board_name, project_root)
+    if root_build_flags:
+        print(
+            f"Merging {len(root_build_flags)} build_flag(s) from root "
+            f"platformio.ini [env:{board.board_name}]: {root_build_flags}"
+        )
+        board_with_sketch_include.build_flags.extend(root_build_flags)
+
     # Apply board-specific configuration
-    if not _apply_board_specific_config(
+    if not apply_board_specific_config(
         board_with_sketch_include,
         platformio_ini,
         example,
         paths,
         additional_defines,
-        additional_include_dirs,
+        merged_include_dirs,
         additional_libs,
-        cache_type,
     ):
         return InitResult(
             success=False,
@@ -1154,11 +177,11 @@ def _init_platformio_build(
         )
 
     # Print building banner first
-    print(_create_building_banner(example))
+    print(create_building_banner(example))
 
-    ok_copy_src = _copy_example_source(project_root, build_dir, example)
+    ok_copy_src = copy_example_source(project_root, build_dir, example)
     if not ok_copy_src:
-        error_msg = _get_example_error_message(project_root, example)
+        error_msg = get_example_error_message(project_root, example)
         warnings.warn(error_msg)
         return InitResult(
             success=False,
@@ -1167,28 +190,34 @@ def _init_platformio_build(
         )
 
     # Copy FastLED library
-    ok_copy_fastled = _copy_fastled_library(project_root, build_dir)
+    ok_copy_fastled = copy_fastled_library(project_root, build_dir)
     if not ok_copy_fastled:
-        warnings.warn(f"Failed to copy FastLED library")
+        warnings.warn("Failed to copy FastLED library")
         return InitResult(
-            success=False, output=f"Failed to copy FastLED library", build_dir=build_dir
+            success=False, output="Failed to copy FastLED library", build_dir=build_dir
         )
 
     # Copy boards directory
-    ok_copy_boards = _copy_boards_directory(project_root, build_dir)
+    ok_copy_boards = copy_boards_directory(project_root, build_dir)
     if not ok_copy_boards:
-        warnings.warn(f"Failed to copy boards directory")
+        warnings.warn("Failed to copy boards directory")
         return InitResult(
             success=False,
-            output=f"Failed to copy boards directory",
+            output="Failed to copy boards directory",
             build_dir=build_dir,
         )
+
+    # On Windows, force garbage collection and small delay to release all file handles
+    # This prevents file access errors when PlatformIO scans the libraries
+    if sys.platform == "win32":
+        gc.collect()
+        time.sleep(0.1)  # Give filesystem time to release handles
 
     # Create sdkconfig.defaults if framework has "espidf" in it for esp32c2 board
     frameworks = {f.strip() for f in (board.framework or "").split(",")}
     if {"arduino", "espidf"}.issubset(frameworks):
         sdkconfig_path = build_dir / "sdkconfig.defaults"
-        print(f"Creating sdkconfig.defaults file")
+        print("Creating sdkconfig.defaults file")
         try:
             sdkconfig_path.write_text(
                 "CONFIG_FREERTOS_HZ=1000\r\nCONFIG_AUTOSTART_ARDUINO=y"
@@ -1196,39 +225,62 @@ def _init_platformio_build(
             with open(sdkconfig_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
                     print(line, end="")
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             warnings.warn(f"Failed to write sdkconfig: {e}")
 
-    # Final platformio.ini is already written by _apply_board_specific_config
+    # Final platformio.ini is already written by apply_board_specific_config
     # No need to write it again
+
+    if use_fbuild:
+        # fbuild handles compilation itself — init only sets up the project structure
+        if verbose:
+            platformio_ini_path = build_dir / "platformio.ini"
+            if platformio_ini_path.exists():
+                print()
+                print("=" * 60)
+                print("PLATFORMIO.INI CONFIGURATION (fbuild):")
+                print("=" * 60)
+                ini_content = platformio_ini_path.read_text()
+                print(ini_content)
+                print("=" * 60)
+                print()
+        return InitResult(success=True, output="", build_dir=build_dir)
 
     # Run initial build with LDF enabled to set up the environment
     run_cmd: list[str] = ["pio", "run", "--project-dir", str(build_dir)]
     if verbose:
         run_cmd.append("--verbose")
 
-    # Print platformio.ini content for the initialization build
-    platformio_ini_path = build_dir / "platformio.ini"
-    if platformio_ini_path.exists():
-        print()  # Add newline before configuration section
-        print("=" * 60)
-        print("PLATFORMIO.INI CONFIGURATION:")
-        print("=" * 60)
-        ini_content = platformio_ini_path.read_text()
-        print(ini_content)
-        print("=" * 60)
-        print()  # Add newline after configuration section
+    # Print platformio.ini content for the initialization build (verbose only)
+    if verbose:
+        platformio_ini_path = build_dir / "platformio.ini"
+        if platformio_ini_path.exists():
+            print()  # Add newline before configuration section
+            print("=" * 60)
+            print("PLATFORMIO.INI CONFIGURATION:")
+            print("=" * 60)
+            ini_content = platformio_ini_path.read_text()
+            print(ini_content)
+            print("=" * 60)
+            print()  # Add newline after configuration section
 
-    print(f"Running initial build command: {subprocess.list2cmdline(run_cmd)}")
+        print(f"Running initial build command: {subprocess.list2cmdline(run_cmd)}")
 
     # Start timer for this example
-    start_time = time.time()
+    time.time()
 
     # Create formatter for path substitution and timestamping
     formatter = create_sketch_path_formatter(example)
 
     running_process = RunningProcess(
-        run_cmd, cwd=build_dir, auto_run=True, output_formatter=formatter
+        run_cmd,
+        cwd=build_dir,
+        auto_run=True,
+        output_formatter=formatter,
+        env=get_pio_execution_env(),
     )
     # Output is transformed by the formatter, but we need to print it
     while line := running_process.get_next_line():
@@ -1250,25 +302,10 @@ def _init_platformio_build(
     # Board configuration includes all necessary settings
 
     # Generate build_info.json after successful initialization build
-    _generate_build_info_json_from_existing_build(build_dir, board)
+    # Pass example name to generate example-specific build_info_{example}.json
+    generate_build_info_json_from_existing_build(build_dir, board, example)
 
     return InitResult(success=True, output="", build_dir=build_dir)
-
-
-class PlatformLock:
-    def __init__(self, lock_file: Path) -> None:
-        self.lock_file_path = lock_file
-        self.lock = fasteners.InterProcessLock(str(self.lock_file_path))
-        self.is_locked = False
-
-    def acquire(self) -> None:
-        self.is_locked = True
-        self.lock.acquire(blocking=True, timeout=5)
-
-    def release(self) -> None:
-        if self.is_locked:
-            self.lock.release()
-            self.is_locked = False
 
 
 class PioCompiler(Compiler):
@@ -1277,10 +314,10 @@ class PioCompiler(Compiler):
         board: Board | str,
         verbose: bool,
         global_cache_dir: Path,
-        additional_defines: list[str] | None = None,
-        additional_include_dirs: list[str] | None = None,
-        additional_libs: list[str] | None = None,
-        cache_type: CacheType = CacheType.NO_CACHE,
+        additional_defines: Optional[list[str]] = None,
+        additional_include_dirs: Optional[list[str]] = None,
+        additional_libs: Optional[list[str]] = None,
+        use_fbuild: bool = False,
     ) -> None:
         # Call parent constructor
         super().__init__()
@@ -1294,7 +331,7 @@ class PioCompiler(Compiler):
         self.additional_defines = additional_defines
         self.additional_include_dirs = additional_include_dirs
         self.additional_libs = additional_libs
-        self.cache_type = cache_type
+        self.use_fbuild = use_fbuild
 
         # Global cache directory is already resolved by caller
         self.global_cache_dir = global_cache_dir
@@ -1310,8 +347,8 @@ class PioCompiler(Compiler):
         # Ensure all directories exist
         self.paths.ensure_directories_exist()
 
-        # Create the global package installation lock
-        self._global_package_lock = GlobalPackageLock(self.board.board_name)
+        # Package installation lock is now handled by daemon (system-wide singleton)
+        # No per-board lock needed
 
         self.initialized = False
         self.executor = ThreadPoolExecutor(max_workers=1)
@@ -1329,10 +366,11 @@ class PioCompiler(Compiler):
             self.verbose,
             example,
             self.paths,
-            self.additional_defines,
-            self.additional_include_dirs,
-            self.additional_libs,
-            self.cache_type,
+            build_dir=self.build_dir,
+            additional_defines=self.additional_defines,
+            additional_include_dirs=self.additional_include_dirs,
+            additional_libs=self.additional_libs,
+            use_fbuild=self.use_fbuild,
         )
         if result.success:
             self.initialized = True
@@ -1340,12 +378,27 @@ class PioCompiler(Compiler):
 
     def cancel_all(self) -> None:
         """Cancel all builds."""
+        # Provide immediate feedback that cancellation is starting
+        sys.stdout.write("      → Shutting down build executor...\n")
+        sys.stdout.flush()
         self.executor.shutdown(wait=False, cancel_futures=True)
+        sys.stdout.write("      → Executor shutdown complete\n")
+        sys.stdout.flush()
 
     def build(self, examples: list[str]) -> list[Future[SketchResult]]:
-        """Build a list of examples with proper lock management."""
+        """Build a list of examples with proper lock management.
+
+        For fbuild boards, runs synchronously on the main thread so that
+        Ctrl+C / SIGINT is delivered immediately.  The Rust native extension
+        (conn.build) can hold the GIL in a worker thread, preventing signal
+        delivery on Windows.
+        """
         if not examples:
             return []
+
+        # fbuild path: run on main thread for reliable Ctrl+C handling
+        if self.use_fbuild:
+            return self._build_fbuild(examples)
 
         # Acquire the global package lock for the first build (package installation)
 
@@ -1356,13 +409,13 @@ class PioCompiler(Compiler):
             nonlocal count
             count -= 1
             if count == 0:
-                print(f"Releasing platform lock: {self.platform_lock.lock_file_path}")
+                print(f"Releasing platform lock: {self.platform_lock.lock_file_path}\n")
                 self.platform_lock.release()
 
         futures: list[Future[SketchResult]] = []
 
-        # Submit all builds
-        self._global_package_lock.acquire()
+        # Package installation lock is now handled by daemon (in _internal_build_no_lock)
+        # No global lock acquire/release needed here
         cancelled = threading.Event()
         try:
             for example in examples:
@@ -1371,14 +424,12 @@ class PioCompiler(Compiler):
                 )
                 future.add_done_callback(release_platform_lock)
                 futures.append(future)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as ki:
             print("KeyboardInterrupt: Cancelling all builds")
             cancelled.set()
             for future in futures:
                 future.cancel()
-            import _thread
-
-            _thread.interrupt_main()
+            handle_keyboard_interrupt(ki)
             raise
         except Exception as e:
             print(f"Exception: {e}")
@@ -1388,16 +439,340 @@ class PioCompiler(Compiler):
 
         return futures
 
+    def _build_fbuild(self, examples: list[str]) -> list[Future[SketchResult]]:
+        """Build examples using fbuild, preferring ``ci`` when available.
+
+        compile-many / ``fbuild ci`` are gated behind ``FASTLED_USE_FBUILD_CI``
+        because today they re-build the framework from scratch in every
+        stage-2 sketch dir (FastLED/fbuild#335). On uno that's a ~7 min run
+        vs. ~3.5 min serial; on teensy41/esp32s3 (larger framework) it
+        blows past the 30 min batch timeout — see the runs that landed on
+        master commits d2a025441e / 63e0241808 / fa147ae894. Default off
+        until fbuild#335 ships a shared framework cache; set
+        ``FASTLED_USE_FBUILD_CI=1`` to opt in (e.g. for local timing
+        experiments against the architectural fix once it lands).
+        """
+        import os
+
+        from ci.util.fbuild_runner import (
+            fbuild_supports_ci,
+            fbuild_supports_compile_many,
+        )
+
+        opt_in = os.environ.get("FASTLED_USE_FBUILD_CI", "").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if opt_in:
+            if fbuild_supports_ci():
+                return self._build_fbuild_ci(examples)
+            if fbuild_supports_compile_many():
+                print(
+                    "fbuild ci is unavailable in the installed fbuild; "
+                    "falling back to fbuild compile-many."
+                )
+                return self._build_fbuild_compile_many(examples)
+            print(
+                "FASTLED_USE_FBUILD_CI=1 was set but fbuild ci/compile-many "
+                "are unavailable in the installed fbuild; falling back to "
+                "the legacy serial loop."
+            )
+        return self._build_fbuild_sync(examples)
+
+    def _compile_many_project_dir(self, example: str, index: int) -> Path:
+        """Return the staged project directory for one compile-many sketch."""
+        if index == 0:
+            return self.build_dir
+
+        example_path = Path(example)
+        if example_path.is_absolute():
+            digest = hashlib.sha1(str(example_path).encode("utf-8")).hexdigest()[:12]
+            safe_name = (
+                "".join(
+                    ch if ch.isalnum() or ch in "._-" else "_"
+                    for ch in example_path.name
+                )
+                or f"example_{index}"
+            )
+            return self.build_dir / "compile_many" / f"{safe_name}_{digest}"
+        return self.build_dir / "compile_many" / example_path
+
+    def _stage_fbuild_compile_many_projects(
+        self, examples: list[str]
+    ) -> list[tuple[str, Path]]:
+        """Stage one PlatformIO-compatible project directory per example."""
+        staged_projects: list[tuple[str, Path]] = []
+        for index, example in enumerate(examples):
+            project_dir = self._compile_many_project_dir(example, index)
+            init_result = _init_platformio_build(
+                self.board,
+                self.verbose,
+                example,
+                self.paths,
+                build_dir=project_dir,
+                additional_defines=self.additional_defines,
+                additional_include_dirs=self.additional_include_dirs,
+                additional_libs=self.additional_libs,
+                use_fbuild=True,
+            )
+            if not init_result.success:
+                raise RuntimeError(init_result.output)
+            staged_projects.append((example, project_dir))
+        return staged_projects
+
+    def _build_fbuild_compile_many(
+        self, examples: list[str]
+    ) -> list[Future[SketchResult]]:
+        """Build examples with one ``fbuild compile-many`` invocation."""
+        from ci.util.fbuild_runner import run_fbuild_compile_many
+
+        return self._build_fbuild_batch(
+            examples=examples,
+            command_label="compile-many",
+            run_batch=run_fbuild_compile_many,
+        )
+
+    def _build_fbuild_ci(self, examples: list[str]) -> list[Future[SketchResult]]:
+        """Build examples with one ``fbuild ci`` invocation."""
+        from ci.util.fbuild_runner import run_fbuild_ci
+
+        return self._build_fbuild_batch(
+            examples=examples,
+            command_label="ci",
+            run_batch=run_fbuild_ci,
+        )
+
+    def _build_fbuild_batch(
+        self,
+        examples: list[str],
+        command_label: str,
+        run_batch: Any,
+    ) -> list[Future[SketchResult]]:
+        """Build examples with one batched ``fbuild`` invocation."""
+
+        futures: list[Future[SketchResult]] = []
+
+        try:
+            staged_projects = self._stage_fbuild_compile_many_projects(examples)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
+        except Exception as e:
+            for example in examples:
+                future: Future[SketchResult] = Future()
+                future.set_result(
+                    SketchResult(
+                        success=False,
+                        output=f"Failed to stage fbuild {command_label} project: {e}",
+                        build_dir=self.build_dir,
+                        example=example,
+                    )
+                )
+                futures.append(future)
+            print(f"Releasing platform lock: {self.platform_lock.lock_file_path}\n")
+            self.platform_lock.release()
+            return futures
+
+        import time
+
+        from ci.util.fbuild_runner import _parse_size_info_from_log
+
+        batch_start = time.monotonic()
+        try:
+            compile_many_result = run_batch(
+                board=self.board.board_name,
+                sketch_project_dirs=[project_dir for _, project_dir in staged_projects],
+                verbose=self.verbose,
+                timeout=1800,
+                quiet=False,
+                log_file=None,
+            )
+            reported = {
+                sketch_result.sketch_dir.resolve(): sketch_result
+                for sketch_result in compile_many_result.sketch_results
+            }
+
+            success_count = 0
+            fail_count = 0
+            per_sketch_secs: list[float] = []
+            for example, project_dir in staged_projects:
+                sketch_result = reported.get(project_dir.resolve())
+                if sketch_result is None:
+                    output = (
+                        f"fbuild {command_label} did not report a result for "
+                        f"{project_dir}\n\n{compile_many_result.output}"
+                    )
+                    success = False
+                    stage = "?"
+                    build_secs = 0.0
+                    flash_str: str | None = None
+                    ram_str: str | None = None
+                else:
+                    output = sketch_result.message
+                    if (
+                        sketch_result.log_path is not None
+                        and sketch_result.log_path.exists()
+                    ):
+                        output = sketch_result.log_path.read_text(
+                            encoding="utf-8", errors="ignore"
+                        )
+                    success = sketch_result.success
+                    stage = sketch_result.stage
+                    build_secs = sketch_result.build_time_secs
+                    flash_str, ram_str = _parse_size_info_from_log(
+                        sketch_result.log_path
+                    )
+
+                # Normalized per-sketch summary line. The serial path emits
+                # `build succeeded in Xs (flash: N bytes, ram: M bytes)` from
+                # fbuild + `Compilation succeeded (fbuild) [Xs]` from FastLED.
+                # Compile-many never sees those per-sketch lines (fbuild only
+                # prints one aggregate table), so reconstruct an equivalent
+                # line per sketch from the parsed result + per-sketch log.
+                # Sizes come from the same fbuild `Flash:`/`RAM:` lines the
+                # serial path renders, just kept in fbuild's display units
+                # (e.g. "2.75KB") rather than re-converted to bytes — the
+                # signal is "did flash/ram change?", not the literal value.
+                size_part = ""
+                if flash_str is not None and ram_str is not None:
+                    size_part = f" (flash: {flash_str}, ram: {ram_str})"
+                elif flash_str is not None:
+                    size_part = f" (flash: {flash_str})"
+                stage_tag = f"[{stage}]" if stage != "?" else "[?]"
+                if success:
+                    success_count += 1
+                    green_color = "\033[32m"
+                    reset_color = "\033[0m"
+                    print(
+                        f"{green_color}SUCCESS: {example}  "
+                        f"build succeeded in {build_secs:.1f}s{size_part} {stage_tag}"
+                        f"{reset_color}"
+                    )
+                    if generate_build_info_json_from_existing_build(
+                        project_dir, self.board, example
+                    ):
+                        build_info_path = project_dir / f"build_info_{example}.json"
+                        if project_dir != self.build_dir and build_info_path.exists():
+                            shutil.copy2(
+                                build_info_path,
+                                self.build_dir / build_info_path.name,
+                            )
+                else:
+                    fail_count += 1
+                    red_color = "\033[31m"
+                    reset_color = "\033[0m"
+                    print(
+                        f"{red_color}FAILED:  {example}  "
+                        f"build failed in {build_secs:.1f}s {stage_tag}"
+                        f"{reset_color}"
+                    )
+
+                per_sketch_secs.append(build_secs)
+
+                future: Future[SketchResult] = Future()
+                future.set_result(
+                    SketchResult(
+                        success=success,
+                        output=output or f"fbuild {command_label}",
+                        build_dir=project_dir,
+                        example=example,
+                    )
+                )
+                futures.append(future)
+
+            # Total wall-clock and parallelism factor. The fbuild_runner step
+            # already prints `Compilation succeeded (fbuild ci) [Xs]` with
+            # the same wall time, but it lands BEFORE the per-sketch lines
+            # (fbuild prints its summary as soon as the subprocess exits).
+            # Re-emit a final-line total here so the bottom-of-log reader
+            # sees the wall clock right after the per-sketch summary, with
+            # an explicit parallelism factor so it's obvious when stage 2
+            # actually fanned out vs. ran serially.
+            batch_wall = time.monotonic() - batch_start
+            sum_per_sketch = sum(per_sketch_secs)
+            sketches_n = max(1, len(staged_projects))
+            speedup = sum_per_sketch / batch_wall if batch_wall > 0 else 1.0
+            print(
+                f"\nfbuild {command_label} total wall-clock: {batch_wall:.1f}s "
+                f"across {sketches_n} sketches "
+                f"(sum-of-per-sketch={sum_per_sketch:.1f}s, "
+                f"parallelism={speedup:.2f}x, "
+                f"avg-wall={batch_wall / sketches_n:.2f}s/sketch, "
+                f"ok={success_count}, fail={fail_count})\n"
+            )
+        finally:
+            print(f"Releasing platform lock: {self.platform_lock.lock_file_path}\n")
+            self.platform_lock.release()
+
+        return futures
+
+    def _build_fbuild_sync(self, examples: list[str]) -> list[Future[SketchResult]]:
+        """Build examples using fbuild synchronously on the main thread.
+
+        Returns completed futures for API compatibility with the async path.
+        """
+        futures: list[Future[SketchResult]] = []
+
+        for example in examples:
+            # Initialize build directory (once)
+            if not self.initialized:
+                init_result = self._internal_init_build_no_lock(example)
+                if not init_result.success:
+                    red_color = "\033[31m"
+                    reset_color = "\033[0m"
+                    print(f"{red_color}FAILED: {example}{reset_color}")
+                    result = SketchResult(
+                        success=False,
+                        output=init_result.output,
+                        build_dir=init_result.build_dir,
+                        example=example,
+                    )
+                    future: Future[SketchResult] = Future()
+                    future.set_result(result)
+                    futures.append(future)
+                    continue
+
+            # Copy example source for subsequent examples
+            if self.initialized:
+                project_root = resolve_project_root()
+                ok_copy_src = copy_example_source(project_root, self.build_dir, example)
+                if not ok_copy_src:
+                    error_msg = get_example_error_message(project_root, example)
+                    result = SketchResult(
+                        success=False,
+                        output=error_msg,
+                        build_dir=self.build_dir,
+                        example=example,
+                    )
+                    future = Future()
+                    future.set_result(result)
+                    futures.append(future)
+                    continue
+
+            # Run fbuild on main thread — Ctrl+C works directly
+            result = self._build_with_fbuild(example)
+            future = Future()
+            future.set_result(result)
+            futures.append(future)
+
+        # Release platform lock
+        print(f"Releasing platform lock: {self.platform_lock.lock_file_path}\n")
+        self.platform_lock.release()
+
+        return futures
+
     def _build_internal(self, example: str) -> SketchResult:
         """Internal build method without lock management."""
         # Print building banner first
-        print(_create_building_banner(example))
+        print(create_building_banner(example))
 
         # Copy example source to build directory
-        project_root = _resolve_project_root()
-        ok_copy_src = _copy_example_source(project_root, self.build_dir, example)
+        project_root = resolve_project_root()
+        ok_copy_src = copy_example_source(project_root, self.build_dir, example)
         if not ok_copy_src:
-            error_msg = _get_example_error_message(project_root, example)
+            error_msg = get_example_error_message(project_root, example)
             return SketchResult(
                 success=False,
                 output=error_msg,
@@ -1407,109 +782,149 @@ class PioCompiler(Compiler):
 
         # Cache configuration is handled through build flags during initialization
 
-        # Run PlatformIO build
-        run_cmd: list[str] = [
-            "pio",
-            "run",
-            "--project-dir",
-            str(self.build_dir),
-            "--disable-auto-clean",
-        ]
-        if self.verbose:
-            run_cmd.append("--verbose")
+        # Use fbuild for compilation if enabled
+        if self.use_fbuild:
+            return self._build_with_fbuild(example)
 
-        print(f"Running command: {subprocess.list2cmdline(run_cmd)}")
+        # Attempt build with retry on PackageException
+        max_attempts = 2
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                print(f"\n{'=' * 60}")
+                print(f"RETRY ATTEMPT {attempt}/{max_attempts - 1}")
+                print(f"{'=' * 60}\n")
 
-        # Create formatter for path substitution and timestamping
-        formatter = create_sketch_path_formatter(example)
+            # Run PlatformIO build
+            run_cmd: list[str] = [
+                "pio",
+                "run",
+                "--project-dir",
+                str(self.build_dir),
+                "--disable-auto-clean",
+            ]
+            if self.verbose:
+                run_cmd.append("--verbose")
 
-        running_process = RunningProcess(
-            run_cmd, cwd=self.build_dir, auto_run=True, output_formatter=formatter
+            print(f"Running command: {subprocess.list2cmdline(run_cmd)}")
+
+            # Create formatter for path substitution and timestamping
+            formatter = create_sketch_path_formatter(example)
+
+            running_process = RunningProcess(
+                run_cmd,
+                cwd=self.build_dir,
+                auto_run=True,
+                output_formatter=formatter,
+                env=get_pio_execution_env(),
+            )
+            try:
+                # Output is transformed by the formatter, but we need to print it
+                while line := running_process.get_next_line(
+                    timeout=900
+                ):  # 15 minutes for platform builds
+                    if isinstance(line, EndOfStream):
+                        break
+                    # Print the transformed line
+                    print(line)
+            except KeyboardInterrupt as ki:
+                print("KeyboardInterrupt: Cancelling build")
+                running_process.terminate()
+                handle_keyboard_interrupt(ki)
+                raise
+            except OSError as e:
+                # Handle output encoding issues on Windows
+                print(f"Output encoding issue: {e}")
+                pass
+
+            running_process.wait()
+
+            success = running_process.returncode == 0
+            output = str(running_process.stdout)
+
+            # Check for PackageException in output
+            has_package_exception, package_info = detect_package_exception_in_output(
+                output
+            )
+
+            # Print SUCCESS/FAILED message immediately in worker thread to avoid race conditions
+            if success:
+                green_color = "\033[32m"
+                reset_color = "\033[0m"
+                print(f"{green_color}SUCCESS: {example}{reset_color}")
+            else:
+                red_color = "\033[31m"
+                reset_color = "\033[0m"
+                print(f"{red_color}FAILED: {example}{reset_color}")
+
+            # If build failed with PackageException and we have retries left, attempt recovery
+            if not success and has_package_exception and attempt < max_attempts - 1:
+                print("\nPackageException detected in build output")
+                if package_info:
+                    print(f"Package info: {package_info}")
+
+                # Attempt aggressive cleanup and retry
+                paths = FastLEDPaths(self.board.board_name)
+                if aggressive_clean_pio_packages(paths, self.board.board_name):
+                    print("Retrying build after package cleanup...")
+                    continue  # Retry the build
+                else:
+                    print("Package cleanup did not remove any packages")
+                    # Still try again - maybe something else will help
+                    print("Retrying build anyway...")
+                    continue
+
+            # Build succeeded or no PackageException, return result
+            # Generate build_info.json after successful build
+            if success:
+                generate_build_info_json_from_existing_build(
+                    self.build_dir, self.board, example
+                )
+
+            return SketchResult(
+                success=success,
+                output=output,
+                build_dir=self.build_dir,
+                example=example,
+            )
+
+        # Should not reach here, but just in case
+        return SketchResult(
+            success=False,
+            output="Build failed after all retry attempts",
+            build_dir=self.build_dir,
+            example=example,
         )
-        try:
-            # Output is transformed by the formatter, but we need to print it
-            while line := running_process.get_next_line(timeout=60):
-                if isinstance(line, EndOfStream):
-                    break
-                # Print the transformed line
-                print(line)
-        except KeyboardInterrupt:
-            print("KeyboardInterrupt: Cancelling build")
-            running_process.terminate()
-            raise
-        except OSError as e:
-            # Handle output encoding issues on Windows
-            print(f"Output encoding issue: {e}")
-            pass
 
-        running_process.wait()
+    def _build_with_fbuild(self, example: str) -> SketchResult:
+        """Build using fbuild instead of PlatformIO CLI."""
+        from ci.util.fbuild_runner import run_fbuild_compile
 
-        success = running_process.returncode == 0
+        environment = self.board.board_name
+        result = run_fbuild_compile(
+            self.build_dir,
+            environment=environment,
+            verbose=self.verbose,
+        )
+        success = result.success
 
-        # Print SUCCESS/FAILED message immediately in worker thread to avoid race conditions
         if success:
             green_color = "\033[32m"
             reset_color = "\033[0m"
             print(f"{green_color}SUCCESS: {example}{reset_color}")
+            generate_build_info_json_from_existing_build(
+                self.build_dir, self.board, example
+            )
         else:
             red_color = "\033[31m"
             reset_color = "\033[0m"
             print(f"{red_color}FAILED: {example}{reset_color}")
 
-        # Check if build was successful
-        build_success = running_process.returncode == 0
-
-        # Generate build_info.json after successful build
-        if build_success:
-            _generate_build_info_json_from_existing_build(self.build_dir, self.board)
-
         return SketchResult(
             success=success,
-            output=running_process.stdout,
+            output=result.output or "fbuild compilation",
             build_dir=self.build_dir,
             example=example,
         )
-
-    def get_cache_stats(self) -> str:
-        """Get compiler statistics as a formatted string.
-
-        For PIO compiler, this includes cache statistics (sccache/ccache).
-        """
-        if self.cache_type == CacheType.NO_CACHE:
-            return ""
-
-        import shutil
-        import subprocess
-
-        cache_name = "sccache" if self.cache_type == CacheType.SCCACHE else "ccache"
-        cache_path = shutil.which(cache_name)
-
-        if not cache_path:
-            return f"{cache_name.upper()} not found in PATH"
-
-        try:
-            result = subprocess.run(
-                [cache_path, "--show-stats"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            if result.returncode == 0:
-                stats_lines: list[str] = []
-                for line in result.stdout.strip().split("\n"):
-                    if line.strip():
-                        stats_lines.append(line)
-
-                # Add header with cache type
-                stats_output = f"{cache_name.upper()} STATISTICS:\n"
-                stats_output += "\n".join(stats_lines)
-                return stats_output
-            else:
-                return f"Failed to get {cache_name.upper()} statistics: {result.stderr}"
-
-        except Exception as e:
-            return f"Error retrieving {cache_name.upper()} statistics: {e}"
 
     def _internal_build_no_lock(
         self, example: str, cancelled: threading.Event
@@ -1523,6 +938,9 @@ class PioCompiler(Compiler):
                 example=example,
             )
         try:
+            # ============================================================
+            # PHASE 0: Initialize build directory and create platformio.ini
+            # ============================================================
             if not self.initialized:
                 init_result = self._internal_init_build_no_lock(example)
                 if not init_result.success:
@@ -1537,6 +955,41 @@ class PioCompiler(Compiler):
                         build_dir=init_result.build_dir,
                         example=example,
                     )
+
+                if self.use_fbuild:
+                    # fbuild handles packages and compilation — build the first example now
+                    return self._build_with_fbuild(example)
+
+                # ============================================================
+                # PHASE 1: Ensure packages installed via daemon (ONCE per compiler instance)
+                # ============================================================
+                # NOW platformio.ini exists at self.build_dir/platformio.ini
+                print("=" * 60)
+                print("ENSURING PLATFORMIO PACKAGES INSTALLED")
+                print("=" * 60)
+
+                from ci.util.pio_package_client import ensure_packages_installed
+
+                if not ensure_packages_installed(
+                    self.build_dir,  # Project directory with platformio.ini
+                    self.board.board_name,  # Environment name
+                    timeout=1800,  # 30 minute timeout
+                ):
+                    print("\n❌ Package installation failed or timed out")
+                    # Print FAILED message immediately in worker thread
+                    red_color = "\033[31m"
+                    reset_color = "\033[0m"
+                    print(f"{red_color}FAILED: {example}{reset_color}")
+
+                    return SketchResult(
+                        success=False,
+                        output="Package installation failed or timed out",
+                        build_dir=self.build_dir,
+                        example=example,
+                    )
+
+                print()  # Blank line separator
+
                 # If initialization succeeded and we just built the example, return success
                 # Print SUCCESS message immediately in worker thread
                 green_color = "\033[32m"
@@ -1552,13 +1005,16 @@ class PioCompiler(Compiler):
 
             # No lock management - caller (build) handles locks
             return self._build_internal(example)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as ki:
             print("KeyboardInterrupt: Cancelling build")
             cancelled.set()
-            import _thread
-
-            _thread.interrupt_main()
-            raise
+            handle_keyboard_interrupt(ki)
+            return SketchResult(
+                success=False,
+                output="Build cancelled by user",
+                build_dir=self.build_dir,
+                example=example,
+            )
 
     def clean(self) -> None:
         """Clean build artifacts for this platform (acquire platform lock)."""
@@ -1581,10 +1037,8 @@ class PioCompiler(Compiler):
         """Clean all build artifacts (local and global packages) for this platform."""
         print(f"Cleaning all artifacts for platform {self.board.board_name}...")
 
-        # Acquire both platform and global package locks
-        self._global_package_lock.acquire()
-
-        try:
+        # Use platform lock for automatic lock release
+        with self.platform_lock:
             # Clean local build artifacts first
             if self.build_dir.exists():
                 print(f"Removing build directory: {self.build_dir}")
@@ -1611,12 +1065,8 @@ class PioCompiler(Compiler):
             else:
                 print(f"✅ No global core directory found for {self.board.board_name}")
 
-        finally:
-            # Always release locks
-            self._global_package_lock.release()
-
     def deploy(
-        self, example: str, upload_port: str | None = None, monitor: bool = False
+        self, example: str, upload_port: Optional[str] = None, monitor: bool = False
     ) -> SketchResult:
         """Deploy (upload) a specific example to the target device.
 
@@ -1670,10 +1120,13 @@ class PioCompiler(Compiler):
                 cwd=self.build_dir,
                 auto_run=True,
                 output_formatter=formatter,
+                env=get_pio_execution_env(),
             )
             try:
                 # Output is transformed by the formatter, but we need to print it
-                while line := running_process.get_next_line(timeout=60):
+                while line := running_process.get_next_line(
+                    timeout=900
+                ):  # 15 minutes for platform builds
                     if isinstance(line, EndOfStream):
                         break
                     # Print the transformed line
@@ -1687,7 +1140,7 @@ class PioCompiler(Compiler):
 
             # Check if upload was successful
             upload_success = running_process.returncode == 0
-            upload_output = running_process.stdout
+            upload_output = str(running_process.stdout)
 
             if not upload_success:
                 return SketchResult(
@@ -1724,7 +1177,10 @@ class PioCompiler(Compiler):
 
                 # Start monitor process (no lock needed for monitoring)
                 monitor_process = RunningProcess(
-                    monitor_cmd, cwd=self.build_dir, auto_run=True
+                    monitor_cmd,
+                    cwd=self.build_dir,
+                    auto_run=True,
+                    env=get_pio_execution_env(),
                 )
                 try:
                     while line := monitor_process.get_next_line(
@@ -1733,7 +1189,9 @@ class PioCompiler(Compiler):
                         if isinstance(line, EndOfStream):
                             break
                         print(line)  # No timestamp for monitor output
-                except KeyboardInterrupt:
+                except KeyboardInterrupt as ki:
+                    handle_keyboard_interrupt(ki)
+                    raise
                     print("\n📡 Monitor stopped by user")
                     monitor_process.terminate()
                 except OSError as e:
@@ -1804,10 +1262,18 @@ class PioCompiler(Compiler):
     def _get_user_groups(self) -> list[str]:
         """Get list of groups the current user belongs to."""
         try:
-            result = subprocess.run(["groups"], capture_output=True, text=True)
+            result = RunningProcess.run(
+                ["groups"],
+                cwd=None,
+                check=False,
+                timeout=10,
+            )
             if result.returncode == 0:
                 return result.stdout.strip().split()
             return []
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception:
             return []
 
@@ -1816,7 +1282,13 @@ class PioCompiler(Compiler):
         try:
             import os
 
-            return os.geteuid() == 0
+            geteuid = getattr(os, "geteuid", None)
+            if geteuid is not None:
+                return geteuid() == 0
+            return False
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception:
             return False
 
@@ -1837,6 +1309,8 @@ class PioCompiler(Compiler):
         Returns:
             True if installation succeeded, False otherwise
         """
+        import os
+
         if platform.system() != "Linux":
             print("INFO: udev rules are only needed on Linux systems")
             return True
@@ -1859,14 +1333,15 @@ class PioCompiler(Compiler):
             print("💾 Installing udev rules (requires sudo)...")
 
             # Use sudo to copy to system location
-            result = subprocess.run(
+            result = RunningProcess.run(
                 ["sudo", "cp", temp_file, udev_rules_path],
-                capture_output=True,
-                text=True,
+                cwd=None,
+                check=False,
+                timeout=10,
             )
 
             if result.returncode != 0:
-                print(f"ERROR: Failed to install udev rules: {result.stderr}")
+                print(f"ERROR: Failed to install udev rules: {result.stdout}")
                 return False
 
             # Clean up temp file
@@ -1884,18 +1359,288 @@ class PioCompiler(Compiler):
 
             return True
 
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             print(f"ERROR: Failed to install udev rules: {e}")
             return False
+
+    def supports_merged_bin(self) -> bool:
+        """Check if board supports merged binary generation.
+
+        Returns:
+            True if the board platform supports merged binary generation
+        """
+        supported_platforms = ["espressif32", "espressif8266"]
+        return any(
+            plat in str(self.board.platform).lower() for plat in supported_platforms
+        )
+
+    def _artifacts_dir(self, env_name: str) -> Path:
+        # fbuild emits artifacts (firmware.*, bootloader.bin, partitions.bin,
+        # boot_app0.bin) into .fbuild/build/<env>/release/. PlatformIO's
+        # ESP-IDF post-build steps put the same set into .pio/build/<env>/.
+        # Whichever backend ran the compile is where the artifacts live.
+        if self.use_fbuild:
+            return self.build_dir / ".fbuild" / "build" / env_name / "release"
+        return self.build_dir / ".pio" / "build" / env_name
+
+    def get_merged_bin_path(self, example: str) -> Optional[Path]:
+        """Get path to merged binary if it exists.
+
+        Args:
+            example: Example name (unused but kept for API consistency)
+
+        Returns:
+            Path to merged.bin if it exists, None otherwise
+        """
+        merged_bin = self._artifacts_dir(self.board.board_name) / "merged.bin"
+        return merged_bin if merged_bin.exists() else None
+
+    def build_with_merged_bin(
+        self, example: str, output_path: Optional[Path] = None
+    ) -> SketchResult:
+        """Build example and generate merged binary.
+
+        Args:
+            example: Example name to build
+            output_path: Optional custom output path for merged binary
+
+        Returns:
+            SketchResult with merged_bin_path populated
+        """
+        # 1. Validate board support
+        if not self.supports_merged_bin():
+            return SketchResult(
+                success=False,
+                output=f"Board {self.board.board_name} does not support merged binary. "
+                f"Supported platforms: ESP32, ESP8266",
+                build_dir=self.build_dir,
+                example=example,
+            )
+
+        # 2. Build normally first.
+        #
+        # Both backends produce the artifact set ``esptool merge_bin`` needs
+        # (``firmware.bin`` + ``bootloader.bin`` + ``partitions.bin``), just
+        # in different directories. ``_artifacts_dir`` returns whichever path
+        # the active backend wrote to, so the merge step below reads from
+        # the right place without copying anything around.
+        #
+        # fbuild >= 2.1.7 is required for ESP32 merged-bin support — earlier
+        # versions did not emit the boot/partition artifacts (FastLED#2287).
+        cancelled = threading.Event()
+        result = self._internal_build_no_lock(example, cancelled)
+        if not result.success:
+            return result
+
+        # 3. Use esptool to merge binaries
+        # PlatformIO doesn't have a merge_bin target - we must use esptool directly
+        env_name = self.board.board_name
+        artifacts_dir = self._artifacts_dir(env_name)
+
+        # Find required binary components
+        bootloader_bin = artifacts_dir / "bootloader.bin"
+        partitions_bin = artifacts_dir / "partitions.bin"
+        boot_app0_bin = artifacts_dir / "boot_app0.bin"
+        firmware_bin = artifacts_dir / "firmware.bin"
+
+        # Verify all required files exist
+        missing_files: list[str] = []
+        for bin_file in [bootloader_bin, partitions_bin, firmware_bin]:
+            if not bin_file.exists():
+                missing_files.append(str(bin_file))
+
+        if missing_files:
+            # The build appeared to succeed but the expected artifacts aren't
+            # where we look for them. Most often this means the compile
+            # actually failed earlier, or fbuild's ESP32 orchestrator skipped
+            # its boot-artifact step (e.g. on an older fbuild). Dump both the
+            # active backend's dir and the inactive one so the real artifact
+            # location is visible regardless of which backend ran.
+            backend = "fbuild" if self.use_fbuild else "PlatformIO"
+            diagnostics: list[str] = []
+            diagnostics.append(
+                f"Required binary files not found after build: {', '.join(missing_files)}"
+            )
+            diagnostics.append("")
+            diagnostics.append(
+                f"Build succeeded ({backend}) but expected artifacts are missing."
+            )
+            diagnostics.append(
+                "This typically means the compile actually failed earlier, "
+                "the build system emitted artifacts at a non-standard location, "
+                "or an ESP-IDF post-build step was skipped."
+            )
+            for label, directory in [
+                (f"Active backend ({backend}) artifacts dir", artifacts_dir),
+                (
+                    "PlatformIO artifacts dir",
+                    self.build_dir / ".pio" / "build" / env_name,
+                ),
+                (
+                    "fbuild release dir",
+                    self.build_dir / ".fbuild" / "build" / env_name / "release",
+                ),
+            ]:
+                diagnostics.append("")
+                diagnostics.append(f"=== {label}: {directory} ===")
+                if directory.exists():
+                    try:
+                        entries = sorted(p.name for p in directory.iterdir())
+                    except OSError as e:
+                        diagnostics.append(f"  (failed to list: {e})")
+                    else:
+                        if entries:
+                            diagnostics.extend(f"  {name}" for name in entries)
+                        else:
+                            diagnostics.append("  (empty)")
+                else:
+                    diagnostics.append("  (does not exist)")
+            diagnostics.append("")
+            diagnostics.append("--- Last 4KB of compile output ---")
+            build_output = result.output or ""
+            tail = build_output[-4096:] if build_output else "(no output captured)"
+            diagnostics.append(tail)
+            diagnostics.append("--- End compile output ---")
+            return SketchResult(
+                success=False,
+                output="\n".join(diagnostics),
+                build_dir=self.build_dir,
+                example=example,
+            )
+
+        # Create boot_app0.bin if it doesn't exist (it's optional)
+        if not boot_app0_bin.exists():
+            # Create default 8KB boot_app0.bin (all 0xFF)
+            boot_app0_bin.write_bytes(b"\xff" * 8192)
+            print("Created default boot_app0.bin")
+
+        # Determine chip type and offsets based on board
+        # ESP32 (original) uses 0x1000 for bootloader
+        # ESP32-S3/C3 use 0x0 for bootloader
+        platform_str = str(self.board.platform).lower()
+        if "esp32s3" in env_name.lower() or "esp32s3" in platform_str:
+            chip = "esp32s3"
+            bootloader_offset = "0x0"
+        elif "esp32c3" in env_name.lower() or "esp32c3" in platform_str:
+            chip = "esp32c3"
+            bootloader_offset = "0x0"
+        elif "esp8266" in platform_str:
+            chip = "esp8266"
+            bootloader_offset = "0x0"
+        else:
+            # Default ESP32
+            chip = "esp32"
+            bootloader_offset = "0x1000"
+
+        # Create merged binary using esptool
+        merged_bin = artifacts_dir / "merged.bin"
+
+        merge_cmd = [
+            "uv",
+            "run",
+            "esptool",
+            "--chip",
+            chip,
+            "merge-bin",
+            "-o",
+            str(merged_bin),
+            "--flash-mode",
+            "dio",
+            "--flash-freq",
+            "80m",
+            "--flash-size",
+            "4MB",
+            "--pad-to-size",
+            "4MB",
+            bootloader_offset,
+            str(bootloader_bin),
+            "0x8000",
+            str(partitions_bin),
+            "0xe000",
+            str(boot_app0_bin),
+            "0x10000",
+            str(firmware_bin),
+        ]
+
+        print(f"Running esptool merge_bin: {' '.join(merge_cmd)}")
+
+        try:
+            merge_proc = RunningProcess(
+                merge_cmd,
+                env=get_pio_execution_env(),
+                auto_run=True,
+                timeout=300,
+            )
+            output = ""
+            while line := merge_proc.get_next_line(timeout=300):
+                if isinstance(line, EndOfStream):
+                    break
+                output += str(line)
+            exit_code = merge_proc.wait()
+            if exit_code != 0:
+                return SketchResult(
+                    success=False,
+                    output=f"esptool merge_bin failed: {output}",
+                    build_dir=self.build_dir,
+                    example=example,
+                )
+        except RuntimeError as e:
+            if "timeout" in str(e).lower():
+                return SketchResult(
+                    success=False,
+                    output="esptool merge_bin timed out after 300 seconds",
+                    build_dir=self.build_dir,
+                    example=example,
+                )
+            else:
+                return SketchResult(
+                    success=False,
+                    output=f"esptool failed: {e}",
+                    build_dir=self.build_dir,
+                    example=example,
+                )
+        except FileNotFoundError:
+            return SketchResult(
+                success=False,
+                output="esptool not found. Please install: uv pip install esptool",
+                build_dir=self.build_dir,
+                example=example,
+            )
+
+        # 4. Verify merged binary was created
+        if not merged_bin.exists():
+            return SketchResult(
+                success=False,
+                output=f"Merged binary not created at {merged_bin}",
+                build_dir=self.build_dir,
+                example=example,
+            )
+
+        # 5. Copy to output path if specified
+        if output_path:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(merged_bin, output_path)
+            merged_bin = output_path
+
+        # 6. Return enhanced result
+        return SketchResult(
+            success=True,
+            output=result.output,
+            build_dir=self.build_dir,
+            example=example,
+            merged_bin_path=merged_bin,
+        )
 
 
 def run_pio_build(
     board: Board | str,
     examples: list[str],
     verbose: bool = False,
-    additional_defines: list[str] | None = None,
-    additional_include_dirs: list[str] | None = None,
-    cache_type: CacheType = CacheType.NO_CACHE,
+    additional_defines: Optional[list[str]] = None,
+    additional_include_dirs: Optional[list[str]] = None,
 ) -> list[Future[SketchResult]]:
     """Run build for specified examples and platform using new PlatformIO system.
 
@@ -1913,38 +1658,5 @@ def run_pio_build(
         additional_defines,
         additional_include_dirs,
         None,
-        cache_type,
     )
-    futures = pio.build(examples)
-
-    # Show cache statistics after all builds complete
-    if cache_type != CacheType.NO_CACHE:
-        # Create a callback to show stats when all builds complete
-        def add_stats_callback():
-            completed_count = 0
-            total_count = len(futures)
-
-            def on_future_complete(future: Any) -> None:
-                nonlocal completed_count
-                completed_count += 1
-
-                # When all futures complete, show compiler statistics
-                if completed_count == total_count:
-                    try:
-                        stats = pio.get_cache_stats()
-                        if stats:
-                            print("\n" + "=" * 60)
-                            print("COMPILER STATISTICS")
-                            print("=" * 60)
-                            print(stats)
-                            print("=" * 60)
-                    except Exception as e:
-                        print(f"Warning: Could not retrieve compiler statistics: {e}")
-
-            # Add callback to all futures
-            for future in futures:
-                future.add_done_callback(on_future_complete)
-
-        add_stats_callback()
-
-    return futures
+    return pio.build(examples)

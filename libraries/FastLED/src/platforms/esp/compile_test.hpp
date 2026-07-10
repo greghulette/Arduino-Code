@@ -1,5 +1,7 @@
 #pragma once
 
+// IWYU pragma: private
+
 #define FASTLED_INTERNAL  
 #include "FastLED.h"
 
@@ -11,8 +13,13 @@ void esp8266_compile_tests() {
 #error "FASTLED_USE_PROGMEM should be 0 for ESP8266"
 #endif
 
-#if SKETCH_HAS_LOTS_OF_MEMORY != 0
-#error "SKETCH_HAS_LOTS_OF_MEMORY should be 0 for ESP8266"
+#if !defined(SKETCH_HAS_LARGE_MEMORY_OVERRIDDEN)
+#if SKETCH_HAS_LARGE_MEMORY != 0
+#error "SKETCH_HAS_LARGE_MEMORY should be 0 for ESP8266"
+#endif
+#if SKETCH_HAS_HUGE_MEMORY != 0
+#error "SKETCH_HAS_HUGE_MEMORY should be 0 for ESP8266"
+#endif
 #endif
 
 #if FASTLED_ALLOW_INTERRUPTS != 1
@@ -37,7 +44,7 @@ void esp8266_compile_tests() {
 #error "FASTLED_HAS_MILLIS should be defined for ESP8266"
 #endif
 }
-#endif // ESP8266
+#endif // FL_IS_ESP8266
 
 #ifdef ESP32
 void esp32_compile_tests() {
@@ -53,8 +60,13 @@ void esp32_compile_tests() {
 #error "FASTLED_USE_PROGMEM should be 0 for ESP32 platforms"
 #endif
 
-#if SKETCH_HAS_LOTS_OF_MEMORY != 1
-#error "SKETCH_HAS_LOTS_OF_MEMORY should be 1 for ESP32 platforms"
+#if !defined(SKETCH_HAS_LARGE_MEMORY_OVERRIDDEN)
+#if SKETCH_HAS_LARGE_MEMORY != 1
+#error "SKETCH_HAS_LARGE_MEMORY should be 1 for ESP32 platforms"
+#endif
+#if SKETCH_HAS_HUGE_MEMORY != 1
+#error "SKETCH_HAS_HUGE_MEMORY should be 1 for ESP32 platforms"
+#endif
 #endif
 
 #if FASTLED_ALLOW_INTERRUPTS != 1
@@ -96,11 +108,8 @@ void esp32_compile_tests() {
     #error "ESP32-S3 F_CPU should be at least 80MHz"
     #endif
     
-    // ESP32-S3 specific features
-    #ifdef FASTLED_USES_ESP32S3_I2S
-    // I2S driver is being used - this is a valid configuration
-    #endif
+    // ESP32-S3 specific features (I2S_SPI and LCD_SPI channel drivers)
 #endif
 }
-#endif // ESP32
+#endif // FL_IS_ESP32
 }  // namespace fl

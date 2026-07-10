@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 # pyright: reportUnknownMemberType=false
 """
@@ -16,18 +19,13 @@ This backup is kept for reference and potential future needs.
 """
 
 import argparse
-import concurrent.futures
-import io
-import multiprocessing
 import os
-import subprocess
 import sys
 import time
 import warnings
 from pathlib import Path
-from typing import List, Set
 
-from ci.boards import Board, create_board  # type: ignore
+from ci.boards import Board, create_board
 from ci.util.concurrent_run import ConcurrentRunArgs, concurrent_run
 from ci.util.locked_print import locked_print
 
@@ -57,29 +55,29 @@ DEFAULT_BOARDS_NAMES = [
     "web",  # work in progress
     "uno",  # Build is faster if this is first, because it's used for global init.
     "esp32dev",
-    "esp01",  # ESP8266
+    "esp8266",  # ESP8266
     "esp32c3",
     "attiny85",
     "ATtiny1616",
     "esp32c6",
     "esp32s3",
     "esp32p4",
-    "yun",
-    "digix",
+    "leonardo",
+    "sam3x8e_due",
     "teensylc",
     "teensy30",
     "teensy31",
     "teensy41",
     "adafruit_feather_nrf52840_sense",
     "xiaoblesense_adafruit",
-    "rpipico",
-    "rpipico2",
+    "rp2040",
+    "rp2350",
     "uno_r4_wifi",
     "esp32rmt_51",
     "esp32dev_idf44",
-    "bluepill",
+    "stm32f103c8",
     "esp32rmt_51",
-    "giga_r1",
+    "stm32h747xi",
     "sparkfun_xrp_controller",
 ]
 
@@ -215,16 +213,6 @@ def parse_args():
         action="store_true",
         help="Run symbol analysis on compiled output",
     )
-    parser.add_argument(
-        "--allsrc",
-        action="store_true",
-        help="Enable all-source build (adds FASTLED_ALL_SRC=1 define)",
-    )
-    parser.add_argument(
-        "--no-allsrc",
-        action="store_true",
-        help="Disable all-source build (adds FASTLED_ALL_SRC=0 define)",
-    )
     try:
         args = parser.parse_intermixed_args()
         unknown = []
@@ -274,9 +262,9 @@ def parse_args():
     return args
 
 
-def remove_duplicates(items: List[str]) -> List[str]:
-    seen: Set[str] = set()
-    out: List[str] = []
+def remove_duplicates(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
     for item in items:
         if item not in seen:
             seen.add(item)
@@ -284,13 +272,13 @@ def remove_duplicates(items: List[str]) -> List[str]:
     return out
 
 
-def choose_board_interactively(boards: List[str]) -> List[str]:
+def choose_board_interactively(boards: list[str]) -> list[str]:
     print("Available boards:")
     boards = remove_duplicates(sorted(boards))
     for i, board in enumerate(boards):
         print(f"[{i}]: {board}")
     print("[all]: All boards")
-    out: List[str] = []
+    out: list[str] = []
     while True:
         try:
             # choice = int(input("Enter the number of the board(s) you want to compile to: "))
@@ -367,11 +355,6 @@ def create_concurrent_run_args(args: argparse.Namespace) -> ConcurrentRunArgs:
     defines: list[str] = []
     if args.defines:
         defines.extend(args.defines.split(","))
-    # Add FASTLED_ALL_SRC define when --allsrc or --no-allsrc flag is specified
-    if args.allsrc:
-        defines.append("FASTLED_ALL_SRC=1")
-    elif args.no_allsrc:
-        defines.append("FASTLED_ALL_SRC=0")
     extra_packages: list[str] = []
     if args.extra_packages:
         extra_packages.extend(args.extra_packages.split(","))
@@ -420,5 +403,7 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
         sys.exit(1)

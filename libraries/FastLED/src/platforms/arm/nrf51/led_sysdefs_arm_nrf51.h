@@ -1,33 +1,37 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __LED_SYSDEFS_ARM_NRF51
 #define __LED_SYSDEFS_ARM_NRF51
 
-#ifndef NRF51
-#define NRF51
-#endif
+#include "platforms/arm/nrf52/is_nrf52.h"
 
 #define LED_TIMER NRF_TIMER1
 #define FASTLED_NO_PINMAP
-#define FASTLED_HAS_CLOCKLESS
+#define FL_CLOCKLESS_CONTROLLER_DEFINED
 
 #define FASTLED_SPI_BYTE_ONLY
 
-#ifndef FASTLED_ARM
-#error "FASTLED_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
+#include "platforms/arm/is_arm.h"
+
+#ifndef FL_IS_ARM
+#error "FL_IS_ARM must be defined before including this header. Ensure platforms/arm/is_arm.h is included first."
 #endif
-#define FASTLED_ARM_M0
+#define FL_IS_ARM_M0
 
 #ifndef F_CPU
 #define F_CPU 16000000
 #endif
 
-#include "fl/stdint.h"
+#include "fl/stl/stdint.h"
+// IWYU pragma: begin_keep
 #include <nrf51.h>
 #include <core_cm0.h>
-
-typedef volatile uint32_t RoReg;
-typedef volatile uint32_t RwReg;
-typedef uint32_t prog_uint32_t;
-typedef uint8_t boolean;
+// IWYU pragma: end_keep
+typedef volatile fl::u32 RoReg;
+typedef volatile fl::u32 RwReg;
+typedef fl::u32 prog_uint32_t;
+typedef fl::u8 boolean;
 
 #define PROGMEM
 #define NO_PROGMEM

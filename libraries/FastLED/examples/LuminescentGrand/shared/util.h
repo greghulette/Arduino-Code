@@ -2,7 +2,7 @@
 #define UTIL_H_
 
 
-#include "fl/stdint.h"
+#include "fl/stl/stdint.h"
 
 #include "./ApproximatingFunction.h"
 #include "./settings.h"

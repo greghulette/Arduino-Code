@@ -1,8 +1,8 @@
 import os
 import re
 import unittest
-from typing import Dict, List, Tuple
 
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 from ci.util.paths import PROJECT_ROOT
 
 
@@ -50,7 +50,7 @@ INCLUDE_PATTERN = re.compile(
 ALLOW_DIRECTIVE_PATTERN = re.compile(r"//\s*allow-include-after-namespace")
 
 
-def find_includes_after_namespace(file_path: str) -> List[Tuple[int, str]]:
+def find_includes_after_namespace(file_path: str) -> list[tuple[int, str]]:
     """
     Check if a C++ file has #include directives after namespace declarations.
 
@@ -75,7 +75,7 @@ def find_includes_after_namespace(file_path: str) -> List[Tuple[int, str]]:
             return []  # Return empty list if directive is found
 
     namespace_started = False
-    violations: List[Tuple[int, str]] = []
+    violations: list[tuple[int, str]] = []
 
     for i, line in enumerate(lines, 1):
         # Check if we're entering a namespace
@@ -90,7 +90,7 @@ def find_includes_after_namespace(file_path: str) -> List[Tuple[int, str]]:
     return violations
 
 
-def scan_cpp_files(directory: str = ".") -> Dict[str, List[Tuple[int, str]]]:
+def scan_cpp_files(directory: str = ".") -> dict[str, list[tuple[int, str]]]:
     """
     Scan all C++ files in a directory for includes after namespace declarations.
 
@@ -101,7 +101,7 @@ def scan_cpp_files(directory: str = ".") -> Dict[str, List[Tuple[int, str]]]:
         Dict[str, List[Tuple[int, str]]]: Dictionary mapping file paths to list of tuples
                                          (line numbers, line content) of violations
     """
-    violations: Dict[str, List[Tuple[int, str]]] = {}
+    violations: dict[str, list[tuple[int, str]]] = {}
 
     # Find all C++ files
     cpp_extensions = [".cpp", ".h", ".hpp", ".cc", ".ino"]
@@ -118,6 +118,9 @@ def scan_cpp_files(directory: str = ".") -> Dict[str, List[Tuple[int, str]]]:
                     line_info = find_includes_after_namespace(file_path)
                     if line_info:
                         violations[file_path] = line_info
+                except KeyboardInterrupt as ki:
+                    handle_keyboard_interrupt(ki)
+                    raise
                 except Exception as e:
                     print(f"Error processing {file_path}: {e}")
 
@@ -166,8 +169,16 @@ class TestNoIncludeAfterNamespace(unittest.TestCase):
             )
 
     def test_no_includes_after_namespace_in_tests(self) -> None:
-        """Check that tests/ directory doesn't have includes after namespace declarations."""
+        """Check that tests/ directory doesn't have includes after namespace declarations (excluding third-party test frameworks)."""
         violations = scan_cpp_files(str(TESTS_ROOT))
+
+        # Filter out known third-party test infrastructure files
+        third_party_test_files = {"doctest.h", "crash_handler.h"}
+        violations = {
+            path: issues
+            for path, issues in violations.items()
+            if not any(filename in path for filename in third_party_test_files)
+        }
 
         if violations:
             msg = "Found includes after namespace declarations in tests/:\n"

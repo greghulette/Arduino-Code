@@ -1,12 +1,14 @@
 #pragma once
 
-
-#include "fl/namespace.h"
+#include "platforms/is_platform.h"  // ok platform headers
+#include "fl/stl/int.h"  // ok platform headers
 
 #if defined(__EMSCRIPTEN__) || defined(FASTLED_TESTING) || defined(FASTLED_STUB_IMPL)
-#include "platforms/null_progmem.h"
+#include "platforms/null_progmem.h"  // ok platform headers
 #elif defined(ESP8266)
-#include "platforms/esp/8266/progmem_esp8266.h"
+#include "platforms/esp/8266/progmem_esp8266.h"  // ok platform headers
+#elif defined(FL_IS_STM32)
+#include "platforms/arm/stm32/progmem_stm32.h"  // ok platform headers
 #else
 
 
@@ -46,11 +48,28 @@
 #endif
 
 #if FASTLED_INCLUDE_PGMSPACE == 1
+// IWYU pragma: begin_keep
 #include <avr/pgmspace.h>
+// IWYU pragma: end_keep
 #endif
 
 /// PROGMEM keyword for storage
+///
+/// Teensy 4.x (`__IMXRT1062__`) workaround: Teensy core defines `PROGMEM` as
+/// `__attribute__((section(".progmem")))`, which causes GCC to emit "section
+/// type conflict" errors when a single translation unit contains FL_PROGMEM
+/// variables of different types (e.g. `CRGB`, `float`, `i32`) — see the
+/// fl.fx+ unity build that aggregates `colorpalettes.h`, `sin32.h`, and
+/// `mic_response_data.h`. Teensy 4 has a unified linear address space and
+/// places `const` data in `.rodata` (flash) automatically via the linker
+/// script, so the section attribute is unnecessary on this platform.
+/// Emitting empty `FL_PROGMEM` keeps user code that uses Arduino's `PROGMEM`
+/// directly unaffected.
+#if defined(__IMXRT1062__)
+#define FL_PROGMEM
+#else
 #define FL_PROGMEM                PROGMEM
+#endif
 
 
 /// @name PROGMEM Read Functions
@@ -72,6 +91,10 @@
 
 /// @} PROGMEM
 
+// Aligned PROGMEM reads using AVR pgm_read_* functions.
+#define FL_PGM_READ_WORD_ALIGNED(addr) ((fl::u16)pgm_read_word_near(addr))
+#define FL_PGM_READ_DWORD_ALIGNED(addr) ((fl::u32)pgm_read_dword_near(addr))
+
 // Workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=34734
 #if __GNUC__ < 4 || (__GNUC__ == 4 && (__GNUC_MINOR__ < 6))
 #ifdef FASTLED_AVR
@@ -90,22 +113,33 @@
 
 #endif
 
-/// @def FL_ALIGN_PROGMEM
-/// Helps to force 4-byte alignment for platforms with unaligned access
+/// @def FL_ALIGN_PROGMEM(N)
+/// Force N-byte alignment for platforms with unaligned access or cache-line optimization
 ///
 /// On some platforms, most notably ARM M0, unaligned access
 /// to 'PROGMEM' for multibyte values (e.g. read dword) is
 /// not allowed and causes a crash.  This macro can help
-/// force 4-byte alignment as needed.  The FastLED gradient
+/// force alignment as needed.  The FastLED gradient
 /// palette code uses 'read dword', and now uses this macro
 /// to make sure that gradient palettes are 4-byte aligned.
+///
+/// Usage: FL_ALIGN_PROGMEM(N) where N is the alignment in bytes
+/// - FL_ALIGN_PROGMEM(4):  4-byte alignment (safe default for all platforms)
+/// - FL_ALIGN_PROGMEM(64): Cache-line optimization on x86/ARM/ESP
+///
+/// Platform-specific behavior:
+/// - x86/WASM: Uses __attribute__((aligned(N))) for cache-line optimization
+/// - AVR: Caps at 4 bytes (flash PROGMEM doesn't benefit from larger alignment)
+/// - ESP32: Supports full alignment (cache-line optimization)
+/// - ESP8266: Caps at 4 bytes (no memalign support)
+/// - ARM: Supports full alignment
 
 #ifndef FL_ALIGN_PROGMEM
-#if defined(FASTLED_ARM) || defined(ESP32) || defined(FASTLED_DOXYGEN)
-#define FL_ALIGN_PROGMEM  __attribute__ ((aligned (4)))
+#if defined(FL_IS_ARM) || defined(ESP32) || defined(FASTLED_DOXYGEN)
+#define FL_ALIGN_PROGMEM(N)  __attribute__ ((aligned (N)))
 #else
-#define FL_ALIGN_PROGMEM
+#define FL_ALIGN_PROGMEM(N)
 #endif
 #endif
 
-#endif  // defined(__EMSCRIPTEN__) || defined(FASTLED_TESTING) || defined(FASTLED_STUB_IMPL)
+#endif  // platform progmem selection

@@ -1,3 +1,394 @@
+
+
+
+FastLED 3.10.4
+==============
+  * **NEW: TrueType Font Rendering Support**: Full TrueType font (.ttf/.ttc) rendering API with embedded default font
+    * **High-quality text rendering**: Render scalable TrueType fonts to LED matrices with antialiasing support
+    * **stb_truetype integration**: Built on industry-standard stb_truetype library (5108 lines, compact and efficient)
+    * **Embedded default font**: Includes Covenant5x5 pixel font (9.9KB) with 5x5 pixel cell size, perfect for LED displays
+    * **Custom font support**: Load any TrueType font from memory (`.ttf` single fonts or `.ttc` font collections)
+    * **FontRenderer API**: Convenient high-level wrapper for rendering at specific pixel heights
+      * `fl::Font::loadDefault()` - Load embedded Covenant5x5 font
+      * `fl::Font::load(fontData)` - Load custom TrueType font from memory
+      * `fl::FontRenderer(font, pixelHeight)` - Create renderer at specified size
+      * `renderer.render('A')` - Render character with 2x2 antialiasing (default)
+      * `renderer.renderNoAA('A')` - Render without antialiasing for crisp pixels
+      * `renderer.measureString("Hello")` - Calculate string width with kerning
+    * **Advanced features**:
+      * Grayscale antialiasing with configurable oversampling (1x1 to NxN)
+      * Automatic kerning support for professional text layout
+      * Font metrics query (ascent, descent, line gap, bounding boxes)
+      * Glyph metrics (advance width, side bearings, per-character bounds)
+      * Unicode codepoint support
+      * Scaled metrics calculation for any pixel height
+    * **GlyphBitmap output**: Rendered glyphs as 8-bit grayscale bitmaps (0=transparent, 255=opaque)
+      * Easy pixel access via `getPixel(x, y)` with bounds checking
+      * Proper glyph positioning with xOffset/yOffset for baseline alignment
+      * Direct mapping to LED coordinates for seamless integration
+    * **Minimal API**: Simple 3-step workflow - load font, create renderer, render glyphs
+    * **Memory efficient**: Shared font instances via `fl::shared_ptr`, on-demand rendering
+    * **Platform agnostic**: Works on all FastLED platforms with C++ support
+    * **Example usage**:
+      ```cpp
+      #include "fl/font/truetype.h"
+      #include "fl/font/truetype.cpp.hpp"  // Include ONCE
+
+      auto font = fl::Font::loadDefault();          // Load embedded font
+      fl::FontRenderer renderer(font, 10.0f);       // 10px height
+      fl::GlyphBitmap glyph = renderer.render('A'); // Render with AA
+
+      // Draw to LED matrix
+      for (int y = 0; y < glyph.height; ++y) {
+          for (int x = 0; x < glyph.width; ++x) {
+              uint8_t alpha = glyph.getPixel(x, y);  // 0-255
+              // Blend alpha onto LED at (x + glyph.xOffset, y + glyph.yOffset)
+          }
+      }
+      ```
+    * **Unit tested**: Comprehensive test suite with 303 lines covering font loading, metrics, glyph queries, bitmap rendering, and kerning
+    * **Files**:
+      * API: [src/fl/font/truetype.h](src/fl/font/truetype.h) (185 lines)
+      * Implementation: [src/fl/font/truetype.cpp.hpp](src/fl/font/truetype.cpp.hpp) (264 lines)
+      * Embedded font: [src/fl/font/ttf_covenant5x5.cpp.hpp](src/fl/font/ttf_covenant5x5.cpp.hpp) (657 lines, 9.9KB font data)
+      * stb_truetype: [src/third_party/stb/truetype/stb_truetype.h](src/third_party/stb/truetype/stb_truetype.h) (414 lines header, 5108 lines implementation)
+      * Tests: [tests/fl/font/truetype.cpp](tests/fl/font/truetype.cpp)
+  * **NEW: WS2812B-V5 and WS2812B-Mini-V3 Chipset Support**: Added support for newer WS2812B variants with tighter timing specifications
+    * **WS2812B-V5**: Newer variant with 220/580ns timing (T0H: 220-380ns, T1H: 580-1000ns)
+    * **WS2812B-Mini-V3**: Compact 3535 package with identical timing to V5
+    * Both variants use tighter timing tolerances compared to original WS2812B (250/625ns)
+    * Usage: `FastLED.addLeds<WS2812BV5, DATA_PIN, GRB>(leds, NUM_LEDS);` or `FastLED.addLeds<WS2812BMiniV3, DATA_PIN, GRB>(leds, NUM_LEDS);`
+    * Supported across all platforms with clockless controller support
+    * See timing comparison table in [README.md](README.md#ws2812-variants-timing-specifications)
+  * **NEW: Native RGBW Support Without Emulation**: The following platforms now support true RGBW LED strips (SK6812, etc.) with hardware-native 4-channel output:
+    * **RP2040/RP2350 (Raspberry Pi Pico)**: Full RGBW support with parallel output driver
+      * Supports mixed RGB/RGBW strips in same parallel group
+      * Automatic white channel handling via `setRgbw(RgbwDefault())`
+      * Works with automatic parallel grouping (2/4/8-lane output)
+      * See commit e2fc7f6 and [src/platforms/arm/rp/rpcommon/PARALLEL.md](src/platforms/arm/rp/rpcommon/PARALLEL.md)
+    * **STM32**: Native RGBW output on STM32 ARM platform
+      * Hardware-timed 4-channel output for SK6812 and similar RGBW chipsets
+      * No software emulation overhead
+      * See commit 2293b52 and [src/platforms/arm/stm32/README.md](src/platforms/arm/stm32/README.md)
+    * **Teensy 3.x Series**: Native RGBW support added for Teensy 3.0/3.1/3.2/3.5/3.6
+      * Teensy 3.0/3.1/3.2 (ARM K20): Full 4-channel RGBW output
+      * Teensy 3.5/3.6 (ARM K66): Full 4-channel RGBW output
+      * Follows STM32 implementation pattern with unified loop and fixed-size buffer
+      * Automatic RGBW detection with no performance impact on RGB mode
+      * Files: [src/platforms/arm/teensy/teensy31_32/clockless_arm_k20.h](src/platforms/arm/teensy/teensy31_32/clockless_arm_k20.h), [src/platforms/arm/teensy/teensy36/clockless_arm_k66.h](src/platforms/arm/teensy/teensy36/clockless_arm_k66.h)
+    * **nRF52 (Nordic nRF52, Bluefruit boards)**: Native RGBW support via PWM peripheral
+      * 4-channel RGBW output using hardware PWM peripheral
+      * PWM buffer sized for maximum (RGBW), runtime selects RGB or RGBW mode
+      * Separate code paths for RGB (3 bytes) and RGBW (4 bytes) for optimal performance
+      * Supports up to 144 LEDs per string in RGBW mode
+      * File: [src/platforms/arm/nrf52/clockless_arm_nrf52.h](src/platforms/arm/nrf52/clockless_arm_nrf52.h)
+    * **Note**: Previous RGBW support via software emulation (ESP32, Teensy ObjectFLED) remains available
+  * **NEW: HD108/NS108 16-bit SPI Chipset Support**: High-definition LED chipset with built-in gamma correction
+    * 16-bit color depth (65,536 levels per channel) vs APA102's 8-bit (256 levels)
+    * Automatic gamma correction (gamma 2.8) provides smooth perceptual brightness transitions
+    * Higher PWM frequency (27 kHz) reduces visible flicker compared to APA102's ~20 kHz
+    * 5-bit brightness control (0-31) per LED for current limiting
+    * 40 MHz max clock speed (25 MHz default for stable operation on long strips)
+    * Dual-byte header encoding for brightness/current control
+    * Manufacturer: Newstar LED (NS108 = HD108, same chip)
+    * Protocol: APA102-like but extended to 16-bit with 8 bytes per LED
+      * Start frame: 64 bits (8 bytes)
+      * LED frame: 2 header bytes + 6 data bytes (16-bit RGB, big-endian)
+      * End frame: (num_leds / 2) + 4 bytes of 0xFF
+    * Usage: `FastLED.addLeds<HD108, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS);`
+    * Implementation: Enhanced showPixels() with brightness caching and optimized gamma correction
+    * **No SD (standard definition) option available** - all HD108s use gamma correction
+    * See detailed protocol documentation in [src/chipsets.h:1040-1183](src/chipsets.h)
+    * Unit tests: Comprehensive test suite in [tests/chipsets/test_hd108.cpp](tests/chipsets/test_hd108.cpp)
+    * Related: GitHub Issue #1045, Pull Request #2119 (thanks to @arfoll for initial implementation)
+  * **NEW: Vorbis Audio Decoder**: Added support for decoding Ogg Vorbis audio files via stb_vorbis integration
+    * **Streaming Decoder**: `VorbisDecoder` class provides frame-by-frame audio decoding from ByteStream
+    * **Convenience API**: `Vorbis::decodeAll()` decodes entire files to AudioSample vectors in one call
+    * **Metadata Parsing**: `Vorbis::parseVorbisInfo()` extracts sample rate, channels, and stream info without full decoding
+    * **Float PCM Output**: Decodes to floating-point audio samples (-1.0 to 1.0 range) compatible with FastLED audio processing
+    * **Low-Level Wrapper**: `StbVorbisDecoder` provides direct access to stb_vorbis for advanced use cases
+    * **Memory-Based**: Requires entire Vorbis file in memory (suitable for embedded audio playback)
+    * **Platform Support**: Works on all platforms with sufficient memory for audio buffers
+    * **Third-Party Integration**: Uses Sean Barrett's stb_vorbis single-header library
+    * Usage: `auto decoder = Vorbis::createDecoder(); decoder->begin(byteStream); decoder->decodeNextFrame(&sample);`
+    * See API documentation in [src/fl/codec/vorbis.h](src/fl/codec/vorbis.h)
+    * Comprehensive unit tests in [tests/fl/vorbis.cpp](tests/fl/vorbis.cpp)
+  * **DEPRECATED: BulkClockless API (Teensy 4.x, ESP32)**: The BulkClockless API has been superseded by the Channel/ChannelEngine API
+    * **Note**: The BulkClockless API and its methods (`FastLED.addBulkLeds()`, `BulkClockless`, `BulkStripConfig`) have been deprecated and removed
+    * **Migration Path**: Use the new Channel API for multi-strip LED control
+      * See `fl/channels/channel.h` for the new API documentation
+      * The Channel API provides improved performance and flexibility
+      * Examples using Channel will be added in future releases
+    * **Removed Components**:
+      * `addBulkLeds()` methods removed from FastLED class
+      * `BulkClockless` template class removed
+      * `BulkStripConfig` struct removed
+      * Platform-specific bulk implementations removed (OFLED, RMT, I2S, LCD_I80, PARLIO)
+    * **Legacy Code**: If you were using BulkClockless, you will need to migrate to the Channel API
+    * Built on ObjectFLED by Kurt Funderburg, inspired by OctoWS2811 architecture
+  * **NEW: Runtime Driver Control via FastLED API (ESP32)**: Dynamic control of LED hardware drivers through the global FastLED object
+    * **FastLED-Integrated API**: Control drivers using familiar `FastLED.setXXX()` pattern - no need to access internal managers
+    * **Driver State Management**: Control multiple LED drivers (RMT, SPI, PARLIO) without recompiling
+    * **Named Drivers**: Each driver is registered with a human-readable name for easy identification ("RMT", "SPI", "PARLIO")
+    * **Use Cases**:
+      * Switch between drivers based on runtime conditions (e.g., Wi-Fi activity, power modes)
+      * Debug/test different drivers without code changes
+      * Implement fallback strategies when preferred driver fails
+      * Optimize for specific scenarios (RMT for flexibility, SPI for speed, PARLIO for maximum throughput)
+    * **API Methods** (accessed via global `FastLED` object, **full functionality ESP32-only**, safe no-op stubs on other platforms):
+      * `FastLED.setDriverEnabled(name, enabled)` - Enable/disable specific driver by name
+      * `FastLED.setExclusiveDriver(fl::Bus)` - Enable only one driver, disable all others (typed, typo-safe; forward-compatible)
+      * For mocks / custom drivers (names not in `fl::Bus`), use `fl::ChannelManager::instance().setExclusiveDriverByName(name)`
+      * `FastLED.isDriverEnabled(name)` - Query if a driver is currently enabled
+      * `FastLED.getDriverCount()` - Get total number of registered drivers
+      * `FastLED.getDriverInfo()` - Get full state of all drivers (name, priority, enabled state)
+    * **Complete Example**:
+      ```cpp
+      // Force RMT driver only (disables SPI, PARLIO, and any future drivers).
+      // Typed: fl::Bus::RTM would be a compile error.
+      FastLED.setExclusiveDriver(fl::Bus::RMT);
+
+      // Or selectively enable/disable
+      FastLED.setDriverEnabled("SPI", false);    // Disable SPI
+      FastLED.setDriverEnabled("PARLIO", true);  // Enable PARLIO
+
+      // Query driver state
+      if (FastLED.isDriverEnabled("RMT")) {
+          Serial.println("RMT driver is active");
+      }
+
+      // Inspect all registered drivers
+      auto drivers = FastLED.getDriverInfo();
+      for (const auto& driver : drivers) {
+          FL_WARN(driver.name << ": priority=" << driver.priority
+                  << " enabled=" << (driver.enabled ? "YES" : "NO"));
+      }
+      ```
+    * **Zero-allocation queries**: `getDriverInfo()` returns `fl::span` with cached results (no heap allocations)
+    * **Immediate effect**: Changes apply on next LED update (no frame boundary required)
+    * **Forward-compatible**: `setExclusiveDriver()` automatically disables future drivers, ensuring predictable behavior
+    * **Automatic fallback**: If highest-priority driver fails, manager automatically tries next priority
+    * **ESP32 integration**: Drivers auto-register with names during platform initialization
+    * **Example Sketch**: See `examples/AutoResearch/AutoResearch.ino` for usage with `FastLED.setExclusiveDriver(fl::Bus::RMT)`
+    * Unit tested with comprehensive test suite (18 test cases covering priority, fallback, runtime control)
+  * **ESP32 SPI Chipsets No Longer Hardcoded to Specific Pins**: Use any GPIO pins for SPI-based LEDs (all ESP32 variants)
+    * Previously forced to use VSPI/HSPI pins - now fully flexible via GPIO matrix
+    * Example: `FastLED.addLeds<APA102, 2, 12>(leds, NUM_LEDS)` - pick any DATA/CLOCK pins you want
+    * Fixes https://github.com/FastLED/FastLED/issues/2144
+  * **NEW: Audio System v2.0**: Real-time audio analysis for music-reactive LED effects
+    * 20 components (3 core + 17 detectors): Beat, Tempo, Frequency Bands, Energy, Transient, Note, Downbeat, Dynamics, Pitch, Silence, Vocal, Percussion, Chord, Key, Mood, Buildup, Drop
+    * AudioContext pattern: FFT computed once and shared across all detectors with lazy evaluation
+    * Callback-based API with lazy instantiation
+    * See [src/fl/audio/](src/fl/audio/) and [README](src/fl/audio/README.md)
+  * **NEW: UCS7604 RGBW Chipset Support (BETA)**: Universal 16-bit RGBW LED driver for all platforms
+    * High-resolution 4-channel LED driver with configurable bit depth (8/12/14/16-bit) and dual data rates (800kHz/1.6MHz)
+    * **Universal Platform Support**: Works on ALL platforms with clockless controller support (AVR, ESP32, ARM, STM32, Teensy, RP2040, etc.)
+    * **Simplified API**: Just use `UCS7604` or `UCS7604HD`
+    * Usage:
+      * Standard 8-bit: `FastLED.addLeds<UCS7604, DATA_PIN, GRB>(leds, NUM_LEDS);`
+      * High-definition 16-bit: `FastLED.addLeds<UCS7604HD, DATA_PIN, GRB>(leds, NUM_LEDS);`
+    * Features:
+      * 16-bit color resolution (65,536 levels per channel) for ultra-smooth gradients
+      * Configurable per-channel current control (0x00-0x0F)
+      * Unique preamble-based protocol: sends configuration before pixel data
+      * Universal carrier-based implementation wraps platform clockless drivers
+      * Automatic platform optimization - uses best available driver for each platform
+    * Implementation:
+      * Uses carrier/wrapper pattern for maximum compatibility
+      * Single unified codebase - no platform-specific assembly required
+      * Consolidated from 2 files into 1: [src/fl/chipsets/ucs7604.h](src/fl/chipsets/ucs7604.h)
+    * Beta status: Hardware validation ongoing, software architecture validated
+    * Example: [examples/Blink/Blink.ino](examples/Blink/Blink.ino) (see UCS7604 lines)
+  * **NEW: ESP8266 UART Driver (Opt-in)**: UART-based WS2812 driver for ESP8266 with improved Wi-Fi stability
+    * Alternative to bit-bang driver using UART1 peripheral (GPIO2) for hardware-timed LED output
+    * Enable with `#define FASTLED_ESP8266_UART` before including FastLED.h
+    * Or use explicit controller: `FastLED.addLeds<UARTController_ESP8266<GRB>>(leds, NUM_LEDS);`
+    * Key advantages over bit-bang driver:
+      * Hardware UART shifts bits automatically - minimal CPU overhead
+      * Improved stability under Wi-Fi load (no NMI interrupt timing issues)
+      * Robust timing using 3.2 Mbps UART with 4-bit symbol encoding (1000/1100)
+      * Maintains ±150ns WS2812 timing tolerance via 2-bit-per-byte LUT encoding
+    * Trade-offs:
+      * Higher RAM usage: ~12 bytes per LED (300 LEDs = 3.6 KB buffer)
+      * Single pin only: GPIO2 (UART1 TX-only on ESP8266)
+      * Not compatible with parallel output modes
+    * Proven technique from NeoPixelBus, now available in FastLED
+    * Files: [src/platforms/esp/8266/fastled_esp8266_uart.h](src/platforms/esp/8266/fastled_esp8266_uart.h), [src/platforms/esp/8266/fastled_esp8266_uart.cpp](src/platforms/esp/8266/fastled_esp8266_uart.cpp)
+  * **NEW: RP2040 Automatic Parallel I/O Driver**: Hardware-accelerated parallel LED output with automatic pin allocation
+    * Support for up to 8 parallel WS2812 strips on RP2040/RP2350
+    * Example: [examples/SpecialDrivers/RP/Parallel_IO.ino](examples/SpecialDrivers/RP/Parallel_IO.ino)
+    * Documentation: [src/platforms/arm/rp/rpcommon/PARALLEL_AUTO.md](src/platforms/arm/rp/rpcommon/PARALLEL_AUTO.md)
+  * **NEW: ESP32-P4 PARLIO Driver (Alpha)**: Hardware-accelerated parallel LED driver using PARLIO TX peripheral
+    * Drive 8 or 16 WS28xx LED strips simultaneously with DMA and hardware timing
+    * Minimal CPU overhead with automatic timing for WS2812, WS2811, SK6812, etc.
+    * Enable by creating `fl::ParlioLedDriver` instance (see example)
+    * Example: [examples/SpecialDrivers/ESP/Parlio/Esp32P4Parlio/](examples/SpecialDrivers/ESP/Parlio/Esp32P4Parlio/)
+    * ESP32-P4 only - uses dedicated parallel I/O peripheral
+  * **ESP32-S3/P4 LCD I80 Driver (Beta)**: Production-ready LCD_CAM peripheral driver for parallel LED strips
+    * Uses LCD_CAM peripheral in I80 interface mode (ESP32-S3 and ESP32-P4 only)
+    * Alternative to I2S driver with Serial.print() debugging support
+    * Up to 16 parallel WS28xx strips with automatic chipset timing optimization
+    * Enable with `#define FASTLED_ESP32_LCD_DRIVER` before including FastLED.h
+    * Memory efficiency: 144 KB per 1000 LEDs (3-word encoding, 6 bytes per bit)
+    * PCLK frequency range: 1-80 MHz with automatic optimization
+    * Platform support validated:
+      * ✅ **ESP32-S3**: Fully supported (LCD_CAM peripheral with I80 mode)
+      * ✅ **ESP32-P4**: Fully supported (LCD_CAM peripheral with I80 mode)
+      * ❌ **ESP32-S2**: Explicitly blocked (LCD_CAM unavailable, USB-JTAG pin conflicts)
+      * ❌ **ESP32-C2/C3/C5/C6**: LCD_CAM peripheral not available on RISC-V variants
+    * Example: [examples/SpecialDrivers/ESP/LCD_I80/](examples/SpecialDrivers/ESP/LCD_I80/)
+  * **NEW: Fx2dTo1d - Sample 2D Effects into 1D LED Strips**: Reusable component for sampling any Fx2d effect into a 1D strip
+    * Generic adapter class that wraps any Fx2d effect and samples it using a ScreenMap
+    * Supports two interpolation modes:
+      * NEAREST: Fast nearest-neighbor sampling for pixelated look
+      * BILINEAR: Smooth bilinear interpolation (default)
+    * Perfect for creating circular, spiral, or arbitrary sampling patterns from rectangular grids
+    * Automatic memory management with internal 2D rendering buffer
+    * Runtime flexibility: swap effects, screen maps, or interpolation modes on the fly
+    * Example use case: Sample a circular ring from Animartrix rectangular grid (see examples/AnimartrixRing/)
+    * Works naturally with FxEngine and all existing Fx infrastructure
+    * New files: [src/fx/fx2d_to_1d.h](src/fx/fx2d_to_1d.h), [src/fx/fx2d_to_1d.cpp](src/fx/fx2d_to_1d.cpp)
+  * **NEW: ESP32 LCD Drivers**: Two distinct parallel LED drivers using LCD peripherals
+    * **LCD I80 Driver** (ESP32-S3/P4): Uses LCD_CAM peripheral in I80 interface mode
+      * Enable with `#define FASTLED_ESP32_LCD_DRIVER` before including FastLED.h
+      * Up to 16 parallel WS28xx LED strips with automatic chipset timing optimization
+      * Memory: 144 KB per 1000 LEDs (3-word encoding: 6 bytes per bit)
+      * PCLK frequency: 1-80 MHz with automatic per-chipset optimization
+      * Platform support:
+        * ✅ ESP32-S3: Primary platform (LCD_CAM peripheral)
+        * ✅ ESP32-P4: Full support (LCD_CAM + optional RGB LCD controller)
+        * ❌ ESP32-S2: Blocked (USB-JTAG pin conflicts, LCD_CAM unavailable)
+        * ❌ ESP32-C2/C3/C5/C6: LCD_CAM not available on RISC-V chips
+      * Example: [examples/SpecialDrivers/ESP/LCD_I80/](examples/SpecialDrivers/ESP/LCD_I80/)
+    * **LCD RGB Driver** (ESP32-P4 only): Uses dedicated RGB LCD controller peripheral
+      * Enable with `#define FASTLED_ESP32_LCD_RGB_DRIVER` before including FastLED.h
+      * Up to 16 parallel WS28xx LED strips
+      * Memory: 192 KB per 1000 LEDs (4-pixel encoding: 8 bytes per bit)
+      * PCLK frequency: 1-40 MHz with automatic optimization
+      * Uses HSYNC/VSYNC/DE/DISP signals for frame synchronization
+      * Platform support:
+        * ✅ ESP32-P4: Exclusive (dedicated RGB LCD controller hardware)
+        * ❌ All other ESP32 variants: RGB LCD controller not available
+      * Example: [examples/SpecialDrivers/ESP/LCD_RGB/](examples/SpecialDrivers/ESP/LCD_RGB/)
+    * **Key advantages over I2S driver:**
+      * Serial.print() debugging works (doesn't interfere with LCD peripheral)
+      * Automatic PCLK frequency optimization per chipset (WS2812, WS2811, WS2816, SK6812)
+      * Template-based chipset support with compile-time timing validation
+      * Double-buffered DMA transfers for smooth operation
+    * **Architecture features:**
+      * Uses modular LcdDriverBase with type-safe templates
+      * Runtime validation prevents mixing different chipsets (e.g., WS2812 + WS2816)
+      * Compile-time and runtime GPIO19/20 protection for USB-JTAG safety (S3)
+      * Automatic pin validation with platform-specific reserved pin checking
+    * **Recommended for new ESP32-S3 projects** over I2S driver
+    * **ESP32-P4 can use both drivers simultaneously** (32 parallel strips total)
+  * **ESP32-S2/S3 USB-JTAG Pin Protection**: Added safeguards to prevent using GPIO19/GPIO20 for LED output
+    * GPIO19 and GPIO20 are reserved for USB-JTAG interface on ESP32-S2/S3
+    * Using these pins for LED output breaks USB flashing capability requiring UART adapter recovery
+    * Compile-time `static_assert` check in clockless controllers prevents compilation with these pins
+    * Runtime `FASTLED_ASSERT` in driver group initialization catches dynamic pin assignments
+    * Updated example Esp32S3I2SDemo to use GPIO1 instead of GPIO19 as safe default
+    * Pins now marked as unusable in `FASTLED_UNUSABLE_PIN_MASK` for ESP32-S2/S3
+    * Protection applies to both I2S and new LCD drivers
+  * **NEW: Cross-Platform ISR (Interrupt Service Routine) API** (`fl/isr.h`): Unified interrupt handling across all platforms
+    * **Platform-independent ISR attachment** for timer and GPIO interrupts with consistent configuration
+    * **Supported platforms**: ESP32 (Xtensa/RISC-V), Teensy, AVR, STM32, plus stub implementation for testing
+    * **Key features**:
+      * Timer-based interrupts: Configurable frequencies (1 Hz - 80 MHz on ESP32, platform-dependent elsewhere)
+      * GPIO-based external interrupts: Edge/level triggering with configurable priorities
+      * Enable/disable without detachment for runtime control
+      * User data context passing to ISR handlers
+      * Platform capability queries (frequency ranges, priority levels, assembly requirements)
+    * **Priority management**: Abstract priority levels (LOW/MEDIUM/HIGH/CRITICAL/MAX) map to platform-specific values
+    * **ESP32 specifics**: Hardware timer groups, 1 Hz - 80 MHz, priorities 1-7, IRAM-safe flag support
+    * **Usage**: `fl::isr::attachTimerHandler(config, &handle)` / `fl::isr::attachExternalHandler(pin, config, &handle)`
+    * **Documentation**: Complete API reference with examples in [src/fl/isr.h](src/fl/isr.h) and [src/fl/README.md](src/fl/README.md#interrupt-service-routines-isr)
+    * **Testing**: Software simulation via stub platform for deterministic unit testing
+  * **NEW: Arduino-Like Pin Functions** (`fl/pin.h`): Cross-platform digital and analog I/O with Arduino-compatible API
+    * Unified API for GPIO control across all platforms (ESP32, AVR, STM32, Teensy, RP2040, etc.)
+    * Includes `analogWrite16(pin, value)` for 16-bit PWM control (platform-dependent support)
+  * **NEW: Multi-Width Software SPI ISR Implementation for ESP32 RISC-V** (ESP32-C2/C3/C6/H2): High-performance interrupt-driven parallel soft-SPI
+    * **Four width variants** sharing a unified ISR core engine for maximum code reuse:
+      * **Single-SPI (1-way)**: 1 data pin - baseline testing and simple applications
+      * **Dual-SPI (2-way)**: 2 data pins - matches hardware Dual-SPI topology on ESP32-C2/C3/C6/H2
+      * **Quad-SPI (4-way)**: 4 data pins - matches hardware Quad-SPI topology on ESP32/S2/S3/P4
+      * **Octo-SPI (8-way)**: 8 data pins - maximum parallelism for driving 8 LED strips simultaneously
+    * **Unified ISR core architecture** (`fl_parallel_spi_isr_rv.h/cpp`):
+      * Single C-based ISR engine reused across all width variants (1/2/4/8-way)
+      * Only LUT (Look-Up Table) initialization differs per width - highly maintainable design
+      * 256-entry LUT maps byte values to GPIO SET/CLEAR masks for zero-branching operation
+      * Zero volatile reads (write-only GPIO) eliminates memory stalls
+      * Minimal jitter with predictable execution time
+    * **Performance characteristics**:
+      * Typical configuration: 1.6 MHz timer → 800 kHz SPI bit rate
+      * ~100 kB/s per data pin throughput
+      * Configurable timing via timer frequency adjustment
+    * **Platform abstraction layer** enables identical code to run on ESP32 hardware and host simulation:
+      * ESP32: Direct MMIO writes to GPIO registers (W1TS/W1TC)
+      * Host: Ring buffer capture for deterministic testing
+      * Manual tick control for unit tests
+    * **Comprehensive testing infrastructure**:
+      * 26 unit tests passing across all width variants
+      * Host simulation with ring buffer GPIO event capture
+      * Manual ISR tick control for deterministic test results
+      * Tests verify clock toggling, data patterns, multi-byte sequences, and edge cases
+    * **Arduino examples** for all variants:
+      * [Esp32C3_SingleSPI_ISR/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_SingleSPI_ISR/) - 1-way example
+      * [Esp32C3_DualSPI_ISR/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_DualSPI_ISR/) - 2-way example
+      * [Esp32C3_QuadSPI_ISR/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_QuadSPI_ISR/) - 4-way example
+      * [Esp32C3_SPI_ISR/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_SPI_ISR/) - 8-way example
+    * **SPIBusManager integration**: Software ISR acts as fallback when hardware SPI unavailable or exhausted
+    * **Primary use cases**:
+      * Host-side unit testing with software simulation
+      * Validation of ISR logic before hardware deployment
+      * Fallback when hardware SPI buses exhausted
+      * Low-level debugging with ring buffer GPIO event inspection
+    * **Complete documentation**: [src/platforms/esp/32/parallel_spi/README.md](src/platforms/esp/32/parallel_spi/README.md)
+  * **NEW: Main Thread Blocking Software SPI for ESP32** (ESP32-C2/C3/C6/H2): Inline bit-banging without ISR overhead
+    * **Three width variants** using same bit-banging logic as ISR implementation but running directly on main thread:
+      * **Single-SPI (1-way)**: 1 data pin - simple inline bit-banging
+      * **Dual-SPI (2-way)**: 2 data pins - dual-lane parallel inline bit-banging
+      * **Quad-SPI (4-way)**: 4 data pins - quad-lane parallel inline bit-banging
+    * **Main thread blocking architecture**:
+      * Same GPIO bit-banging logic as ISR implementation
+      * Runs inline on main thread (no ISR context switching)
+      * Simple blocking API - transmit() blocks until complete
+      * No interrupt overhead or scheduling delays
+      * Better timing precision (no interrupt jitter)
+    * **Performance characteristics**:
+      * Higher effective throughput than ISR due to no interrupt overhead
+      * Lower latency (no ISR entry/exit overhead)
+      * More predictable timing (inline execution, no interrupt scheduling)
+      * Trade-off: blocking during transmission (main thread waits)
+    * **Use case selection**:
+      * **Use Blocking SPI** when:
+        * Simple LED update pattern
+        * Lower overhead needed (no ISR complexity)
+        * Blocking during LED update is acceptable
+        * More predictable timing required
+      * **Use ISR SPI** when:
+        * Non-blocking LED updates needed
+        * Main thread must remain responsive
+        * Complex application with multiple tasks
+    * **Arduino examples** for all variants:
+      * [Esp32C3_SingleSPI_Blocking/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_SingleSPI_Blocking/) - 1-way example
+      * [Esp32C3_DualSPI_Blocking/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_DualSPI_Blocking/) - 2-way example
+      * [Esp32C3_QuadSPI_Blocking/](examples/SpecialDrivers/ESP/ParallelSPI/Esp32C3_QuadSPI_Blocking/) - 4-way example
+    * **Testing**:
+      * 18 unit tests passing across all width variants
+      * Host simulation with GPIO event capture
+      * WASM compilation validated for all examples
+    * **API classes**: `SingleSPI_Blocking_ESP32`, `DualSPI_Blocking_ESP32`, `QuadSPI_Blocking_ESP32`
+    * **Coexists with ISR implementation**: Both ISR and blocking available - choose based on your needs
+    * **Complete documentation**: [src/platforms/esp/32/parallel_spi/README.md](src/platforms/esp/32/parallel_spi/README.md), [examples/SpecialDrivers/ESP/ParallelSPI/README.md](examples/SpecialDrivers/ESP/ParallelSPI/README.md)
+  * **ezWS2812 Hardware-Accelerated Drivers for Silicon Labs MG24**: Optimized WS2812 controllers imported from Silicon Labs
+    * Resolves GitHub issue #1891: Platform support for Seeed Xiao MG24 Sense and other EFR32MG24-based boards
+    * Added `EZWS2812_GPIO`: Always-available GPIO controller with cycle-accurate timing for 39MHz and 78MHz CPUs
+    * Added `EZWS2812_SPI`: Optional SPI-based controller for maximum performance (define `FASTLED_USES_EZWS2812_SPI`)
+    * SPI controller follows ObjectFLED pattern - explicit opt-in required to prevent consuming hardware SPI peripheral
+    * Supports all EFR32MG24 series: Arduino Nano Matter, SparkFun Thing Plus Matter, Seeed Xiao MG24 Sense
+    * Based on Silicon Labs ezWS2812 library with FastLED integration for seamless API compatibility
+
 FastLED 3.10.3
 ==============
   * **WS2812B Reset Time Update**: Enhanced compatibility with newer WS2812B chipsets
@@ -7,9 +398,14 @@ FastLED 3.10.3
     * Updated 18 ARM platform clockless controllers (Apollo3, STM32, SAMD, Teensy, etc.)
     * ESP8266 clockless controller timing updated for better reliability
     * Maintains backward compatibility while supporting newer WS2812B chip revisions
-  * **STM32F4 Support Added**: BlackPill STM32F411CE and STM32F4 family support
+  * **STM32F4 Support Added**: BlackPill STM32F411CE, Nucleo F429ZI/F439ZI, and STM32F4 family support
     * Added STM32F4 platform detection using canonical `STM32F4` preprocessor define
     * Full GPIO pin mapping support for WeAct Studio BlackPill V2.0 (STM32F411CE)
+    * **NEW: ST Nucleo-144 Board Support**: Added complete pin mappings for Nucleo F429ZI and F439ZI boards
+      * STM32F429ZIT6 (180MHz, 192KB RAM, 2MB Flash) - 117 GPIO pins mapped
+      * STM32F439ZIT6 (180MHz, 192KB RAM, 2MB Flash) - 117 GPIO pins mapped
+      * Full hardware support for all GPIO ports (A-H) on Nucleo-144 form factor
+      * PlatformIO board names: `nucleo_f429zi`, `nucleo_f439zi`
     * Consolidated STM32F1/STM32F4 pin definitions to reduce code duplication
     * Added CI testing with GitHub Actions build badge for continuous validation
     * Compatible with PlatformIO `ststm32` platform and Arduino framework
@@ -20,7 +416,7 @@ FastLED 3.10.3
     * Clockless LED controller support for WS2812, SK6812, and other standard chipsets
     * Board definitions for `mgm240` target with `siliconlabsefm32` platform
     * Added CI testing with GitHub Actions build badge for continuous validation
-    * Compatible with Arduino framework and Matter/Thread wireless protocols
+
 
 FastLED 3.10.2
 ==============
@@ -272,7 +668,7 @@ FastLED 3.9.12
 FastLED 3.9.11
 ==============
 * Bug fix for the Teensy and ESP32S3 massive parallel drivers.
-  * Teensy ObjectFLED: Each led strip can now be a different length, see [examples](https://github.com/FastLED/FastLED/blob/master/examples/TeensyMassiveParallel/TeensyMassiveParallel.ino)
+  * Teensy ObjectFLED: Each led strip can now be a different length, see [examples](https://github.com/FastLED/FastLED/blob/master/examples/SpecialDrivers/Teensy/ObjectFLED/TeensyMassiveParallel/TeensyMassiveParallel.ino)
   * ESP32 S3 I2S:
     * The FastLED.addLeds(...) style api now works..
       * Please note at this time that all 16 strips must be used. Not sure why this is. If anyone has clarification please reach out.
@@ -320,7 +716,7 @@ FastLED 3.9.9 - I2S For ESP32-S3
     * 12 way parallel, I2S/LCD protocol.
     * https://github.com/hpwit/I2SClockLessLedDriveresp32s3
     * 12
-    * See the Esp32-S3-I2SDemo: https://github.com/FastLED/FastLED/blob/master/examples/Esp32S3I2SDemo/Esp32S3I2SDemo.ino
+    * See the Esp32-S3-I2SDemo: https://github.com/FastLED/FastLED/blob/master/examples/SpecialDrivers/ESP/I2S/Esp32S3I2SDemo/Esp32S3I2SDemo.ino
       * Be mindful of the requirements, this driver requires psram to be enabled, which requires platformio or esp-idf to work. Instructions are in the example.
       * There's no standard FastLED.add<....> api for this driver yet... But hopefully soon.
   * RMT Green light being stuck on / Performance issues on the Wroom
@@ -349,7 +745,7 @@ FastLED 3.9.8 - FastLED now supports 27.5k pixels and more, on the Teensy 4.x
     * Teensy 4.0: 40 strips of WS2812 - 22,000 pixels @ 60fps.
   * The Teensy 4.x series is a **absolute** LED driving beast!
   * This driver is async, so you can prepare the next frame while the current frame draws.
-  * Sketch Example: [https://github.com/FastLED/FastLED/blob/master/examples/TeensyMassiveParallel/TeensyMassiveParallel.ino](https://github.com/FastLED/FastLED/blob/master/examples/TeensyMassiveParallel/TeensyMassiveParallel.ino)
+  * Sketch Example: [https://github.com/FastLED/FastLED/blob/master/examples/SpecialDrivers/Teensy/ObjectFLED/TeensyMassiveParallel/TeensyMassiveParallel.ino](https://github.com/FastLED/FastLED/blob/master/examples/SpecialDrivers/Teensy/ObjectFLED/TeensyMassiveParallel/TeensyMassiveParallel.ino)
   * It's very simple to turn on:
     * `#define FASTLED_USES_OBJECTFLED`
     * `#include "FastLED.h"` - that's it! No other changes necessary!
@@ -423,7 +819,7 @@ FastLED 3.9.5
   * `fl::string`: a copy on write String with inlined memory, which overflows to the heap after 64 characters. Lightning fast to copy around and keep your characters on the stack and prevent heap allocation. Check it out in `fl/str.h`. If 64 characters is too large for your needs then you can change it with a build-level define.
   * `fl/vector.h`:
     * `fl::FixedVector`: Inlined vector which won't ever overflow.
-    * `fl::HeapVector`: Do you need overflow in your vector or a drop in replacement for `std::vector`? Use this.
+    * `fl::vector`: Do you need overflow in your vector or a drop in replacement for `std::vector`? Use this.
     * `fl::SortedHeapVector`: If you want to have your items sorted, use this. Inserts are O(n) always right now, however with deferred sorting, it could be much faster. Use `fl::SortedHeapVector::setMaxSize(int)` to keep it from growing.
   * `fl/map.h`
     * `fl::SortedHeapMap`: Almost a drop in replacement for `std::map`. It differs from the `fl::SortedHeapVector` because this version works on key/value pairs. Like `std::map` this takes a comparator which only applies to the keys.

@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 """
 Simple test runner for FastLED unit tests.
@@ -8,17 +11,21 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from ci.util.running_process import RunningProcess
-from ci.util.test_exceptions import (
-    TestExecutionFailedException,
-    TestFailureInfo,
-)
+from running_process import RunningProcess
+
+from ci.util.output_formatter import TimestampFormatter
+from ci.util.test_exceptions import TestExecutionFailedException, TestFailureInfo
+
+
+_ABORT_EVENT = threading.Event()
 
 
 _HERE = Path(__file__).parent
@@ -33,6 +40,18 @@ class TestResult:
     success: bool
     duration: float
     output: str
+    captured_lines: list[str] = field(default_factory=lambda: [])
+    return_code: Optional[int] = None
+
+
+@dataclass
+class Args:
+    """Typed arguments for the test runner"""
+
+    test: Optional[str] = None
+    verbose: bool = False
+    jobs: Optional[int] = None
+    enable_stack_trace: bool = False
 
 
 def _is_test_executable(f: Path) -> bool:
@@ -42,13 +61,125 @@ def _is_test_executable(f: Path) -> bool:
     )
 
 
-def _get_test_patterns() -> List[str]:
+def _get_test_patterns() -> list[str]:
     """Get test patterns based on platform"""
     # On Windows, check both .exe and no extension (Clang generates without .exe)
     return ["test_*.exe"] if sys.platform == "win32" else ["test_*"]
 
 
-def discover_tests(build_dir: Path, specific_test: Optional[str] = None) -> List[Path]:
+def _analyze_crash_type(return_code: int, output: str) -> Optional[str]:
+    """Analyze crash type based on return code and output"""
+    if sys.platform == "win32":
+        # Windows-specific exit codes
+        if return_code == 127:
+            return "🚨 CRASH TYPE: Missing executable dependencies or library loading failure"
+        elif return_code == -1073741819 or return_code == 3221225477:  # 0xC0000005
+            return "🚨 CRASH TYPE: Access violation (segmentation fault equivalent on Windows)"
+        elif return_code == -1073741795 or return_code == 3221225501:  # 0xC0000025
+            return "🚨 CRASH TYPE: Stack overflow"
+        elif return_code == -1073741510 or return_code == 3221225786:  # 0xC000013A
+            return "🚨 CRASH TYPE: Application terminated by Ctrl+C"
+        elif return_code == -1073741676 or return_code == 3221225620:  # 0xC0000094
+            return "🚨 CRASH TYPE: Integer division by zero"
+        elif return_code == -1073740791 or return_code == 3221226505:  # 0xC0000409
+            return "🚨 CRASH TYPE: Stack buffer overflow detected by security check"
+        elif return_code == -1073740940 or return_code == 3221226356:  # 0xC0000374
+            return "🚨 CRASH TYPE: Heap corruption detected"
+    else:
+        # Unix-like systems
+        if return_code == 139:  # 128 + 11 (SIGSEGV)
+            return "🚨 CRASH TYPE: Segmentation fault (SIGSEGV)"
+        elif return_code == 136:  # 128 + 8 (SIGFPE)
+            return "🚨 CRASH TYPE: Floating point exception (SIGFPE)"
+        elif return_code == 134:  # 128 + 6 (SIGABRT)
+            return "🚨 CRASH TYPE: Process aborted (SIGABRT) - likely assertion failure"
+        elif return_code == 132:  # 128 + 4 (SIGILL)
+            return "🚨 CRASH TYPE: Illegal instruction (SIGILL)"
+        elif return_code == 137:  # 128 + 9 (SIGKILL)
+            return "🚨 CRASH TYPE: Process killed (SIGKILL) - possibly out of memory"
+        elif return_code == 130:  # 128 + 2 (SIGINT)
+            return "🚨 CRASH TYPE: Process interrupted (SIGINT) - Ctrl+C"
+        elif return_code == 127:
+            return "🚨 CRASH TYPE: Command not found or missing dependencies"
+
+    # Common non-zero exit codes
+    if return_code == 1:
+        if not output.strip():
+            return "🚨 CRASH TYPE: Silent failure - process exited with code 1 but produced no output (possible crash)"
+    elif return_code < 0:
+        return f"🚨 CRASH TYPE: Process terminated by signal {abs(return_code)}"
+    elif return_code > 128:
+        signal_num = return_code - 128
+        return f"🚨 CRASH TYPE: Process terminated by signal {signal_num}"
+
+    return None
+
+
+def _dump_post_mortem_stack_trace(
+    test_executable: Path, enable_stack_trace: bool
+) -> Optional[str]:
+    """
+    Attempt to get a post-mortem stack trace by running the test under GDB.
+    This is used when a test crashes immediately and timeout-based stack traces won't work.
+
+    Returns:
+        Optional[str]: GDB output with stack trace, or None if not enabled/failed
+    """
+    if not enable_stack_trace:
+        return None
+
+    try:
+        # Create GDB script for running the test and capturing stack trace on crash
+        with tempfile.NamedTemporaryFile(
+            mode="w+", delete=False, suffix=".gdb"
+        ) as gdb_script:
+            gdb_script.write("set pagination off\n")
+            gdb_script.write("set confirm off\n")
+            gdb_script.write("set logging file gdb_output.txt\n")
+            gdb_script.write("set logging on\n")
+            gdb_script.write("run --minimal\n")  # Run the test with minimal output
+            gdb_script.write("bt full\n")  # Backtrace on crash
+            gdb_script.write("info registers\n")  # Register info
+            gdb_script.write("x/16i $pc\n")  # Disassembly around PC
+            gdb_script.write("thread apply all bt full\n")  # All thread backtraces
+            gdb_script.write("quit\n")
+            gdb_script_path = gdb_script.name
+
+        # Run the test under GDB
+        gdb_command = ["gdb", "-batch", "-x", gdb_script_path, str(test_executable)]
+
+        print(f"Running post-mortem stack trace analysis: {' '.join(gdb_command)}")
+
+        gdb_process = subprocess.Popen(
+            gdb_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=_PROJECT_ROOT,
+        )
+
+        gdb_output, _ = gdb_process.communicate(timeout=60)  # 1 minute timeout for GDB
+
+        # Clean up GDB script
+        os.unlink(gdb_script_path)
+
+        if gdb_output and gdb_output.strip():
+            return gdb_output
+        else:
+            return "GDB completed but produced no output"
+
+    except subprocess.TimeoutExpired:
+        return "GDB analysis timed out after 60 seconds"
+    except FileNotFoundError:
+        return "GDB not found - install GDB to enable stack trace analysis"
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
+    except Exception as e:
+        return f"Failed to run post-mortem stack trace analysis: {e}"
+
+
+def discover_tests(build_dir: Path, specific_test: Optional[str] = None) -> list[Path]:
     """Find test executables in the build directory"""
     # Check test directory
     possible_test_dirs = [
@@ -72,8 +203,9 @@ def discover_tests(build_dir: Path, specific_test: Optional[str] = None) -> List
     if not test_dir:
         print(f"Error: No test directory found. Checked: {possible_test_dirs}")
         sys.exit(1)
+    assert test_dir is not None
 
-    test_files: List[Path] = []
+    test_files: list[Path] = []
     for pattern in _get_test_patterns():
         for test_file in test_dir.glob(pattern):
             if not _is_test_executable(test_file):
@@ -93,8 +225,43 @@ def discover_tests(build_dir: Path, specific_test: Optional[str] = None) -> List
     return test_files
 
 
-def run_test(test_file: Path, verbose: bool = False) -> TestResult:
+def parse_args() -> Args:
+    """Parse command line arguments and return typed Args dataclass"""
+    parser = argparse.ArgumentParser(description="Run FastLED unit tests")
+    parser.add_argument("--test", help="Run specific test (without test_ prefix)")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show all test output"
+    )
+    parser.add_argument("--jobs", "-j", type=int, help="Number of parallel jobs")
+    parser.add_argument(
+        "--stack-trace",
+        action="store_true",
+        help="Enable GDB stack trace dumps on test crashes/timeouts",
+    )
+
+    parsed_args = parser.parse_args()
+
+    return Args(
+        test=parsed_args.test,
+        verbose=parsed_args.verbose,
+        jobs=parsed_args.jobs,
+        enable_stack_trace=parsed_args.stack_trace,
+    )
+
+
+def run_test(
+    test_file: Path, verbose: bool = False, enable_stack_trace: bool = False
+) -> TestResult:
     """Run a single test and capture its output"""
+    global _ABORT_EVENT
+    if _ABORT_EVENT.is_set():
+        return TestResult(
+            name=test_file.stem,
+            success=False,
+            duration=0.0,
+            output="Test aborted because _ABORT_EVENT was set.",
+            captured_lines=[],
+        )
     start_time = time.time()
 
     # Build command with doctest flags
@@ -103,47 +270,97 @@ def run_test(test_file: Path, verbose: bool = False) -> TestResult:
     cmd = [str(test_executable)]
     if not verbose:
         cmd.append("--minimal")  # Only show output for failures
-
+    captured_lines: list[str] = []
     try:
+        # Set timeout when stack traces are enabled to ensure stack trace functionality works
+        timeout = (
+            120 if enable_stack_trace else None
+        )  # 2 minutes timeout for stack traces
+
         process = RunningProcess(
             command=cmd,
-            cwd=Path(".").absolute(),
+            cwd=_PROJECT_ROOT,
             check=False,
             shell=False,
             auto_run=True,
+            timeout=timeout,
+            output_formatter=TimestampFormatter(),
         )
 
         with process.line_iter(timeout=30) as it:
+            if _ABORT_EVENT.is_set():
+                return TestResult(
+                    name=test_file.stem,
+                    success=False,
+                    duration=time.time() - start_time,
+                    output="Test execution interrupted by user",
+                    captured_lines=[],
+                    return_code=130,  # SIGINT equivalent
+                )
             for line in it:
-                print(line)
+                captured_lines.append(line)
+                # Only print output if verbose is enabled
+                if verbose:
+                    print(line)
 
         # Wait for process to complete
         process.wait()
-        success = process.poll() == 0
-        output = process.stdout
+        return_code = process.poll()
+        success = return_code == 0
+        output = str(process.stdout)
+
+        # Add detailed crash analysis for failed tests
+        if not success and return_code is not None:
+            crash_info = _analyze_crash_type(return_code, output)
+            if crash_info:
+                output = f"{output}\n{crash_info}"
+
+            # Attempt post-mortem stack trace if enabled and test crashed
+            if enable_stack_trace and return_code != 0:
+                print(f"\n{'=' * 80}")
+                print("ATTEMPTING POST-MORTEM STACK TRACE ANALYSIS")
+                print(f"{'=' * 80}")
+                stack_trace = _dump_post_mortem_stack_trace(
+                    test_executable, enable_stack_trace
+                )
+                if stack_trace:
+                    print("POST-MORTEM STACK TRACE:")
+                    print(f"{'=' * 80}")
+                    print(stack_trace)
+                    print(f"{'=' * 80}")
+                    # Also add to output for the test result
+                    output = f"{output}\n\nPOST-MORTEM STACK TRACE:\n{stack_trace}"
+    except KeyboardInterrupt:
+        import _thread
+        import warnings
+
+        _thread.interrupt_main()
+        warnings.warn("Test execution interrupted by user")
+        _ABORT_EVENT.set()
+        raise
 
     except Exception as e:
         success = False
         output = f"Error running test: {e}"
+        return_code = None  # Exception case doesn't have a return code
 
     duration = time.time() - start_time
     return TestResult(
-        name=test_file.stem, success=success, duration=duration, output=output
+        name=test_file.stem,
+        success=success,
+        duration=duration,
+        output=output,
+        captured_lines=captured_lines,
+        return_code=return_code,
     )
 
 
 def main() -> None:
     try:
-        parser = argparse.ArgumentParser(description="Run FastLED unit tests")
-        parser.add_argument("--test", help="Run specific test (without test_ prefix)")
-        parser.add_argument(
-            "--verbose", "-v", action="store_true", help="Show all test output"
-        )
-        parser.add_argument("--jobs", "-j", type=int, help="Number of parallel jobs")
-        args = parser.parse_args()
+        args = parse_args()
 
         # Find build directory
-        build_dir = Path.cwd() / ".build"
+        build_dir = _PROJECT_ROOT / ".build"
         if not build_dir.exists():
             print("Error: Build directory not found. Run compilation first.")
             sys.exit(1)
@@ -176,12 +393,14 @@ def main() -> None:
 
         # Run tests in parallel
         start_time = time.time()
-        results: List[TestResult] = []
-        failed_tests: List[TestResult] = []
+        results: list[TestResult] = []
+        failed_tests: list[TestResult] = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_test = {
-                executor.submit(run_test, test_file, args.verbose): test_file
+                executor.submit(
+                    run_test, test_file, args.verbose, args.enable_stack_trace
+                ): test_file
                 for test_file in test_files
             }
 
@@ -209,6 +428,7 @@ def main() -> None:
 
                         # Early abort after 3 failures
                         if len(failed_tests) >= 3:
+                            _ABORT_EVENT.set()
                             print(
                                 "Reached failure threshold (3). Aborting remaining unit tests."
                             )
@@ -220,6 +440,16 @@ def main() -> None:
                                 pass
                             break
 
+                except KeyboardInterrupt as ki:
+                    handle_keyboard_interrupt(ki)
+                    _ABORT_EVENT.set()
+                    print("\nTest execution interrupted by user")
+                    try:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        time.sleep(1.0)
+                    except TypeError:
+                        pass
+                    break
                 except Exception as e:
                     print(f"Error running {test_file.name}: {e}")
                     failed_tests.append(
@@ -228,9 +458,12 @@ def main() -> None:
                             success=False,
                             duration=0.0,
                             output=str(e),
+                            captured_lines=[],
+                            return_code=None,  # Exception case
                         )
                     )
                     if len(failed_tests) >= 3:
+                        _ABORT_EVENT.set()
                         print(
                             "Reached failure threshold (3) due to errors. Aborting remaining unit tests."
                         )
@@ -253,22 +486,60 @@ def main() -> None:
         if failed_tests:
             print("\nFailed tests:")
             failures: list[TestFailureInfo] = []
-            for test in failed_tests:
+
+            # Show first 3 failures in detail, then just list names for the rest
+            for i, test in enumerate(failed_tests):
                 print(f"  {test.name}")
+
+                # For first 3 failures, show detailed captured output if available
+                if i < 3 and test.captured_lines:
+                    if len(test.captured_lines) > 100:
+                        print(
+                            f"    ... (showing last 100 lines of {len(test.captured_lines)} total)"
+                        )
+                        for line in test.captured_lines[-100:]:
+                            print(f"    {line}")
+                    else:
+                        for line in test.captured_lines:
+                            print(f"    {line}")
+                    print()  # Add blank line after each failure
+
+                # Extract actual return code from test result if available
+                actual_return_code = (
+                    test.return_code if test.return_code is not None else 1
+                )
+
                 failures.append(
                     TestFailureInfo(
                         test_name=test.name,
-                        command=f"test_{test.name}",
-                        return_code=1,  # Failed tests get return code 1
-                        output=test.output,
+                        command=test.name,
+                        return_code=actual_return_code,
+                        output=(
+                            test.output
+                            if i < 3
+                            else "Output suppressed (failure limit reached)"
+                        ),
                         error_type="test_execution_failure",
                     )
                 )
+
+            # If more than 3 failures, show suppression message
+            if len(failed_tests) > 3:
+                suppressed_count = len(failed_tests) - 3
+                print(
+                    f"\nSuppressing detailed output for {suppressed_count} additional failure(s)."
+                )
+                print("Use --verbose to see all failure details.")
 
             raise TestExecutionFailedException(
                 f"{len(failed_tests)} test(s) failed", failures
             )
 
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
+        print("\nTest execution interrupted by user")
+        sys.exit(1)
     except TestExecutionFailedException as e:
         # Print detailed failure information
         print("\n" + "=" * 60)

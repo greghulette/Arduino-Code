@@ -1,18 +1,31 @@
+// ok no namespace fl
 #pragma once
 
-#include "fl/stdint.h"
-#include "fl/function.h"
+// IWYU pragma: private
+
+#include "fl/stl/stdint.h"
+#include "fl/stl/function.h"
+#include "fl/stl/noexcept.h"
 
 // Stub timing functions for Arduino compatibility
 // These provide timing functionality when using the stub platform
+// Only declare these when NOT on a real Arduino platform (exclude real Arduino, not stub Arduino)
 
+#if !defined(ARDUINO) || defined(FASTLED_USE_STUB_ARDUINO)
 extern "C" {
-    uint32_t millis(void);
-    uint32_t micros(void);
-    void delay(int ms);
-    void delayMicroseconds(int us);
-    void yield(void);
+    // Global timing functions for Arduino compatibility
+    // These are provided by the platform layer but need to be declared globally
+    fl::u32 millis(void) FL_NOEXCEPT;
+    fl::u32 micros(void) FL_NOEXCEPT;
+    void yield(void) FL_NOEXCEPT;
 }
 
 // C++ function to override delay behavior for fast testing
-void setDelayFunction(const fl::function<void(uint32_t)>& delayFunc);
+void setDelayFunction(const fl::function<void(fl::u32)>& delayFunc) FL_NOEXCEPT;
+
+// Clear the delay override (must be called before unloading DLLs that set it)
+void clearDelayFunction() FL_NOEXCEPT;
+
+// Check if delay override is active (for fast testing)
+bool isDelayOverrideActive(void) FL_NOEXCEPT;
+#endif  // !ARDUINO || FASTLED_USE_STUB_ARDUINO

@@ -263,6 +263,109 @@ MiniMaestro maestro(stream, Maestro::noResetPin, deviceNumber);
 | `WCB_TARGET_KYBER` | 98 | Target ID for Kyber broadcast raw forwarding |
 | `WCB_SPECIAL_ID` | 20 | Out-of-band device slot (no WCB slot consumed) |
 
+### Device Identity (WDP)
+
+```cpp
+void setIdentity(const char* type, const char* fw,
+                 const char* hwRev = nullptr, const char* caps = nullptr);
+```
+
+Advertises this device on the WCB mesh so every board discovers it automatically
+— it shows up in `?WDP,LIST` and the config tool by name and firmware version,
+with no manual port labeling. This is the mesh counterpart of the serial
+**WDP-DA** device-announce protocol: a device describes itself the same way
+whether it's wired to a WCB serial port or joined over ESP-NOW.
+
+- `type` — canonical device name (e.g. `"NaviCore"`, `"Flthy HP Controller"`);
+  use a name from the shared WCB device vocabulary. Required — a null/empty
+  `type` leaves advertising off.
+- `fw` — this device's firmware version string.
+- `hwRev` — optional hardware revision (`"revB"`); omit with `nullptr`.
+- `caps` — optional space-separated capability tags (`"hp.servo hp.led"`);
+  omit with `nullptr`.
+
+Call it from `setup()` (before or after `begin()`); the advert goes out as a
+short boot burst and then periodically (~60 s, staggered) from `update()`.
+Requires ETM active on the WCBs (the factory default).
+
+```cpp
+wcb.setIdentity("NaviCore", "v0.2.0");
+```
+
+### Discovering neighbors (WDP consumer)
+
+The same WDP adverts that `setIdentity()` broadcasts are also *decoded* by this
+library, so your device can learn every other board on the mesh — each WCB and
+each `setIdentity()`-enabled client — without any manual configuration.
+
+```cpp
+void onNeighbor(WCBNeighborCallback callback);   // fires when an advert is learned or expires
+const WCBNeighbor* getNeighbor(uint8_t wcbNumber);// latest record for a board, or nullptr
+uint8_t neighborCount();                          // how many neighbors are currently known
+```
+
+A neighbor is described by a `WCBNeighbor`:
+
+```cpp
+struct WCBNeighbor {
+    bool          valid;          // false when the slot has aged out
+    bool          isClient;       // true = a WCB_Client device, false = a WCB
+    uint8_t       wcbNumber;      // 1..20
+    char          name[25];       // WCB alias, or the client's device type
+    char          fw[28];         // firmware version string
+    uint8_t       hwVer;          // WCB numeric hardware version (0 for clients)
+    char          hwRev[16];      // client hardware revision ("" for WCBs)
+    uint16_t      capFlags;       // WCB capability bitmap — test with WCB_CAP_*
+    char          capTags[49];    // client capability tags, space-separated
+    uint8_t       ctrlId;         // controller (special-peer) id this board links to; 0 = none
+    uint8_t       maestroIds[9];  // this board's local Maestro IDs
+    uint8_t       maestroCount;
+    char          portLabels[5][25]; // advertised serial-port labels ("" = unlabeled)
+    unsigned long lastSeenMs;     // millis() of the last advert heard
+};
+```
+
+`onNeighbor` fires on the ESP-NOW (WiFi) task — keep it minimal and poll
+`getNeighbor()` from `loop()` for heavier work. Neighbors age out after
+`WCB_WDP_NEIGHBOR_TTL_MS` (180 s, ~6 missed cycles) of silence; the callback
+fires once more with `valid == false` on expiry so you can drop stale entries.
+
+```cpp
+wcb.onNeighbor([](const WCBNeighbor& nb) {
+    if (!nb.valid) { Serial.printf("WCB%u went quiet\n", nb.wcbNumber); return; }
+    Serial.printf("WCB%u = %s (%s)%s\n", nb.wcbNumber, nb.name, nb.fw,
+                  nb.capFlags & WCB_CAP_MAESTRO_HOST ? "  [has Maestro]" : "");
+});
+```
+
+#### Auto-join
+
+By default the same adverts also drive **auto-join**: when this device hears a
+regular WCB it isn't already peered with (after two adverts), it registers that
+board as an ESP-NOW peer live. So you can leave `wcb_quantity` at whatever covers
+the boards you address directly and still reach boards discovered later — without
+pre-registering all 20 slots (the ESP-NOW peer table is small). Client devices
+and the special peer are never auto-joined.
+
+A learned peer is **permanent**: it is saved to NVS, restored on every `begin()`,
+and from then on always expected to be on and ready. Heartbeats drive its
+online/offline state, but membership never expires on its own — a board that's
+powered down stays a member and is simply reported offline until it returns.
+Removing one is deliberately a user action:
+
+```cpp
+void setAutoJoin(bool enabled);   // default true
+bool autoJoinEnabled() const;
+void forgetPeer(uint8_t id);      // drop one learned peer (deregisters + clears NVS)
+void clearLearnedPeers();         // drop all learned peers
+```
+
+Turn auto-join off to pin the peer set to exactly `1..wcb_quantity` (+ special peer):
+
+```cpp
+wcb.setAutoJoin(false);
+```
+
 ---
 
 ## Callbacks
@@ -447,6 +550,47 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 ---
 
 ## Changelog
+
+### 1.9.0
+
+- **Auto-join (on by default)** — the device now registers a regular WCB it hears
+  over WDP as an ESP-NOW peer *live*, once it has seen the board advertise at
+  least twice. This means it discovers the fleet on its own: you no longer have
+  to set `wcb_quantity` high enough to cover every board, and it doesn't burn
+  peer-table slots (the ESP-NOW cap is ~20) on boards that may not exist. Client
+  devices (other `setIdentity()` peers) and the special peer are never
+  auto-joined. Learned peers are **permanent**: persisted to NVS, restored on
+  every `begin()`, always expected on the mesh (offline detection covers them
+  too) — membership never expires on its own. Manage it with `setAutoJoin(bool)`
+  / `autoJoinEnabled()` / `forgetPeer(id)` / `clearLearnedPeers()`.
+- **Sender-MAC binding** — inbound packets are now dropped when the claimed
+  `structSenderID` disagrees with the source MAC's last octet (every board forces
+  its derived MAC `02:oct2:oct3:00:00:id`). Closes id-spoofing — a rogue in-group
+  node can no longer claim another board's id to satisfy an ACK or trigger
+  auto-join. Mirrors the same hardening added to the WCB firmware.
+
+### 1.8.0
+
+- **WDP consumer** — the library now decodes the WDP adverts it already
+  broadcasts, so a client can discover the whole mesh. `onNeighbor()` fires as
+  boards are learned or age out, `getNeighbor(n)` returns the latest record for a
+  board, and `neighborCount()` reports how many are currently known. Each
+  `WCBNeighbor` carries alias/device-type, firmware, hardware version/revision,
+  capability flags (`WCB_CAP_*`) and tags, the controller link id, local Maestro
+  IDs and serial-port labels. Neighbors expire after 180 s of silence. Consuming
+  is passive — no extra traffic, and it works whether or not you called
+  `setIdentity()`.
+
+### 1.7.0
+
+- **Device identity over WDP** — `setIdentity(type, fw, hwRev, caps)` broadcasts
+  this device's identity on the mesh via the Wireless Discovery Protocol, so
+  every WCB discovers it by name and firmware version automatically (it appears
+  in `?WDP,LIST` and the config tool as a named device, not a bare ID). This is
+  the mesh twin of the serial `WDP-DA` device-announce model. Advertising is a
+  short boot burst plus a staggered ~60 s backstop driven from `update()`, and
+  stays off until you call `setIdentity()`. Requires ETM active on the WCBs
+  (the factory default).
 
 ### 1.3.1
 

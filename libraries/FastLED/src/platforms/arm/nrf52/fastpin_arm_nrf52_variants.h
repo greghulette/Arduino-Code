@@ -1,8 +1,121 @@
+// IWYU pragma: private
+
+// ok no namespace fl
 #ifndef __FASTPIN_ARM_NRF52_VARIANTS_H
 #define __FASTPIN_ARM_NRF52_VARIANTS_H
 
 // use this to determine if found variant or not (avoid multiple boards at once)
 #undef __FASTPIN_ARM_NRF52_VARIANT_FOUND
+
+// Sentinel: set when the user (or ci/boards.py) has opted in to a community
+// board via TARGET_*. These boards reuse a stock Adafruit BSP (typically
+// nrf52840_dk_adafruit), which injects its own ARDUINO_NRF52840_* macro. The
+// sentinel lets the BSP-default pin-map blocks below defer to the explicit
+// TARGET_* block so the user's override always wins. Add new TARGET_* macros
+// to the OR-chain when introducing new community-board variants. See #2422
+// for the original report and #2626 for the redefinition bug.
+#undef __FASTLED_NRF52_USER_TARGET_OVERRIDE
+#if defined(TARGET_SUPERMINI_NRF52840)    || \
+    defined(TARGET_NICE_NANO_V2)          || \
+    defined(TARGET_NRFMICRO)              || \
+    defined(TARGET_XIAOBLE_NRF52840_SENSE)
+    #define __FASTLED_NRF52_USER_TARGET_OVERRIDE
+#endif
+
+
+//
+// BOARD_PIN can be either the pin portion of a port.pin, or the combined NRF_GPIO_PIN_MAP() number.
+// For example both the following two defines refer to P1.15 (pin 47) as Arduino pin 3:
+//     _FL_DEFPIN(3, 15, 1);
+//     _FL_DEFPIN(3, 47, 1);
+//
+// Similarly, the following defines are all equivalent:
+//     _DEFPIN_ARM_IDENTITY_P1(47);
+//     _FL_DEFPIN(47, 15, 1);
+//     _FL_DEFPIN(47, 47, 1);
+//
+
+#define _FL_DEF_INVALID_PIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)                 \
+    template<> class fl::FastPin<ARDUINO_PIN> :              \
+    public fl::_INVALID_ARMPIN<                               \
+        0,                                                \
+        __generated_struct_NRF_P0,                        \
+        0,                                                \
+        0                                                 \
+        >                                                \
+    {}
+
+#define _FL_DEFPIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)   \
+    template<> class fl::FastPin<ARDUINO_PIN> :              \
+    public fl::_ARMPIN<                                      \
+        1u << (BOARD_PIN & 31u),                         \
+        __generated_struct_NRF_P ## BOARD_PORT,          \
+        (BOARD_PIN / 32),                                \
+        BOARD_PIN & 31u                                  \
+        >                                                \
+    {}
+
+#define _DEFPIN_ARM_IDENTITY_P0(ARDUINO_PIN)      \
+    template<> class fl::FastPin<ARDUINO_PIN> :       \
+    public fl::_ARMPIN<                               \
+        1u << (ARDUINO_PIN & 31u),                \
+        __generated_struct_NRF_P0,                \
+        0,                                        \
+        (ARDUINO_PIN & 31u) + 0                   \
+        >                                         \
+    {}
+
+#define _DEFPIN_ARM_IDENTITY_P1(ARDUINO_PIN)      \
+    template<> class fl::FastPin<ARDUINO_PIN> :       \
+    public fl::_ARMPIN<                               \
+        1u << (ARDUINO_PIN & 31u),                \
+        __generated_struct_NRF_P1,                \
+        1,                                        \
+        (ARDUINO_PIN & 31u) + 32                  \
+        >                                         \
+    {}
+
+
+// ---- Opt-in re-enable macros for pins normally treated as invalid ---------
+//
+// FASTLED_NRF52_ALLOW_NFC_PINS:
+//   When defined by the user, P0.09 / P0.10 (NFC1 / NFC2) become valid
+//   FastLED output pins on every nRF52840 variant in this file.  The pins
+//   are gated behind a build-time switch because the Adafruit nRF52 core
+//   defaults to NFC mode for them; you ALSO need either
+//     - CONFIG_NFCT_PINS_AS_GPIOS=1 in the BSP / build flags, OR
+//     - NFC_PINS_AS_GPIO() called at boot (Adafruit core helper)
+//   for the pins to actually drive a strip.  Defining this macro alone is
+//   necessary but not sufficient.
+//
+// FASTLED_NRF52_ALLOW_USR_LED:
+//   When defined by the user, the on-board user-LED pins on each variant
+//   become valid FastLED output pins.  Defining this risks a clash with
+//   any Arduino sketch (or BSP background task) that calls
+//   digitalWrite(LED_BUILTIN, ...); make sure your sketch is not also
+//   driving the LED pin from the Arduino API.
+//
+// EXT_VCC enable pins and VBAT-sense pins remain invalid unconditionally
+// (toggling EXT_VCC mid-show() browns out the regulator; VBAT is an analog
+// input on most BSPs).
+
+#if defined(FASTLED_NRF52_ALLOW_NFC_PINS)
+    #define _FL_DEFPIN_NFC(ARDUINO_PIN, BOARD_PIN, BOARD_PORT) \
+        _FL_DEFPIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)
+#else
+    #define _FL_DEFPIN_NFC(ARDUINO_PIN, BOARD_PIN, BOARD_PORT) \
+        _FL_DEF_INVALID_PIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)
+#endif
+
+#if defined(FASTLED_NRF52_ALLOW_USR_LED)
+    #define _FL_DEFPIN_USR_LED(ARDUINO_PIN, BOARD_PIN, BOARD_PORT) \
+        _FL_DEFPIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)
+#else
+    #define _FL_DEFPIN_USR_LED(ARDUINO_PIN, BOARD_PIN, BOARD_PORT) \
+        _FL_DEF_INVALID_PIN(ARDUINO_PIN, BOARD_PIN, BOARD_PORT)
+#endif
+
+
 
 // Adafruit Bluefruit nRF52832 Feather
 // From https://www.adafruit.com/package_adafruit_index.json
@@ -248,13 +361,19 @@
 
 // Adafruit Bluefruit on nRF52840DK PCA10056
 // From https://www.adafruit.com/package_adafruit_index.json
-#if defined (ARDUINO_NRF52840_PCA10056)
+// Community boards reuse the nrf52840_dk_adafruit BSP, which auto-defines
+// ARDUINO_NRF52840_PCA10056. When the user opted into one of those community
+// variants via a TARGET_* macro, defer to its dedicated block below instead
+// of running the PCA10056 pin map. Why guard in the header instead of issuing
+// -UARDUINO_NRF52840_PCA10056 from ci/boards.py: a header-side guard also
+// works for non-PIO builds where the user sets TARGET_* by hand.
+#if defined (ARDUINO_NRF52840_PCA10056) && !defined(__FASTLED_NRF52_USER_TARGET_OVERRIDE)
     #if defined(__FASTPIN_ARM_NRF52_VARIANT_FOUND)
         #error "Cannot define more than one board at a time"
     #else
         #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
     #endif
-    
+
     #if defined(USE_ARDUINO_PIN_NUMBERING)
         #error "Define of `USE_ARDUINO_PIN_NUMBERING` has known errors in pin mapping -- select different mapping"
     #elif defined(FASTLED_NRF52_USE_ARDUINO_UNO_R3_HEADER_PIN_NUMBERING)
@@ -729,16 +848,19 @@
 #endif // defined(ARDUINO_STCT_NRF52_minidev)
 
 
-#if defined(ARDUINO_Seeed_XIAO_nRF52840_Sense)
+// Seeed XIAO BLE Sense — the BSP variant.h normally defines
+// ARDUINO_Seeed_XIAO_nRF52840_Sense.  For CI builds that reuse the
+// Adafruit nrf52840_dk_adafruit BSP variant (see #2634), the TARGET
+// define carries the same pin mapping without requiring the Seeed variant
+// folder to be present in the framework package.
+#if defined(ARDUINO_Seeed_XIAO_nRF52840_Sense) || defined(TARGET_XIAOBLE_NRF52840_SENSE)
     #if defined(__FASTPIN_ARM_NRF52_VARIANT_FOUND)
         #error "Cannot define more than one board at a time"
     #else
         #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
     #endif
 
-    #if !defined(FASTLED_NRF52_SUPPRESS_UNTESTED_BOARD_WARNING)
-        #warning "ARDUINO_Seeed_XIAO_nRF52840_Sense board is a semi-untested board -- please let us know if this pin mapping works so we can disable this warning: https://github.com/FastLED/FastLED/issues"
-    #endif
+    // Pin mappings verified and tested by community (see GitHub issues #1911, #2061)
 
     // Arduino pins 0..7
     _FL_DEFPIN( 0, 2, 0); // D0  is P0.02
@@ -755,15 +877,15 @@
     _FL_DEFPIN( 9, 46, 1); // D9  is P1.46
     _FL_DEFPIN(10, 47, 1); // D10 is P1.47
 
-    _FL_DEF_INVALID_PIN(11, 26, 0); // D11 is P0.26 (LED RED)
-    _FL_DEF_INVALID_PIN(12, 6, 0); // D12 is P0.06 (LED BLUE)
-    _FL_DEF_INVALID_PIN(13, 30, 0); // D13 is P0.30 (LED GREEN)
+    _FL_DEFPIN_USR_LED(11, 26, 0); // D11 is P0.26 (LED RED)
+    _FL_DEFPIN_USR_LED(12, 6, 0); // D12 is P0.06 (LED BLUE)
+    _FL_DEFPIN_USR_LED(13, 30, 0); // D13 is P0.30 (LED GREEN)
     _FL_DEF_INVALID_PIN(14, 14, 0); // D14 is P0.14 (READ_BAT)
 
     _FL_DEF_INVALID_PIN(22, 13, 0); // D22 is P0.13 (HICHG)
     _FL_DEF_INVALID_PIN(23, 17, 0); // D23 is P0.17 (~CHG)
 
-        
+
     _FL_DEF_INVALID_PIN(24, 21, 0);  // D24 is P0.21 (QSPI_SCK)
     _FL_DEF_INVALID_PIN(25, 25, 0);  // D25 is P0.25 (QSPI_CSN)
     _FL_DEF_INVALID_PIN(26, 20, 0);  // D26 is P0.20 (QSPI_SIO_0 DI)
@@ -772,8 +894,8 @@
     _FL_DEF_INVALID_PIN(29, 23, 0);  // D29 is P0.23 (QSPI_SIO_3 HOLD)
 
     // NFC
-    _FL_DEF_INVALID_PIN(30, 9, 0);  // D30 is P0.09 (NFC1)
-    _FL_DEF_INVALID_PIN(31, 10, 0);  // D31 is P0.10 (NFC2)
+    _FL_DEFPIN_NFC(30, 9, 0);  // D30 is P0.09 (NFC1)
+    _FL_DEFPIN_NFC(31, 10, 0);  // D31 is P0.10 (NFC2)
 
     // VBAT
     _FL_DEF_INVALID_PIN(32, 31, 0);  // D32 is P0.31 (VBAT)
@@ -786,9 +908,7 @@
         #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
     #endif
 
-    #if !defined(FASTLED_NRF52_SUPPRESS_UNTESTED_BOARD_WARNING)
-        #warning "ARDUINO_Seeed_XIAO_nRF52840 board is semi tested, pins 0-15 have been provided by the community -- if everything works well let us know at https://github.com/FastLED/FastLED/issues so we can suppress this warning"
-    #endif
+    // Pin mappings verified and tested by community (see GitHub issues #1911, #2061)
 
     // Arduino pins 0..7
     _FL_DEFPIN( 0, 2, 0); // D0  is P0.02
@@ -805,15 +925,15 @@
     _FL_DEFPIN( 9, 46, 1); // D9  is P1.46
     _FL_DEFPIN(10, 47, 1); // D10 is P1.47
 
-    _FL_DEF_INVALID_PIN(11, 26, 0); // D11 is P0.26 (LED RED)
-    _FL_DEF_INVALID_PIN(12, 6, 0); // D12 is P0.06 (LED BLUE)
-    _FL_DEF_INVALID_PIN(13, 30, 0); // D13 is P0.30 (LED GREEN)
+    _FL_DEFPIN_USR_LED(11, 26, 0); // D11 is P0.26 (LED RED)
+    _FL_DEFPIN_USR_LED(12, 6, 0); // D12 is P0.06 (LED BLUE)
+    _FL_DEFPIN_USR_LED(13, 30, 0); // D13 is P0.30 (LED GREEN)
     _FL_DEF_INVALID_PIN(14, 14, 0); // D14 is P0.14 (READ_BAT)
 
     _FL_DEF_INVALID_PIN(22, 13, 0); // D22 is P0.13 (HICHG)
     _FL_DEF_INVALID_PIN(23, 17, 0); // D23 is P0.17 (~CHG)
 
-        
+
     _FL_DEF_INVALID_PIN(24, 21, 0);  // D24 is P0.21 (QSPI_SCK)
     _FL_DEF_INVALID_PIN(25, 25, 0);  // D25 is P0.25 (QSPI_CSN)
     _FL_DEF_INVALID_PIN(26, 20, 0);  // D26 is P0.20 (QSPI_SIO_0 DI)
@@ -822,8 +942,8 @@
     _FL_DEF_INVALID_PIN(29, 23, 0);  // D29 is P0.23 (QSPI_SIO_3 HOLD)
 
     // NFC
-    _FL_DEF_INVALID_PIN(30, 9, 0);  // D30 is P0.09 (NFC1)
-    _FL_DEF_INVALID_PIN(31, 10, 0);  // D31 is P0.10 (NFC2)
+    _FL_DEFPIN_NFC(30, 9, 0);  // D30 is P0.09 (NFC1)
+    _FL_DEFPIN_NFC(31, 10, 0);  // D31 is P0.10 (NFC2)
 
     // VBAT
     _FL_DEF_INVALID_PIN(32, 31, 0);  // D32 is P0.31 (VBAT)
@@ -908,6 +1028,146 @@
     _DEFPIN_ARM_IDENTITY_P0(30); // P0.30
     _DEFPIN_ARM_IDENTITY_P0(31); // P0.31
 #endif // defined(ARDUINO_GENERIC)
+
+
+// SuperMini nRF52840 (and nice!nano-pin-compatible ProMicro nRF52840)
+// Variant: https://github.com/pdcook/nRFMicro-Arduino-Core/blob/main/variants/SuperMini_nRF52840/variant.h
+// Reported in https://github.com/FastLED/FastLED/issues/2422
+#if defined(TARGET_SUPERMINI_NRF52840)
+    #if defined(__FASTPIN_ARM_NRF52_VARIANT_FOUND)
+        #error "Cannot define more than one board at a time"
+    #else
+        #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
+    #endif
+
+    // Pin mappings from variant.h (community-reported, see issue #2422)
+
+    // Left side header (top to bottom)
+    _FL_DEFPIN( 0,  6, 0); // D0  is P0.06 (TX)
+    _FL_DEFPIN( 1,  8, 0); // D1  is P0.08 (RX)
+    _FL_DEFPIN( 2, 17, 0); // D2  is P0.17 (SCK)
+    _FL_DEFPIN( 3, 20, 0); // D3  is P0.20 (MISO)
+    _FL_DEFPIN( 4, 22, 0); // D4  is P0.22 (MOSI)
+    _FL_DEFPIN( 5, 24, 0); // D5  is P0.24 (CS)
+    _FL_DEFPIN( 6, 32, 1); // D6  is P1.00 (SDA)
+    _FL_DEFPIN( 7, 11, 0); // D7  is P0.11 (SCL)
+    _FL_DEFPIN( 8, 36, 1); // D8  is P1.04
+    _FL_DEFPIN( 9, 38, 1); // D9  is P1.06
+
+    // Right side header (bottom to top)
+    _FL_DEFPIN_NFC(10,  9, 0); // D10 is P0.09 (NFC1)
+    _FL_DEFPIN_NFC(11, 10, 0); // D11 is P0.10 (NFC2)
+    _FL_DEFPIN(12, 43, 1); // D12 is P1.11
+    _FL_DEFPIN(13, 45, 1); // D13 is P1.13 (SDA1)
+    _FL_DEFPIN(14, 47, 1); // D14 is P1.15 (SCL1)
+    _FL_DEFPIN(15,  2, 0); // D15 is P0.02 (A0)
+    _FL_DEFPIN(16, 29, 0); // D16 is P0.29 (A1)
+    _FL_DEFPIN(17, 31, 0); // D17 is P0.31 (A2)
+
+    // Center pins
+    _FL_DEFPIN(18, 33, 1); // D18 is P1.01 (SCK1)
+    _FL_DEFPIN(19, 34, 1); // D19 is P1.02 (MISO1)
+    _FL_DEFPIN(20, 39, 1); // D20 is P1.07 (MOSI1)
+
+    // Onboard control pins (not safe for FastLED output)
+    _FL_DEF_INVALID_PIN(21, 13, 0); // D21 is P0.13 (EXT_VCC -- 3V3 enable)
+    _FL_DEFPIN_USR_LED(22, 15, 0); // D22 is P0.15 (USR LED)
+#endif // defined(TARGET_SUPERMINI_NRF52840)
+
+
+// nice!nano v2 (and pin-compatible ProMicro nRF52840 boards using this BSP)
+// Variant: https://github.com/pdcook/nRFMicro-Arduino-Core/blob/main/variants/nice_nano/variant.h
+// Reported in https://github.com/FastLED/FastLED/issues/2422
+#if defined(TARGET_NICE_NANO_V2)
+    #if defined(__FASTPIN_ARM_NRF52_VARIANT_FOUND)
+        #error "Cannot define more than one board at a time"
+    #else
+        #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
+    #endif
+
+    // Pin mappings match the SuperMini_nRF52840 variant (community-reported, see issue #2422)
+
+    // Left side header (top to bottom)
+    _FL_DEFPIN( 0,  6, 0); // D0  is P0.06 (TX)
+    _FL_DEFPIN( 1,  8, 0); // D1  is P0.08 (RX)
+    _FL_DEFPIN( 2, 17, 0); // D2  is P0.17 (SCK)
+    _FL_DEFPIN( 3, 20, 0); // D3  is P0.20 (MISO)
+    _FL_DEFPIN( 4, 22, 0); // D4  is P0.22 (MOSI)
+    _FL_DEFPIN( 5, 24, 0); // D5  is P0.24 (CS)
+    _FL_DEFPIN( 6, 32, 1); // D6  is P1.00 (SDA)
+    _FL_DEFPIN( 7, 11, 0); // D7  is P0.11 (SCL)
+    _FL_DEFPIN( 8, 36, 1); // D8  is P1.04
+    _FL_DEFPIN( 9, 38, 1); // D9  is P1.06
+
+    // Right side header (bottom to top)
+    _FL_DEFPIN_NFC(10,  9, 0); // D10 is P0.09 (NFC1)
+    _FL_DEFPIN_NFC(11, 10, 0); // D11 is P0.10 (NFC2)
+    _FL_DEFPIN(12, 43, 1); // D12 is P1.11
+    _FL_DEFPIN(13, 45, 1); // D13 is P1.13 (SDA1)
+    _FL_DEFPIN(14, 47, 1); // D14 is P1.15 (SCL1)
+    _FL_DEFPIN(15,  2, 0); // D15 is P0.02 (A0)
+    _FL_DEFPIN(16, 29, 0); // D16 is P0.29 (A1)
+    _FL_DEFPIN(17, 31, 0); // D17 is P0.31 (A2)
+
+    // Center pins
+    _FL_DEFPIN(18, 33, 1); // D18 is P1.01 (SCK1)
+    _FL_DEFPIN(19, 34, 1); // D19 is P1.02 (MISO1)
+    _FL_DEFPIN(20, 39, 1); // D20 is P1.07 (MOSI1)
+
+    // Onboard control pins (not safe for FastLED output)
+    _FL_DEF_INVALID_PIN(21, 13, 0); // D21 is P0.13 (EXT_VCC -- 3V3 enable)
+    _FL_DEFPIN_USR_LED(22, 15, 0); // D22 is P0.15 (USR LED)
+#endif // defined(TARGET_NICE_NANO_V2)
+
+
+// nRFMicro (Joric's open-hardware ProMicro-pin-compatible nRF52840)
+// Variant: https://github.com/pdcook/nRFMicro-Arduino-Core/blob/main/variants/nRFMicro/variant.h
+// Reported in https://github.com/FastLED/FastLED/issues/2422
+#if defined(TARGET_NRFMICRO)
+    #if defined(__FASTPIN_ARM_NRF52_VARIANT_FOUND)
+        #error "Cannot define more than one board at a time"
+    #else
+        #define __FASTPIN_ARM_NRF52_VARIANT_FOUND
+    #endif
+
+    // Pin mappings from variant.h (community-reported, see issue #2422)
+
+    // Left side header (top to bottom)
+    _FL_DEFPIN( 0,  6, 0); // D0  is P0.06 (TX)
+    _FL_DEFPIN( 1,  8, 0); // D1  is P0.08 (RX)
+    _FL_DEFPIN( 2, 15, 0); // D2  is P0.15 (SCK)
+    _FL_DEFPIN( 3, 17, 0); // D3  is P0.17 (MISO)
+    _FL_DEFPIN( 4, 20, 0); // D4  is P0.20 (MOSI)
+    _FL_DEFPIN( 5, 13, 0); // D5  is P0.13 (SDA)
+    _FL_DEFPIN( 6, 24, 0); // D6  is P0.24 (SCL)
+    _FL_DEFPIN_NFC( 7,  9, 0); // D7  is P0.09 (NFC1)
+    _FL_DEFPIN_NFC( 8, 10, 0); // D8  is P0.10 (NFC2)
+    _FL_DEFPIN( 9, 38, 1); // D9  is P1.06 (CS)
+
+    // Right side header (bottom to top)
+    _FL_DEFPIN(10, 43, 1); // D10 is P1.11
+    _FL_DEFPIN(11, 28, 0); // D11 is P0.28 (A0)
+    _FL_DEFPIN(12,  3, 0); // D12 is P0.03 (A1)
+    _FL_DEFPIN(13, 45, 1); // D13 is P1.13
+    _FL_DEFPIN(14,  2, 0); // D14 is P0.02 (A2)
+    _FL_DEFPIN(15, 29, 0); // D15 is P0.29 (A3)
+    _FL_DEFPIN(16, 31, 0); // D16 is P0.31 (A4)
+    _FL_DEFPIN(17, 30, 0); // D17 is P0.30 (A5)
+
+    // Center pins (free / through-hole)
+    _FL_DEFPIN(18, 36, 1); // D18 is P1.04 (SCK1)
+    _FL_DEFPIN(19, 34, 1); // D19 is P1.02 (MISO1)
+    _FL_DEFPIN(20, 32, 1); // D20 is P1.00 (MOSI1)
+    _FL_DEFPIN(21, 22, 0); // D21 is P0.22
+    _FL_DEFPIN(22,  7, 0); // D22 is P0.07 (SDA1)
+    _FL_DEFPIN(23, 12, 0); // D23 is P0.12 (SCL1)
+    _FL_DEFPIN(24, 26, 0); // D24 is P0.26
+
+    // Onboard control pins (not safe for FastLED output)
+    _FL_DEF_INVALID_PIN(25,  4, 0); // D25 is P0.04 (VBAT sense)
+    _FL_DEF_INVALID_PIN(26, 41, 1); // D26 is P1.09 (EXT_VCC -- 3V3 enable)
+    _FL_DEFPIN_USR_LED(27, 42, 1); // D27 is P1.10 (USR LED)
+#endif // defined(TARGET_NRFMICRO)
 
 
 // Adafruit Bluefruit nRF52840 Feather Express

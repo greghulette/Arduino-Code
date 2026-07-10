@@ -1,9 +1,9 @@
-#ifndef __INC_FASTLED_ARM_SAM_H
-#define __INC_FASTLED_ARM_SAM_H
+// ok no namespace fl
+#pragma once
 
-// Include the sam headers
-#include "fastpin_arm_stm32.h"
-// #include "fastspi_arm_stm32.h"
-#include "clockless_arm_stm32.h"
+// IWYU pragma: private
 
-#endif
+// Include the stm32 headers
+#include "platforms/arm/stm32/fastpin_arm_stm32.h"
+#include "platforms/arm/stm32/fastspi_arm_stm32.h"
+#include "platforms/arm/stm32/clockless_arm_stm32.h"

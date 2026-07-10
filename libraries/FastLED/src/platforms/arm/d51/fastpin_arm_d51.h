@@ -1,10 +1,16 @@
+// IWYU pragma: private
+
 #ifndef __INC_FASTPIN_ARM_D51_H
 #define __INC_FASTPIN_ARM_D51_H
 
-#include "fl/force_inline.h"
+#include "fl/stl/compiler_control.h"
+#include "fl/system/fastpin_base.h"
+#include "fl/system/pin.h"  // For PinMode, PinValue enums
+#include "fl/stl/noexcept.h"
 
-FASTLED_NAMESPACE_BEGIN
-
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+namespace fl {
 #if defined(FASTLED_FORCE_SOFTWARE_PINS)
 #warning "Software pin support forced, pin access will be slightly slower."
 #define NO_HARDWARE_PIN_SUPPORT
@@ -17,13 +23,13 @@ FASTLED_NAMESPACE_BEGIN
 /// that something about the way gcc does register allocation results in the bit-band code being slower.  It will need more fine tuning.
 /// The registers are data output, set output, clear output, toggle output, input, and direction
 
-template<uint8_t PIN, uint8_t _BIT, uint32_t _MASK, int _GRP> class _ARMPIN {
+template<u8 PIN, u8 _BIT, u32 _MASK, int _GRP> class _ARMPIN : public ValidPinBase {
 public:
-    typedef volatile uint32_t * port_ptr_t;
-    typedef uint32_t port_t;
+    typedef volatile u32 * port_ptr_t;
+    typedef u32 port_t;
 
     #if 0
-    inline static void setOutput() {
+    inline static void setOutput() FL_NOEXCEPT {
         if(_BIT<8) {
             _CRL::r() = (_CRL::r() & (0xF << (_BIT*4)) | (0x1 << (_BIT*4));
         } else {
@@ -33,8 +39,8 @@ public:
     inline static void setInput() { /* TODO */ } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
     #endif
 
-    inline static void setOutput() { pinMode(PIN, OUTPUT); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
-    inline static void setInput() { pinMode(PIN, INPUT); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
+    inline static void setOutput() { pinMode(PIN, PinMode::Output); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
+    inline static void setInput() { pinMode(PIN, PinMode::Input); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
 
     inline static void hi() __attribute__ ((always_inline)) { PORT->Group[_GRP].OUTSET.reg = _MASK; }
     inline static void lo() __attribute__ ((always_inline)) { PORT->Group[_GRP].OUTCLR.reg = _MASK; }
@@ -234,8 +240,8 @@ _FL_DEFPIN(58,  9, 1); _FL_DEFPIN(59,  4, 0); _FL_DEFPIN(60,  6, 0); _FL_DEFPIN(
 
 
 #endif // FASTLED_FORCE_SOFTWARE_PINS
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
-
+FL_DISABLE_WARNING_POP
 
 #endif // __INC_FASTPIN_ARM_D51_H

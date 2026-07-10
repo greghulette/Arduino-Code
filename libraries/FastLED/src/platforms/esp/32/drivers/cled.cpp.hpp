@@ -1,0 +1,158 @@
+// IWYU pragma: private
+
+/// @file platforms/esp/32/drivers/cled.cpp
+/// ESP32 Custom LED (CLED) driver implementation
+
+#include "platforms/esp/32/drivers/cled.h"
+
+#include "platforms/is_platform.h"
+#include "fl/stl/noexcept.h"
+#if defined(FL_IS_ESP32)
+
+#include "fl/stl/has_include.h"
+// IWYU pragma: begin_keep
+#include "fl/system/arduino.h"
+// IWYU pragma: end_keep
+
+#if FL_HAS_INCLUDE("driver/ledc.h")
+    // IWYU pragma: begin_keep
+    #include "driver/ledc.h"
+    // IWYU pragma: end_keep
+    #define FL_CLED_HAS_LEDC 1
+#endif
+
+#include "platforms/esp/32/feature_flags/enabled.h"
+#include "fl/log/log.h"
+
+namespace fl {
+namespace esp32 {
+
+CLED::CLED() FL_NOEXCEPT
+    : mMaxDuty(0)
+    , mInitialized(false) {
+}
+
+CLED::~CLED() {
+    end();
+}
+
+bool CLED::begin(const CLEDConfig& config) FL_NOEXCEPT {
+    // Clean up any previous initialization
+    if (mInitialized) {
+        end();
+    }
+
+    mConfig = config;
+    mMaxDuty = (1 << config.resolution_bits) - 1;
+
+    // Validate parameters
+    if (config.resolution_bits > 20) {
+        // ESP32 LEDC maximum is 20 bits
+        FL_WARN("CLED: resolution_bits > 20 not supported (requested: " << config.resolution_bits << ")");
+        return false;
+    }
+
+    // Arduino LEDC setup - API differs between Arduino Core 2.x and 3.x
+#ifndef ESP_ARDUINO_VERSION_MAJOR
+    #define ESP_ARDUINO_VERSION_MAJOR 2  // Assume old API if not defined
+#endif
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    // New API (Arduino Core 3.x): ledcAttach auto-assigns channel
+    u8 assigned_channel = ledcAttach(config.pin, config.frequency, config.resolution_bits);
+    if (assigned_channel == 0) {
+        FL_WARN("CLED: LEDC attach failed for pin " << config.pin);
+        return false;
+    }
+
+    // Update internal state with auto-assigned channel
+    mConfig.channel = assigned_channel;
+
+    FL_DBG("CLED: Initialized pin " << config.pin << " with auto-assigned channel "
+           << static_cast<int>(assigned_channel) << " at " << config.frequency
+           << " Hz, " << config.resolution_bits << " bits");
+#else
+    // Old API (Arduino Core 2.x): ledcSetup + ledcAttachPin with explicit channel
+    ledcAttachPin(config.pin, config.channel);
+    u32 freq = ledcSetup(config.channel, config.frequency, config.resolution_bits);
+
+    if (freq == 0) {
+        FL_WARN("CLED: LEDC setup failed for channel " << config.channel);
+        return false;
+    }
+
+    FL_DBG("CLED: Initialized channel " << config.channel << " at " << freq
+           << " Hz, " << config.resolution_bits << " bits");
+#endif
+
+    mInitialized = true;
+
+    // Initialize to off
+    write16(0);
+
+    return true;
+}
+
+void CLED::end() FL_NOEXCEPT {
+    if (!mInitialized) {
+        return;
+    }
+
+    // TODO: Add LEDC cleanup (ledcDetach?) when available in Arduino core
+
+    mInitialized = false;
+}
+
+void CLED::write16(u16 value) FL_NOEXCEPT {
+    // Accept 16-bit input (0-65535), scale to configured resolution
+    // Users apply gamma correction upstream
+    u32 duty = mapToDutyCycle(value);
+
+    // Invert for sink configuration
+    if (mConfig.is_sink) {
+        duty = mMaxDuty - duty;
+    }
+
+    // Clamp to maximum
+    if (duty > mMaxDuty) {
+        duty = mMaxDuty;
+    }
+
+#ifdef FL_CLED_HAS_LEDC
+    // For full-on condition with LEDC, add 1 to duty to get true 100%
+    // This is an ESP32 LEDC quirk where max_duty gives 99.998% duty cycle
+    if (duty == mMaxDuty && mMaxDuty != 1) {
+        duty = mMaxDuty + 1;
+    }
+
+    u8 group = mConfig.channel / 8;
+    u8 channel = mConfig.channel % 8;
+
+    ledc_set_duty(ledc_mode_t(group), ledc_channel_t(channel), duty);
+    ledc_update_duty(ledc_mode_t(group), ledc_channel_t(channel));
+#else
+    // Fallback to Arduino API
+    ledcWrite(mConfig.channel, duty);
+#endif
+}
+
+u32 CLED::getMaxDuty() const FL_NOEXCEPT {
+    return mMaxDuty;
+}
+
+u8 CLED::getResolutionBits() const FL_NOEXCEPT {
+    return mConfig.resolution_bits;
+}
+
+u32 CLED::mapToDutyCycle(u16 val16) const FL_NOEXCEPT {
+    // Map 16-bit input (0-65535) to current resolution
+    // Formula: (val16 * maxDuty + 32767) / 65535 (with rounding)
+    // Use 32-bit math to avoid overflow
+    // Adding 32767 (half of 65535) provides proper rounding to nearest integer
+    return ((u32(val16) * mMaxDuty) + 32767) / 65535;
+}
+
+}  // namespace esp32
+}  // namespace fl
+
+#endif  // FL_IS_ESP32

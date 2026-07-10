@@ -22,21 +22,25 @@ interface FrameData {
 
 /**
  * Screen mapping data for LED strips
+ * Note: absMin/absMax are computed on-demand from strip coordinate arrays
  */
 interface ScreenMapData {
-  absMax: number[];
-  absMin: number[];
+  absMax?: number[];
+  absMin?: number[];
   strips: { [stripId: string]: any };
   [key: string]: any;
 }
 
 /**
  * Audio data structure for audio processing
+ * Note: Audio samples are sent directly to WASM via pushAudioSamples(),
+ * so no JS-side buffering is needed. This only stores audio contexts and processors.
  */
 interface AudioData {
-  frequencyData: Float32Array;
-  timeData: Float32Array;
-  volume: number;
+  audioContexts: { [id: string]: AudioContext };
+  audioProcessors: { [id: string]: any };
+  audioSources: { [id: string]: MediaElementAudioSourceNode | MediaStreamAudioSourceNode };
+  mediaStreams: { [id: string]: MediaStream };
   [key: string]: any;
 }
 
@@ -81,7 +85,7 @@ declare class JsonUiManager {
  */
 declare class GraphicsManager {
   constructor(options: { canvasId: string; threeJsModules?: any; usePixelatedRendering?: boolean });
-  initialize(): Promise<void>;
+  initialize(): boolean;
   clearTexture(): void;
   processFrameData(frameData: FrameData): void;
   render(): void;
@@ -93,7 +97,7 @@ declare class GraphicsManager {
  */
 declare class GraphicsManagerThreeJS {
   constructor(options: { canvasId: string; threeJsModules: any });
-  initialize(): Promise<void>;
+  
   [key: string]: any;
 }
 
@@ -101,9 +105,12 @@ declare class GraphicsManagerThreeJS {
  * Video Recorder for recording animations
  */
 declare class VideoRecorder {
-  constructor();
-  startRecording(): Promise<void>;
-  stopRecording(): Promise<void>;
+  constructor(options: any);
+  startRecording(): boolean;
+  stopRecording(): boolean;
+  updateSettings(settings: any): void;
+  getIsRecording(): boolean;
+  getCodecDisplayName(): string;
   [key: string]: any;
 }
 
@@ -128,6 +135,16 @@ declare class FastLEDEvents {
  */
 declare class FastLEDPerformanceMonitor {
   constructor();
+  [key: string]: any;
+}
+
+/**
+ * FastLED Worker Manager for background worker control
+ */
+declare class FastLEDWorkerManager {
+  constructor();
+  isWorkerActive: boolean;
+  isFallbackMode: boolean;
   [key: string]: any;
 }
 
@@ -203,6 +220,7 @@ declare global {
   interface Window {
     // FastLED Core
     fastLEDController: FastLEDAsyncController | null;
+    fastLEDWorkerManager: FastLEDWorkerManager;
     fastLEDEvents: FastLEDEvents;
     fastLEDPerformanceMonitor: FastLEDPerformanceMonitor;
     fastLEDDebug: any;
@@ -234,18 +252,20 @@ declare global {
     getAudioBufferStats: () => any;
 
     // Video Recording
+    videoRecorder: VideoRecorder | null;
     getVideoRecorder: () => VideoRecorder;
     startVideoRecording: () => Promise<void>;
     stopVideoRecording: () => Promise<void>;
     testVideoRecording: () => void;
     getVideoSettings: () => any;
+    updateRecordButtonTooltip: () => void;
 
     // FastLED Control Functions
     getFastLEDController: () => FastLEDAsyncController | null;
     getFastLEDPerformanceStats: () => any;
     startFastLED: () => Promise<void>;
-    stopFastLED: () => void;
-    toggleFastLED: () => Promise<void>;
+    stopFastLED: () => Promise<boolean>;
+    toggleFastLED: () => Promise<boolean>;
 
     // Debug Functions
     fastLEDDebugLog: (...args: any[]) => void;
@@ -335,5 +355,6 @@ export {
   VideoRecorder,
   JsonInspector,
   FastLEDEvents,
-  FastLEDPerformanceMonitor
+  FastLEDPerformanceMonitor,
+  FastLEDWorkerManager
 };

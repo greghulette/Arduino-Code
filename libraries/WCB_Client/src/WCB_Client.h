@@ -49,6 +49,7 @@ class WCBStream;
 #define WCB_PACKET_COMMAND    0   // A text command (or raw binary) directed at a target
 #define WCB_PACKET_ACK        1   // Acknowledgement that a COMMAND was received
 #define WCB_PACKET_HEARTBEAT  2   // Periodic keepalive broadcast — no command payload
+#define WCB_PACKET_WDP       12   // WDP device-identity advert (matches firmware PACKET_TYPE_WDP)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Special target IDs
@@ -83,6 +84,8 @@ constexpr uint8_t broadcast = 0;
 #define WCB_SPECIAL_ID   20   // Device ID 20 is an out-of-band slot for third-party
                               // devices that don't consume a WCB slot in the system.
                               // Requires specialPeerEnabled = true on the WCBs.
+#define WCB_WDP_NEIGHBOR_TTL_MS 180000UL  // Drop a learned WDP neighbor after this
+                              // long without an advert (~6 missed 30s cycles).
 
 // ── Ensured-delivery (ETM) retransmit tuning ─────────────────────────────────
 // Applies ONLY to send()/broadcast() calls made with ensured=true. These values
@@ -205,6 +208,42 @@ struct WCBPending {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WDP discovery — a neighbor learned from a WDP advert
+//
+// Populated by the WDP consumer when another WCB (or a WCB_Client device that
+// called setIdentity()) advertises itself. Read via getNeighbor()/onNeighbor().
+// RAM-only, TTL-aged. `name` holds a WCB's alias OR a client's device type.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Capability bitmap bits (mirror of the firmware WDP_CAP_*). Test capFlags with
+// e.g. (nb.capFlags & WCB_CAP_MAESTRO_HOST).
+#define WCB_CAP_HCR            0x0001
+#define WCB_CAP_MP3            0x0002
+#define WCB_CAP_WLED           0x0004
+#define WCB_CAP_KYBER_LOCAL    0x0008
+#define WCB_CAP_MAESTRO_REMOTE 0x0010
+#define WCB_CAP_PWM            0x0020
+#define WCB_CAP_CONTROLLER     0x0040
+#define WCB_CAP_MAESTRO_HOST   0x0080
+
+struct WCBNeighbor {
+    bool          valid;             // slot holds a learned neighbor
+    bool          isClient;          // a WCB_Client device (advertised a device type) vs a WCB
+    uint8_t       wcbNumber;         // 1..WCB_MAX_BOARDS
+    char          name[25];          // WCB alias, or the client's device type
+    char          fw[28];            // firmware version string
+    uint8_t       hwVer;             // WCB numeric hardware version (0 for clients)
+    char          hwRev[16];         // client hardware revision ("" for WCBs)
+    uint16_t      capFlags;          // WCB capability bitmap (WCB_CAP_* above)
+    char          capTags[49];       // client capability tags, space-separated
+    uint8_t       ctrlId;            // controller (special-peer) id this board links to; 0 = none
+    uint8_t       maestroIds[9];     // this board's local Maestro IDs
+    uint8_t       maestroCount;
+    char          portLabels[5][25]; // advertised serial-port labels ("" = unlabeled)
+    unsigned long lastSeenMs;        // millis() of the last advert heard
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Callback signatures
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -230,6 +269,12 @@ typedef void (*WCBStatusCallback)(uint8_t wcbID, bool online);
 //   data : raw packet bytes
 //   len  : packet length in bytes
 typedef void (*WCBRawPacketCallback)(const uint8_t* mac, const uint8_t* data, int len);
+
+// Called when a WDP advert is decoded from a neighbor (another WCB, or a
+// WCB_Client device that called setIdentity()). Runs in the ESP-NOW receive
+// (WiFi) task — keep it minimal; poll getNeighbor() from loop() for heavier
+// work. `nb` is valid only for the duration of the call.
+typedef void (*WCBNeighborCallback)(const WCBNeighbor& nb);
 
 
 // =============================================================================
@@ -428,6 +473,44 @@ public:
     // defer blocking work (see the NaviCore OTA enqueue/drain pattern).
     void onRawPacket(WCBRawPacketCallback callback);
 
+    // ── WDP discovery (consume neighbor adverts) ───────────────────────────
+
+    // Register a callback fired whenever a WDP advert is decoded from a neighbor
+    // (another WCB, or a WCB_Client device that called setIdentity()). Lets this
+    // device learn the mesh — who's out there and what they can do. Optional:
+    // the neighbor table is maintained regardless; poll it with getNeighbor().
+    void onNeighbor(WCBNeighborCallback callback);
+
+    // Return the learned neighbor with this WCB number (1..WCB_MAX_BOARDS), or
+    // nullptr if none has been heard (or it aged out). Do not retain the pointer
+    // across update() calls.
+    const WCBNeighbor* getNeighbor(uint8_t wcbNumber);
+
+    // Number of neighbors currently in the table.
+    uint8_t neighborCount();
+
+    // Auto-join (default ON): when this device decodes a WDP advert from a
+    // regular WCB it isn't already peered with, it registers that board as an
+    // ESP-NOW peer LIVE — so the fleet is discovered without setting wcb_quantity
+    // to cover it, and without pre-registering slots for boards that may not
+    // exist (the ESP-NOW peer table caps at ~20). A board is joined only after
+    // it has been heard advertise at least twice. Client devices (other
+    // setIdentity() peers) and the special peer are never auto-joined.
+    //
+    // A learned peer is PERMANENT: it is saved to NVS, restored on every
+    // begin(), and from then on always expected to be on and ready (heartbeats
+    // drive its online/offline state, but membership never self-evicts). If the
+    // peer table gets crowded, cleanup is the user's call — forgetPeer() /
+    // clearLearnedPeers(). Turn auto-join OFF to pin the peer set to exactly
+    // 1..wcb_quantity (+ special).
+    void setAutoJoin(bool enabled);
+    bool autoJoinEnabled() const { return _autoJoin; }
+
+    // Drop one auto-joined peer (deregisters it and removes it from NVS), or all
+    // of them. Floor peers (1..wcb_quantity) and the special peer are unaffected.
+    void forgetPeer(uint8_t id);
+    void clearLearnedPeers();
+
     // Unicast a raw byte buffer to a WCB's MAC (computed from the shared scheme).
     // For custom protocols (e.g. OTA ACKs / relay forwards) that must send a
     // struct other than wcb_packet_etm_t. Registers the peer on demand if needed.
@@ -492,6 +575,31 @@ public:
     // Note: enabling checksum reduces the usable command length from 200 to ~188 chars.
     void setChecksum(bool enabled);
 
+    // ── Device identity (WDP discovery) ────────────────────────────────────
+
+    // Advertise this device's identity on the WCB mesh via WDP so every WCB
+    // discovers it automatically — it then appears in ?WDP,LIST / the config
+    // tool as a named device with its firmware version, no manual labeling.
+    //
+    // This is the mesh twin of the serial "WDP-DA" device-announce model; a
+    // device describes itself the same way whether it's wired to a WCB port or
+    // joined over ESP-NOW.
+    //   type : canonical device name (e.g. "NaviCore", "Flthy HP Controller").
+    //          Use a name from the shared WCB device vocabulary. REQUIRED —
+    //          a null/empty type disables WDP advertising.
+    //   fw   : this device's firmware version string.
+    //   hwRev: optional hardware revision ("revB"); pass nullptr to omit.
+    //   caps : optional space-separated capability tags ("hp.servo hp.led");
+    //          pass nullptr to omit.
+    //
+    // Call from setup(), before OR after begin(). The advert goes out as a short
+    // boot burst and is then re-broadcast periodically (~60 s, staggered per
+    // device_id) from update() — so keep calling update() (you must anyway).
+    // Requires ETM active on the WCBs (WDP rides the ETM broadcast layer, which
+    // is the WCB factory default).
+    void setIdentity(const char* type, const char* fw,
+                     const char* hwRev = nullptr, const char* caps = nullptr);
+
 
 private:
 
@@ -531,10 +639,28 @@ private:
 
     bool _checksumEnabled = true;  // CRC32 on/off — must match ?ETM,CHKSM on WCBs
 
+    // ── WDP device-identity advert ───────────────────────────────────────────
+    // Set via setIdentity(); broadcast on the mesh as WCB_PACKET_WDP so WCBs
+    // discover this device. An empty _wdpType means advertising is off.
+    char          _wdpType[25]     = "";  // canonical device type (also the display name)
+    char          _wdpFw[28]       = "";  // firmware version string
+    char          _wdpHwRev[16]    = "";  // hardware revision ("" = omit)
+    char          _wdpCaps[49]     = "";  // space-separated capability tags ("" = omit)
+    uint8_t       _wdpBootLeft     = 0;   // remaining boot-burst adverts
+    unsigned long _wdpNextBootMs   = 0;   // next boot-burst advert due
+    unsigned long _wdpNextAdvertMs = 0;   // next periodic backstop advert due
+
     // ── Callbacks ────────────────────────────────────────────────────────────
     WCBCommandCallback   _commandCallback   = nullptr;
     WCBStatusCallback    _statusCallback    = nullptr;
     WCBRawPacketCallback _rawPacketCallback = nullptr;
+
+    // ── WDP consumer ──────────────────────────────────────────────────────────
+    WCBNeighborCallback  _neighborCallback = nullptr;
+    WCBNeighbor          _neighbors[WCB_MAX_BOARDS] = {};   // learned mesh neighbors, indexed by (wcbNumber-1)
+    bool                 _autoJoin = true;                  // register regular WCBs heard via WDP as peers, live
+    bool                 _learnedPeer[WCB_MAX_BOARDS] = {}; // auto-joined ids (beyond 1..quantity)
+    uint8_t              _advertCount[WCB_MAX_BOARDS] = {}; // WDP adverts heard per board (join needs >=2)
 
     // ── WCBStream registry ───────────────────────────────────────────────────
     // WCBStream instances self-register here during construction so update()
@@ -584,6 +710,17 @@ private:
 
     // Build and broadcast a HEARTBEAT packet so all WCBs know this device is alive.
     void _sendHeartbeat();
+
+    // ── WDP device-identity advert helpers ───────────────────────────────────
+    // Build the WDP TLV payload (magic + proto + DEVTYPE/FWVER/HWREV/CAPTAGS +
+    // END) into buf; returns the byte length. Mirrors the WCB firmware's
+    // wdpBuildPayload so a WCB decodes it into its neighbor table.
+    int  _buildWdpPayload(uint8_t* buf, int max);
+    // Broadcast one WDP advert (WCB_PACKET_WDP; raw TLV payload, no CRC — WDP
+    // carries TLV bytes, not a text command).
+    void _sendWdpAdvert();
+    // Drive the advert cadence (boot burst + ~60 s periodic). Called from update().
+    void _wdpTick();
 
     // Send an ACK packet back to the device that sent us a COMMAND.
     // targetID : sender's WCB ID to reply to
@@ -656,6 +793,27 @@ private:
     // Process an incoming ESP-NOW packet. Routes to heartbeat, ACK, or command
     // handling based on structPacketType.
     void _handleReceive(const uint8_t* mac, const uint8_t* data, int len);
+
+    // Decode a WDP advert payload (magic 'W' + TLVs) into _neighbors[senderWCB-1]
+    // and fire the neighbor callback. Called from _handleReceive for packet type
+    // WCB_PACKET_WDP. In-RAM TLV parse only (no NVS/flash).
+    void _handleWdpAdvert(uint8_t senderWCB, const uint8_t* payload);
+
+    // Expire neighbors whose last advert is older than WCB_WDP_NEIGHBOR_TTL_MS.
+    // Called each update(); fires onNeighbor(valid=false) on expiry. Also drops
+    // (deregisters) an auto-joined peer that has aged out.
+    void _ageNeighbors(unsigned long now);
+
+    // Register a regular WCB learned via WDP as an ESP-NOW peer, live, and
+    // persist it. Derived MAC, idempotent, guarded against self / the special
+    // peer / the 1..quantity floor / the ~20-peer cap. Returns true if it's a
+    // registered learned peer.
+    bool _addLearnedPeer(uint8_t id);
+
+    // Learned-peer NVS persistence ("wcb_peers": ver + octet fingerprint +
+    // 20-bit membership mask). Saved on join/forget; loaded during begin().
+    void _saveLearnedPeers();
+    void _loadLearnedPeers();
 
     // Find an empty slot in _pending[]. Returns index, or -1 if all slots are
     // occupied. Packets are still sent even when -1 is returned — they just

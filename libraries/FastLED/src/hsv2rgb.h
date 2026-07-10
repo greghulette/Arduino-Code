@@ -3,6 +3,9 @@
 #ifndef __INC_HSV2RGB_H
 #define __INC_HSV2RGB_H
 
+// Forward declarations
+#include "fl/gfx/crgb.h"  // for fl::CRGB
+#include "fl/gfx/hsv.h"   // for fl::hsv8
 
 /// @file hsv2rgb.h
 /// Functions to convert from the HSV colorspace to the RGB colorspace
@@ -56,20 +59,18 @@
 
 /// @{
 
-FASTLED_NAMESPACE_BEGIN
+//struct CRGB;  // CRGB is now a typedef in crgb.h, not a struct
+using CRGB = fl::CRGB;  // Bring the typedef into this namespace for consistency
+using CHSV = fl::hsv8;  // Bring the typedef into this namespace for consistency
 
-struct CRGB;
-
-
-
-/// @copybrief hsv2rgb_rainbow(const struct CHSV&, struct CRGB&)
-/// @see hsv2rgb_rainbow(const struct CHSV&, struct CRGB&)
+/// @copybrief hsv2rgb_rainbow(const CHSV&, CRGB&)
+/// @see hsv2rgb_rainbow(const CHSV&, CRGB&)
 /// @param phsv CHSV array to convert to RGB. Max hue supported is HUE_MAX_RAINBOW
 /// @param prgb CRGB array to store the result of the conversion (will be modified)
 /// @param numLeds the number of array values to process
-void hsv2rgb_rainbow( const struct CHSV* phsv, struct CRGB * prgb, int numLeds);
-void hsv2rgb_rainbow( const struct CHSV& hsv, struct CRGB& rgb);
-CRGB hsv2rgb_rainbow( const struct CHSV& hsv);
+void hsv2rgb_rainbow( const CHSV* phsv, CRGB * prgb, int numLeds);
+void hsv2rgb_rainbow( const CHSV& hsv, CRGB& rgb);
+CRGB hsv2rgb_rainbow( const CHSV& hsv);
 
 /// Max hue accepted for the hsv2rgb_rainbow() function
 #define HUE_MAX_RAINBOW 255
@@ -86,38 +87,38 @@ CRGB hsv2rgb_rainbow( const struct CHSV& hsv);
 ///
 /// @param hsv CHSV struct to convert to RGB. Max hue supported is HUE_MAX_SPECTRUM
 /// @param rgb CRGB struct to store the result of the conversion (will be modified)
-void hsv2rgb_spectrum( const struct CHSV& hsv, struct CRGB& rgb);
+void hsv2rgb_spectrum( const CHSV& hsv, CRGB& rgb);
 
 /// Inline version of hsv2rgb_spectrum which returns a CRGB object.
-CRGB hsv2rgb_spectrum( const struct CHSV& hsv);
+CRGB hsv2rgb_spectrum( const CHSV& hsv);
 
-/// @copybrief hsv2rgb_spectrum(const struct CHSV&, struct CRGB&)
-/// @see hsv2rgb_spectrum(const struct CHSV&, struct CRGB&)
+/// @copybrief hsv2rgb_spectrum(const CHSV&, CRGB&)
+/// @see hsv2rgb_spectrum(const CHSV&, CRGB&)
 /// @param phsv CHSV array to convert to RGB. Max hue supported is HUE_MAX_SPECTRUM
 /// @param prgb CRGB array to store the result of the conversion (will be modified)
 /// @param numLeds the number of array values to process
-void hsv2rgb_spectrum( const struct CHSV* phsv, struct CRGB * prgb, int numLeds);
+void hsv2rgb_spectrum( const CHSV* phsv, CRGB * prgb, int numLeds);
 
 /// Max hue accepted for the hsv2rgb_spectrum() function
 #define HUE_MAX_SPECTRUM 255
 
 
 
-/// @copybrief hsv2rgb_spectrum(const struct CHSV&, struct CRGB&)
-/// @see hsv2rgb_spectrum(const struct CHSV&, struct CRGB&)
+/// @copybrief hsv2rgb_spectrum(const CHSV&, CRGB&)
+/// @see hsv2rgb_spectrum(const CHSV&, CRGB&)
 /// @note The hue is limited to the range 0-191 (HUE_MAX). This
 /// results in a slightly faster conversion speed at the expense
 /// of color balance.
 /// @param hsv CHSV struct to convert to RGB. Max hue supported is HUE_MAX
 /// @param rgb CRGB struct to store the result of the conversion (will be modified)
-void hsv2rgb_raw(const struct CHSV& hsv, struct CRGB & rgb);
+void hsv2rgb_raw(const CHSV& hsv, CRGB & rgb);
 
-/// @copybrief hsv2rgb_raw(const struct CHSV&, struct CRGB&)
-/// @see hsv2rgb_raw(const struct CHSV&, struct CRGB&)
+/// @copybrief hsv2rgb_raw(const CHSV&, CRGB&)
+/// @see hsv2rgb_raw(const CHSV&, CRGB&)
 /// @param phsv CHSV array to convert to RGB. Max hue supported is HUE_MAX
 /// @param prgb CRGB array to store the result of the conversion (will be modified)
 /// @param numLeds the number of array values to process
-void hsv2rgb_raw(const struct CHSV* phsv, struct CRGB * prgb, int numLeds);
+void hsv2rgb_raw(const CHSV* phsv, CRGB * prgb, int numLeds);
 
 /// Max hue accepted for the hsv2rgb_raw() function
 #define HUE_MAX 191
@@ -130,17 +131,17 @@ void hsv2rgb_raw(const struct CHSV* phsv, struct CRGB * prgb, int numLeds);
 ///
 /// @param hsv CHSV struct to convert to RGB
 /// @param rgb CRGB struct to store the result of the conversion (will be modified)
-void hsv2rgb_fullspectrum( const struct CHSV& hsv, struct CRGB& rgb);
+void hsv2rgb_fullspectrum( const CHSV& hsv, CRGB& rgb);
 
 /// version of hsv2rgb_fullspectrum which returns a CRGB object.
-CRGB hsv2rgb_fullspectrum( const struct CHSV& hsv);
+CRGB hsv2rgb_fullspectrum( const CHSV& hsv);
 
-/// @copybrief hsv2rgb_fullspectrum(const struct CHSV&, struct CRGB&)
-/// @see hsv2rgb_fullspectrum(const struct CHSV&, struct CRGB&)
+/// @copybrief hsv2rgb_fullspectrum(const CHSV&, CRGB&)
+/// @see hsv2rgb_fullspectrum(const CHSV&, CRGB&)
 /// @param phsv CHSV array to convert to RGB
 /// @param prgb CRGB array to store the result of the conversion (will be modified)
 /// @param numLeds the number of array values to process
-void hsv2rgb_fullspectrum( const struct CHSV* phsv, struct CRGB * prgb, int numLeds);
+void hsv2rgb_fullspectrum( const CHSV* phsv, CRGB * prgb, int numLeds);
 
 
 
@@ -182,7 +183,7 @@ void hsv2rgb_fullspectrum( const struct CHSV* phsv, struct CRGB * prgb, int numL
 CHSV rgb2hsv_approximate( const CRGB& rgb);
 
 
-FASTLED_NAMESPACE_END
+
 
 ///@} HSV2RGB
 

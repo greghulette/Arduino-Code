@@ -16,20 +16,19 @@ all the UI elements you see below.
 #include <Arduino.h>
 #include <FastLED.h>
 
-#include "fl/draw_visitor.h"
-#include "fl/math_macros.h"
-#include "fl/raster.h"
-#include "fl/time_alpha.h"
-#include "fl/ui.h"
-#include "fl/xypath.h"
-#include "fx/time.h"
+#include "fl/gfx/draw_visitor.h"
+#include "fl/math/math.h"
+#include "fl/gfx/raster.h"
+#include "fl/math/time_alpha.h"
+#include "fl/ui/ui.h"
+#include "fl/gfx/xypath.h"
+#include "fl/fx/time.h"
 
 // Sketch.
 #include "src/wave.h"
 #include "src/xypaths.h"
-#include "fl/function.h"
+#include "fl/stl/function.h"
 
-using namespace fl;
 
 #define HEIGHT 64
 #define WIDTH 64
@@ -37,16 +36,16 @@ using namespace fl;
 #define IS_SERPINTINE true
 #define TIME_ANIMATION 1000 // ms
 
-CRGB leds[NUM_LEDS];
-XYMap xyMap(WIDTH, HEIGHT, IS_SERPINTINE);
-UITitle title("Simple control of an xy path");
-UIDescription description("This is more of a test for new features.");
+fl::CRGB leds[NUM_LEDS];
+fl::XYMap xyMap(WIDTH, HEIGHT, IS_SERPINTINE);
+fl::UITitle title("Simple control of an xy path");
+fl::UIDescription description("This is more of a test for new features.");
 
-// UIButton trigger("My Trigger");
-UISlider pointX("Point X", WIDTH / 2.0f, 0.0f, WIDTH - 1, 1.0f);
-UISlider pointY("Point Y", HEIGHT / 2.0f, 0.0f, HEIGHT - 1, 1.0f);
+// fl::UIButton trigger("My Trigger");
+fl::UISlider pointX("Point X", WIDTH / 2.0f, 0.0f, WIDTH - 1, 1.0f);
+fl::UISlider pointY("Point Y", HEIGHT / 2.0f, 0.0f, HEIGHT - 1, 1.0f);
 
-UIButton button("second trigger");
+fl::UIButton button("second trigger");
 
 
 int x = 0;
@@ -65,11 +64,11 @@ void loop() {
     fl::clear(leds);
     triggered = button.clicked();
     if (triggered) {
-        FASTLED_WARN("Triggered");
+        FL_WARN("Triggered");
     }
     x = pointX.as_int();
     y = pointY.as_int();
-    leds[xyMap(x, y)] = CRGB(255, 0, 0);
+    leds[xyMap(x, y)] = fl::CRGB(255, 0, 0);
 
     FastLED.show();
 }

@@ -1,502 +1,232 @@
+from __future__ import annotations
+
+
 #!/usr/bin/env python3
 """
 FastLED Example Compiler
 
 Streamlined compiler that uses the PioCompiler to build FastLED examples for various boards.
 This replaces the previous complex compilation system with a simpler approach using the Pio compiler.
+
+ESP32 QEMU Support:
+-------------------
+When using -o/--out with ESP32 boards and a directory path or filename containing "qemu",
+the compiler automatically generates properly merged flash images for QEMU testing.
+The merged flash image includes:
+  - Bootloader at 0x1000 (ESP32) or 0x0 (ESP32-C3/S3)
+  - Partition table at 0x8000
+  - boot_app0 at 0xe000
+  - Application firmware at 0x10000
+
+Uses esptool.py when available, falls back to manual binary merge if not installed.
 """
 
-import argparse
 import os
 import sys
-import threading
-import time
-from concurrent.futures import Future, as_completed
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, cast
-
-from typeguard import typechecked
-
-from ci.boards import ALL, Board, create_board
-from ci.compiler.compiler import CacheType, SketchResult
-from ci.compiler.pio import PioCompiler
+from typing import TYPE_CHECKING
 
 
-def green_text(text: str) -> str:
-    """Return text in green color."""
-    return f"\033[32m{text}\033[0m"
+if TYPE_CHECKING:
+    from ci.compiler.argument_parser import CompilationConfig
 
 
-def red_text(text: str) -> str:
-    """Return text in red color."""
-    return f"\033[31m{text}\033[0m"
+# handle_docker_compilation() removed in #2812 — compilation Docker has been
+# decommissioned. The niteris/fastled-compiler-* image family that wrapped
+# `bash compile --docker` was a stop-gap against PlatformIO self-poisoning;
+# fbuild does not self-poison and has been the default backend for some time.
 
 
-def get_default_boards() -> List[str]:
-    """Get all board names from the ALL boards list, with preferred boards first."""
-    # These are the boards we want to compile first (preferred order)
-    # Order matters: UNO first because it's used for global init and builds faster
-    preferred_board_names = [
-        "uno",  # Build is faster if this is first, because it's used for global init.
-        "esp32dev",
-        "esp01",  # ESP8266
-        "esp32c3",
-        "esp32c6",
-        "esp32s3",
-        "teensylc",
-        "teensy31",
-        "teensy41",
-        "digix",
-        "rpipico",
-        "rpipico2",
-    ]
+def _wasm_fast_path() -> int | None:
+    """Detect 'wasm' in argv and short-circuit to wasm_compile without heavy imports.
 
-    # Get all available board names from the ALL list
-    available_board_names = {board.board_name for board in ALL}
+    Returns exit code if handled, None to fall through to full argument parser.
+    Saves ~130ms by skipping CompilationArgumentParser and its 62 transitive imports.
+    """
+    # argv: ci-compile.py wasm ExampleName [--run] [--just-compile] [-v]
+    args = sys.argv[1:]
+    if not args or args[0].lower() != "wasm":
+        return None
+    rest = args[1:]
 
-    # Start with preferred boards that exist, warn about missing ones
-    default_boards: List[str] = []
-    for board_name in preferred_board_names:
-        if board_name in available_board_names:
-            default_boards.append(board_name)
-        else:
-            print(
-                f"WARNING: Preferred board '{board_name}' not found in available boards"
-            )
+    # Extract example name (first positional, skipping flags)
+    example = None
+    has_run = False
+    has_verbose = False
+    for a in rest:
+        if a == "--run":
+            has_run = True
+        elif a in ("-v", "--verbose"):
+            has_verbose = True
+        elif a == "--just-compile":
+            pass  # ignored, kept for compat
+        elif a.startswith("--examples"):
+            # --examples Blink or --examples=Blink
+            if "=" in a:
+                example = a.split("=", 1)[1]
+            elif rest.index(a) + 1 < len(rest):
+                example = rest[rest.index(a) + 1]
+        elif not a.startswith("-") and example is None:
+            example = a
 
-    # Add all remaining boards (sorted for consistency)
-    remaining_boards = sorted(available_board_names - set(default_boards))
-    default_boards.extend(remaining_boards)
+    if example is None:
+        example = "wasm"
 
-    return default_boards
+    if has_verbose:
+        os.environ["VERBOSE"] = "1"
 
-
-def get_all_examples() -> List[str]:
-    """Get all available example names from the examples directory."""
-    project_root = Path(__file__).parent.parent.resolve()
-    examples_dir = project_root / "examples"
-
-    if not examples_dir.exists():
-        return []
-
-    examples: List[str] = []
-    for item in examples_dir.iterdir():
-        if item.is_dir():
-            # Check if it contains a .ino file with the same name
-            ino_file = item / f"{item.name}.ino"
-            if ino_file.exists():
-                examples.append(item.name)
-
-    # Sort for consistent ordering
-    examples.sort()
-    return examples
-
-
-def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Compile FastLED examples for various boards using PioCompiler"
-    )
-    parser.add_argument(
-        "boards",
-        type=str,
-        help="Comma-separated list of boards to compile for",
-        nargs="?",
-    )
-    parser.add_argument(
-        "positional_examples",
-        type=str,
-        help="Examples to compile (positional arguments after board name)",
-        nargs="*",
-    )
-    parser.add_argument(
-        "--examples", type=str, help="Comma-separated list of examples to compile"
-    )
-    parser.add_argument(
-        "--exclude-examples", type=str, help="Examples that should be excluded"
-    )
-    parser.add_argument(
-        "--defines", type=str, help="Comma-separated list of compiler definitions"
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Disable sccache for faster compilation (default is already disabled)",
-    )
-    parser.add_argument(
-        "--enable-cache",
-        action="store_true",
-        help="Enable sccache for faster compilation",
-    )
-    parser.add_argument(
-        "--cache",
-        action="store_true",
-        help="(Deprecated) Enable sccache for faster compilation - use --enable-cache instead",
-    )
-    parser.add_argument(
-        "--supported-boards",
-        action="store_true",
-        help="Print the list of supported boards and exit",
-    )
-    parser.add_argument(
-        "--no-interactive",
-        action="store_true",
-        help="Disables interactive mode (deprecated)",
-    )
-    parser.add_argument(
-        "--log-failures",
-        type=str,
-        help="Directory to write per-example failure logs (created on first failure)",
-    )
-    parser.add_argument(
-        "--global-cache",
-        type=str,
-        help="Override global PlatformIO cache directory path (for testing)",
-    )
-    parser.add_argument(
-        "-o",
-        "--out",
-        type=str,
-        help="Output path for build artifact. Requires exactly one sketch. "
-        "If path ends with '/', treated as directory. If has suffix, treated as file. "
-        "Use '-o .' to save in current directory with sketch name.",
-    )
-
-    try:
-        parsed_args = parser.parse_intermixed_args(args)
-        unknown = []
-    except SystemExit:
-        # If parse_intermixed_args fails, fall back to parse_known_args
-        parsed_args, unknown = parser.parse_known_args(args)
-
-    # Handle unknown arguments intelligently - treat non-flag arguments as examples
-    unknown_examples: List[str] = []
-    for arg in unknown:
-        if not arg.startswith("-"):
-            unknown_examples.append(arg)
-
-    # Add unknown examples to positional_examples
-    if unknown_examples:
-        if (
-            not hasattr(parsed_args, "positional_examples")
-            or parsed_args.positional_examples is None
-        ):
-            parsed_args.positional_examples = []
-        # Type assertion to help the type checker - argparse returns Any but we know it's List[str]
-        positional_examples: List[str] = cast(
-            List[str], getattr(parsed_args, "positional_examples", [])
-        )
-        positional_examples.extend(unknown_examples)
-        parsed_args.positional_examples = positional_examples
-
-    return parsed_args
-
-
-def resolve_example_path(example: str) -> str:
-    """Resolve example name to path, ensuring it exists."""
-    project_root = Path(__file__).parent.parent.resolve()
-    examples_dir = project_root / "examples"
-
-    # Handle both "Blink" and "examples/Blink" formats
-    if example.startswith("examples/"):
-        example = example[len("examples/") :]
-
-    example_path = examples_dir / example
-    if not example_path.exists():
-        raise FileNotFoundError(f"Example not found: {example_path}")
-
-    return example
-
-
-@typechecked
-@dataclass
-class BoardCompilationResult:
-    """Aggregated result for compiling a set of examples on a single board."""
-
-    ok: bool
-    sketch_results: List[SketchResult]
-
-
-def compile_board_examples(
-    board: Board,
-    examples: List[str],
-    defines: List[str],
-    verbose: bool,
-    enable_cache: bool,
-    global_cache_dir: Optional[Path] = None,
-) -> BoardCompilationResult:
-    """Compile examples for a single board using PioCompiler."""
-
-    # Resolve global cache directory immediately for display
-    resolved_cache_dir = None
-    if global_cache_dir is not None:
-        # User specified a path - use it exactly as provided
-        resolved_cache_dir = global_cache_dir.resolve()
-    else:
-        # Default path ends with 'global_cache'
-        resolved_cache_dir = Path.home() / ".fastled" / "global_cache"
-
-    print(f"\n{'=' * 60}")
-    print(f"COMPILING BOARD: {board.board_name}")
-    print(f"EXAMPLES: {', '.join(examples)}")
-    print(f"GLOBAL CACHE: {resolved_cache_dir}")
-
-    # Show other cache directories
-    from ci.compiler.pio import FastLEDPaths
-
-    paths = FastLEDPaths(board.board_name)
-
-    print(f"BUILD CACHE: {paths.build_cache_dir}")
-    print(f"CORE DIR: {paths.core_dir}")
-    print(f"PACKAGES DIR: {paths.packages_dir}")
-
-    print(f"{'=' * 60}")
-
-    try:
-        # Determine cache type based on flag and board frameworks
-        frameworks = [f.strip().lower() for f in (board.framework or "").split(",")]
-        mixed_frameworks = "arduino" in frameworks and "espidf" in frameworks
-        cache_type = (
-            CacheType.SCCACHE
-            if enable_cache and not mixed_frameworks
-            else CacheType.NO_CACHE
-        )
-
-        # Create PioCompiler instance
-        compiler = PioCompiler(
-            board=board,
-            verbose=verbose,
-            global_cache_dir=resolved_cache_dir,
-            additional_defines=defines,
-            cache_type=cache_type,
-        )
-
-        # Build all examples
-        futures: List[Future[SketchResult]] = compiler.build(examples)
-
-        # Wait for completion and collect results
-        results: List[SketchResult] = []
-
-        for future in futures:
-            try:
-                result = future.result()
-                results.append(result)
-                # SUCCESS/FAILED messages are printed by worker threads
-            except KeyboardInterrupt:
-                print("Keyboard interrupt detected, cancelling builds")
-                compiler.cancel_all()
-                import _thread
-
-                for future in futures:
-                    future.cancel()
-
-                _thread.interrupt_main()
-                raise
-            except Exception as e:
-                # Represent unexpected exception as a failed SketchResult for consistency
-                from pathlib import Path as _Path
-
-                results.append(
-                    SketchResult(
-                        success=False,
-                        output=f"Build exception: {str(e)}",
-                        build_dir=_Path("."),
-                        example="<exception>",
-                    )
-                )
-                print(f"EXCEPTION during build: {e}")
-                # Cleanup
-                compiler.cancel_all()
-
-        # Show compiler statistics after all builds complete
+    if has_run:
+        # --run needs wasm_compile for Playwright test orchestration
+        saved_argv = sys.argv
+        sys.argv = ["ci.wasm_compile", f"examples/{example}"]
+        sys.argv.append("--run")
         try:
-            stats = compiler.get_cache_stats()
-            if stats:
-                print("\n" + "=" * 60)
-                print("COMPILER STATISTICS")
-                print("=" * 60)
-                print(stats)
-                print("=" * 60)
-        except Exception as e:
-            print(f"Warning: Could not retrieve compiler statistics: {e}")
+            from ci.wasm_compile import main as wasm_compile_main
 
-        any_failures = False
-        for r in results:
-            if not r.success:
-                any_failures = True
-                break
-        return BoardCompilationResult(ok=not any_failures, sketch_results=results)
-    except KeyboardInterrupt:
-        print("Keyboard interrupt detected, cancelling builds")
-        import _thread
+            return wasm_compile_main()
+        finally:
+            sys.argv = saved_argv
 
-        _thread.interrupt_main()
-        raise
-    except Exception as e:
-        # Compiler could not be set up; return a single failed result to carry message
-        from pathlib import Path as _Path
+    # Compile-only fast path: call wasm_build.build() directly,
+    # skipping both wasm_compile and argparse (~47ms saved)
+    from pathlib import Path
 
-        return BoardCompilationResult(
-            ok=False,
-            sketch_results=[
-                SketchResult(
-                    success=False,
-                    output=f"Compiler setup failed: {str(e)}",
-                    build_dir=_Path("."),
-                    example="<setup>",
-                )
-            ],
-        )
+    output_dir = Path("examples") / example / "fastled_js"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_js = output_dir / "fastled.js"
 
+    from ci.wasm_build import build as wasm_build
 
-def get_board_artifact_extension(board: Board) -> str:
-    """Get the primary artifact extension for a board."""
-    # ESP32/ESP8266 boards always produce .bin files
-    if board.board_name.startswith("esp"):
-        return ".bin"
-
-    # Most Arduino-based boards produce .hex files
-    if board.framework and "arduino" in board.framework.lower():
-        return ".hex"
-
-    # Default to .hex for most microcontroller boards
-    return ".hex"
-
-
-def validate_output_path(
-    output_path: str, sketch_name: str, board: Board
-) -> tuple[bool, str, str]:
-    """Validate output path and return (is_valid, resolved_path, error_message).
-
-    Args:
-        output_path: The user-specified output path
-        sketch_name: Name of the sketch being built
-        board: Board configuration
-
-    Returns:
-        Tuple of (is_valid, resolved_output_path, error_message)
-    """
-    import os
-
-    expected_ext = get_board_artifact_extension(board)
-
-    # Handle special case: -o .
-    if output_path == ".":
-        resolved_path = f"{sketch_name}{expected_ext}"
-        return True, resolved_path, ""
-
-    # If path ends with /, it's a directory
-    if output_path.endswith("/") or output_path.endswith("\\"):
-        resolved_path = os.path.join(output_path, f"{sketch_name}{expected_ext}")
-        return True, resolved_path, ""
-
-    # If path has an extension, it's a file - validate the extension
-    if "." in os.path.basename(output_path):
-        _, ext = os.path.splitext(output_path)
-        if ext != expected_ext:
-            return (
-                False,
-                "",
-                f"Output file extension '{ext}' doesn't match expected '{expected_ext}' for board '{board.board_name}'",
-            )
-        return True, output_path, ""
-
-    # Path doesn't end with / and has no extension - treat as directory
-    resolved_path = os.path.join(output_path, f"{sketch_name}{expected_ext}")
-    return True, resolved_path, ""
-
-
-def copy_build_artifact(
-    build_dir: Path, board: Board, sketch_name: str, output_path: str
-) -> bool:
-    """Copy the build artifact to the specified output path.
-
-    Args:
-        build_dir: Build directory path
-        board: Board configuration
-        sketch_name: Name of the sketch
-        output_path: Target output path
-
-    Returns:
-        True if successful, False otherwise
-    """
-    import os
-    import shutil
-
-    expected_ext = get_board_artifact_extension(board)
-
-    # Find the source artifact
-    # PlatformIO builds are in .build/pio/{board}/.pio/build/{board}/firmware.{ext}
-    artifact_dir = build_dir / ".pio" / "build" / board.board_name
-    source_artifact = artifact_dir / f"firmware{expected_ext}"
-
-    if not source_artifact.exists():
-        print(f"ERROR: Build artifact not found: {source_artifact}")
-        return False
-
-    # Ensure output directory exists
-    output_path_obj = Path(output_path)
-    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        print(f"Copying {source_artifact} to {output_path}")
-        shutil.copy2(source_artifact, output_path)
-        print(f"✅ Build artifact saved to: {output_path}")
-        return True
-    except Exception as e:
-        print(f"ERROR: Failed to copy build artifact: {e}")
-        return False
+    rc = wasm_build(example=example, output=str(output_js), verbose=has_verbose)
+    if rc == 0:
+        print("WASM compilation successful")
+    else:
+        print("WASM compilation failed")
+    return rc
 
 
 def main() -> int:
     """Main function."""
-    args = parse_args()
-    if args.verbose:
-        os.environ["VERBOSE"] = "1"
+    # WASM fast path: bypass full argument parser + heavy imports (~150ms saved)
+    wasm_rc = _wasm_fast_path()
+    if wasm_rc is not None:
+        return wasm_rc
 
-    if args.supported_boards:
+    # Non-WASM path: load stdlib + heavy imports (~25ms + ~350ms)
+    import time
+    from pathlib import Path
+    from typing import Optional
+
+    from ci.util.global_interrupt_handler import install_signal_handler
+
+    install_signal_handler()
+
+    # Parse arguments using new CompilationArgumentParser
+    from ci.compiler.argument_parser import CompilationArgumentParser, WorkflowType
+
+    # Compilation Docker has been decommissioned (#2812). Project root is
+    # always derived from this file's location.
+    project_root = Path(__file__).parent.parent.absolute()
+    parser = CompilationArgumentParser(project_root)
+
+    # First check if --supported-boards was requested before full parsing
+    if "--supported-boards" in sys.argv:
+        from ci.compiler.board_example_utils import get_default_boards
+
         print(",".join(get_default_boards()))
         return 0
 
-    # Determine which boards to compile for
-    if args.boards:
-        boards_names = args.boards.split(",")
-    else:
-        boards_names = get_default_boards()
+    config = parser.parse()
 
-    # Get board objects
-    boards: List[Board] = []
-    for board_name in boards_names:
-        try:
-            board = create_board(board_name, no_project_options=False)
-            boards.append(board)
-        except Exception as e:
-            print(f"ERROR: Failed to get board '{board_name}': {e}")
+    # Handle verbose mode
+    if config.verbose:
+        os.environ["VERBOSE"] = "1"
+
+    # Handle default boards if none specified
+    if not config.boards:
+        from ci.boards import Board, create_board
+        from ci.compiler.board_example_utils import get_default_boards
+
+        board_names = get_default_boards()
+        boards: list[Board] = []
+        for board_name in board_names:
+            try:
+                board = create_board(board_name, no_project_options=False)
+                boards.append(board)
+            except KeyboardInterrupt as ki:
+                from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+                handle_keyboard_interrupt(ki)
+                raise
+            except Exception as e:
+                print(f"ERROR: Failed to get board '{board_name}': {e}")
+                return 1
+        # Create new config with default boards
+        from ci.compiler.argument_parser import CompilationConfig
+
+        config = CompilationConfig(
+            boards=boards,
+            examples=config.examples,
+            workflow=config.workflow,
+            defines=config.defines,
+            extra_packages=config.extra_packages,
+            verbose=config.verbose,
+            output_path=config.output_path,
+            merged_bin=config.merged_bin,
+            log_failures=config.log_failures,
+            max_failures=config.max_failures,
+            wasm_run=config.wasm_run,
+            global_cache_dir=config.global_cache_dir,
+            skip_filters=config.skip_filters,
+            no_parallel=config.no_parallel,
+            backend=config.backend,
+        )
+
+    # The "auto-detect Docker availability + force --local on GitHub Actions"
+    # block that lived here was removed in #2812. With compilation Docker
+    # decommissioned, native compilation is the only path — no auto-detection
+    # or CI override needed.
+
+    # Handle WASM compilation by delegating to wasm_compile.py
+    if config.workflow == WorkflowType.WASM:
+        if len(config.boards) > 1:
+            print("ERROR: WASM compilation cannot be combined with other boards")
             return 1
 
-    # Determine which examples to compile
-    if args.positional_examples:
-        # Convert positional examples, handling both "examples/Blink" and "Blink" formats
-        examples: List[str] = []
-        for example in args.positional_examples:
-            # Remove "examples/" prefix if present
-            if example.startswith("examples/"):
-                example = example[len("examples/") :]
-            examples.append(example)
-    elif args.examples:
-        examples = args.examples.split(",")
-    else:
-        # Compile all available examples since builds are fast now!
-        examples = get_all_examples()
+        examples = config.examples
+        if not examples:
+            examples = ["wasm"]
 
-    # Process example exclusions
-    if args.exclude_examples:
-        exclude_examples = args.exclude_examples.split(",")
-        examples = [ex for ex in examples if ex not in exclude_examples]
+        if len(examples) != 1:
+            print(
+                f"ERROR: WASM compilation requires exactly one example, got {len(examples)}: {examples}"
+            )
+            return 1
+
+        # Call wasm_compile in-process to avoid ~180ms Python spawn overhead
+        example = examples[0]
+        saved_argv = sys.argv
+        sys.argv = ["ci.wasm_compile", f"examples/{example}"]
+        if config.wasm_run:
+            sys.argv.append("--run")
+        try:
+            from ci.wasm_compile import main as wasm_compile_main
+
+            return wasm_compile_main()
+        finally:
+            sys.argv = saved_argv
+
+    # --- PlatformIO path: lazy-import heavy deps (~350ms) ---
+    from ci.compiler.board_example_utils import resolve_example_path
+    from ci.compiler.compilation_orchestrator import (
+        compile_board_examples,
+        format_elapsed_time,
+    )
+    from ci.compiler.formatting_utils import red_text, yellow_text
+    from ci.compiler.output_utils import copy_build_artifact, validate_output_path
+
+    # Get boards and examples from config
+    boards = config.boards
+    examples = config.examples
 
     # Validate examples exist
     for example in examples:
@@ -506,34 +236,31 @@ def main() -> int:
             print(f"ERROR: {e}")
             return 1
 
-    # Validate -o/--out option requirements
-    if args.out:
-        if len(examples) != 1:
-            print(
-                f"ERROR: -o/--out option requires exactly one sketch, got {len(examples)}: {examples}"
-            )
-            return 1
-
-        if len(boards) != 1:
-            print(
-                f"ERROR: -o/--out option requires exactly one board, got {len(boards)}: {[b.board_name for b in boards]}"
-            )
-            return 1
-
-        # Validate the output path
+    # Validate the output path if specified
+    if config.output_path:
         sketch_name = examples[0]
         board = boards[0]
-        is_valid, resolved_output_path, error_msg = validate_output_path(
-            args.out, sketch_name, board
+        validate_result = validate_output_path(
+            str(config.output_path), sketch_name, board
         )
-        if not is_valid:
-            print(f"ERROR: {error_msg}")
+        if not validate_result.is_valid:
+            print(f"ERROR: {validate_result.error_message}")
             return 1
 
-    # Set up defines
-    defines: List[str] = []
-    if args.defines:
-        defines.extend(args.defines.split(","))
+    # Set up defines (make a mutable copy)
+    defines = list(config.defines)
+
+    # Check if we're compiling Esp32C3_SPI_ISR and auto-enable validation
+    for example in examples:
+        if "Esp32C3_SPI_ISR" in example and len(examples) == 1:
+            if "FL_SPI_ISR_VALIDATE" not in defines:
+                defines.append("FL_SPI_ISR_VALIDATE")
+                print(
+                    yellow_text(
+                        "⚠️  Auto-enabling FL_SPI_ISR_VALIDATE for Esp32C3_SPI_ISR validation testing"
+                    )
+                )
+            break
 
     # Start compilation
     start_time = time.time()
@@ -541,26 +268,32 @@ def main() -> int:
         f"Starting compilation for {len(boards)} boards with {len(examples)} examples"
     )
 
-    compilation_errors: List[str] = []
-    failed_example_names: List[str] = []
-    failure_logs_dir: Optional[Path] = (
-        Path(args.log_failures) if getattr(args, "log_failures", None) else None
-    )
+    compilation_errors: list[str] = []
+    failed_example_names: list[str] = []
+    failure_logs_dir: Optional[Path] = config.log_failures
+    stopped_early: bool = False
 
     # Compile for each board
     for board in boards:
-        # Parse global cache directory if provided
-        global_cache_dir = None
-        if args.global_cache:
-            global_cache_dir = Path(args.global_cache)
+        # Determine merged-bin output path if requested
+        merged_bin_output = None
+        if config.merged_bin and config.output_path:
+            merged_bin_output = config.output_path
+
+        from ci.compiler.argument_parser import BuildBackend
 
         result = compile_board_examples(
             board=board,
             examples=examples,
             defines=defines,
-            verbose=args.verbose,
-            enable_cache=(args.enable_cache or args.cache) and not args.no_cache,
-            global_cache_dir=global_cache_dir,
+            verbose=config.verbose,
+            global_cache_dir=config.global_cache_dir,
+            merged_bin=config.merged_bin,
+            merged_bin_output=merged_bin_output,
+            extra_packages=config.extra_packages if config.extra_packages else None,
+            max_failures=config.max_failures,
+            skip_filters=config.skip_filters,
+            use_fbuild=(config.backend == BuildBackend.FBUILD),
         )
 
         if not result.ok:
@@ -598,21 +331,30 @@ def main() -> int:
                     print(f"{'-' * 60}")
                     # Print the collected output for this sketch
                     print(sketch.output)
+
+            # Check if compilation stopped early due to max_failures
+            if result.stopped_early:
+                stopped_early = True
+                break
+
             # Continue with other boards instead of stopping
         else:
             # Compilation succeeded - handle -o/--out option if specified
-            if args.out:
+            if config.output_path:
                 sketch_name = examples[0]  # We already validated there's exactly one
-                is_valid, resolved_output_path, _ = validate_output_path(
-                    args.out, sketch_name, board
+                copy_validate_result = validate_output_path(
+                    str(config.output_path), sketch_name, board
                 )
-                if is_valid:
+                if copy_validate_result.is_valid:
                     # Find the build directory for this board
                     project_root = Path(__file__).parent.parent.resolve()
                     build_dir = project_root / ".build" / "pio" / board.board_name
 
                     if not copy_build_artifact(
-                        build_dir, board, sketch_name, resolved_output_path
+                        build_dir,
+                        board,
+                        sketch_name,
+                        copy_validate_result.resolved_path,
                     ):
                         compilation_errors.append(
                             f"Failed to copy artifact for {board.board_name}"
@@ -626,7 +368,7 @@ def main() -> int:
 
     # Report results
     elapsed_time = time.time() - start_time
-    time_str = time.strftime("%Mm:%Ss", time.gmtime(elapsed_time))
+    time_str = format_elapsed_time(elapsed_time)
 
     if compilation_errors:
         print(
@@ -643,15 +385,55 @@ def main() -> int:
                 # same but in red
                 print(red_text(f"  {name}"))
             print("")
+        if stopped_early:
+            print(
+                yellow_text(
+                    f"⚠️  Compilation stopped early after {len(failed_example_names)} failures (--max-failures={config.max_failures})"
+                )
+            )
+            print("")
         return 1
     else:
         print(f"\nAll compilations completed successfully in {time_str}")
+
+        # Write build info to file if requested
+        if config.build_info and boards and examples:
+            import json
+            import shutil
+
+            board_name = boards[0].board_name
+            example_name = examples[0]
+            # Build info is generated per-example at .build/pio/<board>/build_info_<example>.json
+            build_info_path = (
+                Path(".build") / "pio" / board_name / f"build_info_{example_name}.json"
+            )
+
+            try:
+                if build_info_path.exists():
+                    shutil.copy(build_info_path, config.build_info)
+                    print(f"Build info written to: {config.build_info}")
+                else:
+                    with open(config.build_info, "w") as f:
+                        json.dump(
+                            {"error": f"Build info not found at {build_info_path}"},
+                            f,
+                            indent=2,
+                        )
+                    print(
+                        yellow_text(
+                            f"Warning: Build info not found at {build_info_path}"
+                        )
+                    )
+            except OSError as e:
+                print(red_text(f"ERROR: Failed to write build info: {e}"))
+                return 1
+
         return 0
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except KeyboardInterrupt:
-        print("\nInterrupted by user")
-        sys.exit(1)
+    except KeyboardInterrupt:  # noqa: KBI002 - top-level handler, just exit cleanly
+        print("Ctrl-c pressed, exiting...")
+        sys.exit(130)

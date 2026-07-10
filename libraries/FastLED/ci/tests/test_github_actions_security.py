@@ -1,12 +1,12 @@
-# pyright: reportUnknownMemberType=false
-import os
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 import yaml
 
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
 from ci.util.paths import PROJECT_ROOT
 
 
@@ -14,15 +14,15 @@ from ci.util.paths import PROJECT_ROOT
 class WorkflowStep:
     name: Optional[str] = None
     uses: Optional[str] = None
-    with_config: Optional[Dict[str, Any]] = None
+    with_config: Optional[dict[str, Any]] = None
     run: Optional[str] = None
 
 
 @dataclass
 class WorkflowJob:
-    runs_on: Optional[Union[str, List[str]]] = None
-    steps: Optional[List[WorkflowStep]] = None
-    permissions: Optional[Dict[str, str]] = None
+    runs_on: Optional[str | list[str]] = None
+    steps: Optional[list[WorkflowStep]] = None
+    permissions: Optional[dict[str, str]] = None
 
     def __post_init__(self) -> None:
         if self.steps is None:
@@ -31,16 +31,16 @@ class WorkflowJob:
 
 @dataclass
 class WorkflowTrigger:
-    branches: Optional[List[str]] = None
-    paths: Optional[List[str]] = None
+    branches: Optional[list[str]] = None
+    paths: Optional[list[str]] = None
 
 
 @dataclass
 class GitHubWorkflow:
     name: Optional[str] = None
-    on_config: Optional[Dict[str, Any]] = None
-    jobs: Optional[Dict[str, WorkflowJob]] = None
-    permissions: Optional[Dict[str, str]] = None
+    on_config: Optional[dict[str, Any]] = None
+    jobs: Optional[dict[str, WorkflowJob]] = None
+    permissions: Optional[dict[str, str]] = None
 
     def __post_init__(self) -> None:
         if self.jobs is None:
@@ -70,7 +70,7 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
             with open(workflow_path, "r", encoding="utf-8") as f:
                 raw_content: Any = yaml.safe_load(f)
 
-            content: Dict[str, Any] = raw_content or {}
+            content: dict[str, Any] = raw_content or {}
 
             # Handle the case where 'on' is parsed as boolean True instead of string 'on'
             # This happens because 'on' is a YAML boolean keyword
@@ -79,27 +79,32 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
                 content["on"] = on_data
 
             # Parse jobs into dataclass
-            jobs_dict: Dict[str, WorkflowJob] = {}
-            raw_jobs: Dict[str, Any] = content.get("jobs", {})
+            jobs_dict: dict[str, WorkflowJob] = {}
+            raw_jobs: dict[str, Any] = content.get("jobs", {})
             for job_name, job_data in raw_jobs.items():
                 if not isinstance(job_data, dict):
                     continue
 
                 # Parse steps
-                steps: List[WorkflowStep] = []
-                raw_steps: List[Any] = job_data.get("steps", [])  # pyright: ignore[reportUnknownVariableType]
-                for step_data in raw_steps:  # pyright: ignore[reportUnknownVariableType]
-                    if isinstance(step_data, dict):
-                        step_dict: Dict[str, Any] = step_data  # pyright: ignore[reportUnknownVariableType]
-                        step = WorkflowStep(
-                            name=step_dict.get("name"),
-                            uses=step_dict.get("uses"),
-                            with_config=step_dict.get("with"),
-                            run=step_dict.get("run"),
-                        )
-                        steps.append(step)
+                steps: list[WorkflowStep] = []
+                raw_steps_value = job_data.get("steps", [])
+                if isinstance(raw_steps_value, list):
+                    raw_steps: list[Any] = raw_steps_value
+                    for step_item in raw_steps:
+                        step_data: Any = step_item
+                        if isinstance(step_data, dict):
+                            step_dict_raw: Any = step_data
+                            step_dict: dict[str, Any] = step_dict_raw
+                            step = WorkflowStep(
+                                name=step_dict.get("name"),
+                                uses=step_dict.get("uses"),
+                                with_config=step_dict.get("with"),
+                                run=step_dict.get("run"),
+                            )
+                            steps.append(step)
 
-                job_dict: Dict[str, Any] = job_data  # pyright: ignore[reportUnknownVariableType]
+                job_dict_raw: Any = job_data
+                job_dict: dict[str, Any] = job_dict_raw
                 job = WorkflowJob(
                     runs_on=job_dict.get("runs-on"),
                     steps=steps,
@@ -113,6 +118,9 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
                 jobs=jobs_dict,
                 permissions=content.get("permissions"),
             )
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             self.fail(f"Failed to parse workflow {workflow_path}: {e}")
 
@@ -155,9 +163,9 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
                     return True
         return False
 
-    def _get_permissions(self, workflow: GitHubWorkflow) -> Dict[str, Any]:
+    def _get_permissions(self, workflow: GitHubWorkflow) -> dict[str, Any]:
         """Get the permissions configuration from workflow."""
-        permissions: Dict[str, Any] = {}
+        permissions: dict[str, Any] = {}
 
         # Workflow-level permissions
         if workflow.permissions:
@@ -171,7 +179,7 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
 
         return permissions
 
-    def _is_safe_permissions(self, permissions: Dict[str, Any]) -> bool:
+    def _is_safe_permissions(self, permissions: dict[str, Any]) -> bool:
         """Check if permissions are safe (no dangerous write access)."""
         # List of dangerous write permissions
         dangerous_write_permissions = [
@@ -194,8 +202,8 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
         Test that all workflows using pull_request_target have explicit
         safe permissions to prevent pwn request vulnerabilities.
         """
-        vulnerable_workflows: List[str] = []
-        unsafe_permission_workflows: List[str] = []
+        vulnerable_workflows: list[str] = []
+        unsafe_permission_workflows: list[str] = []
 
         for workflow_path in self.workflow_files:
             workflow = self._load_workflow(workflow_path)
@@ -217,7 +225,7 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
                         )
 
         # Report findings
-        error_messages: List[str] = []
+        error_messages: list[str] = []
 
         if vulnerable_workflows:
             error_messages.append(
@@ -251,7 +259,7 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
         """
         Test that no workflow uses overly broad permissions like 'write-all'.
         """
-        excessive_permission_workflows: List[str] = []
+        excessive_permission_workflows: list[str] = []
 
         for workflow_path in self.workflow_files:
             workflow = self._load_workflow(workflow_path)
@@ -266,7 +274,7 @@ class TestGitHubActionsSecurityTest(unittest.TestCase):
 
         if excessive_permission_workflows:
             self.fail(
-                f"Found workflows with excessive permissions:\n"
+                "Found workflows with excessive permissions:\n"
                 + "\n".join(f"  - {w}" for w in excessive_permission_workflows)
                 + "\n\nUse minimal required permissions instead."
             )

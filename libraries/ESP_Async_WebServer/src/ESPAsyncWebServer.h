@@ -465,7 +465,9 @@ private:
   std::unordered_map<const char *, String, std::hash<const char *>, std::equal_to<const char *>> _attributes;
 
   uint8_t _multiParseState;
-  uint8_t _boundaryPosition;
+  // CWE-190 fix: was uint8_t, which would overflow to 0 for boundaries >= 256
+  // bytes and cause the BOUNDARY_OR_DATA parser loop to never terminate (DoS).
+  size_t _boundaryPosition;
   size_t _itemStartIndex;
   size_t _itemSize;
   String _itemName;

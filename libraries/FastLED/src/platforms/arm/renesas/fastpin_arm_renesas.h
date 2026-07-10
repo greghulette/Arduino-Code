@@ -1,8 +1,23 @@
+// IWYU pragma: private
+
 #ifndef __INC_FASTPIN_ARM_RENESAS_H
 #define __INC_FASTPIN_ARM_RENESAS_H
 
-FASTLED_NAMESPACE_BEGIN
+#include "fl/stl/compiler_control.h"
+// Include fastpin_base.h for template definitions
+// This reopens namespace fl but template will still be in scope
+#include "fl/system/fastpin_base.h"
 
+#if !defined(FASTLED_FORCE_SOFTWARE_PINS)
+#include "bsp_api.h"
+#include "fl/system/pin.h"  // For PinMode, PinValue enums
+#include "fl/stl/noexcept.h"
+
+FL_DISABLE_WARNING_PUSH
+FL_DISABLE_WARNING_DEPRECATED_REGISTER
+#endif
+
+namespace fl {
 #if defined(FASTLED_FORCE_SOFTWARE_PINS)
 #warning "Software pin support forced, pin access will be slightly slower."
 #define NO_HARDWARE_PIN_SUPPORT
@@ -10,25 +25,28 @@ FASTLED_NAMESPACE_BEGIN
 
 #else
 
-#include "bsp_api.h"
-
 /// Template definition for STM32 style ARM pins, providing direct access to the various GPIO registers.  Note that this
 /// uses the full port GPIO registers.  In theory, in some way, bit-band register access -should- be faster, however I have found
 /// that something about the way gcc does register allocation results in the bit-band code being slower.  It will need more fine tuning.
 /// The registers are data output, set output, clear output, toggle output, input, and direction
 
-template<uint8_t PIN, bsp_io_port_pin_t bspPin, uint32_t _PORT> class _ARMPIN {
+template<u8 PIN, bsp_io_port_pin_t bspPin, u32 _PORT> class _ARMPIN {
 public:
 
-    typedef volatile uint16_t * port_ptr_t;
-    typedef uint16_t port_t;
+    typedef volatile u16 * port_ptr_t;
+    typedef u16 port_t;
+
+    /// Pin is valid for use
+    constexpr static bool validpin() { return true; }
+    /// Low speed only recommended
+    constexpr static bool LowSpeedOnlyRecommended() { return false; }
 
     #define PORT ((R_PORT0_Type*)(_PORT))
     #define digitalBspPinToPort(P)		   (P >> 8)
     #define digitalBspPinToBitMask(P)      (1 << (P & 0xFF))
 
     #if 0
-    inline static void setOutput() {
+    inline static void setOutput() FL_NOEXCEPT {
         if(_BIT<8) {
             _CRL::r() = (_CRL::r() & (0xF << (_BIT*4)) | (0x1 << (_BIT*4));
         } else {
@@ -38,8 +56,8 @@ public:
     inline static void setInput() { /* TODO */ } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
     #endif
 
-    inline static void setOutput() { pinMode(PIN, OUTPUT); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
-    inline static void setInput() { pinMode(PIN, INPUT); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
+    inline static void setOutput() { pinMode(PIN, PinMode::Output); } // TODO: perform MUX config { _PDDR::r() |= _MASK; }
+    inline static void setInput() { pinMode(PIN, PinMode::Input); } // TODO: preform MUX config { _PDDR::r() &= ~_MASK; }
 
     inline static void hi() __attribute__ ((always_inline)) { PORT->POSR = digitalBspPinToBitMask(bspPin); }
     inline static void lo() __attribute__ ((always_inline)) { PORT->PORR = digitalBspPinToBitMask(bspPin); }
@@ -132,8 +150,8 @@ _FL_DEFPIN(21, BSP_IO_PORT_00_PIN_14, R_PORT0_BASE );_FL_DEFPIN(22, BSP_IO_PORT_
 #define HAS_HARDWARE_PIN_SUPPORT 1
 
 #endif // FASTLED_FORCE_SOFTWARE_PINS
+}  // namespace fl
 
-FASTLED_NAMESPACE_END
-
+FL_DISABLE_WARNING_POP
 
 #endif // __INC_FASTPIN_ARM_RENESAS_H

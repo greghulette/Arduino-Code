@@ -5,17 +5,17 @@
 
 //#include "./tcl.h"
 #include <Arduino.h>
+#include "FastLED.h"
+#include "fl/log/log.h"
+#include "fl/ui/ui.h"
+#include "fl/math/math.h"
+
 #include "../shared/color.h"
 #include "../shared/framebuffer.h"
 #include "../shared/settings.h"
 #include "./LedRopeTCL.h"
 #include "../shared/led_layout_array.h"
 
-#include "FastLED.h"
-#include "fl/dbg.h"
-#include "fl/ui.h"
-
-using namespace fl;
 
 
 #define CHIPSET WS2812
@@ -24,22 +24,33 @@ using namespace fl;
 
 namespace {
 
-UIButton buttonAllWhite("All white");
+fl::UIButton buttonAllWhite("All white");
 
-ScreenMap init_screenmap() {
+fl::ScreenMap init_screenmap() {
   LedColumns cols = LedLayoutArray();
   const int length = cols.length;
   int sum = 0;
+  int y_max = 0;
   for (int i = 0; i < length; ++i) {
     sum += cols.array[i];
+    int stagger = i % 2 ? 4 : 0;
+    int col_top = (cols.array[i] - 1) * 8 + stagger;
+    if (col_top > y_max) {
+      y_max = col_top;
+    }
   }
-  ScreenMap screen_map(sum, 0.8f);
+  fl::ScreenMap screen_map(sum, 0.8f);
   int curr_idx = 0;
   for (int i = 0; i < length; ++i) {
     int n = cols.array[i];
     int stagger = i % 2 ? 4 : 0;
-    for (int j = 0; j < n; ++j) {
-      fl::vec2f xy(i*4, j*8 + stagger);
+    for (int k = 0; k < n; ++k) {
+      // Wiring is serpentine by column: even columns wind one way, odd
+      // columns the other, so a single rope can snake up and down.
+      int j = i % 2 ? (n - 1 - k) : k;
+      // Mirror y (horizontal flip + 180 deg rotation) so the rendered
+      // keyboard matches the physical Luminescent Grand orientation.
+      fl::vec2f xy(i*4, y_max - (j*8 + stagger));
       screen_map.set(curr_idx++, xy);
     }
   }
@@ -52,16 +63,16 @@ ScreenMap init_screenmap() {
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::PreDrawSetup() {
-  if (!lazy_initialized_) {
+  if (!mLazyInitialized) {
     // This used to do something, now it does nothing.
-    lazy_initialized_ = true;
+    mLazyInitialized = true;
   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::RawBeginDraw() {
   PreDrawSetup();
-  led_buffer_.clear();
+  mLedBuffer.clear();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -71,7 +82,7 @@ void LedRopeTCL::RawDrawPixel(const Color3i& c) {
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::RawDrawPixel(byte r, byte g, byte b) {
-  if (led_buffer_.size() >= mScreenMap.getLength()) {
+  if (mLedBuffer.size() >= mScreenMap.getLength()) {
     return;
   }
   if (buttonAllWhite.isPressed()) {
@@ -79,8 +90,8 @@ void LedRopeTCL::RawDrawPixel(byte r, byte g, byte b) {
     g = 0xff;
     b = 0xff;
   }
-  CRGB c(r, g, b);
-  led_buffer_.push_back(CRGB(r, g, b));
+  fl::CRGB c(r, g, b);
+  mLedBuffer.push_back(fl::CRGB(r, g, b));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -92,28 +103,28 @@ void LedRopeTCL::RawDrawPixels(const Color3i& c, int n) {
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::set_draw_offset(int val) {
-  draw_offset_ = constrain(val, 0, frame_buffer_.length());
+  mDrawOffset = constrain(val, 0, mFrameBuffer.length());
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::RawCommitDraw() {
-  FASTLED_WARN("\n\n############## COMMIT DRAW ################\n\n");
-  if (!controller_added_) {
-    controller_added_ = true;
-    CRGB* leds = led_buffer_.data();
-    size_t n_leds = led_buffer_.size();
+  FL_WARN("\n\n############## COMMIT DRAW ################\n\n");
+  if (!mControllerAdded) {
+    mControllerAdded = true;
+    fl::CRGB* leds = mLedBuffer.data();
+    size_t n_leds = mLedBuffer.size();
     FastLED.addLeds<APA102, PIN_DATA, PIN_CLOCK>(leds, n_leds).setScreenMap(mScreenMap);
   }
-  FASTLED_WARN("FastLED.show");
+  FL_WARN("FastLED.show");
   FastLED.show();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 LedRopeTCL::LedRopeTCL(int n_pixels)
-	: draw_offset_(0), lazy_initialized_(false), frame_buffer_(n_pixels) {
+	: mDrawOffset(0), mLazyInitialized(false), mFrameBuffer(n_pixels) {
   mScreenMap = init_screenmap();
-  led_buffer_.reserve(mScreenMap.getLength());
+  mLedBuffer.reserve(mScreenMap.getLength());
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -125,7 +136,7 @@ void LedRopeTCL::Draw() {
   RawBeginDraw();
 
   const Color3i* begin = GetIterator(0);
-  const Color3i* middle = GetIterator(draw_offset_);
+  const Color3i* middle = GetIterator(mDrawOffset);
   const Color3i* end = GetIterator(length() - 1);
 
   for (const Color3i* it = middle; it != end; ++it) {
@@ -142,7 +153,7 @@ void LedRopeTCL::DrawSequentialRepeat(int repeat) {
   RawBeginDraw();
 
   const Color3i* begin = GetIterator(0);
-  const Color3i* middle = GetIterator(draw_offset_);
+  const Color3i* middle = GetIterator(mDrawOffset);
   const Color3i* end = GetIterator(length());
   for (const Color3i* it = middle; it != end; ++it) {
     for (int i = 0; i < repeat; ++i) {
@@ -160,10 +171,10 @@ void LedRopeTCL::DrawSequentialRepeat(int repeat) {
 ///////////////////////////////////////////////////////////////////////////////
 void LedRopeTCL::DrawRepeat(const int* value_array, int array_length) {
   RawBeginDraw();
-  
+
   // Make sure that the number of colors to repeat does not exceed the length
   // of the rope.
-  const int len = MIN(array_length, frame_buffer_.length());
+  const int len = fl::min(array_length, mFrameBuffer.length());
 
   for (int i = 0; i < len; ++i) {
      const Color3i* cur_color = GetIterator(i);  // Current color.

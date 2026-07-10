@@ -1,3 +1,6 @@
+from ci.util.global_interrupt_handler import handle_keyboard_interrupt
+
+
 #!/usr/bin/env python3
 # pyright: reportUnknownMemberType=false
 """
@@ -12,9 +15,9 @@ import sys
 import time
 import warnings
 from pathlib import Path
-from typing import List, Set
+from typing import Optional
 
-from ci.boards import Board, create_board  # type: ignore
+from ci.boards import Board, create_board
 from ci.util.locked_print import locked_print
 
 
@@ -27,29 +30,29 @@ DEFAULT_BOARDS_NAMES = [
     "web",  # work in progress
     "uno",  # Build is faster if this is first, because it's used for global init.
     "esp32dev",
-    "esp01",  # ESP8266
+    "esp8266",  # ESP8266
     "esp32c3",
     "attiny85",
     "ATtiny1616",
     "esp32c6",
     "esp32s3",
     "esp32p4",
-    "yun",
-    "digix",
+    "leonardo",
+    "sam3x8e_due",
     "teensylc",
     "teensy30",
     "teensy31",
     "teensy41",
     "adafruit_feather_nrf52840_sense",
     "xiaoblesense_adafruit",
-    "rpipico",
-    "rpipico2",
+    "rp2040",
+    "rp2350",
     "uno_r4_wifi",
     "esp32rmt_51",
     "esp32dev_idf44",
-    "bluepill",
+    "stm32f103c8",
     "esp32rmt_51",
-    "giga_r1",
+    "stm32h747xi",
     "sparkfun_xrp_controller",
 ]
 
@@ -167,16 +170,6 @@ def parse_args():
         action="store_true",
         help="Run symbol analysis on compiled output",
     )
-    parser.add_argument(
-        "--allsrc",
-        action="store_true",
-        help="Enable all-source build (adds FASTLED_ALL_SRC=1 define)",
-    )
-    parser.add_argument(
-        "--no-allsrc",
-        action="store_true",
-        help="Disable all-source build (adds FASTLED_ALL_SRC=0 define)",
-    )
     try:
         args = parser.parse_intermixed_args()
         unknown = []
@@ -225,9 +218,9 @@ def parse_args():
     return args
 
 
-def remove_duplicates(items: List[str]) -> List[str]:
-    seen: Set[str] = set()
-    out: List[str] = []
+def remove_duplicates(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
     for item in items:
         if item not in seen:
             seen.add(item)
@@ -235,7 +228,7 @@ def remove_duplicates(items: List[str]) -> List[str]:
     return out
 
 
-def choose_board_interactively(boards: List[str]) -> List[str]:
+def choose_board_interactively(boards: list[str]) -> list[str]:
     print("Available boards:")
     boards = remove_duplicates(sorted(boards))
     for i, board in enumerate(boards):
@@ -278,7 +271,7 @@ def resolve_example_path(example: str) -> Path:
 def compile_with_pio_ci(
     board: Board,
     example_paths: list[Path],
-    build_dir: str | None,
+    build_dir: Optional[str],
     defines: list[str],
     verbose: bool,
 ) -> tuple[bool, str]:
@@ -413,6 +406,9 @@ def compile_with_pio_ci(
             error_msg = f"Timeout building {example_path.name} for {board_name}"
             locked_print(f"ERROR: {error_msg}")
             errors.append(error_msg)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             error_msg = f"Exception building {example_path.name} for {board_name}: {e}"
             locked_print(f"ERROR: {error_msg}")
@@ -456,6 +452,9 @@ def run_symbol_analysis(boards: list[Board]) -> None:
                 if result.stdout:
                     print(result.stdout)
 
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             locked_print(
                 f"ERROR: Exception during symbol analysis for board {board.board_name}: {e}"
@@ -484,6 +483,9 @@ def main() -> int:
         try:
             board = create_board(board_name, no_project_options=False)
             boards.append(board)
+        except KeyboardInterrupt as ki:
+            handle_keyboard_interrupt(ki)
+            raise
         except Exception as e:
             locked_print(f"ERROR: Failed to get board '{board_name}': {e}")
             return 1
@@ -535,19 +537,13 @@ def main() -> int:
     if args.defines:
         defines.extend(args.defines.split(","))
 
-    # Add FASTLED_ALL_SRC define when --allsrc or --no-allsrc flag is specified
-    if args.allsrc:
-        defines.append("FASTLED_ALL_SRC=1")
-    elif args.no_allsrc:
-        defines.append("FASTLED_ALL_SRC=0")
-
     # Start compilation
     start_time = time.time()
     locked_print(
         f"Starting compilation for {len(boards)} boards with {len(example_paths)} examples"
     )
 
-    compilation_errors: List[str] = []
+    compilation_errors: list[str] = []
 
     # Compile for each board
     for board in boards:
@@ -591,6 +587,8 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as ki:
+        handle_keyboard_interrupt(ki)
+        raise
         locked_print("\nInterrupted by user")
         sys.exit(1)

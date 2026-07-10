@@ -34,7 +34,7 @@ This example demonstrates various audio-reactive visualization modes using FastL
 
 - **Controller**: ESP32, Teensy, or other platform with sufficient memory
 - **LED Matrix**: 100x100 pixels (10,000 LEDs total)
-- **Memory**: Requires `SKETCH_HAS_LOTS_OF_MEMORY` (not suitable for Arduino UNO)
+- **Memory**: Requires `SKETCH_HAS_LARGE_MEMORY` (not suitable for Arduino UNO)
 - **Audio Input**: Microphone or line-in audio source
 
 ## Wiring

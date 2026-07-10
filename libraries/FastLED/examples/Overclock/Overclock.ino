@@ -1,3 +1,5 @@
+// @filter: (memory is large)
+
 /// @file    Overclock.ino
 /// @brief   High performance LED display example
 /// @example Overclock.ino
@@ -10,25 +12,18 @@
 
 /// @brief   Demonstrates how to overclock a FastLED setup
 
+// FASTLED_OVERCLOCK must be defined BEFORE including FastLED.h so the value
+// reaches led_timing.h's `#ifndef` guard. Defining it after include causes a
+// -Wmacro-redefined warning on every CI build. (#2728)
+#define FASTLED_OVERCLOCK 1.1 // Overclocks by 10%, I've seen 25% work fine.
+#define FASTLED_OVERCLOCK_SUPPRESS_WARNING 1
+
 #include "FastLED.h"
 
-#if !SKETCH_HAS_LOTS_OF_MEMORY
-// To effectively test the overclock feature we need
-// a large enough dataset to test against. Unfortunately
-// the avr platforms don't have enough memory so this example
-// is disabled for these platforms
-void setup() {}
-void loop() {}
-#else
+#include "fl/fx/2d/noisepalette.h"
+#include "fl/fx/fx.h"
 
 
-#define FASTLED_OVERCLOCK 1.1 // Overclocks by 10%, I've seen 25% work fine.
-
-#include "fx/2d/noisepalette.h"
-#include "fx/fx.h"
-
-
-using namespace fl;
 
 #define LED_PIN 3
 #define BRIGHTNESS 96
@@ -50,7 +45,7 @@ using namespace fl;
 // if this example code seems daunting.
 //
 //
-// The basic setup here is that for each frame, we generate a new array of
+// The basic setup here is that for each frame, we generate a new fl::array of
 // 'noise' data, and then map it onto the LED matrix through a color palette.
 //
 // Periodically, the color palette is changed, and new noise-generation
@@ -78,9 +73,9 @@ using namespace fl;
 // like water.
 #define SPEED 30
 
-CRGB leds[NUM_LEDS];
-XYMap xyMap(MATRIX_WIDTH, MATRIX_HEIGHT, GRID_SERPENTINE);
-NoisePalette noisePalette(xyMap);
+fl::CRGB leds[NUM_LEDS];
+fl::XYMap xyMap(MATRIX_WIDTH, MATRIX_HEIGHT, GRID_SERPENTINE);
+fl::NoisePalette noisePalette(xyMap);
 
 
 void setup() {
@@ -94,8 +89,6 @@ void setup() {
 
 void loop() {
     EVERY_N_MILLISECONDS(5000) { noisePalette.changeToRandomPalette(); }
-    noisePalette.draw(Fx::DrawContext(millis(), leds));
+    noisePalette.draw(fl::Fx::DrawContext(fl::millis(), leds));
     FastLED.show();
 }
-
-#endif

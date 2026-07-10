@@ -23,6 +23,29 @@
 - In the `handleRequest` method, to the `Request` is attached a `Response` object (see below) that will serve the response data back to the client
 - When the `Response` is sent, the client is closed and freed from the memory
 
+```mermaid
+flowchart TD
+    A([TCP Connection]) --> B[New AsyncWebServerRequest]
+    B --> C["Parse request line\nMETHOD · URL · GET params · HTTP/version"]
+    C --> D[Parse headers line by line]
+    D --> E["Apply Rewrites in order\nAll matching rewrites applied sequentially\nEach can rewrite URL and/or inject params"]
+    E --> F["Attach Handler\nIterate handlers in order added:\nfilter() → canHandle()\nFirst match wins · fallback to catch-all"]
+    F --> G{Body or upload?}
+    G -- "Content-Length > 0\nor chunked transfer" --> H["Receive body / file upload\nhandleBody() · handleUpload()"]
+    H --> I
+    G -- no --> I([PARSE_REQ_END])
+
+    I --> J{mustSkipServerMiddlewares?}
+    J -- "no (default)" --> K["Server Middlewares\nexecuted in order added\neach can call next() or short-circuit"]
+    J -- "yes (skipServerMiddlewares)" --> L
+    K -- "next()" --> L["Handler Middlewares\nexecuted in order added\neach can call next() or short-circuit"]
+    K -- "short-circuit" --> N
+    L -- "next()" --> M["handleRequest()\nattach Response object"]
+    L -- "short-circuit" --> N
+    M --> N["_send()\nwrite response to client asynchronously"]
+    N --> O([Close connection · free memory])
+```
+
 ### Rewrites and how do they work
 
 - The `Rewrites` are used to rewrite the request url and/or inject get parameters for a specific request url path.
