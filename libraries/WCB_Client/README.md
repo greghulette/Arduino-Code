@@ -551,6 +551,38 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 
 ## Changelog
 
+### 1.9.2
+
+- **Boot-loop crash fix (`begin()` failure was unhandled).** If `begin()` returned
+  `false` — most commonly because `esp_now_init()` failed (WiFi driver not up) —
+  the sketch would keep calling `update()`, whose first heartbeat called
+  `esp_now_send()` on an **uninitialised ESP-NOW driver**, dereferencing a NULL
+  driver global and panicking (`Guru Meditation LoadProhibited`, `EXCVADDR 0x4c`).
+  On an ESP32-S3 this presented as a hard boot loop straight out of the ROM
+  bootloader. Now:
+  - `update()` and every send method (`send`/`broadcast`/`sendRaw`/`sendKyber`/
+    `sendToSpecialPeer`/`sendRawPacket`/`_sendHeartbeat`) **no-op when ESP-NOW is
+    not initialised** (`_started == false`) instead of crashing.
+  - `begin()` prints the **exact `esp_now_init()` error name/code** and warns if
+    `WiFi.mode(WIFI_STA)` reports failure, so a failed init is obvious in the boot
+    log rather than a bare panic.
+  - The **NeighborDiscovery** example now checks `begin()`'s return value and halts
+    with a clear message on failure (all examples should — ignoring it is what let
+    the crash happen).
+
+  *Note:* the 1.9.1 deferred-join change below is a genuine robustness fix but was
+  **not** the cause of the S3 boot loop — this is.
+
+### 1.9.1
+
+- **Robustness (auto-join off the WiFi task).** The auto-join added in 1.9.0 called
+  `esp_now_add_peer()` and wrote NVS from inside the ESP-NOW receive callback
+  (WiFi task), whose small stack a flash write can overflow. The receive path now
+  only *flags* a join; the actual `esp_now_add_peer` + NVS write happen in
+  `update()` on the loop task, matching how the WCB firmware defers all WDP flash
+  work. (This hardens the callback path; the boot loop some users saw was the
+  `begin()`-failure crash fixed in 1.9.2.)
+
 ### 1.9.0
 
 - **Auto-join (on by default)** — the device now registers a regular WCB it hears

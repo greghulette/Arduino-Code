@@ -86,7 +86,10 @@ unsigned long lastMoveMs = 0;
 
 void setup() {
     Serial.begin(115200);
-    wcb.begin();
+    if (!wcb.begin()) {   // false = ESP-NOW did not start; do not run update()/send
+        Serial.println("[WCB] begin() FAILED (see error above) — halting.");
+        while (true) delay(1000);
+    }
 }
 
 void loop() {

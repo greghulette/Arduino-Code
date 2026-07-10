@@ -661,6 +661,7 @@ private:
     bool                 _autoJoin = true;                  // register regular WCBs heard via WDP as peers, live
     bool                 _learnedPeer[WCB_MAX_BOARDS] = {}; // auto-joined ids (beyond 1..quantity)
     uint8_t              _advertCount[WCB_MAX_BOARDS] = {}; // WDP adverts heard per board (join needs >=2)
+    volatile bool        _pendingJoin[WCB_MAX_BOARDS] = {}; // flagged in RX callback, drained in update() (loop task)
 
     // ── WCBStream registry ───────────────────────────────────────────────────
     // WCBStream instances self-register here during construction so update()

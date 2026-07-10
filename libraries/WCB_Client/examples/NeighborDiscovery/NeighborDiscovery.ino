@@ -147,9 +147,16 @@ void setup() {
     // learning US will show — the client side of the board/client split above.
     wcb.setIdentity("MeshMonitor", "v1.0.0", "revA", "mesh.monitor");
 
-    // Register the consumer callback, then join the network.
+    // Register the consumer callback, then join the network. ALWAYS check
+    // begin()'s return: if ESP-NOW fails to start (e.g. WiFi didn't come up),
+    // it returns false and the device is NOT on the mesh. Halt loudly rather
+    // than spin — calling update() after a failed begin() used to hard-crash.
     wcb.onNeighbor(onNeighborEvent);
-    wcb.begin();
+    if (!wcb.begin()) {
+        Serial.println("[NeighborDiscovery] wcb.begin() FAILED — see the error above. "
+                       "Not joining the mesh; halting.");
+        while (true) delay(1000);
+    }
 }
 
 void loop() {

@@ -85,7 +85,10 @@ bool          servoToggle   = false;
 void setup() {
     Serial.begin(115200);
     delay(2000);
-    wcb.begin();
+    if (!wcb.begin()) {   // false = ESP-NOW did not start; do not run update()/send
+        Serial.println("[WCB] begin() FAILED (see error above) — halting.");
+        while (true) delay(1000);
+    }
 }
 
 void loop() {

@@ -68,8 +68,12 @@ unsigned long lastSendMs = 0;
 void setup() {
     Serial.begin(115200);
 
-    // Join the WCB network.
-    wcb.begin();
+    // Join the WCB network. false = ESP-NOW did not start; halt rather than
+    // run update()/send against an uninitialised driver (which would crash).
+    if (!wcb.begin()) {
+        Serial.println("[WCB] begin() FAILED (see error above) — halting.");
+        while (true) delay(1000);
+    }
 
     // Enable two-way comms with the special peer (NaviCore). This registers its
     // MAC so we can send to it, and starts tracking its heartbeat for status.

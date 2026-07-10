@@ -75,8 +75,14 @@ bool WCB_Client::begin() {
 
     // ── WiFi setup ───────────────────────────────────────────────────────────
     // ESP-NOW requires WiFi to be in station mode. We disconnect from any AP
-    // so no association overhead interferes with ESP-NOW timing.
-    WiFi.mode(WIFI_STA);
+    // so no association overhead interferes with ESP-NOW timing. esp_now_init()
+    // fails outright if the WiFi driver is not running, so verify STA mode took
+    // before we get there — that failure is the usual root cause of a crash on
+    // the first heartbeat.
+    if (!WiFi.mode(WIFI_STA)) {
+        Serial.println("[WCB_Client] WARNING: WiFi.mode(WIFI_STA) reported failure "
+                       "— ESP-NOW init will likely fail below");
+    }
     WiFi.disconnect();
 
     // ── Build MAC table ──────────────────────────────────────────────────────
@@ -100,8 +106,14 @@ bool WCB_Client::begin() {
     }
 
     // ── Initialise ESP-NOW ───────────────────────────────────────────────────
-    if (esp_now_init() != ESP_OK) {
-        Serial.println("[WCB_Client] ERROR: esp_now_init() failed");
+    // If this fails, _started stays false and update() becomes a safe no-op
+    // (see the guard there) instead of crashing on the first heartbeat. Print
+    // the exact error name so the cause is obvious from the boot log.
+    esp_err_t enErr = esp_now_init();
+    if (enErr != ESP_OK) {
+        Serial.printf("[WCB_Client] ERROR: esp_now_init() failed: %s (0x%x). "
+                      "Device will NOT join the mesh; check that WiFi started.\n",
+                      esp_err_to_name(enErr), enErr);
         return false;
     }
 
@@ -144,6 +156,13 @@ bool WCB_Client::begin() {
 //                          Fires the status callback when a transition occurs.
 // ─────────────────────────────────────────────────────────────────────────────
 void WCB_Client::update() {
+    // If begin() never succeeded (e.g. esp_now_init() failed), ESP-NOW is not
+    // initialised. Calling esp_now_send() in that state dereferences a NULL
+    // driver global and hard-crashes the chip (Guru Meditation LoadProhibited)
+    // — an S3 with a failed init would boot-loop here. Do nothing until begin()
+    // has actually brought ESP-NOW up.
+    if (!_started) return;
+
     unsigned long now = millis();
 
     if (now >= _nextHeartbeatMs) {
@@ -156,6 +175,14 @@ void WCB_Client::update() {
     _processFragJob();   // drain a pending fragmented send, one chunk per tick
     _wdpTick();          // WDP device-identity advert cadence (boot burst + periodic)
     _ageNeighbors(now);  // expire WDP neighbors we haven't heard from recently
+
+    // Drain deferred auto-joins on the LOOP task. _handleWdpAdvert (which flags
+    // these) runs in the ESP-NOW receive callback (WiFi task), where
+    // _addLearnedPeer()'s esp_now_add_peer + NVS flash write would overflow the
+    // small callback stack and crash. Doing them here makes them safe.
+    for (int i = 0; i < WCB_MAX_BOARDS; i++) {
+        if (_pendingJoin[i]) { _pendingJoin[i] = false; _addLearnedPeer((uint8_t)(i + 1)); }
+    }
 
     // Service the pending table.
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
@@ -213,6 +240,7 @@ void WCB_Client::update() {
 // arrived cut short and a corrupt sequence got stored on the board.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::send(uint8_t target_wcb, const char* command, bool ensured) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
     if (!command) return false;
     if (strlen(command) > _maxSingleCommandLen()) {
@@ -228,6 +256,7 @@ bool WCB_Client::send(uint8_t target_wcb, const char* command, bool ensured) {
 // Every WCB on the network receives and processes the same packet.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::broadcast(const char* command, bool ensured) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (!command) return false;
     // Fragmentation is unicast-only (the target-side reassembly session is
     // per-board) — an oversized broadcast must fail LOUDLY, never truncate.
@@ -411,6 +440,7 @@ void WCB_Client::_processFragJob() {
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::sendRaw(uint8_t target_wcb, uint8_t target_port,
                         const uint8_t* data, size_t len) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS) return false;
     if (target_port < 1 || target_port > 5) return false;
     if (len == 0) return false;
@@ -478,6 +508,7 @@ bool WCB_Client::sendRaw(uint8_t target_wcb, uint8_t target_port,
 // Returns true if ESP-NOW accepted the packet for transmission.
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::sendKyber(const uint8_t* data, size_t len) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (len == 0) return false;
     // Firmware caps Kyber chunks at 178 bytes (structCommand[180] - 2-byte header)
     if (len > 178) len = 178;
@@ -661,6 +692,7 @@ bool WCB_Client::isSpecialPeerOnline() {
 }
 
 bool WCB_Client::sendToSpecialPeer(const char* command, bool ensured) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (_specialPeerID < 1) {
         Serial.println("[WCB_Client] sendToSpecialPeer: special peer not enabled "
                        "(call enableSpecialPeer() first)");
@@ -733,6 +765,7 @@ void WCB_Client::_ageNeighbors(unsigned long now) {
 // demand so a custom protocol (e.g. OTA) can reach any WCB without relying on
 // _registerPeers() having already added it. Returns true if ESP-NOW accepted it.
 bool WCB_Client::sendRawPacket(uint8_t target_wcb, const uint8_t* data, size_t len) {
+    if (!_started) return false;   // ESP-NOW not up (begin() failed / not called)
     if (target_wcb < 1 || target_wcb > WCB_MAX_BOARDS || !data || len == 0) return false;
     const uint8_t* mac = _wcbMACs[target_wcb - 1];
     if (!esp_now_is_peer_exist(mac)) {
@@ -962,6 +995,8 @@ void WCB_Client::clearLearnedPeers() {
 // will mark this device offline and may stop routing messages to it.
 // ─────────────────────────────────────────────────────────────────────────────
 void WCB_Client::_sendHeartbeat() {
+    if (!_started) return;   // ESP-NOW not up — never touch esp_now_send()
+
     wcb_packet_etm_t hb;
     memset(&hb, 0, sizeof(hb));
 
@@ -1141,9 +1176,16 @@ void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
     // peer) as an ESP-NOW peer once we've heard it advertise at least twice, so
     // a single stray/spoofed advert can't add a peer. The sender was bound to its
     // source MAC in _handleReceive, so senderWCB is trustworthy here.
+    //
+    // CRITICAL: this decode runs in the ESP-NOW RECEIVE CALLBACK (WiFi task) with
+    // a small stack. _addLearnedPeer() does esp_now_add_peer() + an NVS flash
+    // write, which must NEVER run here (overflows the callback stack → crash /
+    // boot loop on the 2nd advert). Only FLAG the join; update() performs it on
+    // the loop task.
     if (_autoJoin && !nb.isClient) {
         if (_advertCount[senderWCB - 1] < 255) _advertCount[senderWCB - 1]++;
-        if (_advertCount[senderWCB - 1] >= 2) _addLearnedPeer(senderWCB);
+        if (_advertCount[senderWCB - 1] >= 2 && !_learnedPeer[senderWCB - 1])
+            _pendingJoin[senderWCB - 1] = true;
     }
 
     if (_neighborCallback) _neighborCallback(nb);

@@ -88,7 +88,12 @@ void setup() {
 
     // Initialise ESP-NOW and join the WCB network.
     // The library prints status and error messages to Serial automatically.
-    wcb.begin();
+    // Always check begin(): false means ESP-NOW did not start and the device is
+    // NOT on the mesh — calling update()/send after that would crash.
+    if (!wcb.begin()) {
+        Serial.println("[WCB] begin() FAILED (see error above) — halting.");
+        while (true) delay(1000);
+    }
 }
 
 void loop() {
