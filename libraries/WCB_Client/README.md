@@ -551,6 +551,49 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 
 ## Changelog
 
+### 1.9.4
+
+- **`isLearnedPeer(uint8_t id)` accessor.** Query whether an id is currently an
+  auto-joined (learned) peer — a node above the `wcb_quantity` floor that was heard
+  over WDP and made a permanent peer. Membership persists across reboots and is
+  independent of online/offline state, so a consumer can keep a learned peer listed
+  (e.g. on a status panel) even while it's powered off — its WDP advert ages out and,
+  for a client device, it never heartbeats.
+- **New example: `AllFeatures`** — an interactive, serial-menu "kitchen sink" sketch
+  exercising every public method in one place.
+
+### 1.9.3
+
+- **Auto-join now learns CLIENT devices too** (mesh monitors, other controllers,
+  command-accepting clients), not just regular WCBs — anything heard on the mesh
+  becomes a persistent, NVS-remembered ESP-NOW peer you can `send()` to.
+- **Ensured `send()` to a never-heartbeating learned client no longer silently
+  degrades to fire-and-forget.** A learned client that only advertises (WDP) but
+  never sends heartbeats is now treated as still-outstanding and retried up to
+  `ETM_MAX_RETRIES`, while a board that *was* online and then dropped still gives up.
+- **Cross-core safety on the pending table.** `_pending[]` is mutated from both the
+  loop task (`_sendPacket` claim, `update()` retry service) and the WiFi/RX task
+  (ACK handler); all three now run under a `portMUX` critical section (with the
+  blocking `_transmit()` done on snapshots *after* releasing the lock), closing a
+  torn-slot / dropped-ensured-command race.
+- **`_findFreePending()` no longer evicts an outstanding ensured delivery.** When the
+  table is saturated it returns "no slot" and the send reports non-guaranteed
+  delivery (best-effort once) instead of silently dropping an in-flight guaranteed
+  command.
+- **CRC strip/verify is gated on `_checksumEnabled` and anchored to the tail.** A
+  legitimate payload that merely *contains* the literal `|CRC` (e.g. a command-library
+  command) is no longer truncated/rejected; a real checksum must be `|CRC` + exactly
+  8 hex digits at the end.
+- **Special-peer slot hardening.** A client advertising at `WCB_SPECIAL_ID` (20) can
+  no longer be learned/persisted and then have its ESP-NOW MAC deleted by
+  `clearLearnedPeers()`/`forgetPeer()` (which would silently break
+  `sendToSpecialPeer()`); `forgetPeer()` also resets the advert counter so a
+  forgotten peer must be heard twice again before it can re-join.
+- **`WCBStream` no longer truncates a large burst mid-frame.** Added
+  `flushNow()`/`bytesFree()`, and `write()` now returns 0 when the buffer is full, so
+  a producer (e.g. a Maestro burst programming many channels) splits on frame
+  boundaries into multiple packets instead of forwarding a corrupt byte-stream.
+
 ### 1.9.2
 
 - **Boot-loop crash fix (`begin()` failure was unhandled).** If `begin()` returned

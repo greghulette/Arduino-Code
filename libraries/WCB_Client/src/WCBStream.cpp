@@ -48,11 +48,10 @@ WCBStream::WCBStream(uint8_t target_wcb, uint8_t target_port, uint16_t gap_ms)
 // a complete multi-byte command is always sent as one atomic sendRaw() call.
 // ─────────────────────────────────────────────────────────────────────────────
 size_t WCBStream::write(uint8_t byte) {
-    if (_len < sizeof(_buf)) {
-        _buf[_len++] = byte;
-    }
-    // Reset the gap timer on every byte — flush happens only after silence
-    _lastWriteMs = millis();
+    if (_len >= sizeof(_buf)) return 0;   // buffer full — signal the drop so a
+                                          // frame-writing caller can detect truncation
+    _buf[_len++] = byte;
+    _lastWriteMs = millis();              // reset the gap timer only on an ACCEPTED byte
     return 1;
 }
 
@@ -72,18 +71,26 @@ size_t WCBStream::write(uint8_t byte) {
 //   is zero — all writes happen in the same CPU instruction sequence) but far
 //   shorter than the time between consecutive commands in a typical sketch.
 // ─────────────────────────────────────────────────────────────────────────────
-void WCBStream::tick() {
-    if (_len > 0 && (millis() - _lastWriteMs) >= _gapMs) {
-        WCB_Client* wcb = WCB_Client::instance();
-        if (!wcb) { _len = 0; return; }
-        bool ok;
-        if (_target == 0) {
-            ok = wcb->sendKyber(_buf, _len);
-            wcbStreamLog("[WCBStream] Broadcast (Kyber) %d bytes — %s\n", _len, ok ? "OK" : "FAIL");
-        } else {
-            ok = wcb->sendRaw(_target, _port, _buf, _len);
-            wcbStreamLog("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
-        }
-        _len = 0;
+// Shared send body — forwards the accumulated buffer and resets it. Called by
+// tick() (gap-gated) and flushNow() (forced, on a frame boundary).
+void WCBStream::_flushBuffer() {
+    WCB_Client* wcb = WCB_Client::instance();
+    if (!wcb) { _len = 0; return; }
+    bool ok;
+    if (_target == 0) {
+        ok = wcb->sendKyber(_buf, _len);
+        wcbStreamLog("[WCBStream] Broadcast (Kyber) %d bytes — %s\n", _len, ok ? "OK" : "FAIL");
+    } else {
+        ok = wcb->sendRaw(_target, _port, _buf, _len);
+        wcbStreamLog("[WCBStream] Flushing %d bytes to WCB%d port %d — %s\n", _len, _target, _port, ok ? "OK" : "FAIL");
     }
+    _len = 0;
+}
+
+void WCBStream::tick() {
+    if (_len > 0 && (millis() - _lastWriteMs) >= _gapMs) _flushBuffer();
+}
+
+void WCBStream::flushNow() {
+    if (_len > 0) _flushBuffer();
 }

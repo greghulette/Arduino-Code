@@ -184,49 +184,58 @@ void WCB_Client::update() {
         if (_pendingJoin[i]) { _pendingJoin[i] = false; _addLearnedPeer((uint8_t)(i + 1)); }
     }
 
-    // Service the pending table.
+    // Service the pending table. _pending[] is mutated cross-core (the ACK handler
+    // and a Core-0 _sendPacket claim BOTH take _pendingMux), so every read/write of
+    // a slot here runs UNDER the lock too — otherwise this Core-1 loop would tear a
+    // slot the RX task is concurrently claiming/acking. The blocking _transmit()
+    // (esp_now_send) must NOT run inside the spinlock, so we collect the boards to
+    // retransmit + a snapshot of the command/seq under the lock and transmit AFTER
+    // releasing it (a stale retransmit is harmless — receivers dedup by seq).
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
+        uint8_t  retryBoards[WCB_MAX_BOARDS];
+        int      nRetry  = 0;
+        char     cmdCopy[sizeof(_pending[0].command)];
+        uint16_t seqCopy = 0;
+
+        portENTER_CRITICAL(&_pendingMux);
         WCBPending& p = _pending[i];
-        if (!p.active) continue;
-
-        if (p.ensured) {
-            // ── Ensured delivery: PER-BOARD UNICAST retries ──────────────────
-            // Mirrors the WCB firmware's processETMAcksAndRetries() exactly:
-            // after the initial send, retry as a UNICAST to each expected board
-            // that hasn't ACK'd (reusing the original seq so it's deduped),
-            // up to ETM_MAX_RETRIES per board; drop a board that goes offline.
-            // (An ensured UNICAST is normally freed by the ACK handler the
-            //  instant its target ACKs; reaching here means it hasn't yet.)
-            if (_ensuredComplete(p)) {            // every expected board acked / offline
-                p.active = false;
-                continue;
-            }
-            if ((now - p.sentMs) >= ETM_RETRY_INTERVAL_MS) {
-                for (int b = 0; b < WCB_MAX_BOARDS; b++) {
-                    if (!p.expected[b] || p.ackReceived[b]) continue;
-                    if (!_boards[b].online) {     // board gone — stop waiting on it
-                        p.expected[b] = false;
-                        continue;
+        if (p.active) {
+            if (p.ensured) {
+                // ── Ensured delivery: PER-BOARD UNICAST retries ──────────────
+                // Mirrors the WCB firmware's processETMAcksAndRetries(): retry as a
+                // UNICAST to each expected board that hasn't ACK'd (reusing the seq
+                // so it's deduped), up to ETM_MAX_RETRIES per board.
+                if (_ensuredComplete(p)) {            // every expected board acked / gone
+                    p.active = false;
+                } else if ((now - p.sentMs) >= ETM_RETRY_INTERVAL_MS) {
+                    for (int b = 0; b < WCB_MAX_BOARDS; b++) {
+                        if (!p.expected[b] || p.ackReceived[b]) continue;
+                        if (!_boards[b].online) {
+                            // Dropped after being online (lastSeenMs!=0) -> give up.
+                            // Never-online learned peer (lastSeenMs==0, advert-only
+                            // client) -> keep retrying up to ETM_MAX_RETRIES.
+                            if (_boards[b].lastSeenMs != 0) { p.expected[b] = false; continue; }
+                        }
+                        if (p.retryCount[b] < ETM_MAX_RETRIES) {
+                            retryBoards[nRetry++] = (uint8_t)(b + 1);   // _transmit after unlock
+                            p.retryCount[b]++;
+                        } else {
+                            p.expected[b] = false;    // exhausted retries for this board
+                        }
                     }
-                    if (p.retryCount[b] < ETM_MAX_RETRIES) {
-                        _transmit((uint8_t)(b + 1), p.command, p.seqNum);  // unicast retry
-                        p.retryCount[b]++;
-                    } else {
-                        p.expected[b] = false;    // exhausted retries for this board
-                    }
+                    p.sentMs = now;                   // reset the retry window
+                    if (_ensuredComplete(p)) p.active = false;
+                    if (nRetry) { memcpy(cmdCopy, p.command, sizeof(cmdCopy)); seqCopy = p.seqNum; }
                 }
-                p.sentMs = now;                   // reset the retry window
-                if (_ensuredComplete(p)) p.active = false;   // nothing left outstanding
+            } else {
+                // Best-effort unicast: sent ONCE, no retransmit — free a slot whose
+                // ACK never arrived so the table can't leak (1 s >> ETM round-trip).
+                if ((now - p.sentMs) > 1000UL) p.active = false;
             }
-            continue;
         }
+        portEXIT_CRITICAL(&_pendingMux);
 
-        // ── Best-effort unicast: reclaim backstop ────────────────────────────
-        // A best-effort (ensured=false) unicast is sent ONCE — there is no
-        // retransmit. The slot is normally freed by the ACK handler on the
-        // target's ACK; this just frees one whose ACK never arrived so the
-        // table can't leak. 1 s is well beyond a normal ETM ACK round-trip.
-        if ((now - p.sentMs) > 1000UL) p.active = false;
+        for (int k = 0; k < nRetry; k++) _transmit(retryBoards[k], cmdCopy, seqCopy);
     }
 }
 
@@ -893,7 +902,8 @@ void WCB_Client::_registerSpecialPeer() {
 bool WCB_Client::_addLearnedPeer(uint8_t id) {
     if (id < 1 || id > WCB_MAX_BOARDS)  return false;
     if (id == _deviceID)                return false;   // that's us
-    if (id == _specialPeerID)           return false;   // controller, registered separately
+    if (id == _specialPeerID || id == WCB_SPECIAL_ID)
+                                        return false;   // controller slot — never learn/persist it
     if (id <= _quantity)                return false;   // already a floor peer
     int idx = id - 1;
     if (_learnedPeer[idx])              return true;    // already joined
@@ -971,11 +981,23 @@ void WCB_Client::_loadLearnedPeers() {
 // Floor peers (1..wcb_quantity) and the special peer are unaffected.
 void WCB_Client::forgetPeer(uint8_t id) {
     if (id < 1 || id > WCB_MAX_BOARDS) return;
+    // Never deregister the special peer's ESP-NOW MAC. clearLearnedPeers()
+    // funnels through here, and _specialPeerID can still be 0 when the special
+    // peer is enabled AFTER begin(), so guard the reserved controller slot
+    // unconditionally — otherwise a routine table cleanup would silently break
+    // sendToSpecialPeer() by deleting the peer whose MAC it shares.
+    if (id == _specialPeerID || id == WCB_SPECIAL_ID) return;
     int idx = id - 1;
     if (!_learnedPeer[idx]) return;
     _learnedPeer[idx] = false;
+    _advertCount[idx] = 0;   // reset so it must be heard >=2 times again before it can re-join
     if (esp_now_is_peer_exist(_wcbMACs[idx])) esp_now_del_peer(_wcbMACs[idx]);
     _boards[idx].online = false;
+    // Also drop the WDP discovery record so getNeighbor(id) goes null immediately —
+    // otherwise a just-forgotten peer keeps showing (via getNeighbor) for up to
+    // WCB_WDP_NEIGHBOR_TTL_MS until the advert ages out. It repopulates on its next
+    // advert (and re-joins via auto-join after >=2 adverts), which is intended.
+    _neighbors[idx] = WCBNeighbor{};
     _saveLearnedPeers();
     Serial.printf("[WCB_Client] forgot WCB%d\n", id);
 }
@@ -1241,7 +1263,12 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command, bool ensured
     //                          multi-board ACKs), so tracking an un-ensured one
     //                          would just leak the small WCB_PENDING_MAX table.
     bool track = ensured || (targetID != WCB_TARGET_BROADCAST);
-    int  slot  = track ? _findFreePending() : -1;
+
+    // Claim + fill the pending slot atomically vs the cross-core ACK handler.
+    // _findFreePending assumes _pendingMux is held; keep only array work inside
+    // the critical section (no esp_now/Serial) — the transmit happens after.
+    portENTER_CRITICAL(&_pendingMux);
+    int slot = track ? _findFreePending() : -1;
     if (slot >= 0) {
         WCBPending& p = _pending[slot];
         p.active   = true;
@@ -1268,6 +1295,17 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command, bool ensured
                 p.expected[targetID - 1] = true;
             }
         }
+    }
+    portEXIT_CRITICAL(&_pendingMux);
+
+    if (slot < 0 && ensured) {
+        // Pending table saturated with still-outstanding ensured deliveries. We
+        // couldn't get a slot to track/retry this one, and must NOT evict a
+        // guaranteed in-flight command to make room (see _findFreePending). Send
+        // it best-effort once and report non-guaranteed delivery so the caller
+        // can retry rather than assume ensured semantics it didn't get.
+        _transmit(targetID, command, seq);
+        return false;
     }
 
     return _transmit(targetID, command, seq);
@@ -1320,7 +1358,16 @@ bool WCB_Client::_transmit(uint8_t targetID, const char* command, uint16_t seqNu
 // ─────────────────────────────────────────────────────────────────────────────
 bool WCB_Client::_ensuredComplete(const WCBPending& p) const {
     for (int b = 0; b < WCB_MAX_BOARDS; b++) {
-        if (p.expected[b] && !p.ackReceived[b] && _boards[b].online)
+        if (!p.expected[b] || p.ackReceived[b]) continue;
+        // Still outstanding if the board is online, OR it is a peer that has
+        // NEVER been online (lastSeenMs==0) and still has retries left — e.g. a
+        // learned client that only adverts (WDP) and never heartbeats. Without
+        // this, an ensured send to such a target would look instantly complete
+        // and never retry. A board that WAS online and then dropped
+        // (lastSeenMs!=0, !online) is NOT outstanding — stop waiting on a board
+        // that's simply gone.
+        if (_boards[b].online ||
+            (_boards[b].lastSeenMs == 0 && p.retryCount[b] < ETM_MAX_RETRIES))
             return false;
     }
     return true;
@@ -1368,34 +1415,38 @@ void WCB_Client::_checkOfflineBoards() {
 // ─────────────────────────────────────────────────────────────────────────────
 // _findFreePending
 //
-// Returns the index of a usable slot in _pending[]. Prefers the first inactive
-// slot. If all WCB_PENDING_MAX slots are occupied, evicts the OLDEST one (by
-// sentMs) and returns it — same policy as the WCB firmware's pending table.
+// Returns the index of a usable slot in _pending[], or -1 when the table is
+// saturated with in-flight ensured deliveries. Prefers the first inactive slot.
+// If all WCB_PENDING_MAX slots are occupied, reclaims only a slot that is SAFE
+// to drop — a best-effort (un-ensured) slot, or an ensured slot that has already
+// completed (every expected board acked or gone). A still-outstanding ensured
+// slot is NEVER evicted, because dropping it would silently lose a guaranteed
+// command that hasn't been delivered yet. Among reclaimable slots, the oldest is
+// dropped. If every slot is an outstanding ensured delivery, returns -1 and the
+// caller decides how to degrade (see _sendPacket).
 //
-// Eviction (rather than the old "return -1, send untracked") matters now that
-// ensured delivery is the default: a brand-new ensured command must get a slot
-// so it can be retried, and the oldest outstanding entry is the safest to drop
-// (it has had the most time to be delivered + ACK'd at the MAC layer already).
-// Always returns a valid index in [0, WCB_PENDING_MAX).
+// MUST be called with _pendingMux held (it is only invoked from _sendPacket,
+// which takes the lock across the find + fill so the claim is atomic vs the
+// cross-core ACK handler).
 // ─────────────────────────────────────────────────────────────────────────────
 int WCB_Client::_findFreePending() {
     for (int i = 0; i < WCB_PENDING_MAX; i++) {
         if (!_pending[i].active) return i;
     }
-    // All slots busy — evict the one with the greatest age. Age is computed as
-    // (now - sentMs) with unsigned arithmetic, so it stays correct across a
-    // millis() rollover (entries only live for ms, far under the ~49.7-day
-    // wrap period). The oldest entry is the safest to drop: it has had the most
-    // time to be delivered and MAC-layer-retried already.
+    // All slots busy. Reclaim the oldest slot that is safe to drop. Age is
+    // (now - sentMs) with unsigned arithmetic, correct across a millis() rollover
+    // (entries live for ms, far under the ~49.7-day wrap period).
     unsigned long now    = millis();
-    int           oldest = 0;
-    unsigned long maxAge = now - _pending[0].sentMs;
-    for (int i = 1; i < WCB_PENDING_MAX; i++) {
+    int           victim = -1;
+    unsigned long maxAge = 0;
+    for (int i = 0; i < WCB_PENDING_MAX; i++) {
+        bool reclaimable = !_pending[i].ensured || _ensuredComplete(_pending[i]);
+        if (!reclaimable) continue;                 // outstanding ensured — must not drop
         unsigned long age = now - _pending[i].sentMs;
-        if (age > maxAge) { maxAge = age; oldest = i; }
+        if (victim < 0 || age > maxAge) { maxAge = age; victim = i; }
     }
-    _pending[oldest].active = false;
-    return oldest;
+    if (victim >= 0) _pending[victim].active = false;
+    return victim;   // -1 => every slot is an outstanding ensured delivery
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1481,6 +1532,11 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
         // slot is freed immediately; for broadcasts the slot stays open because
         // ACKs may arrive from multiple boards.
         case WCB_PACKET_ACK:
+            // Runs on Core 0 (WiFi/RX task). Serialize against the loop task's
+            // slot claim+fill in _sendPacket so we never match/mutate a slot that
+            // is being half-written (see _pendingMux). Pure array work — no
+            // esp_now/Serial inside the critical section.
+            portENTER_CRITICAL(&_pendingMux);
             for (int i = 0; i < WCB_PENDING_MAX; i++) {
                 if (!_pending[i].active) continue;
                 if (_pending[i].seqNum != pkt->structSequenceNumber) continue;
@@ -1493,6 +1549,7 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
 
                 break;
             }
+            portEXIT_CRITICAL(&_pendingMux);
             break;
 
         // ── Command ──────────────────────────────────────────────────────────
@@ -1512,9 +1569,35 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
                 strncpy(cmd, pkt->structCommand, sizeof(cmd) - 1);
                 cmd[sizeof(cmd) - 1] = '\0';
 
-                char* crcTag = strstr(cmd, "|CRC");
-                if (crcTag) {
-                    // CRC suffix found — verify it before delivering
+                // Only strip/verify a CRC suffix when checksums are ENABLED —
+                // otherwise a legitimate payload that merely contains the literal
+                // "|CRC" (e.g. a command-library or freetext command) would be
+                // wrongly truncated or rejected. When enabled, the sender appends
+                // the CRC as the tail "|CRCxxxxxxxx" (exactly 8 hex digits), so
+                // anchor to the END of the string rather than the first match.
+                if (_checksumEnabled) {
+                    char*  crcTag = nullptr;
+                    size_t len    = strlen(cmd);
+                    if (len >= 12) {                        // "|CRC" + 8 hex digits
+                        char* cand = cmd + len - 12;
+                        if (strncmp(cand, "|CRC", 4) == 0) {
+                            bool hex8 = true;
+                            for (int h = 0; h < 8 && hex8; h++) {
+                                char c = cand[4 + h];
+                                if (!((c >= '0' && c <= '9') ||
+                                      (c >= 'a' && c <= 'f') ||
+                                      (c >= 'A' && c <= 'F'))) hex8 = false;
+                            }
+                            if (hex8) crcTag = cand;
+                        }
+                    }
+                    if (!crcTag) {
+                        // Expected a checksum but the tail isn't a valid one —
+                        // likely a ?ETM,CHKSM mismatch between us and the sender.
+                        Serial.printf("[WCB_Client] Missing CRC from WCB%d — packet rejected\n",
+                                      senderID);
+                        break;
+                    }
                     uint32_t rxCRC   = (uint32_t)strtoul(crcTag + 4, nullptr, 16);
                     uint32_t calcCRC = _crc32(cmd, (size_t)(crcTag - cmd));
                     if (rxCRC != calcCRC) {
@@ -1522,14 +1605,9 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
                                       senderID);
                         break;
                     }
-                    *crcTag = '\0';  // Strip "|CRC..." — deliver clean command only
-                } else if (_checksumEnabled) {
-                    // We expect a checksum but none was present — likely a mismatch
-                    // in ?ETM,CHKSM settings between this device and the sender.
-                    Serial.printf("[WCB_Client] Missing CRC from WCB%d — packet rejected\n",
-                                  senderID);
-                    break;
+                    *crcTag = '\0';  // Strip the verified "|CRC..." — deliver clean command
                 }
+                // checksum disabled → deliver exactly as received (no stripping)
 
                 _commandCallback((uint8_t)senderID, cmd);
             }

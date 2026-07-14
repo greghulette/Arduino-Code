@@ -65,9 +65,11 @@ public:
     // ── Stream interface ──────────────────────────────────────────────────────
 
     // Called by the Pololu library (or any Stream user) for every byte it wants
-    // to transmit. Bytes are appended to the internal buffer. If the buffer is
-    // full (200 bytes) the byte is silently dropped — Maestro commands are at
-    // most ~20 bytes so this limit is never reached in normal use.
+    // to transmit. Bytes are appended to the internal buffer. Returns 1 when the
+    // byte is buffered, or 0 when the buffer is full — so a caller that writes a
+    // whole frame can detect (and avoid) a mid-frame truncation. A large burst
+    // that would overflow the buffer must be split on FRAME boundaries by the
+    // producer using bytesFree()/flushNow() (see maestroWrite).
     size_t write(uint8_t byte) override;
 
     // WCBStream is write-only — reading is not supported.
@@ -84,7 +86,18 @@ public:
     // You do not need to call this manually.
     void tick();
 
+    // Force-send whatever is buffered right now (NOT gap-gated) and reset the
+    // buffer. A producer that knows a whole frame is about to be written and
+    // won't fit calls this first, so a large multi-frame burst is split on FRAME
+    // boundaries into multiple packets instead of being truncated mid-frame.
+    void flushNow();
+
+    // Free space (bytes) before the buffer is full — lets a producer decide to
+    // flushNow() before writing a frame that wouldn't fit whole.
+    size_t bytesFree() const { return sizeof(_buf) - _len; }
+
 private:
+    void _flushBuffer();            // send _buf/_len via sendKyber/sendRaw + reset (shared by tick/flushNow)
     uint8_t       _target;          // Target WCB number for sendRaw()
     uint8_t       _port;            // Target serial port on the WCB (1–5)
     uint16_t      _gapMs;           // Inter-frame gap threshold in milliseconds

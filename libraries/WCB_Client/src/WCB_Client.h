@@ -512,6 +512,15 @@ public:
     void forgetPeer(uint8_t id);
     void clearLearnedPeers();
 
+    // True if `id` is currently an auto-joined (learned) peer — i.e. a node above
+    // the wcb_quantity floor that was heard over WDP and made a PERMANENT peer.
+    // Membership persists across reboots and is independent of online/offline
+    // state, so callers can show a learned peer even while it's powered off (its
+    // WDP advert ages out and, for a client, it never heartbeats).
+    bool isLearnedPeer(uint8_t id) const {
+        return id >= 1 && id <= WCB_MAX_BOARDS && _learnedPeer[id - 1];
+    }
+
     // Unicast a raw byte buffer to a WCB's MAC (computed from the shared scheme).
     // For custom protocols (e.g. OTA ACKs / relay forwards) that must send a
     // struct other than wcb_packet_etm_t. Registers the peer on demand if needed.
@@ -621,6 +630,15 @@ private:
     // ── Board tracking ───────────────────────────────────────────────────────
     WCBBoardStatus _boards[WCB_MAX_BOARDS];   // Online/offline state per WCB slot
     WCBPending     _pending[WCB_PENDING_MAX]; // In-flight commands awaiting ACK
+    // The pending table is mutated from BOTH cores: the loop task (send()/
+    // broadcast() → _sendPacket claim+fill, and update()'s retry service) AND
+    // the ESP-NOW receive callback / WiFi task (the ACK handler marking a slot
+    // acked/freed). A slot claim (write active+seqNum+expected) and the ACK scan
+    // (match seqNum, set acked/active) must not interleave across cores, or a
+    // half-filled slot can be matched to a stale ACK and torn. This spinlock
+    // serializes the two short critical regions (claim+fill in _sendPacket, ACK
+    // apply in _handleReceive). Only _seqCounter needs to stay separately atomic.
+    portMUX_TYPE   _pendingMux = portMUX_INITIALIZER_UNLOCKED;
 
     // ── ETM state ────────────────────────────────────────────────────────────
     // Atomic: the sequence number is incremented from BOTH cores — the main
