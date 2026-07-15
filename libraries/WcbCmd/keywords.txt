@@ -1,0 +1,30 @@
+#######################################
+# Syntax Coloring Map for WcbCmd
+#######################################
+
+# Classes / namespaces (KEYWORD1)
+WcbMaestro	KEYWORD1
+WcbWled	KEYWORD1
+Mp3Codec	KEYWORD1
+HcrCodec	KEYWORD1
+
+# Methods and Functions (KEYWORD2)
+parse	KEYWORD2
+buildSubroutineFrame	KEYWORD2
+emit	KEYWORD2
+build	KEYWORD2
+begin	KEYWORD2
+handle	KEYWORD2
+poll	KEYWORD2
+volume	KEYWORD2
+setVolume	KEYWORD2
+normalize	KEYWORD2
+format	KEYWORD2
+setVol	KEYWORD2
+getVol	KEYWORD2
+onVolumeChanged	KEYWORD2
+onFinished	KEYWORD2
+onError	KEYWORD2
+
+# Constants (LITERAL1)
+WCBCMD_VERSION	LITERAL1
