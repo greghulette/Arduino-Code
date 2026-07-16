@@ -75,6 +75,11 @@ constexpr uint8_t broadcast = 0;
 // Library limits
 // ─────────────────────────────────────────────────────────────────────────────
 #define WCB_MAX_BOARDS   20   // Maximum WCB IDs supported (1–20)
+#define WCB_MESH_CHANNEL  1   // Default ESP-NOW mesh channel (1–11). The ESP32 has ONE
+                              // radio, so this MUST match the channel every WCB is on or
+                              // this device is silently unreachable. If your fleet runs on
+                              // a non-default channel (set via ?WCBCH / the Wizard), call
+                              // setMeshChannel(ch) before begin() to match it.
 #define WCB_PENDING_MAX  10   // In-flight COMMAND slots tracked for ACK.
                               // Matches the WCB firmware's ETM_PENDING_MAX so
                               // client ensured traffic has the same depth as
@@ -298,7 +303,10 @@ public:
     // password    : network password — must match all WCBs  (max 39 chars)
     // wcb_quantity: total WCBs in the system (?WCBQ value)
     // device_id   : this device's unique ID on the network
-    //               1–19 : must be <= wcb_quantity; WCBs pre-register this MAC
+    //               1–19 : any id here is allowed. If <= wcb_quantity the WCBs
+    //                       pre-register this MAC. If > wcb_quantity it's reachable
+    //                       INBOUND only after the floor boards auto-join it from
+    //                       its WDP advert — call setIdentity() (begin() warns).
     //               20   : special out-of-band slot (requires specialPeerEnabled
     //                       on the WCBs, does not consume a WCB slot)
     // commandCb   : optional — called when a command is received from the network
@@ -314,6 +322,13 @@ public:
     // register all WCB peers, and begin the heartbeat timer.
     // Call once from setup(). Returns true on success.
     // On failure the library prints a descriptive error to Serial.
+    //
+    // AP coexistence: if a SoftAP is already up (WiFi.softAP() called BEFORE
+    // begin()), it is preserved — WiFi is switched to WIFI_AP_STA instead of
+    // WIFI_STA, and ESP-NOW rides the AP's radio channel (AP and STA share one
+    // channel on the ESP32). Bring up the AP first with the channel you want
+    // the whole WCB mesh to use; calling softAP() AFTER begin() also works
+    // (Arduino's WiFi.mode() ORs in WIFI_AP without dropping STA).
     bool begin();
 
     // ── Main loop ────────────────────────────────────────────────────────────
@@ -585,6 +600,15 @@ public:
     // Note: enabling checksum reduces the usable command length from 200 to ~188 chars.
     void setChecksum(bool enabled);
 
+    // Set the ESP-NOW mesh channel this device expects the WCBs to be on (1–11).
+    // The ESP32 has one radio, so this device can only hear the mesh if it sits on
+    // the same channel. Best called BEFORE begin() if your fleet runs on a
+    // non-default channel (changed via ?WCBCH / the Wizard). Calling it AFTER
+    // begin() also works when no SoftAP is active — it re-pins the radio live.
+    // With a SoftAP active (which owns the channel) begin() and update() instead
+    // WARN if the radio ends up on the wrong channel. Default: WCB_MESH_CHANNEL (1).
+    void setMeshChannel(uint8_t channel);
+
     // ── Device identity (WDP discovery) ────────────────────────────────────
 
     // Advertise this device's identity on the WCB mesh via WDP so every WCB
@@ -658,6 +682,11 @@ private:
 
     bool _checksumEnabled = true;  // CRC32 on/off — must match ?ETM,CHKSM on WCBs
 
+    // ── Mesh channel ─────────────────────────────────────────────────────────
+    uint8_t       _meshChannel       = WCB_MESH_CHANNEL;  // expected ESP-NOW channel (1–13)
+    uint8_t       _lastWarnedChannel = 0;                 // last off-channel value we warned about (0 = none)
+    unsigned long _lastChannelWarnMs = 0;                 // millis() of the last mismatch warning (rate-limit)
+
     // ── WDP device-identity advert ───────────────────────────────────────────
     // Set via setIdentity(); broadcast on the mesh as WCB_PACKET_WDP so WCBs
     // discover this device. An empty _wdpType means advertising is off.
@@ -681,6 +710,7 @@ private:
     bool                 _learnedPeer[WCB_MAX_BOARDS] = {}; // auto-joined ids (beyond 1..quantity)
     uint8_t              _advertCount[WCB_MAX_BOARDS] = {}; // WDP adverts heard per board (join needs >=2)
     volatile bool        _pendingJoin[WCB_MAX_BOARDS] = {}; // flagged in RX callback, drained in update() (loop task)
+    volatile bool        _pendingReplyPeer[WCB_MAX_BOARDS] = {}; // RX-callback flag: an authenticated above-floor sender we can't unicast to yet; update() adds it as a transient ESP-NOW peer (no NVS) so we can ACK/reply immediately
 
     // ── WCBStream registry ───────────────────────────────────────────────────
     // WCBStream instances self-register here during construction so update()
@@ -730,6 +760,10 @@ private:
 
     // Build and broadcast a HEARTBEAT packet so all WCBs know this device is alive.
     void _sendHeartbeat();
+
+    // Compare the radio's current channel to _meshChannel; emit a rate-limited
+    // warning if they differ (a hosted SoftAP can move the radio off the mesh).
+    void _checkMeshChannel();
 
     // ── WDP device-identity advert helpers ───────────────────────────────────
     // Build the WDP TLV payload (magic + proto + DEVTYPE/FWVER/HWREV/CAPTAGS +

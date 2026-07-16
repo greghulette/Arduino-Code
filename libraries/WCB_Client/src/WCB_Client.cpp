@@ -51,19 +51,26 @@ WCB_Client::WCB_Client(uint8_t mac_oct2, uint8_t mac_oct3,
 bool WCB_Client::begin() {
 
     // ── Validate device_id ───────────────────────────────────────────────────
-    // device_id must be 1–WCB_MAX_BOARDS. If it's not the special slot (20)
-    // it must also be within the declared network size so the WCBs already have
-    // this MAC pre-registered in their peer tables.
+    // device_id must be 1–WCB_MAX_BOARDS (hard-fail otherwise). A value ABOVE
+    // wcb_quantity (and not the special slot 20) is ALLOWED but non-standard: the
+    // floor boards (1..quantity) haven't pre-registered this MAC, so the device is
+    // reachable INBOUND only once they auto-join it from its WDP advert — call
+    // setIdentity() and keep auto-join on. begin() only WARNS in that case.
     if (_deviceID == 0 || _deviceID > WCB_MAX_BOARDS) {
         Serial.printf("[WCB_Client] ERROR: device_id %d is out of range (1–%d)\n",
                       _deviceID, WCB_MAX_BOARDS);
         return false;
     }
+    // NON-FATAL: an id above wcb_quantity (and not the special slot 20) is allowed.
+    // Index safety is already guaranteed by the out-of-range hard-fail above, and
+    // every board array is sized WCB_MAX_BOARDS. The only consequence is inbound
+    // reachability, which auto-join resolves once the floor boards hear this
+    // device's WDP advert (setIdentity()).
     if (_deviceID != WCB_SPECIAL_ID && _deviceID > _quantity) {
-        Serial.printf("[WCB_Client] ERROR: device_id %d exceeds wcb_quantity %d. "
-                      "Use device_id <= quantity or device_id = %d for the special slot.\n",
-                      _deviceID, _quantity, WCB_SPECIAL_ID);
-        return false;
+        Serial.printf("[WCB_Client] WARNING: device_id %d is above wcb_quantity %d - "
+                      "allowed, but the floor boards can't reach it until they auto-join "
+                      "it from its WDP advert; call setIdentity() and keep auto-join on.\n",
+                      _deviceID, _quantity);
     }
 
     // ── Reset internal state ─────────────────────────────────────────────────
@@ -74,16 +81,53 @@ bool WCB_Client::begin() {
     memset(_pending, 0, sizeof(_pending));
 
     // ── WiFi setup ───────────────────────────────────────────────────────────
-    // ESP-NOW requires WiFi to be in station mode. We disconnect from any AP
-    // so no association overhead interferes with ESP-NOW timing. esp_now_init()
-    // fails outright if the WiFi driver is not running, so verify STA mode took
-    // before we get there — that failure is the usual root cause of a crash on
-    // the first heartbeat.
-    if (!WiFi.mode(WIFI_STA)) {
-        Serial.println("[WCB_Client] WARNING: WiFi.mode(WIFI_STA) reported failure "
-                       "— ESP-NOW init will likely fail below");
+    // ESP-NOW requires WiFi to have station mode enabled. esp_now_init() fails
+    // outright if the WiFi driver is not running, so verify the mode change
+    // took before we get there — that failure is the usual root cause of a
+    // crash on the first heartbeat.
+    //
+    // If the sketch has already brought up a SoftAP (e.g. hosting a web UI),
+    // preserve it — AP and STA share a single radio channel on the ESP32, so
+    // ESP-NOW simply rides whatever channel the AP is already on instead of
+    // forcing STA-only and tearing the AP down. WiFi.disconnect() only drops
+    // a STA association (default wifioff=false), so it's already AP-safe on
+    // its own.
+    wifi_mode_t priorMode = WiFi.getMode();
+    bool apActive = (priorMode == WIFI_MODE_AP || priorMode == WIFI_MODE_APSTA);
+    wifi_mode_t targetMode = apActive ? WIFI_AP_STA : WIFI_STA;
+    if (!WiFi.mode(targetMode)) {
+        Serial.printf("[WCB_Client] WARNING: WiFi.mode(%s) reported failure "
+                      "— ESP-NOW init will likely fail below\n",
+                      apActive ? "WIFI_AP_STA" : "WIFI_STA");
     }
     WiFi.disconnect();
+
+    if (apActive) {
+        // Modem sleep is far more likely to bite once the AP is actively
+        // serving clients — a missed ESP-NOW heartbeat here reads as this
+        // device going offline to the rest of the mesh.
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        Serial.println("[WCB_Client] SoftAP detected — running WIFI_AP_STA, "
+                       "ESP-NOW sharing the AP's radio channel");
+    }
+
+    // ── Mesh channel ─────────────────────────────────────────────────────────
+    // ESP-NOW peers are channel-0 ("current channel"), so this device is only
+    // heard if its radio sits on the mesh channel (_meshChannel, settable via
+    // setMeshChannel()). With no SoftAP we pin it deterministically; with a
+    // SoftAP active the AP owns the channel, so we can't move it without yanking
+    // the AP — we only WARN on a mismatch, and re-check in update() to catch a
+    // SoftAP that's brought up after begin().
+    if (!apActive) {
+        esp_err_t chErr = esp_wifi_set_channel(_meshChannel, WIFI_SECOND_CHAN_NONE);
+        if (chErr != ESP_OK) {
+            Serial.printf("[WCB_Client] WARNING: esp_wifi_set_channel(%u) failed (err %d) - "
+                          "the radio may be on the wrong channel; the mesh uses 1-11.\n",
+                          _meshChannel, chErr);
+        }
+    } else {
+        _checkMeshChannel();
+    }
 
     // ── Build MAC table ──────────────────────────────────────────────────────
     // Must happen BEFORE esp_wifi_set_mac() so _wcbMACs[] is populated.
@@ -168,6 +212,7 @@ void WCB_Client::update() {
     if (now >= _nextHeartbeatMs) {
         _sendHeartbeat();
         _nextHeartbeatMs = now + (_heartbeatIntervalSec * 1000UL);
+        _checkMeshChannel();   // catch a SoftAP that moved the radio off the mesh channel
     }
 
     _checkOfflineBoards();
@@ -182,6 +227,24 @@ void WCB_Client::update() {
     // small callback stack and crash. Doing them here makes them safe.
     for (int i = 0; i < WCB_MAX_BOARDS; i++) {
         if (_pendingJoin[i]) { _pendingJoin[i] = false; _addLearnedPeer((uint8_t)(i + 1)); }
+    }
+
+    // Register transient reply-peers flagged on the RX callback (an authenticated
+    // above-floor sender we couldn't unicast an ACK/reply to yet). Same discipline
+    // as auto-join above — the bool is set on Core 0, the esp_now_add_peer runs
+    // HERE on the loop task — but with NO NVS write: this is not a learned member,
+    // just enough of a peer to answer whoever just talked to us. Auto-join still
+    // persists genuine members separately. Lands within ~1 loop, so the sender's
+    // next command (the config tool re-pings 6x/500ms on connect) gets its reply.
+    for (int i = 0; i < WCB_MAX_BOARDS; i++) {
+        if (!_pendingReplyPeer[i]) continue;
+        _pendingReplyPeer[i] = false;
+        if (esp_now_is_peer_exist(_wcbMACs[i])) continue;
+        esp_now_peer_info_t peer = {};
+        memcpy(peer.peer_addr, _wcbMACs[i], 6);
+        peer.channel = 0;
+        peer.encrypt = false;
+        esp_now_add_peer(&peer);
     }
 
     // Service the pending table. _pending[] is mutated cross-core (the ACK handler
@@ -790,6 +853,63 @@ bool WCB_Client::sendRawPacket(uint8_t target_wcb, const uint8_t* data, size_t l
 // Enable or disable CRC32 checksum. Must match the WCB network's ?ETM,CHKSM setting.
 void WCB_Client::setChecksum(bool enabled) {
     _checksumEnabled = enabled;
+}
+
+// Set the ESP-NOW mesh channel this device expects (1–13). See the header for the
+// full contract. Out-of-range values are ignored (the current value is kept).
+void WCB_Client::setMeshChannel(uint8_t channel) {
+    if (channel < 1 || channel > 11) {
+        Serial.printf("[WCB_Client] setMeshChannel: %u out of range (1-11), ignored\n", channel);
+        return;
+    }
+    _meshChannel = channel;
+    // If begin() already ran and we own the radio (no SoftAP), re-pin it live so a
+    // runtime change actually takes effect — otherwise this would only update the
+    // expected value while the radio stayed put. With a SoftAP active the AP owns
+    // the channel; we don't move it (update()'s _checkMeshChannel warns instead).
+    if (_started) {
+        wifi_mode_t mode = WiFi.getMode();
+        bool apActive = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
+        if (!apActive) esp_wifi_set_channel(_meshChannel, WIFI_SECOND_CHAN_NONE);
+    }
+}
+
+// Warn (rate-limited) if the radio isn't on the expected mesh channel — this device
+// can't reach the mesh when off-channel, so surface it loudly instead of failing
+// silently. The advice depends on WHY the radio moved: a hosted SoftAP owns the
+// channel (bring the AP up on the mesh channel), otherwise a STA association or a
+// channel change moved it. We only warn (never force) so we don't yank a
+// deliberately-chosen SoftAP channel.
+//
+// NOTE: this can only catch a radio that drifted OFF _meshChannel. It cannot detect
+// a _meshChannel that is itself wrong (the fleet moved via ?WCBCH but this sketch was
+// never updated) — an ESP-NOW device on the wrong channel hears nothing, so it has no
+// way to learn the fleet's real channel. Keep _meshChannel in sync via setMeshChannel().
+void WCB_Client::_checkMeshChannel() {
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    if (esp_wifi_get_channel(&primary, &second) != ESP_OK) return;
+    if (primary == _meshChannel) { _lastWarnedChannel = 0; return; }  // on-channel: reset so a later drift re-warns
+
+    unsigned long now = millis();
+    // Warn on first detection / a change of wrong channel; otherwise throttle to 30s.
+    if (primary == _lastWarnedChannel && (now - _lastChannelWarnMs) < 30000UL) return;
+    _lastWarnedChannel = primary;
+    _lastChannelWarnMs = now;
+    wifi_mode_t mode = WiFi.getMode();
+    bool apActive = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
+    if (apActive) {
+        Serial.printf("[WCB_Client] WARNING: radio is on channel %u but the WCB mesh is on "
+                      "channel %u - this device will NOT reach the mesh. A hosted SoftAP owns "
+                      "the radio channel; bring the AP up on the mesh channel: "
+                      "WiFi.softAP(ssid, pass, %u).\n",
+                      primary, _meshChannel, _meshChannel);
+    } else {
+        Serial.printf("[WCB_Client] WARNING: radio is on channel %u but the WCB mesh is on "
+                      "channel %u - this device will NOT reach the mesh. A WiFi STA association "
+                      "or a channel change may have moved it; call setMeshChannel(%u) or reboot.\n",
+                      primary, _meshChannel, _meshChannel);
+    }
 }
 
 // =============================================================================
@@ -1563,6 +1683,20 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
             // This prevents the sender from flooding retries at us.
             if (senderID >= 1 && senderID <= WCB_MAX_BOARDS)
                 _sendAck((uint8_t)senderID, pkt->structSequenceNumber);
+
+            // A command from an authenticated sender means we may need to unicast
+            // back to it — the ACK above, and any reply the callback sends. If it's
+            // an ABOVE-FLOOR sender that isn't a registered peer yet (e.g. a client
+            // / relay before auto-join's >=2-advert threshold), esp_now_send to it
+            // fails (NOT_FOUND) and the reply is silently lost. Flag it (cheap bool,
+            // same discipline as _pendingJoin) so update() registers it as a
+            // transient peer on the LOOP task — NEVER add_peer on this RX callback
+            // (the documented boot-loop hazard). Floor/special/self and already-
+            // learned ids are skipped: they're registered already.
+            if (senderID > _quantity && senderID <= WCB_MAX_BOARDS &&
+                senderID != _deviceID && senderID != _specialPeerID &&
+                senderID != WCB_SPECIAL_ID && !_learnedPeer[senderID - 1])
+                _pendingReplyPeer[senderID - 1] = true;
 
             if (pkt->structCommandIncluded && _commandCallback) {
                 char cmd[201];

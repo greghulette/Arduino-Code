@@ -32,11 +32,10 @@
 #include <AsyncTCP.h>
 #include <WiFi.h>
 
-//Used for ESP-NOW
+//Used for ESP-NOW / the WCB mesh
 #include "esp_wifi.h"
 #include <esp_now.h>
-#define ETM_MY_BOARD_INDEX ETM_BOARD_HP
-#include <ETM_Droid.h>
+#include <WCB_Client.h>   // joins the WCB ESP-NOW mesh (replaces ETM_Droid)
 
 //Used for the Status LED
 #include <Adafruit_NeoPixel.h>
@@ -65,8 +64,13 @@
 //////////////////////////////////////////////////////////////////////
 ///*****          Preferences/Items to change                 *****///
 //////////////////////////////////////////////////////////////////////
- // ESPNOW Password - This must be the same across all devices
-  String ESPNOWPASSWORD = "GregsAstromech";
+ // ── WCB mesh credentials (WCB_Client) ───────────────────────────────────────
+ // These MUST match your live WCB system.  Query any WCB over USB: ?WCBM ?WCBP ?WCBQ
+  String        ESPNOWPASSWORD = "GregsAstromech";  // ?WCBP — WCB network password (set to match!)
+  const uint8_t WCB_MAC_OCT2   = 0x00;              // ?WCBM — 2nd MAC octet   TODO: set for your system
+  const uint8_t WCB_MAC_OCT3   = 0x00;              // ?WCBM — 3rd MAC octet   TODO: set for your system
+  const uint8_t WCB_QUANTITY   = 8;                 // ?WCBQ — total WCBs      TODO: set for your system
+  const uint8_t WCB_DEVICE_ID  = 8;                 // this board = HP = W8 on the mesh
 
   // R2 Control Network Details for OTA
   const char* ssid = "R2D2_Control_Network";
@@ -322,7 +326,7 @@ HoloLights topHolo(16, HoloLights::kRGB);			// PIN 16
 ///*****                  ESP NOW Set Up                         *****///
 /////////////////////////////////////////////////////////////////////////
 
-// MAC addresses and board IDs are defined in ETM_Droid.h
+// ESP-NOW addressing + packet format are handled by WCB_Client (see below).
 
 // Define variables to store commands to be sent
   String  senderID;
@@ -354,7 +358,8 @@ HoloLights topHolo(16, HoloLights::kRGB);			// PIN 16
 // Variable to store if sending data was successful
   String success;
 
-// espnow_struct_message is defined in ETM_Droid.h
+// (ESP-NOW packet format is internal to WCB_Client — these legacy send/recv
+//  String vars below are now unused and can be pruned later.)
 
 
 
@@ -375,71 +380,47 @@ HoloLights topHolo(16, HoloLights::kRGB);			// PIN 16
 
 
 
-// Single send/receive buffers — ETM handles routing
-  espnow_struct_message outgoingMsg;
-  espnow_struct_message incomingMsg;
-//
-  esp_now_peer_info_t peerInfo;
+// ── WCB mesh client — replaces the ETM_Droid send/recv layer below ──────────
+// This board is device W8 (HP) on the WCB ESP-NOW mesh. WCB_Client handles all
+// ESP-NOW init, heartbeats, online/offline tracking, and reliable delivery.
+bool wcbReady = false;   // set from wcb.begin(); guards update()/send()
 
-// Callback when data is sent
-void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
-  if (status == 0) { SuccessCounter++; } else { FailureCounter++; }
-  Debug.ESPNOW("Last Packet Send Status: %s\n", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+// Forward declarations (defined just below) — the client is built with them.
+void onWcbCommand(uint8_t senderID, const char* command);
+void onWcbStatus (uint8_t wcbID,    bool online);
+
+WCB_Client wcb(WCB_MAC_OCT2, WCB_MAC_OCT3, ESPNOWPASSWORD.c_str(),
+               WCB_QUANTITY, WCB_DEVICE_ID, onWcbCommand, onWcbStatus);
+
+// Legacy 2-char board aliases → WCB mesh IDs (the shared alias matrix). Lets the
+// existing command syntax (e.g. ":EDC<cmd>") keep addressing boards by name.
+uint8_t wcbIdFromAlias(const String& a) {
+  if (a == "BC") return 2;                     // Body Controller
+  if (a == "DG") return 3;                     // Droid Gateway
+  if (a == "DP") return 5;                     // Dome Plate Controller
+  if (a == "DC") return 7;                     // Dome Controller
+  if (a == "HP") return 8;                     // HP Controller (self)
+  if (a == "NC" || a == "NAVI") return 20;     // NaviCore (special peer)
+  return 0;                                    // unknown / not on the mesh
 }
 
-// Callback when data is received
-void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
-  colorWipeStatus("ES", orange, 255);
-  if (len < (int)sizeof(espnow_struct_message)) {
-    Debug.ESPNOW("ESP-NOW packet too short (%d bytes), ignored\n", len);
-    colorWipeStatus("ES", blue, 10);
-    return;
-  }
-  memcpy(&incomingMsg, incomingData, sizeof(incomingMsg));
-  if (strncmp(incomingMsg.structPassword, ESPNOWPASSWORD.c_str(), sizeof(incomingMsg.structPassword)) != 0) {
-    Debug.ESPNOW("Wrong ESP-NOW Password was sent. Message Ignored\n");
-    colorWipeStatus("ES", blue, 10);
-    return;
-  }
-  int senderIdx = etmBoardIndexFromMAC(esp_now_info->src_addr);
-  if (senderIdx >= 0) etmHandleHeartbeat(senderIdx);
-  switch (incomingMsg.structPacketType) {
-    case PACKET_TYPE_HEARTBEAT:
-      break;
-    case PACKET_TYPE_ACK:
-      etmProcessAck(senderIdx, incomingMsg.structSequenceNumber);
-      break;
-    case PACKET_TYPE_COMMAND:
-      if (senderIdx < 0) {
-        Debug.ESPNOW("Command from unknown MAC (sender: %s), ignoring\n", incomingMsg.structSenderID);
-        break;
-      }
-      incomingSenderID = incomingMsg.structSenderID;
-      incomingTargetID = incomingMsg.structTargetID;
-      incomingCommandIncluded = incomingMsg.structCommandIncluded;
-      incomingCommand = incomingMsg.structCommand;
-      processESPNOWIncomingMessage();
-      etmSendAck(senderIdx, incomingMsg.structSequenceNumber);
-      break;
-    default:
-      Debug.ESPNOW("ESP-NOW unknown packet type, ignored\n");
-      break;
-  }
-  colorWipeStatus("ES", blue, 10);
+// Fired by WCB_Client when a WCB (or NaviCore) sends us a command or broadcasts.
+// Runs on the ESP-NOW RX task (Core 0) — keep it light. We only copy the string
+// (operator= copies before the library reuses its buffer) and set the flag; the
+// main loop picks it up. The mesh already routed it here, so no target check.
+void onWcbCommand(uint8_t senderID, const char* command) {
+  inputString    = command;
+  stringComplete = true;
+  Debug.ESPNOW("[WCB] RX from W%d: %s\n", senderID, command);
 }
 
-void processESPNOWIncomingMessage(){
-  Debug.ESPNOW("incoming target: %s\n", incomingTargetID.c_str());
-  Debug.ESPNOW("incoming sender: %s\n", incomingSenderID.c_str());
-  Debug.ESPNOW("incoming command included: %d\n", incomingCommandIncluded);
-  Debug.ESPNOW("incoming command: %s\n", incomingCommand.c_str());
-  if (incomingTargetID == "HP" || incomingTargetID == "BR"){
-    inputString = incomingCommand;
-    stringComplete = true; 
-    Debug.ESPNOW("Recieved command from Lora Droid\n");
-
-  }
+// Fired when a WCB comes online / goes offline (library tracks it internally).
+void onWcbStatus(uint8_t wcbID, bool online) {
+  Debug.ESPNOW("[WCB] W%d is now %s\n", wcbID, online ? "ONLINE" : "OFFLINE");
 }
+
+// (ETM_Droid OnDataSent / OnDataRecv / processESPNOWIncomingMessage removed —
+//  WCB_Client now handles TX/RX and delivers commands via onWcbCommand() above.)
 //////////////////////////////////////////////////////////////////////
 ///       *****   Servo Values, Containers, Flags & Timers   *****////
 //////////////////////////////////////////////////////////////////////
@@ -494,12 +475,9 @@ void colorWipeStatus(String statusled, uint32_t c, int brightness) {
 //////////////////////////////////////////////////////////////////////
 
 void keepAlive(){
-  if (STATUS_TRACKING == 1){
-    if (millis() - keepAliveMillis >= (keepAliveDuration + random(1, 1000))){
-    keepAliveMillis = millis();
-    sendESPNOWCommand("DG","");  
-    } 
-  }
+  // Superseded by WCB_Client heartbeats — the library announces this board to the
+  // whole mesh, and the Droid Gateway (W3) learns our online/offline state from
+  // its own WCB_Client status callback. No manual keepalive send is needed.
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -602,33 +580,19 @@ void writes1Serial(String stringData){
 //////////////////////////////////////////////////////////////////////
 
 void sendESPNOWCommand(String starget, String scomm) {
-  bool isBroadcast = (starget == "BR");
-  int targetIdx = etmBoardIndexFromID(starget.c_str());
-  const uint8_t* targetMAC = isBroadcast ? ETM_BROADCAST_MAC
-                           : (targetIdx >= 0) ? ETM_BOARD_MACS[targetIdx]
-                           : nullptr;
-  if (targetMAC == nullptr) {
-    Debug.ESPNOW("No valid destination for target: %s\n", starget.c_str());
+  if (!wcbReady) return;                          // mesh not up — nothing to send on
+  if (starget == "BR") {                          // broadcast to every WCB
+    wcb.broadcast(scomm.c_str());
+    Debug.ESPNOW("[WCB] Broadcast: %s\n", scomm.c_str());
     return;
   }
-  uint16_t seqNum = etmNextSequence();
-  memset(&outgoingMsg, 0, sizeof(outgoingMsg));
-  snprintf(outgoingMsg.structPassword, sizeof(outgoingMsg.structPassword), "%s", ESPNOWPASSWORD.c_str());
-  snprintf(outgoingMsg.structSenderID, sizeof(outgoingMsg.structSenderID), "HP");
-  snprintf(outgoingMsg.structTargetID, sizeof(outgoingMsg.structTargetID), "%s", starget.c_str());
-  outgoingMsg.structCommandIncluded = (scomm.length() > 0);
-  outgoingMsg.structSuccess = SuccessCounter;
-  outgoingMsg.structFailure = FailureCounter;
-  snprintf(outgoingMsg.structCommand, sizeof(outgoingMsg.structCommand), "%s", scomm.c_str());
-  outgoingMsg.structPacketType = PACKET_TYPE_COMMAND;
-  outgoingMsg.structSequenceNumber = seqNum;
-  esp_err_t result = esp_now_send(targetMAC, (uint8_t*)&outgoingMsg, sizeof(outgoingMsg));
-  if (result == ESP_OK) {
-    Debug.ESPNOW("Sent command: %s to %s\n", scomm.c_str(), starget.c_str());
-    if (!isBroadcast) etmAddToPending(scomm.c_str(), starget.c_str(), targetIdx, seqNum);
-  } else {
-    Debug.ESPNOW("Error sending ESP-NOW data\n");
+  uint8_t id = wcbIdFromAlias(starget);
+  if (id == 0) {
+    Debug.ESPNOW("[WCB] Unknown target alias: %s\n", starget.c_str());
+    return;
   }
+  wcb.send(id, scomm.c_str());                    // ensured (ACK-tracked) unicast
+  Debug.ESPNOW("[WCB] Sent to W%d: %s\n", id, scomm.c_str());
 }
 
 
@@ -839,44 +803,15 @@ void setup(){
   inputString.reserve(100);                                                              // Reserve 100 bytes for the inputString:
   autoInputString.reserve(100);
 
-  //initialize WiFi for ESP-NOW
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_mac(WIFI_IF_STA, ETM_BOARD_MACS[ETM_MY_BOARD_INDEX]);
-  Serial.print("Local STA MAC address = ");
-  Serial.println(WiFi.macAddress());
-
-  //Initialize ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-  return;
+  // ── Join the WCB ESP-NOW mesh (replaces the old ETM_Droid bring-up) ──
+  // WCB_Client handles WiFi/ESP-NOW init, this board's MAC, peer setup,
+  // heartbeats, and online/offline tracking internally.
+  wcbReady = wcb.begin();
+  if (wcbReady) {
+    Serial.printf("[WCB] On the mesh as W%d.\n", WCB_DEVICE_ID);
+  } else {
+    Serial.println("[WCB] begin() FAILED — running serial-only, not on the mesh.");
   }
-
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);
-
-  // Register peer configuration
-  peerInfo.channel = 0;
-  peerInfo.encrypt = false;
-
-  // Add all peers from ETM MAC table
-  memcpy(peerInfo.peer_addr, ETM_BROADCAST_MAC, 6);
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add Broadcast ESP-NOW peer");
-    return;
-  }
-  for (int i = 0; i < ETM_NUM_BOARDS; i++) {
-    if (i == ETM_MY_BOARD_INDEX) continue;
-    memcpy(peerInfo.peer_addr, ETM_BOARD_MACS[i], 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
-      Serial.printf("Failed to add ESP-NOW peer %d\n", i);
-      return;
-    }
-  }
-
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
-  etmInit(ESPNOWPASSWORD.c_str(), ETM_MY_BOARD_INDEX);
 
   ESP_LED.begin();
   ESP_LED.show();
@@ -889,7 +824,7 @@ void setup(){
 }   // end of setup
 
 void loop(){
-  etmProcess();
+  if (wcbReady) wcb.update();   // mesh heartbeats + offline detection (was etmProcess)
   AnimatedEvent::process();
 
   if (millis() - MLMillis >= mainLoopDelayVar){

@@ -44,16 +44,30 @@ This library lets any ESP32 — a Kyber controller, a custom prop brain, a stage
 This library takes over the ESP32's radio to join the WCB ESP-NOW network. Read
 this before combining it with WiFi or another ESP-NOW stack.
 
-### It takes over WiFi
+### It takes over WiFi (STA) — but a SoftAP can coexist
 
-`begin()` calls `WiFi.mode(WIFI_STA)` followed by `WiFi.disconnect()`. **It will
-drop any existing connection to a WiFi router/AP**, and ESP-NOW timing assumes no
-AP association. You generally **cannot run a normal WiFi workload (web server,
-MQTT, cloud, HTTP/OTA-over-WiFi) on the same ESP32** while using this library.
+`begin()` puts WiFi into station mode and calls `WiFi.disconnect()`. **It will
+drop any existing STA connection to a WiFi router**, and ESP-NOW timing assumes
+no STA association. You generally **cannot associate this ESP32 with an
+external WiFi router** while using this library — connecting to someone else's
+AP hands channel control to that AP, and ESP-NOW only works if every WCB
+happens to already be on that channel too (see below).
 
-If you genuinely need both, you must keep everything on a **single fixed WiFi
-channel** (see below) and accept the MAC override — in practice it's far simpler
-to dedicate this ESP32 to the WCB network and use a second board for WiFi tasks.
+**Hosting your own SoftAP is a different story and is supported.** If you call
+`WiFi.softAP(ssid, password, channel)` *before* `begin()`, the library detects
+it and switches to `WIFI_AP_STA` instead of `WIFI_STA` — your AP (and any web
+server built on it) stays up, and ESP-NOW simply rides the AP's radio channel
+(AP and STA share a single channel on the ESP32, so there's no separate
+negotiation). Calling `softAP()` *after* `begin()` also works, since
+`WiFi.mode()` ORs in `WIFI_AP` without dropping STA. Either way, all WCBs and
+clients still need to end up on the AP's channel — pick it deliberately rather
+than leaving it to default to channel 1.
+
+If you need to *associate* with an external router (not host your own AP)
+alongside WCB traffic, that's still unsupported without keeping everything on
+a **single fixed WiFi channel** (see below) and accepting the MAC override —
+in practice it's far simpler to dedicate this ESP32 to the WCB network and use
+a second board for that WiFi workload.
 
 ### Shared radio channel
 
@@ -97,7 +111,8 @@ miss ESP-NOW packets. Disable it with `esp_wifi_set_ps(WIFI_PS_NONE)` (or
 | If you need… | Result with this library |
 |---|---|
 | WCB ESP-NOW only | ✅ Intended use — works out of the box |
-| WiFi STA + WCB on the same board | ⚠️ Only if all peers share the AP's fixed channel; `begin()` still disconnects WiFi |
+| SoftAP (hosted web UI) + WCB on the same board | ✅ Supported — `begin()` preserves an existing/later SoftAP as `WIFI_AP_STA`. The AP owns the single radio's channel, so bring it up on the mesh channel (`WiFi.softAP(ssid, pass, 1)`); the library **warns** (never force-moves it) if the radio ends up elsewhere. Match a non-default fleet channel with `setMeshChannel()`. |
+| WiFi STA (associating with an external router) + WCB on the same board | ⚠️ Only if all peers share the router's fixed channel; `begin()` still disconnects STA |
 | A second, separate ESP-NOW network | ❌ Not supported — single global receive callback |
 | Multiple `WCB_Client` objects | ❌ Not supported — singleton |
 | Factory MAC preserved | ❌ MAC is overwritten by design |
@@ -234,6 +249,7 @@ void loop() {
 | `onCommand(callback)` | Register or replace the received-command callback. |
 | `onStatusChange(callback)` | Register or replace the online/offline status callback. |
 | `setChecksum(bool)` | Enable/disable CRC32 checksums. Must match `?ETM,CHKSM` setting on WCBs (default: on). |
+| `setMeshChannel(uint8_t)` | Set the ESP-NOW mesh channel (1–11) this device expects. Best called before `begin()` if your fleet runs on a non-default channel (set on the WCBs via `?WCBCH` / the Wizard); calling it after `begin()` also re-pins the radio live when no SoftAP is active. One radio = one channel (default: 1). |
 
 ### WCBStream
 
@@ -546,10 +562,55 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 | `MaestroUnicast` | Forward Maestro commands to a specific WCB:port (unicast) |
 | `MaestroBroadcast` | Broadcast Maestro commands to all WCBs with Maestros configured |
 | `CombinedUsage` | Text commands and Maestro forwarding running simultaneously |
+| `SpecialPeer` | Talk to the out-of-band controller (e.g. NaviCore) at id 20 |
+| `NeighborDiscovery` | Learn the mesh over WDP — who's out there and what they can do |
+| `MgmtRelay` | Turn any ESP32 into a USB-serial ↔ ESP-NOW management relay — drive the Config Tool (Via WCB) and manage every WCB + the NaviCore over one USB port |
+| `AllFeatures` | Interactive "kitchen sink" — every public method in one sketch |
 
 ---
 
 ## Changelog
+
+### 1.9.7
+
+- **Configurable ESP-NOW mesh channel.** The mesh channel (1–11) is now an explicit,
+  operator-selectable setting instead of an accident of "an unassociated STA lands on
+  channel 1." On the WCBs it's set via `?WCBCH,<n>` or the Wizard's **Advanced → Mesh
+  Channel** field, persisted in NVS, and applied on the next reboot. On this library the default is
+  `1`; call `setMeshChannel(ch)` before `begin()` to match a fleet running elsewhere.
+- **Channel awareness in `begin()` / `update()`.** With no hosted SoftAP, `begin()`
+  now pins the radio to the mesh channel deterministically. With a SoftAP active (which
+  owns the single radio's channel), the library instead **warns** — rate-limited and
+  re-checked on every heartbeat — when the radio isn't on the mesh channel, rather than
+  silently failing to reach the mesh. It never force-moves a deliberately chosen SoftAP
+  channel.
+
+### 1.9.6
+
+- **`device_id` may now sit above `wcb_quantity`.** `begin()` no longer hard-fails
+  when `device_id > wcb_quantity` (for ids 1–19) — it logs a non-fatal warning and
+  joins the mesh anyway. `wcb_quantity` means "how many WCBs I pre-register," not a
+  cap on this device's own id. A device above the floor is reachable **inbound**
+  once the other boards auto-join it from its WDP advert, so call `setIdentity()`
+  and keep auto-join on (the default). The normal case (`device_id <= wcb_quantity`)
+  is byte-for-byte unchanged. This also un-breaks the `AllFeatures` example, whose
+  `device_id 19 / quantity 4` combo previously failed `begin()`.
+- **Reply to any authenticated sender.** A board can now unicast an ACK/reply to
+  an above-floor client that commands it *before* auto-join has registered it: the
+  sender is flagged on the ESP-NOW receive callback and added as a **transient**
+  ESP-NOW peer on the loop task (no NVS write, no ≥2-advert wait), matching the
+  proven auto-join discipline. So e.g. the NaviCore answers a `MgmtRelay` at id 19
+  on the config tool's very next ping instead of never — which is what makes the
+  above-floor `device_id` genuinely usable for a bridge/relay/monitor.
+- **New example: `MgmtRelay`** — turn any ESP32 into a USB-serial ↔ ESP-NOW
+  management relay so a host tool (e.g. the NaviCore Config Tool in "Via WCB" mode)
+  can drive every WCB *and* the NaviCore over one USB port.
+
+### 1.9.5
+
+- **`forgetPeer()` now also clears the peer's WDP neighbor record**, so a forgotten
+  peer drops off `getNeighbor()` immediately instead of lingering until its advert
+  ages out (up to the neighbor TTL).
 
 ### 1.9.4
 

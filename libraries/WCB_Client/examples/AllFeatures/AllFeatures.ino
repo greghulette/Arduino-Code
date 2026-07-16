@@ -148,6 +148,11 @@ void setup() {
     wcb.onNeighbor(onNeighborRx);
     wcb.onRawPacket(onRawPacketRx);
 
+    // Optional: match a non-default ESP-NOW mesh channel BEFORE begin() (set on
+    //    the WCBs via ?WCBCH / the Wizard). One radio = one channel, so a mismatch
+    //    means this device silently can't hear the mesh. Default is 1.
+    // wcb.setMeshChannel(6);
+
     // 4) Join the mesh. ALWAYS check begin(): false = ESP-NOW did not start
     //    (e.g. WiFi didn't come up); running update()/send() then would crash.
     if (!wcb.begin()) {
