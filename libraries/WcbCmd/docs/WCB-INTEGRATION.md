@@ -155,8 +155,8 @@ static void wledDispatchLocal(int port, const String &cmd) {
 `build()` reproduces the identical JSON and prints the same usage/unknown-verb
 messages to the `diag` you pass (`&Serial`), so console output is unchanged too. The
 `&Serial` diag keeps those messages unconditional; the `debugEnabled` TX log stays
-here in the firmware. (`build()` also tolerates a leading `L`/`L<id>,`, but you're
-already handing it the stripped `rest`, so that's just belt-and-suspenders.)
+here in the firmware. (`build()` expects the id-stripped body — it does **not** strip a
+leading `L`/`L<id>,` — which matches the WCB, whose dispatcher hands over the stripped `rest`.)
 
 **3. Verify** (each is the WLED `/json/state` doc, `\n`-terminated):
 ```
@@ -219,8 +219,9 @@ if (vU == "FN") {
   return;
 }
 ```
-`HcrCodec::normalize()` owns the same per-fn ranges + the emotion-4→Overload shortcut the
-old switch did, so behaviour is unchanged (except fn 8 per above). Keep `hcrCodec.setVol()`
+`HcrCodec::normalize()` owns the same per-fn ranges the old switch did — and, matching the
+WCB, it **rejects chan 4** (no emotion-4→Overload shortcut) and caps track at 0–99 — so
+behaviour is unchanged (except fn 8 per above). Keep `hcrCodec.setVol()`
 in sync wherever the WCB sets an absolute volume (the readable `;H,VOL` handler and load),
 so the relative `;H,VOLUP/VOLDN` step math agrees across the two write paths.
 

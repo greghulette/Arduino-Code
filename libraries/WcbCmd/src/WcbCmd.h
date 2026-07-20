@@ -24,9 +24,10 @@
 //  WCBCMD_VERSION so a stale copy fails loudly instead of drifting silently.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#define WCBCMD_VERSION "0.4.0"
+#define WCBCMD_VERSION "0.5.0"
 
 #include "WcbMaestro.h"   // ;M  Maestro
 #include "WcbMp3.h"       // ;A  MP3 Trigger
 #include "WcbWled.h"      // ;L  WLED
 #include "WcbHcr.h"       // ;H  HCR (numeric fn/chan/track -> device wire)
+#include "WcbHcrFade.h"   // ;H  HCR non-blocking volume fade (shared ramp)

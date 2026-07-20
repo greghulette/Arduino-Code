@@ -7,6 +7,7 @@ WcbMaestro	KEYWORD1
 WcbWled	KEYWORD1
 Mp3Codec	KEYWORD1
 HcrCodec	KEYWORD1
+HcrFade	KEYWORD1
 
 # Methods and Functions (KEYWORD2)
 parse	KEYWORD2
@@ -25,6 +26,10 @@ getVol	KEYWORD2
 onVolumeChanged	KEYWORD2
 onFinished	KEYWORD2
 onError	KEYWORD2
+start	KEYWORD2
+tick	KEYWORD2
+cancel	KEYWORD2
+active	KEYWORD2
 
 # Constants (LITERAL1)
 WCBCMD_VERSION	LITERAL1

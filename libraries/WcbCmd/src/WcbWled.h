@@ -25,10 +25,11 @@
 
 namespace WcbWled {
 
-// Build the WLED document for one verb body. Tolerates an optional leading "L"/"L<id>,"
-// so the exact token the mesh routes can be handed straight in. Returns "" (and logs
-// to diag if given) on an empty/unknown verb or bad args — matching the WCB, which
-// emits nothing to the WLED in those cases. Pure: no I/O.
+// Build the WLED document for one verb body — the body WITHOUT the leading "L"/"L<id>,"
+// (routing owns and strips the id). Returns "" (and logs to diag if given) on an
+// empty/unknown verb or bad args — matching the WCB, which emits nothing to the WLED
+// in those cases. Does NOT strip a leading 'L' (the WCB doesn't, so stripping would
+// diverge on a malformed double-L token). Pure: no I/O.
 String build(const String &cmd, Print *diag = nullptr);
 
 // build() + write it to `out`, newline-terminated. Returns true iff a document was

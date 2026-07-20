@@ -140,8 +140,8 @@ void setup() {
     mWled("FX,9,200,128",  "{\"seg\":[{\"fx\":9,\"sx\":200,\"ix\":128}]}");
     mWled("PAL,3",         "{\"seg\":[{\"pal\":3}]}");
     mWled("JSON,{\"bri\":10}", "{\"bri\":10}");              // raw passthrough
-    mWled("L,ON",          "{\"on\":true}");                 // leading 'L' tolerated
-    mWled("L3,PS,2",       "{\"ps\":2}");                    // leading 'L<id>,' tolerated
+    mWledReject("L,ON");                                    // leading 'L' NOT stripped (matches WCB)
+    mWledReject("L3,PS,2");                                 // leading 'L<id>,' NOT stripped (matches WCB)
     mWledReject("COL,FFF");                                  // bad hex length -> nothing
     mWledReject("BOGUS");                                    // unknown verb -> nothing
 
@@ -149,7 +149,7 @@ void setup() {
     hcr.setVol(0, 50); hcr.setVol(1, 50); hcr.setVol(2, 50);   // known shadow for fn 18/19
     mHcr(2,  0, 50, "<OH50,QEH>\n");            // SetEmotion HAPPY 50
     mHcr(4,  2, 30, "<SM30,QEM,QT>\n");         // Stimulate MAD 30
-    mHcr(4,  4,  0, "<SE,QT>\n");               // emotion 4 -> Overload shortcut
+    mHcrReject(4,  4,  0);                       // chan 4 rejected (no Overload shortcut) — matches WCB
     mHcr(5,  0,  0, "<SE,QT>\n");               // Overload
     mHcr(6,  0,  0, "<MM>\n");                  // single Muse
     mHcr(7,  3, 10, "<MN3,MX10>\n");            // Muse gap 3..10s

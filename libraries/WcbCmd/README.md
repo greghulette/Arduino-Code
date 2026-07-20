@@ -90,8 +90,9 @@ The library never opens a port — you do, at the baud the target device expects
 | WLED (`WcbWled.h`) | `;L,…` | **namespace** `WcbWled` — `emit()` / `build()` | stateless JSON builder (WLED `/json/state`) |
 | HCR (`WcbHcr.h`) | `;H` (fn/chan/track) | **`HcrCodec`** class — `emit()`, `format()`, named `Fn`/`Emotion`/`Audio` constants | device-wire formatter; tiny volume shadow; no `HCRVocalizer` dependency |
 
-Each entry point **tolerates an optional leading verb letter**, so the exact same token can be
-handed to the local translator *and* relayed to a WCB. The two stateful classes (`Mp3Codec`,
+Maestro and MP3 **tolerate an optional leading verb letter**, so the exact same token can be
+handed to the local translator *and* relayed to a WCB; `WcbWled::build()` instead expects the
+id-stripped body (matching the WCB, which strips the `L<id>,` prefix before dispatch). The two stateful classes (`Mp3Codec`,
 `HcrCodec`) hold per-device state (volume shadow, ONFIN key); the two namespaces are stateless.
 
 ## What's in scope (and what isn't)

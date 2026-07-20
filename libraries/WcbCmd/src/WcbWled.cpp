@@ -24,16 +24,11 @@ namespace WcbWled {
 String build(const String &cmd, Print *diag) {
   String body = cmd; body.trim();
 
-  // Tolerate an optional leading "L" + numeric id (";L3,PS,2" / "L,ON") so the exact
-  // token the mesh routes can be handed straight in. No WLED verb starts with 'L' or
-  // a digit, so this is unambiguous. Routing still owns the id — it's discarded here.
-  if (body.length() && (body[0] == 'L' || body[0] == 'l')) {
-    int i = 1;
-    while (i < (int)body.length() && isDigit(body[i])) i++;
-    if (i < (int)body.length() && body[i] == ',') i++;
-    body = body.substring(i);
-    body.trim();
-  }
+  // The caller passes the verb body WITHOUT the leading "L"/"L<id>," — routing owns
+  // (and has already stripped) the id. We deliberately do NOT strip a leading 'L'
+  // here: the WCB's wledDispatchLocal doesn't, so stripping one would DIVERGE from
+  // the canonical firmware on a malformed double-L token (";L,LON" → WCB emits
+  // nothing for the unknown verb "LON"; a strip would yield "ON" → {"on":true}).
 
   if (body.length() == 0) { if (diag) diag->println("[WLED] Empty ;L command"); return ""; }
 
