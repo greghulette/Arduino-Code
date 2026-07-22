@@ -91,6 +91,11 @@ constexpr uint8_t broadcast = 0;
                               // Requires specialPeerEnabled = true on the WCBs.
 #define WCB_WDP_NEIGHBOR_TTL_MS 180000UL  // Drop a learned WDP neighbor after this
                               // long without an advert (~6 missed 30s cycles).
+#define WCB_WDP_TEMP_ADVERT_MS       15000UL  // A TEMPORARY device adverts faster than the 60s
+                              // backstop so peers notice it LEAVE quickly (it's transient by design).
+#define WCB_WDP_TEMP_NEIGHBOR_TTL_MS 50000UL  // Drop a TEMPORARY neighbor after this shorter silence
+                              // (~3 missed 15s temp adverts) so a powered-off relay clears from the
+                              // roster in <1 min instead of lingering the full ~3 min neighbor TTL.
 
 // ── Ensured-delivery (ETM) retransmit tuning ─────────────────────────────────
 // Applies ONLY to send()/broadcast() calls made with ensured=true. These values

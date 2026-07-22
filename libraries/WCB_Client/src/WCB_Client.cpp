@@ -833,7 +833,11 @@ void WCB_Client::_ageNeighbors(unsigned long now) {
     for (int i = 0; i < WCB_MAX_BOARDS; i++) {
         WCBNeighbor& nb = _neighbors[i];
         if (!nb.valid) continue;
-        if ((long)(now - nb.lastSeenMs) >= (long)WCB_WDP_NEIGHBOR_TTL_MS) {
+        // A temporary peer uses a shorter TTL so a powered-off relay clears from the roster
+        // promptly instead of lingering the full ~3 min neighbor TTL. It adverts faster
+        // (WCB_WDP_TEMP_ADVERT_MS) to keep this window from flapping on a dropped advert.
+        const unsigned long ttl = nb.temporary ? WCB_WDP_TEMP_NEIGHBOR_TTL_MS : WCB_WDP_NEIGHBOR_TTL_MS;
+        if ((long)(now - nb.lastSeenMs) >= (long)ttl) {
             nb.valid = false;
             if (_neighborCallback) _neighborCallback(nb);
         }
@@ -1211,7 +1215,7 @@ void WCB_Client::setIdentity(const char* type, const char* fw,
     // or after begin(): the send happens from update() once ESP-NOW is up.
     _wdpBootLeft     = (_wdpType[0]) ? 3 : 0;
     _wdpNextBootMs   = millis() + 300;
-    _wdpNextAdvertMs = millis() + 60000UL + (unsigned long)((_deviceID % 16) * 500);
+    _wdpNextAdvertMs = millis() + (_wdpTemporary ? WCB_WDP_TEMP_ADVERT_MS : 60000UL) + (unsigned long)((_deviceID % 16) * 500);
 
     if (_wdpType[0])
         Serial.printf("[WCB_Client] WDP identity set: type=\"%s\" fw=\"%s\"\n", _wdpType, _wdpFw);
@@ -1258,7 +1262,9 @@ void WCB_Client::_wdpTick() {
     }
     if ((long)(now - _wdpNextAdvertMs) >= 0) {   // rollover-safe
         _sendWdpAdvert();
-        _wdpNextAdvertMs = now + 60000UL;
+        // A temporary device adverts faster so peers (incl. NaviCore's roster) notice it
+        // leave within ~1 min instead of the 60s-cadence / 180s-TTL ~3 min lag.
+        _wdpNextAdvertMs = now + (_wdpTemporary ? WCB_WDP_TEMP_ADVERT_MS : 60000UL);
     }
 }
 
