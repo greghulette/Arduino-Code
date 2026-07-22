@@ -9,10 +9,10 @@ bool HcrCodec::normalize(uint8_t &fn, int &chan, int &track) {
     case 2:   // SetEmotion(e, v)
       return (chan >= 0 && chan <= 3 && track >= 0 && track <= 99);
     case 3:   // Trigger — same payload as Stimulate
-    case 4:   // Stimulate(e, v)
-      if (chan < 0 || chan > 4 || track < 0 || track > 99) return false;
-      if (chan == 4) { fn = 5; chan = 0; track = 0; }   // emotion 4 = Overload shortcut
-      return true;
+    case 4:   // Stimulate(e, v) — emotion chan 0-3 (H/S/M/C) only.
+      // The canonical WCB rejects chan 4, so we do too: NO "emotion 4 = Overload"
+      // shortcut (it diverged from the WCB). Use fn 5 (;H,FN,5) for Overload.
+      return (chan >= 0 && chan <= 3 && track >= 0 && track <= 99);
     case 5: case 6: case 8: case 9: case 11:             // no-param functions
       return true;
     case 7:   // Muse(min, max) — auto-muse gap in seconds (min=chan, max=track)
@@ -48,7 +48,7 @@ int HcrCodec::getVol(int ch) const {
 String HcrCodec::format(uint8_t fn, int chan, int track) {
   static const char emoteprefix[] = "HSMC";   // HAPPY / SAD / MAD / sCared
   static const char audioprefix[] = "VAB";     // Vocalizer / A / B
-  if (!normalize(fn, chan, track)) return "";  // ranges + Overload shortcut
+  if (!normalize(fn, chan, track)) return "";  // range-checks (rejects chan 4)
 
   String inner;
   switch (fn) {
@@ -56,7 +56,7 @@ String HcrCodec::format(uint8_t fn, int chan, int track) {
       inner = String("O") + emoteprefix[chan] + String(track) + ",QE" + emoteprefix[chan];
       break;
     case 3:   // Trigger — same payload as Stimulate
-    case 4:   // Stimulate(e, v)  (chan==4 already normalized to fn 5)
+    case 4:   // Stimulate(e, v)  (chan 0-3; chan 4 is rejected by normalize)
       inner = String("S") + emoteprefix[chan] + String(track) + ",QE" + emoteprefix[chan] + ",QT";
       break;
     case 5:  inner = "SE,QT";          break;  // Overload

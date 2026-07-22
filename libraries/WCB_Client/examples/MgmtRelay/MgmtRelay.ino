@@ -588,6 +588,11 @@ void setup() {
     // Reach the NaviCore (special peer) so ;w20,... works, and advertise this
     // relay over WDP so boards discover and auto-join it (and can reply to it).
     wcb.enableSpecialPeer(NAVICORE_ID);
+    // Advertise as a TEMPORARY peer: WCBs adopt this relay only while it's actively
+    // advertising and drop it on silence (~3 min) and on reboot — instead of remembering
+    // it as a permanent peer like other clients. Ideal for a management relay you only
+    // connect now and then. Remove this line to auto-join permanently instead.
+    wcb.setTemporary(true);
     wcb.setIdentity(RELAY_ALIAS, RELAY_FW);
 
     // Boot lines the WCB Wizard's sniffer reads to learn this device's command

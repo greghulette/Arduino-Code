@@ -22,7 +22,7 @@
 //    16  StopWAV(ch)                             17  SetVolume(ch,vol)  (chan 3 = ALL)
 //    18  VolumeUpAll(step)    19  VolumeDownAll(step)   (track = step; 0 = default 5)
 //
-//  Emotion chan: 0=H 1=S 2=M 3=C (4 = Overload shortcut on fn 3/4). Audio ch:
+//  Emotion chan: 0=H 1=S 2=M 3=C (chan 4 is rejected — use fn 5 for Overload). Audio ch:
 //  0=V 1=A 2=B. Query/poll fns (1, status reads) are NOT here — this is the
 //  fire-and-forget WRITE path. Status RX parsing stays in each firmware (the WCB
 //  keeps the HCRVocalizer library for that; NaviCore is fire-and-forget).
@@ -45,8 +45,7 @@ public:
   enum Emotion : uint8_t { Happy = 0, Sad = 1, Mad = 2, Scared = 3 };   // emotion chan
   enum Audio   : uint8_t { Vocalizer = 0, ChA = 1, ChB = 2, AllChannels = 3 };  // audio ch (17 uses 3=ALL)
 
-  // Validate + normalize a (fn,chan,track) triplet IN PLACE: range-checks per fn
-  // and applies the "emotion 4 = Overload" shortcut (fn 3/4 + chan 4 -> fn 5).
+  // Validate + normalize a (fn,chan,track) triplet IN PLACE: range-checks per fn.
   // Returns false for an unknown fn or out-of-range params (caller skips it).
   // Static — the same one source of truth for both transports.
   static bool normalize(uint8_t &fn, int &chan, int &track);

@@ -1169,6 +1169,9 @@ void WCB_Client::_sendHeartbeat() {
 #define WCB_WDP_TLV_DEVTYPE  0x0B   // string — canonical device type name
 #define WCB_WDP_TLV_HWREV    0x0C   // string — hardware revision
 #define WCB_WDP_TLV_CAPTAGS  0x0D   // string — space-separated capability tags
+#define WCB_WDP_TLV_FLAGS    0x12   // [flags:1] — advert flags bitmap (bit0 = TEMPORARY)
+#define WCB_WDP_ADVFLAG_TEMPORARY 0x01  // "adopt me TEMPORARY" — WCBs keep it live but NOT
+                                        // persisted (dropped on silence/reboot). See setTemporary().
 // Decode-only TLVs (WCBs advertise these; the consumer below reads them).
 #define WCB_WDP_TLV_ALIAS     0x01  // string — WCB alias
 #define WCB_WDP_TLV_HWVER     0x04  // uint8  — WCB numeric hardware version
@@ -1216,6 +1219,10 @@ int WCB_Client::_buildWdpPayload(uint8_t* buf, int max) {
     if (_wdpFw[0])    o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_FWVER,   (const uint8_t*)_wdpFw,    strlen(_wdpFw));
     if (_wdpHwRev[0]) o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_HWREV,   (const uint8_t*)_wdpHwRev, strlen(_wdpHwRev));
     if (_wdpCaps[0])  o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_CAPTAGS, (const uint8_t*)_wdpCaps,  strlen(_wdpCaps));
+    if (_wdpTemporary) {   // tell WCBs to adopt this device as a TEMPORARY (not permanent) peer
+        uint8_t flags = WCB_WDP_ADVFLAG_TEMPORARY;
+        o = wcbPutTLV(buf, o, max, WCB_WDP_TLV_FLAGS, &flags, 1);
+    }
     if (o < max) buf[o++] = WCB_WDP_TLV_END;
     return o;
 }

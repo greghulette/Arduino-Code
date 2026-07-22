@@ -634,6 +634,15 @@ public:
     void setIdentity(const char* type, const char* fw,
                      const char* hwRev = nullptr, const char* caps = nullptr);
 
+    // Mark this device as a TEMPORARY mesh peer. When set, the WDP advert
+    // carries a flag telling every WCB to adopt this device live but NOT permanently:
+    // reachable while it keeps advertising, dropped after it goes silent (~3 min) and on
+    // reboot, and never written to the WCB's persisted peer list. Use for occasional
+    // devices — e.g. a management relay — that shouldn't become a permanent fixture.
+    // Default off (permanent auto-join). Call before/with setIdentity() so the boot-burst
+    // advert already carries it; a later change takes effect on the next periodic advert.
+    void setTemporary(bool temporary) { _wdpTemporary = temporary; }
+
 
 private:
 
@@ -694,6 +703,7 @@ private:
     char          _wdpFw[28]       = "";  // firmware version string
     char          _wdpHwRev[16]    = "";  // hardware revision ("" = omit)
     char          _wdpCaps[49]     = "";  // space-separated capability tags ("" = omit)
+    bool          _wdpTemporary    = false;  // advertise the "temporary peer" flag (see setTemporary)
     uint8_t       _wdpBootLeft     = 0;   // remaining boot-burst adverts
     unsigned long _wdpNextBootMs   = 0;   // next boot-burst advert due
     unsigned long _wdpNextAdvertMs = 0;   // next periodic backstop advert due
