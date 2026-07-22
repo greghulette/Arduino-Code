@@ -227,6 +227,13 @@ void WCB_Client::update() {
     // small callback stack and crash. Doing them here makes them safe.
     for (int i = 0; i < WCB_MAX_BOARDS; i++) {
         if (_pendingJoin[i]) { _pendingJoin[i] = false; _addLearnedPeer((uint8_t)(i + 1)); }
+        // A peer that (now) advertises "temporary" must not remain a PERMANENT learned
+        // member — downgrade it here on the loop task (forgetPeer does esp_now_del_peer +
+        // an NVS write, unsafe on the RX callback). Covers a device that flips to temporary
+        // and a relay left in NVS from before it advertised the flag. forgetPeer clears
+        // _learnedPeer, so this is idempotent; the !nb.temporary auto-join gate keeps it out.
+        else if (_neighbors[i].valid && _neighbors[i].temporary && _learnedPeer[i])
+            forgetPeer((uint8_t)(i + 1));
     }
 
     // Register transient reply-peers flagged on the RX callback (an authenticated
@@ -1302,6 +1309,9 @@ void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
                 int L = len > 48 ? 48 : len; memcpy(nb.capTags, val, L); nb.capTags[L] = '\0'; break;
             }
             case WCB_WDP_TLV_CTRLID:  if (len >= 1) nb.ctrlId = val[0]; break;
+            case WCB_WDP_TLV_FLAGS:   // advert flags bitmap — currently just the "temporary" bit
+                if (len >= 1) nb.temporary = (val[0] & WCB_WDP_ADVFLAG_TEMPORARY) != 0;
+                break;
             case WCB_WDP_TLV_MAESTRO: {
                 int L = len > 9 ? 9 : len; memcpy(nb.maestroIds, val, L); nb.maestroCount = (uint8_t)L; break;
             }
@@ -1337,7 +1347,12 @@ void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
     // every begin(). (_addLearnedPeer still skips self, the special peer, and the
     // 1..wcb_quantity floor.) A learned peer never self-evicts; forgetPeer() /
     // clearLearnedPeers() to drop one.
-    if (_autoJoin) {
+    // A peer advertising the WDP "temporary" flag (e.g. a management relay) is tracked
+    // as a live neighbor while it advertises but is NEVER learned/persisted — it ages
+    // out of the RAM table on silence (getNeighbor→null) and is gone on reboot, mirroring
+    // how the WCB boards adopt it (addTemporaryPeer). Any stale permanent membership left
+    // in NVS is dropped on the loop task in update() (forgetPeer is unsafe on this callback).
+    if (_autoJoin && !nb.temporary) {
         if (_advertCount[senderWCB - 1] < 255) _advertCount[senderWCB - 1]++;
         if (_advertCount[senderWCB - 1] >= 2 && !_learnedPeer[senderWCB - 1])
             _pendingJoin[senderWCB - 1] = true;

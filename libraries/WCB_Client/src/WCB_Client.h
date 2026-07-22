@@ -234,6 +234,9 @@ struct WCBPending {
 struct WCBNeighbor {
     bool          valid;             // slot holds a learned neighbor
     bool          isClient;          // a WCB_Client device (advertised a device type) vs a WCB
+    bool          temporary;         // advertised the WDP "temporary" flag (WCB_WDP_ADVFLAG_TEMPORARY):
+                                     // track as a live neighbor but NEVER learn/persist it (drops on
+                                     // silence via getNeighbor()->null, and on reboot). See _handleWdpAdvert.
     uint8_t       wcbNumber;         // 1..WCB_MAX_BOARDS
     char          name[25];          // WCB alias, or the client's device type
     char          fw[28];            // firmware version string
