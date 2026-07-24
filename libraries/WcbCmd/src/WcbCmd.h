@@ -24,7 +24,7 @@
 //  WCBCMD_VERSION so a stale copy fails loudly instead of drifting silently.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#define WCBCMD_VERSION "0.5.0"
+#define WCBCMD_VERSION "0.7.0"
 
 #include "WcbMaestro.h"   // ;M  Maestro
 #include "WcbMp3.h"       // ;A  MP3 Trigger

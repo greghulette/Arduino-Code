@@ -45,6 +45,36 @@ static void mReject(const char* payload) {
     Serial.printf("%s  %-14s -> rejected\n", ok ? "FAIL" : "OK  ", payload);
 }
 
+// ── Maestro query readback: reply bytes -> ":MQR,<id>,<chan>,<KIND>,<value>" ─────
+static void mReply(uint8_t id, uint8_t chan, WcbMaestro::ReplyKind kind,
+                   const uint8_t* bytes, size_t n, const char* exp) {
+    char out[WcbMaestro::REPLY_TEXT_MAX];
+    size_t w = WcbMaestro::formatReply(out, sizeof(out), id, chan, kind, bytes, n);
+    bool pass = w == strlen(exp) && strcmp(out, exp) == 0;
+    if (!pass) failures++;
+    Serial.printf("%s  %-18s -> %s\n", pass ? "OK  " : "FAIL", exp, w ? out : "(none)");
+}
+static void mReplyInfo(uint8_t cmd, WcbMaestro::ReplyKind expKind, uint8_t expLen) {
+    WcbMaestro::ReplyKind k; uint8_t ln = 0;
+    bool ok = WcbMaestro::replyInfo(cmd, k, ln) && k == expKind && ln == expLen;
+    if (!ok) failures++;
+    Serial.printf("%s  replyInfo 0x%02X     -> %s\n", ok ? "OK  " : "FAIL", cmd, ok ? "kind/len match" : "MISMATCH");
+}
+static void mReplyInfoReject(uint8_t cmd) {   // a non-get command has no reply
+    WcbMaestro::ReplyKind k; uint8_t ln = 0;
+    bool rejected = !WcbMaestro::replyInfo(cmd, k, ln);
+    if (!rejected) failures++;
+    Serial.printf("%s  replyInfo 0x%02X     -> %s\n", rejected ? "OK  " : "FAIL", cmd, rejected ? "no reply (rejected)" : "UNEXPECTED reply");
+}
+static void mReplyTruncate() {   // too-small buffer -> formatReply returns 0, nothing usable
+    uint8_t b[] = {0xFF, 0xFF};
+    char out[10];                 // ":MQR,4,0,POS,65535" is 18 chars -> must truncate into out[10]
+    size_t w = WcbMaestro::formatReply(out, sizeof(out), 4, 0, WcbMaestro::ReplyKind::POS, b, 2);
+    bool pass = (w == 0);
+    if (!pass) failures++;
+    Serial.printf("%s  formatReply cap10  -> %s\n", pass ? "OK  " : "FAIL", pass ? "0 (truncated, safe)" : "OVERRAN");
+}
+
 // ── MP3 ;A,... -> SparkFun MP3 Trigger native bytes ─────────────────────────────
 static Mp3Codec     mp3;
 static CaptureStream cap;
@@ -109,6 +139,18 @@ void setup() {
     mMaestro("M2",    0xAA, 2, 0x27, 0);      // empty sequence -> 0
     mReject("M2256");                          // sequence out of 0-255
     mReject("MX1");                            // no id digit
+
+    Serial.println("\n-- Maestro query readback --");
+    mReplyInfo(WcbMaestro::CMD_GET_POSITION, WcbMaestro::ReplyKind::POS, 2);
+    mReplyInfo(WcbMaestro::CMD_GET_MOVING,   WcbMaestro::ReplyKind::MOV, 1);
+    mReplyInfo(WcbMaestro::CMD_GET_ERRORS,   WcbMaestro::ReplyKind::ERR, 2);
+    mReplyInfoReject(WcbMaestro::CMD_SET_TARGET);   // 0x04 — not a query, no reply expected
+    { uint8_t b[] = {0x70,0x17}; mReply(3, 5, WcbMaestro::ReplyKind::POS, b, 2, ":MQR,3,5,POS,6000"); } // 0x1770 = 6000 ¼µs
+    { uint8_t b[] = {0x01};      mReply(2, 0, WcbMaestro::ReplyKind::MOV, b, 1, ":MQR,2,0,MOV,1"); }
+    { uint8_t b[] = {0x00};      mReply(2, 0, WcbMaestro::ReplyKind::MOV, b, 1, ":MQR,2,0,MOV,0"); }
+    { uint8_t b[] = {0x00,0x00}; mReply(1, 0, WcbMaestro::ReplyKind::ERR, b, 2, ":MQR,1,0,ERR,0"); }
+    { uint8_t b[] = {0x21,0x00}; mReply(1, 0, WcbMaestro::ReplyKind::ERR, b, 2, ":MQR,1,0,ERR,33"); } // 0x0021 = 33
+    mReplyTruncate();
 
     Serial.println("\n-- MP3 --");
     mp3.begin(cap);
