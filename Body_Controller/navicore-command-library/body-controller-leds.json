@@ -1,0 +1,132 @@
+{
+  "schema": "navicore-command-library/v1",
+  "version": "1.1.0",
+  "_note": "PRIVATE command-library board for the NaviCore config tool. Import via the command library's Import… button; stored in your browser (localStorage), re-loads on refresh — not part of NaviCore's shared library. deliver:'wcb' + aliasMatch:['BC'] unicast to whichever WCB advertises the alias 'BC' (id floats; dest.target '2' is the offline fallback). Every template is prefixed ':L' — the BC ESP32 reads that designator, strips it, and forwards the rest over serial to the ATMEGA2560 LED controller. Command format (ATMEGA): <zone><2-digit effect><speed><primaryColor><secondaryColor>; omitting the color digits uses the board's trimpot/EEPROM default colors. Effect + color catalogs mirror the switch tables in Body_Controller_ATMEGA2560.ino exactly. NOTE: aliasMatch needs the BC ESP32 on the WCB mesh (WCB_Client) advertising 'BC' — the current sketch uses custom ESP-NOW, so wire up WCB_Client first (or rely on the fixed dest.target).",
+  "enums": {
+    "bcLedZone": {
+      "values": [
+        { "code": "A", "label": "All (Coin, LDP, VU, Maint)" },
+        { "code": "E", "label": "Every logic + panel" },
+        { "code": "V", "label": "VU" },
+        { "code": "L", "label": "Logic Display Panel (LDP)" },
+        { "code": "C", "label": "Coin Slots" },
+        { "code": "M", "label": "Maintenance" },
+        { "code": "D", "label": "Data Port Panel" },
+        { "code": "I", "label": "CBI logics" },
+        { "code": "B", "label": "CBI + Data Port" },
+        { "code": "F", "label": "Coin + LDP + VU" },
+        { "code": "G", "label": "LDP + Maint + VU" },
+        { "code": "H", "label": "VU + Data Panel logics" },
+        { "code": "J", "label": "VU + Data Panel + CBI" },
+        { "code": "K", "label": "LDP + Coin + VU + CBI + Data Panel" },
+        { "code": "N", "label": "LDP + Maint + VU" },
+        { "code": "Q", "label": "Maint + Coin + VU" },
+        { "code": "R", "label": "LDP + Maint + Coin" },
+        { "code": "T", "label": "LDP + Maint" },
+        { "code": "U", "label": "Maint + Coin" },
+        { "code": "W", "label": "Maint + VU" },
+        { "code": "X", "label": "LDP + Coin" },
+        { "code": "Y", "label": "Coin + VU" },
+        { "code": "Z", "label": "LDP + VU" }
+      ]
+    },
+    "bcEffect": {
+      "values": [
+        { "code": "01", "label": "Battery level" },
+        { "code": "02", "label": "Volume meter (internal)" },
+        { "code": "03", "label": "Volume meter (external)" },
+        { "code": "04", "label": "Knight Rider" },
+        { "code": "05", "label": "Rainbow" },
+        { "code": "06", "label": "Alternating colors" },
+        { "code": "07", "label": "Dim pulse" },
+        { "code": "08", "label": "Bounce" },
+        { "code": "09", "label": "Dual bounce" },
+        { "code": "10", "label": "Dueling colors" },
+        { "code": "11", "label": "Random color" },
+        { "code": "12", "label": "Random" },
+        { "code": "13", "label": "Flash" },
+        { "code": "14", "label": "Short circuit" },
+        { "code": "15", "label": "Solid color" },
+        { "code": "16", "label": "Pulse beat" },
+        { "code": "17", "label": "Dual pulse beat" },
+        { "code": "18", "label": "Wig-wag (1 color)" },
+        { "code": "19", "label": "Zig-zag (1 color)" },
+        { "code": "20", "label": "Wig-wag (2 colors)" },
+        { "code": "21", "label": "Zig-zag (2 colors)" },
+        { "code": "22", "label": "Dim pulse wig-wag" },
+        { "code": "23", "label": "Dim pulse zig-zag" },
+        { "code": "24", "label": "Dual-strip bounce" },
+        { "code": "25", "label": "Dual-strip dueling colors" },
+        { "code": "70", "label": "Fade Logic Display (FLD)" },
+        { "code": "71", "label": "Reverse Logic Display (RLD)" },
+        { "code": "72", "label": "Pulse" },
+        { "code": "73", "label": "Dual pulse" },
+        { "code": "96", "label": "Auto mode — OFF" },
+        { "code": "97", "label": "Auto mode — ON" },
+        { "code": "98", "label": "Clear + auto OFF" },
+        { "code": "99", "label": "Clear + auto ON" }
+      ]
+    },
+    "bcColor": {
+      "values": [
+        { "code": "0", "label": "Off (black)" },
+        { "code": "1", "label": "Red" },
+        { "code": "2", "label": "Yellow" },
+        { "code": "3", "label": "Green" },
+        { "code": "4", "label": "Cyan" },
+        { "code": "5", "label": "Blue" },
+        { "code": "6", "label": "Magenta" },
+        { "code": "7", "label": "Orange" },
+        { "code": "8", "label": "White" }
+      ]
+    }
+  },
+  "boards": [
+    {
+      "id": "bc-leds",
+      "name": "Body Controller — LEDs",
+      "kind": "wcb-verb",
+      "deliver": "wcb",
+      "aliasMatch": ["BC"],
+      "dest": { "target": "2" },
+      "commands": [
+        {
+          "id": "bcled.effect",
+          "name": "LED effect (default colors)",
+          "category": "LED",
+          "template": ":L{zone}{effect}{speed}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "effect", "label": "Effect", "enum": "bcEffect", "required": true },
+            { "name": "speed", "label": "Speed (0-9)", "type": "int", "min": 0, "max": 9, "default": 5, "required": true }
+          ],
+          "examples": [":LV045"]
+        },
+        {
+          "id": "bcled.effectcolor",
+          "name": "LED effect + colors",
+          "category": "LED",
+          "template": ":L{zone}{effect}{speed}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "effect", "label": "Effect", "enum": "bcEffect", "required": true },
+            { "name": "speed", "label": "Speed (0-9)", "type": "int", "min": 0, "max": 9, "default": 5, "required": true },
+            { "name": "color1", "label": "Primary color", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Secondary color", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV04551"]
+        },
+        {
+          "id": "bcled.raw",
+          "name": "Raw BC command (advanced)",
+          "category": "Advanced",
+          "template": ":L{raw}",
+          "params": [
+            { "name": "raw", "label": "BC command after :L (e.g. A05, or P0512 to program)", "default": "A00", "required": true }
+          ],
+          "examples": [":LA00"]
+        }
+      ]
+    }
+  ]
+}
