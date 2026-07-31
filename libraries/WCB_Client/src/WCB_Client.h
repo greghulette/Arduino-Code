@@ -695,7 +695,7 @@ private:
     // Changing these here without matching changes on the WCBs will cause
     // incorrect online/offline detection timing.
     uint16_t _heartbeatIntervalSec = 10;  // How often to send a heartbeat (seconds)
-    uint8_t  _missedBeforeOffline  = 3;   // Missed heartbeats before marking offline
+    uint8_t  _missedBeforeOffline  = 5;   // Missed heartbeats before marking offline (10s beat x 5 = 50s; widened from 3/30s so a couple of lost/collided broadcast heartbeats on a busy mesh don't flap a live board out of the roster)
 
     bool _checksumEnabled = true;  // CRC32 on/off — must match ?ETM,CHKSM on WCBs
 
