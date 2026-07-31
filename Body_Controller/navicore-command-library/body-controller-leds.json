@@ -1,7 +1,7 @@
 {
   "schema": "navicore-command-library/v1",
-  "version": "1.1.0",
-  "_note": "PRIVATE command-library board for the NaviCore config tool. Import via the command library's Import… button; stored in your browser (localStorage), re-loads on refresh — not part of NaviCore's shared library. deliver:'wcb' + aliasMatch:['BC'] unicast to whichever WCB advertises the alias 'BC' (id floats; dest.target '2' is the offline fallback). Every template is prefixed ':L' — the BC ESP32 reads that designator, strips it, and forwards the rest over serial to the ATMEGA2560 LED controller. Command format (ATMEGA): <zone><2-digit effect><speed><primaryColor><secondaryColor>; omitting the color digits uses the board's trimpot/EEPROM default colors. Effect + color catalogs mirror the switch tables in Body_Controller_ATMEGA2560.ino exactly. NOTE: aliasMatch needs the BC ESP32 on the WCB mesh (WCB_Client) advertising 'BC' — the current sketch uses custom ESP-NOW, so wire up WCB_Client first (or rely on the fixed dest.target).",
+  "version": "2.0.0",
+  "_note": "PRIVATE command-library board for the NaviCore config tool. Import via the command library's Import… button; stored in your browser (localStorage), re-loads on refresh. deliver:'wcb' + aliasMatch:['BC'] unicast to whichever WCB advertises 'BC' (id floats; dest.target '2' is the offline fallback). Every template is ':L'-prefixed so the BC ESP32 forwards the rest to the ATMEGA2560 LED controller. Each effect is its OWN command with only its real parameters — derived by reading the effect FUNCTIONS in Body_Controller_ATMEGA2560.ino, not just the dispatch table. command[1] is a MODE for some effects (knightRider/VU/dualbounce/dueling/random/shortCircuit) and a SPEED for others; colors apply only in the modes noted on each field's label. Color 0 = Off. NOTE: aliasMatch needs the BC ESP32 on the WCB mesh (WCB_Client) advertising 'BC'; the current sketch uses custom ESP-NOW, so wire up WCB_Client first (or rely on the fixed dest.target).",
   "enums": {
     "bcLedZone": {
       "values": [
@@ -30,43 +30,6 @@
         { "code": "Z", "label": "LDP + VU" }
       ]
     },
-    "bcEffect": {
-      "values": [
-        { "code": "01", "label": "Battery level" },
-        { "code": "02", "label": "Volume meter (internal)" },
-        { "code": "03", "label": "Volume meter (external)" },
-        { "code": "04", "label": "Knight Rider" },
-        { "code": "05", "label": "Rainbow" },
-        { "code": "06", "label": "Alternating colors" },
-        { "code": "07", "label": "Dim pulse" },
-        { "code": "08", "label": "Bounce" },
-        { "code": "09", "label": "Dual bounce" },
-        { "code": "10", "label": "Dueling colors" },
-        { "code": "11", "label": "Random color" },
-        { "code": "12", "label": "Random" },
-        { "code": "13", "label": "Flash" },
-        { "code": "14", "label": "Short circuit" },
-        { "code": "15", "label": "Solid color" },
-        { "code": "16", "label": "Pulse beat" },
-        { "code": "17", "label": "Dual pulse beat" },
-        { "code": "18", "label": "Wig-wag (1 color)" },
-        { "code": "19", "label": "Zig-zag (1 color)" },
-        { "code": "20", "label": "Wig-wag (2 colors)" },
-        { "code": "21", "label": "Zig-zag (2 colors)" },
-        { "code": "22", "label": "Dim pulse wig-wag" },
-        { "code": "23", "label": "Dim pulse zig-zag" },
-        { "code": "24", "label": "Dual-strip bounce" },
-        { "code": "25", "label": "Dual-strip dueling colors" },
-        { "code": "70", "label": "Fade Logic Display (FLD)" },
-        { "code": "71", "label": "Reverse Logic Display (RLD)" },
-        { "code": "72", "label": "Pulse" },
-        { "code": "73", "label": "Dual pulse" },
-        { "code": "96", "label": "Auto mode — OFF" },
-        { "code": "97", "label": "Auto mode — ON" },
-        { "code": "98", "label": "Clear + auto OFF" },
-        { "code": "99", "label": "Clear + auto ON" }
-      ]
-    },
     "bcColor": {
       "values": [
         { "code": "0", "label": "Off (black)" },
@@ -78,6 +41,87 @@
         { "code": "6", "label": "Magenta" },
         { "code": "7", "label": "Orange" },
         { "code": "8", "label": "White" }
+      ]
+    },
+    "bcSpeed3": {
+      "values": [
+        { "code": "1", "label": "Fast" },
+        { "code": "2", "label": "Medium" },
+        { "code": "3", "label": "Slow" }
+      ]
+    },
+    "bcKnMode": {
+      "values": [
+        { "code": "1", "label": "Single color" },
+        { "code": "2", "label": "Palette cycle" },
+        { "code": "3", "label": "Red / Blue" },
+        { "code": "4", "label": "Green / Yellow" },
+        { "code": "5", "label": "Color wheel" }
+      ]
+    },
+    "bcVuMode": {
+      "values": [
+        { "code": "1", "label": "Classic gradient (green→red)" },
+        { "code": "2", "label": "Fade color 1 → color 2" },
+        { "code": "3", "label": "Color wheel" },
+        { "code": "4", "label": "Single color (brightness = level)" }
+      ]
+    },
+    "bcDualBounceMode": {
+      "values": [
+        { "code": "1", "label": "Bounce out from center" },
+        { "code": "2", "label": "Fill outward" },
+        { "code": "3", "label": "Fill then drain" },
+        { "code": "4", "label": "Fill / clear window" }
+      ]
+    },
+    "bcDuelMode": {
+      "values": [
+        { "code": "1", "label": "Two-front sweep" },
+        { "code": "2", "label": "Fill and reverse" }
+      ]
+    },
+    "bcDuelStripMode": {
+      "values": [
+        { "code": "1", "label": "Variant 1" },
+        { "code": "2", "label": "Variant 2" },
+        { "code": "3", "label": "Variant 3" },
+        { "code": "4", "label": "Variant 4" }
+      ]
+    },
+    "bcRandomColorMode": {
+      "values": [
+        { "code": "1", "label": "Random from 2 colors" },
+        { "code": "2", "label": "Random RGB" },
+        { "code": "3", "label": "Pairs from 2 colors" },
+        { "code": "4", "label": "Random RGB (pairs)" }
+      ]
+    },
+    "bcRandomSparkleMode": {
+      "values": [
+        { "code": "1", "label": "Sparkle (2 colors)" },
+        { "code": "2", "label": "Sparkle (2 colors + blanks)" },
+        { "code": "3", "label": "Random RGB sparkle" }
+      ]
+    },
+    "bcShortMode": {
+      "values": [
+        { "code": "1", "label": "From 2 colors" },
+        { "code": "2", "label": "Random RGB" }
+      ]
+    },
+    "bcRainbowMode": {
+      "values": [
+        { "code": "1", "label": "Standard scroll" },
+        { "code": "2", "label": "Dense / fast" }
+      ]
+    },
+    "bcControl": {
+      "values": [
+        { "code": "96", "label": "Auto mode OFF" },
+        { "code": "97", "label": "Auto mode ON" },
+        { "code": "98", "label": "Clear + auto OFF" },
+        { "code": "99", "label": "Clear + auto ON" }
       ]
     }
   },
@@ -91,39 +135,304 @@
       "dest": { "target": "2" },
       "commands": [
         {
-          "id": "bcled.effect",
-          "name": "LED effect (default colors)",
-          "category": "LED",
-          "template": ":L{zone}{effect}{speed}",
+          "id": "bcled.knightrider", "name": "Knight Rider (scanner)", "category": "Scanner",
+          "template": ":L{zone}04{mode}{color1}",
           "params": [
             { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
-            { "name": "effect", "label": "Effect", "enum": "bcEffect", "required": true },
-            { "name": "speed", "label": "Speed (0-9)", "type": "int", "min": 0, "max": 9, "default": 5, "required": true }
+            { "name": "mode", "label": "Mode", "enum": "bcKnMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color (used only in Single-color mode)", "enum": "bcColor", "default": "5", "required": true }
           ],
-          "examples": [":LV045"]
+          "examples": [":LV0415"]
         },
         {
-          "id": "bcled.effectcolor",
-          "name": "LED effect + colors",
-          "category": "LED",
-          "template": ":L{zone}{effect}{speed}{color1}{color2}",
+          "id": "bcled.rainbow", "name": "Rainbow", "category": "Solid / flash",
+          "template": ":L{zone}05{mode}",
           "params": [
             { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
-            { "name": "effect", "label": "Effect", "enum": "bcEffect", "required": true },
-            { "name": "speed", "label": "Speed (0-9)", "type": "int", "min": 0, "max": 9, "default": 5, "required": true },
-            { "name": "color1", "label": "Primary color", "enum": "bcColor", "default": "5", "required": true },
-            { "name": "color2", "label": "Secondary color", "enum": "bcColor", "default": "1", "required": true }
+            { "name": "mode", "label": "Style", "enum": "bcRainbowMode", "default": "1", "required": true }
           ],
-          "examples": [":LV04551"]
+          "examples": [":LV051"]
         },
         {
-          "id": "bcled.raw",
-          "name": "Raw BC command (advanced)",
-          "category": "Advanced",
+          "id": "bcled.solid", "name": "Solid color", "category": "Solid / flash",
+          "template": ":L{zone}150{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1505"]
+        },
+        {
+          "id": "bcled.flash", "name": "Flash", "category": "Solid / flash",
+          "template": ":L{zone}13{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1335"]
+        },
+        {
+          "id": "bcled.altcolors", "name": "Alternating colors", "category": "Solid / flash",
+          "template": ":L{zone}06{speed}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color 1", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV06351"]
+        },
+        {
+          "id": "bcled.dimpulse", "name": "Dim pulse (breathe)", "category": "Pulse / breathe",
+          "template": ":L{zone}07{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed", "enum": "bcSpeed3", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV0715"]
+        },
+        {
+          "id": "bcled.pulsebeat", "name": "Pulse beat", "category": "Pulse / breathe",
+          "template": ":L{zone}16{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1635"]
+        },
+        {
+          "id": "bcled.dualpulsebeat", "name": "Dual pulse beat", "category": "Pulse / breathe",
+          "template": ":L{zone}17{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1735"]
+        },
+        {
+          "id": "bcled.pulse", "name": "Pulse (comet)", "category": "Pulse / breathe",
+          "template": ":L{zone}72{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed", "enum": "bcSpeed3", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV7215"]
+        },
+        {
+          "id": "bcled.dualpulse", "name": "Dual pulse (two comets)", "category": "Pulse / breathe",
+          "template": ":L{zone}73{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed", "enum": "bcSpeed3", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV7315"]
+        },
+        {
+          "id": "bcled.wigwag", "name": "Wig-wag (1 color)", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}18{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1835"]
+        },
+        {
+          "id": "bcled.zigzag", "name": "Zig-zag (1 color)", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}19{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV1935"]
+        },
+        {
+          "id": "bcled.wigwag2", "name": "Wig-wag (2 colors)", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}20{speed}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color 1", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV20351"]
+        },
+        {
+          "id": "bcled.zigzag2", "name": "Zig-zag (2 colors)", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}21{speed}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed (1 fast – 9 slow)", "type": "int", "min": 1, "max": 9, "default": 3, "required": true },
+            { "name": "color1", "label": "Color 1", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV21351"]
+        },
+        {
+          "id": "bcled.dimpulsewigwag", "name": "Dim-pulse wig-wag", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}22{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed", "enum": "bcSpeed3", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV2215"]
+        },
+        {
+          "id": "bcled.dimpulsezigzag", "name": "Dim-pulse zig-zag", "category": "Wig-wag / zig-zag",
+          "template": ":L{zone}23{speed}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "speed", "label": "Speed", "enum": "bcSpeed3", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV2315"]
+        },
+        {
+          "id": "bcled.bounce", "name": "Bounce", "category": "Bounce",
+          "template": ":L{zone}080{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "color1", "label": "Background color", "enum": "bcColor", "default": "0", "required": true },
+            { "name": "color2", "label": "Bouncing-pixel color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV08005"]
+        },
+        {
+          "id": "bcled.dualstripbounce", "name": "Dual-strip bounce", "category": "Bounce",
+          "template": ":L{zone}240{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "color1", "label": "Background color", "enum": "bcColor", "default": "0", "required": true },
+            { "name": "color2", "label": "Bouncing-pixel color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV24005"]
+        },
+        {
+          "id": "bcled.dualbounce", "name": "Dual bounce (center)", "category": "Bounce",
+          "template": ":L{zone}09{mode}{color1}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Pattern", "enum": "bcDualBounceMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color", "enum": "bcColor", "default": "5", "required": true }
+          ],
+          "examples": [":LV0915"]
+        },
+        {
+          "id": "bcled.dueling", "name": "Dueling colors", "category": "Dueling / random",
+          "template": ":L{zone}10{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Pattern", "enum": "bcDuelMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV10151"]
+        },
+        {
+          "id": "bcled.duelstrip", "name": "Dual-strip dueling colors", "category": "Dueling / random",
+          "template": ":L{zone}25{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Variant", "enum": "bcDuelStripMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV25151"]
+        },
+        {
+          "id": "bcled.randomcolor", "name": "Random color fill", "category": "Dueling / random",
+          "template": ":L{zone}11{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Mode", "enum": "bcRandomColorMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1 (modes 1 & 3)", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2 (modes 1 & 3)", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV11151"]
+        },
+        {
+          "id": "bcled.randomsparkle", "name": "Random sparkle", "category": "Dueling / random",
+          "template": ":L{zone}12{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Mode", "enum": "bcRandomSparkleMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1 (modes 1 & 2)", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2 (modes 1 & 2)", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV12151"]
+        },
+        {
+          "id": "bcled.shortcircuit", "name": "Short circuit", "category": "Dueling / random",
+          "template": ":L{zone}14{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Mode", "enum": "bcShortMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1 (mode 1)", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2 (mode 1)", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV14151"]
+        },
+        {
+          "id": "bcled.vuint", "name": "VU meter — internal audio", "category": "VU meter",
+          "template": ":L{zone}02{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Mode", "enum": "bcVuMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1 (modes 2 & 4)", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2 (mode 2)", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV02151"]
+        },
+        {
+          "id": "bcled.vuext", "name": "VU meter — external audio", "category": "VU meter",
+          "template": ":L{zone}03{mode}{color1}{color2}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "mode", "label": "Mode", "enum": "bcVuMode", "default": "1", "required": true },
+            { "name": "color1", "label": "Color 1 (modes 2 & 4)", "enum": "bcColor", "default": "5", "required": true },
+            { "name": "color2", "label": "Color 2 (mode 2)", "enum": "bcColor", "default": "1", "required": true }
+          ],
+          "examples": [":LV03151"]
+        },
+        {
+          "id": "bcled.battery", "name": "Battery level", "category": "Utility",
+          "template": ":L{zone}01",
+          "params": [ { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true } ],
+          "examples": [":LV01"]
+        },
+        {
+          "id": "bcled.fld", "name": "Front-logic sim (FLD)", "category": "Utility",
+          "template": ":L{zone}70",
+          "params": [ { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true } ],
+          "examples": [":LL70"]
+        },
+        {
+          "id": "bcled.rld", "name": "Rear-logic sim (RLD)", "category": "Utility",
+          "template": ":L{zone}71",
+          "params": [ { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true } ],
+          "examples": [":LL71"]
+        },
+        {
+          "id": "bcled.control", "name": "Auto mode / Clear", "category": "Utility",
+          "template": ":L{zone}{ctrl}",
+          "params": [
+            { "name": "zone", "label": "Zone", "enum": "bcLedZone", "required": true },
+            { "name": "ctrl", "label": "Action", "enum": "bcControl", "default": "98", "required": true }
+          ],
+          "examples": [":LV98"]
+        },
+        {
+          "id": "bcled.raw", "name": "Raw BC command (advanced)", "category": "Advanced",
           "template": ":L{raw}",
-          "params": [
-            { "name": "raw", "label": "BC command after :L (e.g. A05, or P0512 to program)", "default": "A00", "required": true }
-          ],
+          "params": [ { "name": "raw", "label": "BC command after :L (e.g. A04, or P0512 to program)", "default": "A00", "required": true } ],
           "examples": [":LA00"]
         }
       ]
