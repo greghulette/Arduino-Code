@@ -218,6 +218,8 @@ void WCB_Client::update() {
     _checkOfflineBoards();
     _processMonitors();
     _processFragJob();   // drain a pending fragmented send, one chunk per tick
+    _bulkDrain(now);     // process inbound bulk-transfer frames (storage callbacks fire HERE)
+    _bulkTick(now);      // bulk session timeout + completed-session cache expiry
     _wdpTick();          // WDP device-identity advert cadence (boot burst + periodic)
     _ageNeighbors(now);  // expire WDP neighbors we haven't heard from recently
 
@@ -794,6 +796,320 @@ void WCB_Client::onStatusChange(WCBStatusCallback callback) {
 
 void WCB_Client::onRawPacket(WCBRawPacketCallback callback) {
     _rawPacketCallback = callback;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Bulk transfer + inbound COMMAND de-dup
+//  ---------------------------------------------------------------------------
+//  The RX task only PARSES and ENQUEUES (no session state, no flash). ALL session
+//  state, the storage callbacks, and every wire reply happen on the LOOP task in
+//  _bulkDrain / _bulkTick (from update()). So Core 0 is never blocked and the
+//  consumer's callbacks may safely do flash I/O.  Wire (tool→RC, each ≤187 B):
+//    BEGIN {"bb":sid,"n":,"t":,"g":"tag","h":}   CHUNK {"bc":sid,"q":,"s":"b64"}
+//    DONE  {"bd":sid,"r":round}
+//  Back-channel (RC→sender): STATUS {"bs":sid,"got":,"r":,"miss":[..]},
+//    need-BEGIN {"bs":sid,"nb":1},  FINAL {"bs":sid,"done":1,"ok":,"hash":,"r":}
+// ═════════════════════════════════════════════════════════════════════════════
+
+void WCB_Client::onBulkBegin(WCBBulkBeginCallback callback)       { _bulkBeginCb    = callback; }
+void WCB_Client::onBulkChunk(WCBBulkChunkCallback callback)       { _bulkChunkCb    = callback; }
+void WCB_Client::onBulkComplete(WCBBulkCompleteCallback callback) { _bulkCompleteCb = callback; }
+
+// ── COMMAND anti-replay window (RX task, lock-free: _boards seq fields are only
+// touched here). Returns true if `seq` from `senderID` is a duplicate to drop. ──
+bool WCB_Client::_cmdSeqDup(uint8_t senderID, uint16_t seq) {
+    WCBBoardStatus& b = _boards[senderID - 1];
+    if (!b.haveCmdSeq) { b.haveCmdSeq = true; b.cmdSeqHigh = seq; b.cmdSeqMask = 0; return false; }
+    int16_t d = (int16_t)(seq - b.cmdSeqHigh);
+    if (d == 0) return true;                     // exact current high → dup
+    if (d > 0) {                                 // newer → advance the window
+        if (d >= 32) b.cmdSeqMask = 0;
+        else         b.cmdSeqMask = (b.cmdSeqMask << d) | (1u << (d - 1));  // old high now "seen"
+        b.cmdSeqHigh = seq;
+        return false;
+    }
+    uint16_t back = (uint16_t)(-d);              // older than high
+    if (back <= 32) {
+        uint32_t bit = 1u << (back - 1);
+        if (b.cmdSeqMask & bit) return true;     // already seen within the window
+        b.cmdSeqMask |= bit;
+        return false;
+    }
+    return false;                                // too old to remember → accept
+}
+
+// ── Tiny helpers for the flat, machine-generated bulk envelopes (no ArduinoJson
+// dependency; base64 values contain no quotes/colons so key-search is safe). ──
+static bool _bulkJsonUint(const char* s, const char* key, uint32_t& out) {
+    char pat[12];
+    int n = snprintf(pat, sizeof(pat), "\"%s\":", key);
+    if (n <= 0 || n >= (int)sizeof(pat)) return false;
+    const char* p = strstr(s, pat);
+    if (!p) return false;
+    p += n;
+    while (*p == ' ') p++;
+    if (*p < '0' || *p > '9') return false;
+    uint32_t v = 0;
+    while (*p >= '0' && *p <= '9') { v = v * 10u + (uint32_t)(*p - '0'); p++; }
+    out = v;
+    return true;
+}
+static size_t _bulkJsonStr(const char* s, const char* key, char* out, size_t outMax) {
+    if (outMax == 0) return 0;
+    char pat[12];
+    int n = snprintf(pat, sizeof(pat), "\"%s\":", key);
+    if (n <= 0 || n >= (int)sizeof(pat)) return 0;
+    const char* p = strstr(s, pat);
+    if (!p) return 0;
+    p += n;
+    while (*p == ' ') p++;
+    if (*p != '"') return 0;
+    p++;
+    size_t o = 0;
+    while (*p && *p != '"' && o < outMax - 1) out[o++] = *p++;
+    if (*p != '"') return 0;   // unterminated
+    out[o] = '\0';
+    return o;
+}
+static size_t _bulkB64Decode(const char* in, size_t inLen, uint8_t* out, size_t outMax) {
+    auto val = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+    if (inLen == 0 || (inLen % 4) != 0) return 0;
+    size_t o = 0;
+    for (size_t i = 0; i < inLen; i += 4) {
+        char c2 = in[i + 2], c3 = in[i + 3];
+        int a = val(in[i]), b = val(in[i + 1]);
+        int c = (c2 == '=') ? 0 : val(c2);
+        int d = (c3 == '=') ? 0 : val(c3);
+        if (a < 0 || b < 0 || c < 0 || d < 0) return 0;
+        uint32_t trip = ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
+        if (o < outMax)                 out[o++] = (trip >> 16) & 0xFF;
+        if (c2 != '=' && o < outMax)    out[o++] = (trip >> 8)  & 0xFF;
+        if (c3 != '=' && o < outMax)    out[o++] =  trip        & 0xFF;
+    }
+    return o;
+}
+
+// ── RX task: recognise + parse a bulk envelope, enqueue to the loop task ──────
+bool WCB_Client::_maybeRouteBulk(uint8_t senderID, const char* cmd) {
+    uint8_t type;
+    if      (strncmp(cmd, "{\"bb\":", 6) == 0) type = 0;   // BEGIN
+    else if (strncmp(cmd, "{\"bc\":", 6) == 0) type = 1;   // CHUNK
+    else if (strncmp(cmd, "{\"bd\":", 6) == 0) type = 2;   // DONE
+    else return false;                                     // not bulk → fall through to onCommand
+
+    WCBBulkMsg m = {};
+    m.type = type;
+    m.senderID = senderID;
+
+    if (type == 0) {
+        uint32_t sid, nn, tt, hh;
+        if (!_bulkJsonUint(cmd, "bb", sid) || !_bulkJsonUint(cmd, "n", nn) ||
+            !_bulkJsonUint(cmd, "t", tt)   || !_bulkJsonUint(cmd, "h", hh)) return true;  // malformed → drop
+        m.sid = (uint16_t)sid; m.total = (uint16_t)nn; m.totalLen = tt; m.hash = hh;
+        _bulkJsonStr(cmd, "g", m.tag, sizeof(m.tag));
+    } else if (type == 1) {
+        uint32_t sid, q;
+        char b64[176];
+        if (!_bulkJsonUint(cmd, "bc", sid) || !_bulkJsonUint(cmd, "q", q)) return true;
+        size_t bl = _bulkJsonStr(cmd, "s", b64, sizeof(b64));
+        if (bl == 0) return true;
+        size_t dl = _bulkB64Decode(b64, bl, m.data, sizeof(m.data));
+        if (dl == 0) return true;
+        m.sid = (uint16_t)sid; m.q = (uint16_t)q; m.len = (uint16_t)dl;
+    } else {
+        uint32_t sid, r = 0;
+        if (!_bulkJsonUint(cmd, "bd", sid)) return true;
+        _bulkJsonUint(cmd, "r", r);
+        m.sid = (uint16_t)sid; m.round = (uint16_t)r;
+    }
+    _bulkRingPush(m);   // full → dropped; the missing chunk reappears in the next STATUS
+    return true;
+}
+
+// ── SPSC ring: RX task pushes, loop task pops (guarded so a slot never tears) ──
+bool WCB_Client::_bulkRingPush(const WCBBulkMsg& m) {
+    bool ok = false;
+    portENTER_CRITICAL(&_bulkMux);
+    if ((uint16_t)(_bulkRingHead - _bulkRingTail) < WCB_BULK_RING_DEPTH) {
+        _bulkRing[_bulkRingHead % WCB_BULK_RING_DEPTH] = m;
+        _bulkRingHead++;
+        ok = true;
+    }
+    portEXIT_CRITICAL(&_bulkMux);
+    return ok;
+}
+bool WCB_Client::_bulkRingPop(WCBBulkMsg& out) {
+    bool ok = false;
+    portENTER_CRITICAL(&_bulkMux);
+    if (_bulkRingHead != _bulkRingTail) {
+        out = _bulkRing[_bulkRingTail % WCB_BULK_RING_DEPTH];
+        _bulkRingTail++;
+        ok = true;
+    }
+    portEXIT_CRITICAL(&_bulkMux);
+    return ok;
+}
+
+void WCB_Client::_bulkDrain(unsigned long now) {
+    WCBBulkMsg m;
+    int budget = WCB_BULK_RING_DEPTH * 2;   // bound work per tick
+    while (budget-- > 0 && _bulkRingPop(m)) {
+        if      (m.type == 0) _bulkHandleBegin(m, now);
+        else if (m.type == 1) _bulkHandleChunk(m, now);
+        else                  _bulkHandleDone(m, now);
+    }
+}
+
+void WCB_Client::_bulkHandleBegin(const WCBBulkMsg& m, unsigned long now) {
+    // Size validation: 1<=n<=MAX and (n-1)*RAW < t <= n*RAW.
+    bool valid = m.total >= 1 && m.total <= WCB_BULK_MAX_CHUNKS &&
+                 m.totalLen >  (uint32_t)(m.total - 1) * WCB_BULK_CHUNK_RAW &&
+                 m.totalLen <= (uint32_t)m.total       * WCB_BULK_CHUNK_RAW;
+    if (!valid) { _bulkSendFinal(m.senderID, m.sid, 0, false, 0); return; }
+
+    // Already completed (a re-BEGIN after a lost FINAL)? Re-answer, don't restart.
+    WCBBulkDone* d = _bulkFindDone(m.senderID, m.sid);
+    if (d) { _bulkSendFinal(m.senderID, m.sid, 0, d->ok, d->hash); return; }
+
+    if (_bulkRx.active) {
+        if (_bulkRx.senderID == m.senderID && _bulkRx.sid == m.sid) {
+            if (_bulkRx.total == m.total && _bulkRx.hash == m.hash) {
+                // Idempotent duplicate BEGIN — don't wipe progress; re-report it.
+                _bulkRx.lastMs = now;
+                _bulkSendStatus(m.senderID, m.sid, _bulkRx.round);
+                return;
+            }
+            // Same sid, different payload → restart (fall through to re-open).
+        } else {
+            _bulkSendFinal(m.senderID, m.sid, 0, false, 0);   // single-flight: busy
+            return;
+        }
+    }
+
+    // Arm the sink. Consumer opens + pre-extends its tmp; false = reject.
+    if (!_bulkChunkCb || !_bulkCompleteCb ||
+        !_bulkBeginCb(m.senderID, m.sid, m.totalLen, m.total, m.hash, m.tag)) {
+        _bulkSendFinal(m.senderID, m.sid, 0, false, 0);
+        _bulkRx.active = false;
+        return;
+    }
+    _bulkRx.active   = true;
+    _bulkRx.senderID = m.senderID;
+    _bulkRx.sid      = m.sid;
+    _bulkRx.total    = m.total;
+    _bulkRx.got      = 0;
+    _bulkRx.round    = 0;
+    _bulkRx.totalLen = m.totalLen;
+    _bulkRx.hash     = m.hash;
+    _bulkRx.lastMs   = now;
+    memset(_bulkRx.mask, 0, sizeof(_bulkRx.mask));
+}
+
+void WCB_Client::_bulkHandleChunk(const WCBBulkMsg& m, unsigned long now) {
+    if (!_bulkRx.active || _bulkRx.senderID != m.senderID || _bulkRx.sid != m.sid) {
+        if (!_bulkFindDone(m.senderID, m.sid))      // already done → ignore
+            _bulkSendNeedBegin(m.senderID, m.sid, now);
+        return;
+    }
+    _bulkRx.lastMs = now;                            // keep-alive on ANY frame
+    if (m.q >= _bulkRx.total) return;                // out of range
+    uint16_t byteIdx = m.q >> 3;
+    uint8_t  bit     = (uint8_t)(1u << (m.q & 7));
+    if (_bulkRx.mask[byteIdx] & bit) return;         // duplicate chunk → idempotent skip
+    // New chunk. Offset is derived from q (fixed size), never trusted from the wire.
+    _bulkChunkCb(m.sid, (uint32_t)m.q * WCB_BULK_CHUNK_RAW, m.data, m.len);
+    _bulkRx.mask[byteIdx] |= bit;
+    _bulkRx.got++;
+    if (_bulkRx.got >= _bulkRx.total) {              // all distinct chunks in (popcount==n)
+        bool ok = _bulkCompleteCb(m.sid, true, _bulkRx.totalLen, _bulkRx.hash);
+        _bulkCacheDone(m.senderID, m.sid, ok, _bulkRx.hash, now);
+        _bulkSendFinal(m.senderID, m.sid, _bulkRx.round, ok, _bulkRx.hash);
+        _bulkRx.active = false;
+    }
+}
+
+void WCB_Client::_bulkHandleDone(const WCBBulkMsg& m, unsigned long now) {
+    if (_bulkRx.active && _bulkRx.senderID == m.senderID && _bulkRx.sid == m.sid) {
+        _bulkRx.round  = m.round;
+        _bulkRx.lastMs = now;                        // keep-alive
+        _bulkSendStatus(m.senderID, m.sid, m.round); // report the gaps
+        return;
+    }
+    WCBBulkDone* d = _bulkFindDone(m.senderID, m.sid);
+    if (d) { _bulkSendFinal(m.senderID, m.sid, m.round, d->ok, d->hash); return; }
+    _bulkSendNeedBegin(m.senderID, m.sid, now);
+}
+
+void WCB_Client::_bulkTick(unsigned long now) {
+    if (_bulkRx.active && (now - _bulkRx.lastMs) > WCB_BULK_TIMEOUT_MS) {
+        if (_bulkCompleteCb) _bulkCompleteCb(_bulkRx.sid, false, _bulkRx.totalLen, _bulkRx.hash);
+        _bulkSendFinal(_bulkRx.senderID, _bulkRx.sid, _bulkRx.round, false, 0);
+        _bulkRx.active = false;
+    }
+    for (int i = 0; i < WCB_BULK_DONECACHE; i++)
+        if (_bulkDone[i].used && (now - _bulkDone[i].ts) > 30000UL)
+            _bulkDone[i].used = false;
+}
+
+// STATUS: first WCB_BULK_MISS_MAX unset chunk indices, scanned from 0 so the
+// window advances as leading gaps fill (sender treats miss[] as advisory).
+void WCB_Client::_bulkSendStatus(uint8_t senderID, uint16_t sid, uint16_t round) {
+    char buf[200];
+    int len = snprintf(buf, sizeof(buf), "{\"bs\":%u,\"got\":%u,\"r\":%u,\"miss\":[",
+                       (unsigned)sid, (unsigned)_bulkRx.got, (unsigned)round);
+    if (len < 0 || len >= (int)sizeof(buf)) return;
+    int nMiss = 0;
+    for (uint16_t q = 0; q < _bulkRx.total && nMiss < WCB_BULK_MISS_MAX; q++) {
+        if (_bulkRx.mask[q >> 3] & (1u << (q & 7))) continue;
+        int w = snprintf(buf + len, sizeof(buf) - len, nMiss ? ",%u" : "%u", (unsigned)q);
+        if (w <= 0 || len + w > 180) break;          // keep buf (+CRC) under the 187 B relay cap
+        len += w;
+        nMiss++;
+    }
+    snprintf(buf + len, sizeof(buf) - len, "]}");
+    send(senderID, buf);
+}
+
+void WCB_Client::_bulkSendNeedBegin(uint8_t senderID, uint16_t sid, unsigned long now) {
+    if (now - _bulkNbLastMs < 400UL) return;         // rate-limit the NAK
+    _bulkNbLastMs = now;
+    char buf[48];
+    snprintf(buf, sizeof(buf), "{\"bs\":%u,\"nb\":1}", (unsigned)sid);
+    send(senderID, buf);
+}
+
+void WCB_Client::_bulkSendFinal(uint8_t senderID, uint16_t sid, uint16_t round, bool ok, uint32_t hash) {
+    char buf[80];
+    snprintf(buf, sizeof(buf), "{\"bs\":%u,\"done\":1,\"ok\":%d,\"hash\":%u,\"r\":%u}",
+             (unsigned)sid, ok ? 1 : 0, (unsigned)hash, (unsigned)round);
+    send(senderID, buf);
+}
+
+void WCB_Client::_bulkCacheDone(uint8_t senderID, uint16_t sid, bool ok, uint32_t hash, unsigned long now) {
+    WCBBulkDone* slot = _bulkFindDone(senderID, sid);
+    if (!slot) {
+        slot = &_bulkDone[0];
+        for (int i = 1; i < WCB_BULK_DONECACHE; i++) {
+            if (!_bulkDone[i].used) { slot = &_bulkDone[i]; break; }
+            if (_bulkDone[i].ts < slot->ts) slot = &_bulkDone[i];
+        }
+    }
+    slot->used = true; slot->senderID = senderID; slot->sid = sid;
+    slot->ok = ok; slot->hash = hash; slot->ts = now;
+}
+
+WCB_Client::WCBBulkDone* WCB_Client::_bulkFindDone(uint8_t senderID, uint16_t sid) {
+    for (int i = 0; i < WCB_BULK_DONECACHE; i++)
+        if (_bulkDone[i].used && _bulkDone[i].senderID == senderID && _bulkDone[i].sid == sid)
+            return &_bulkDone[i];
+    return nullptr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1770,6 +2086,20 @@ void WCB_Client::_handleReceive(const uint8_t* mac, const uint8_t* data, int len
                     *crcTag = '\0';  // Strip the verified "|CRC..." — deliver clean command
                 }
                 // checksum disabled → deliver exactly as received (no stripping)
+
+                // ── Inbound de-dup: drop an exact ETM retransmit (same seq) so a
+                // lost-ACK resend can't double-fire this command. ACK already sent.
+                // seq 0 = un-sequenced (heartbeat-class) → never deduped.
+                if (senderID >= 1 && senderID <= WCB_MAX_BOARDS &&
+                    pkt->structSequenceNumber != 0 &&
+                    _cmdSeqDup((uint8_t)senderID, pkt->structSequenceNumber))
+                    break;
+
+                // ── Bulk-transfer envelope (bb/bc/bd)? Parse + enqueue to the loop
+                // task and DON'T deliver to the app callback. Gated on a registered
+                // bulk sink so consumers that don't adopt it are unaffected.
+                if (_bulkBeginCb && _maybeRouteBulk((uint8_t)senderID, cmd))
+                    break;
 
                 _commandCallback((uint8_t)senderID, cmd);
             }

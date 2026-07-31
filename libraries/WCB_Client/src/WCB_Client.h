@@ -89,6 +89,19 @@ constexpr uint8_t broadcast = 0;
 #define WCB_SPECIAL_ID   20   // Device ID 20 is an out-of-band slot for third-party
                               // devices that don't consume a WCB slot in the system.
                               // Requires specialPeerEnabled = true on the WCBs.
+
+// ── Bulk transfer (large opaque payloads streamed to consumer-owned storage) ──
+// A first-class facility for moving a payload too big to hold in RAM (e.g. a
+// >15 KB command library) across the mesh WITHOUT buffering it here: chunks are
+// handed to the consumer via callbacks that fire on the LOOP task, tracked by a
+// bitmask (no payload buffer), with a selective-NACK back-channel. See onBulk*.
+#define WCB_BULK_MAX_CHUNKS  512      // hard ceiling on chunks/transfer (bitmask sized to this)
+#define WCB_BULK_CHUNK_RAW    96      // decoded bytes per chunk (base64 → ~128 chars; envelope <=187 B)
+#define WCB_BULK_RING_DEPTH   16      // Core-0 (RX) → Core-1 (loop) hand-off ring slots
+#define WCB_BULK_MISS_MAX     20      // missing-chunk indices reported per STATUS
+#define WCB_BULK_DONECACHE     4      // completed sessions remembered (to re-answer a lost FINAL)
+#define WCB_BULK_TIMEOUT_MS 15000UL   // abort a session idle this long (no BEGIN/CHUNK/DONE frame)
+#define WCB_BULK_MASK_BYTES ((WCB_BULK_MAX_CHUNKS + 7) / 8)   // 64 bytes
 #define WCB_WDP_NEIGHBOR_TTL_MS 180000UL  // Drop a learned WDP neighbor after this
                               // long without an advert (~6 missed 30s cycles).
 #define WCB_WDP_TEMP_ADVERT_MS       15000UL  // A TEMPORARY device adverts faster than the 60s
@@ -193,6 +206,13 @@ typedef struct __attribute__((packed)) {
 struct WCBBoardStatus {
     bool          online;       // true = board has sent a recent heartbeat
     unsigned long lastSeenMs;   // millis() timestamp of the last heartbeat received
+    // ── Inbound COMMAND de-dup (anti-replay) window ──────────────────────────
+    // Drops an exact ETM retransmit (same structSequenceNumber) so a lost-ACK
+    // resend can't double-fire a command. `cmdSeqMask` bit i = "seq (cmdSeqHigh
+    // - (i+1)) was seen". Touched ONLY on the RX task (Core 0), so lock-free.
+    bool          haveCmdSeq = false;
+    uint16_t      cmdSeqHigh = 0;   // highest COMMAND seq seen from this board
+    uint32_t      cmdSeqMask = 0;   // 32-wide backlog of recently-seen older seqs
 };
 
 // Tracks an in-flight COMMAND that is waiting for an ACK.
@@ -288,6 +308,35 @@ typedef void (*WCBRawPacketCallback)(const uint8_t* mac, const uint8_t* data, in
 // (WiFi) task — keep it minimal; poll getNeighbor() from loop() for heavier
 // work. `nb` is valid only for the duration of the call.
 typedef void (*WCBNeighborCallback)(const WCBNeighbor& nb);
+
+// ── Bulk-transfer callbacks (see onBulkBegin/onBulkChunk/onBulkComplete) ──────
+// ALL THREE FIRE ON THE LOOP TASK (from update()), never the RX/WiFi task, so the
+// consumer may safely do flash I/O inside them. The library owns the wire framing,
+// the completion bitmask, de-dup, timeout and the selective-NACK back-channel; the
+// consumer owns storage. The library never buffers the payload.
+//
+// onBulkBegin: a transfer is starting. Open/prepare your sink (e.g. a tmp file
+//   pre-extended to totalLen). RETURN true to accept, false to reject (the library
+//   NAKs the sender with FINAL ok=0 and no session is created).
+//     senderID    : WCB that is sending (the relay for bridged tool traffic)
+//     sid         : session id (nonce chosen by the sender)
+//     totalLen    : total payload bytes
+//     totalChunks : number of fixed-size chunks
+//     hash        : FNV-1a the sender expects the reassembled payload to have
+//     tag         : routing tag from the sender (e.g. "cmdlib")
+typedef bool (*WCBBulkBeginCallback)(uint8_t senderID, uint16_t sid, uint32_t totalLen,
+                                     uint16_t totalChunks, uint32_t hash, const char* tag);
+
+// onBulkChunk: write `len` bytes at byte `offset` (= chunkIndex * WCB_BULK_CHUNK_RAW).
+// Fires once per DISTINCT chunk (duplicates are already dropped). Data is valid
+// only for the call.
+typedef void (*WCBBulkChunkCallback)(uint16_t sid, uint32_t offset, const uint8_t* data, uint16_t len);
+
+// onBulkComplete: `allReceived` true = every chunk arrived — verify your hash and
+//   commit (rename tmp→final); RETURN true if it verified + persisted, false if not.
+//   `allReceived` false = the transfer was aborted/timed out — clean up (delete tmp)
+//   and the return value is ignored. The library sends the sender FINAL ok=<return>.
+typedef bool (*WCBBulkCompleteCallback)(uint16_t sid, bool allReceived, uint32_t totalLen, uint32_t hash);
 
 
 // =============================================================================
@@ -503,6 +552,15 @@ public:
     // device learn the mesh — who's out there and what they can do. Optional:
     // the neighbor table is maintained regardless; poll it with getNeighbor().
     void onNeighbor(WCBNeighborCallback callback);
+
+    // ── Bulk transfer (large opaque payloads → consumer storage) ───────────────
+    // Register the three bulk callbacks (see the typedefs above). All fire on the
+    // LOOP task from update(), so flash I/O inside them is safe. Registering
+    // onBulkBegin is what ARMS bulk interception: until a begin-callback is set,
+    // bb/bc/bd envelopes fall through to the ordinary command callback.
+    void onBulkBegin(WCBBulkBeginCallback callback);
+    void onBulkChunk(WCBBulkChunkCallback callback);
+    void onBulkComplete(WCBBulkCompleteCallback callback);
 
     // Return the learned neighbor with this WCB number (1..WCB_MAX_BOARDS), or
     // nullptr if none has been heard (or it aged out). Do not retain the pointer
@@ -721,6 +779,57 @@ private:
     WCBStatusCallback    _statusCallback    = nullptr;
     WCBRawPacketCallback _rawPacketCallback = nullptr;
 
+    // ── Bulk transfer state (facility owns transport; consumer owns storage) ──
+    WCBBulkBeginCallback    _bulkBeginCb    = nullptr;  // set → bulk interception armed
+    WCBBulkChunkCallback    _bulkChunkCb    = nullptr;
+    WCBBulkCompleteCallback _bulkCompleteCb = nullptr;
+
+    // One active session (single-flight for v1). No payload buffer — just a bitmask.
+    // Touched ONLY on the loop task (from update()); the RX task never reads/writes it.
+    struct WCBBulkRx {
+        bool          active   = false;
+        uint8_t       senderID = 0;
+        uint16_t      sid      = 0;
+        uint16_t      total    = 0;    // chunk count (n)
+        uint16_t      got      = 0;    // distinct chunks written (== popcount(mask))
+        uint16_t      round    = 0;    // last DONE round seen (echoed in STATUS/FINAL)
+        uint32_t      totalLen = 0;    // t
+        uint32_t      hash     = 0;    // h expected
+        unsigned long lastMs   = 0;    // millis() of the last frame for this session
+        uint8_t       mask[WCB_BULK_MASK_BYTES] = {0};
+    } _bulkRx;
+
+    // Completed-session cache: re-answer a re-DONE whose FINAL was lost.
+    struct WCBBulkDone {
+        bool          used = false;
+        uint8_t       senderID = 0;
+        uint16_t      sid = 0;
+        bool          ok = false;
+        uint32_t      hash = 0;
+        unsigned long ts = 0;
+    } _bulkDone[WCB_BULK_DONECACHE];
+
+    // Core-0 (RX) → Core-1 (loop) typed hand-off ring. Guarded by _bulkMux so the
+    // producer (RX) and consumer (loop) never tear a slot across cores.
+    struct WCBBulkMsg {
+        uint8_t  type;      // 0=BEGIN 1=CHUNK 2=DONE
+        uint8_t  senderID;
+        uint16_t sid;
+        uint16_t total;     // BEGIN: n
+        uint16_t q;         // CHUNK: index
+        uint16_t round;     // DONE: round
+        uint16_t len;       // CHUNK: decoded byte length
+        uint32_t totalLen;  // BEGIN: t
+        uint32_t hash;      // BEGIN: h
+        char     tag[12];   // BEGIN: routing tag
+        uint8_t  data[WCB_BULK_CHUNK_RAW];  // CHUNK: decoded bytes
+    };
+    WCBBulkMsg        _bulkRing[WCB_BULK_RING_DEPTH];
+    volatile uint16_t _bulkRingHead = 0;   // producer index (RX task)
+    volatile uint16_t _bulkRingTail = 0;   // consumer index (loop task)
+    portMUX_TYPE      _bulkMux = portMUX_INITIALIZER_UNLOCKED;
+    unsigned long     _bulkNbLastMs = 0;   // rate-limit for need-begin NAKs
+
     // ── WDP consumer ──────────────────────────────────────────────────────────
     WCBNeighborCallback  _neighborCallback = nullptr;
     WCBNeighbor          _neighbors[WCB_MAX_BOARDS] = {};   // learned mesh neighbors, indexed by (wcbNumber-1)
@@ -896,6 +1005,24 @@ private:
     // Init=0xFFFFFFFF, poly=0xEDB88320 (reflected), final XOR=~crc.
     // Must be identical to the firmware version or checksums won't match.
     uint32_t _crc32(const char* data, size_t len);
+
+    // ── Bulk transfer internals ───────────────────────────────────────────────
+    // _cmdSeqDup + _maybeRouteBulk + _bulkRingPush run on the RX task (Core 0).
+    // Everything else runs on the loop task (Core 1) from update().
+    bool _cmdSeqDup(uint8_t senderID, uint16_t seq);          // COMMAND anti-replay window
+    bool _maybeRouteBulk(uint8_t senderID, const char* cmd);  // parse bb/bc/bd → ring; true if consumed
+    bool _bulkRingPush(const WCBBulkMsg& m);                  // Core 0 producer
+    bool _bulkRingPop(WCBBulkMsg& out);                       // Core 1 consumer
+    void _bulkDrain(unsigned long now);                       // process ring messages
+    void _bulkTick(unsigned long now);                        // session timeout + done-cache TTL
+    void _bulkHandleBegin(const WCBBulkMsg& m, unsigned long now);
+    void _bulkHandleChunk(const WCBBulkMsg& m, unsigned long now);
+    void _bulkHandleDone (const WCBBulkMsg& m, unsigned long now);
+    void _bulkSendStatus (uint8_t senderID, uint16_t sid, uint16_t round);
+    void _bulkSendNeedBegin(uint8_t senderID, uint16_t sid, unsigned long now);
+    void _bulkSendFinal  (uint8_t senderID, uint16_t sid, uint16_t round, bool ok, uint32_t hash);
+    void _bulkCacheDone  (uint8_t senderID, uint16_t sid, bool ok, uint32_t hash, unsigned long now);
+    WCBBulkDone* _bulkFindDone(uint8_t senderID, uint16_t sid);
 
     // WCBStream needs access to _registerWCBStream() and sendRaw().
     friend class WCBStream;
