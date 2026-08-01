@@ -605,8 +605,10 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
       if (senderIdx == ETM_BOARD_DC) { DCSuccessCounter = incoming.structSuccess; DCFailureCounter = incoming.structFailure; }
       if (senderIdx == ETM_BOARD_DP) { DPSuccessCounter = incoming.structSuccess; DPFailureCounter = incoming.structFailure; }
       if (senderIdx == ETM_BOARD_HP) { HPSuccessCounter = incoming.structSuccess; HPFailureCounter = incoming.structFailure; }
+      etmSendAck(senderIdx, incoming.structSequenceNumber);   // ACK FIRST so a lost-ACK resend stops retrying
+      if (incoming.structSequenceNumber != 0 && etmCmdSeqDup(senderIdx, incoming.structSequenceNumber))
+        break;   // exact retransmit of a command we already ran -- ACKed above, don't re-execute
       processESPNOWIncomingMessage();
-      etmSendAck(senderIdx, incoming.structSequenceNumber);
       break;
 
     default:

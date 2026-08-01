@@ -117,6 +117,14 @@ struct ETM_BoardStatus {
   unsigned long messagesAckd;
   unsigned long totalRetries;
   unsigned long totalFailed;
+  // Inbound COMMAND anti-replay window (per sender). A lost ACK makes the sender
+  // retransmit the SAME structSequenceNumber (up to ETM_RETRY_MAX @ ETM_TIMEOUT_MS),
+  // which would otherwise run the command 2-4x. Tracks the highest COMMAND seq seen
+  // plus a 32-wide backlog of recent OLDER seqs — see etmCmdSeqDup(). Zeroed by the
+  // memset of etmBoardTable at init (the initializers here are belt-and-suspenders).
+  bool          haveCmdSeq = false;
+  uint16_t      cmdSeqHigh = 0;   // highest COMMAND seq seen from this board
+  uint32_t      cmdSeqMask = 0;   // 32-wide backlog of recently-seen older seqs
 };
 
 struct ETM_PendingMessage {
@@ -242,6 +250,38 @@ inline void etmSendAck(int senderIdx, uint16_t seqNum) {
   ack.structPacketType     = PACKET_TYPE_ACK;
   ack.structSequenceNumber = seqNum;
   esp_now_send(ETM_BOARD_MACS[senderIdx], (uint8_t*)&ack, sizeof(ack));
+}
+
+// ---------------------------------------------------------------------------
+// Inbound COMMAND de-dup (anti-replay window)
+// ---------------------------------------------------------------------------
+// A lost ACK makes the sender retransmit the SAME structSequenceNumber (up to
+// ETM_RETRY_MAX @ ETM_TIMEOUT_MS), which would otherwise run the command 2-4x on
+// us. This tracks, per sender, the highest COMMAND seq seen plus a 32-wide bitmask
+// of recently-seen OLDER seqs, so an exact retransmit is dropped while genuinely
+// new (or slightly out-of-order) commands still run. Distinct commands use a
+// monotonic per-sender counter and never share a seq, so the window only ever drops
+// true retransmits. Ported from greghulette/WCBClient 1.10.0 (WCB_Client::_cmdSeqDup).
+// Returns true if `seq` from board `idx` is a duplicate to drop.
+inline bool etmCmdSeqDup(int idx, uint16_t seq) {
+  if (idx < 0 || idx >= ETM_NUM_BOARDS) return false;
+  ETM_BoardStatus& b = etmBoardTable[idx];
+  if (!b.haveCmdSeq) { b.haveCmdSeq = true; b.cmdSeqHigh = seq; b.cmdSeqMask = 0; return false; }
+  int16_t d = (int16_t)(seq - b.cmdSeqHigh);
+  if (d == 0) return true;                                    // exact current high -> dup
+  if (d > 0) {                                                // newer -> advance the window
+    b.cmdSeqMask = (d >= 32) ? 0 : ((b.cmdSeqMask << d) | (1u << (d - 1)));  // old high now "seen"
+    b.cmdSeqHigh = seq;
+    return false;
+  }
+  uint16_t back = (uint16_t)(-d);                            // older than high
+  if (back <= 32) {
+    uint32_t bit = 1u << (back - 1);
+    if (b.cmdSeqMask & bit) return true;                     // already seen within the window
+    b.cmdSeqMask |= bit;
+    return false;
+  }
+  return false;                                              // too old to remember -> accept
 }
 
 // ---------------------------------------------------------------------------

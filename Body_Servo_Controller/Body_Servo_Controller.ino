@@ -447,8 +447,10 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
       incomingTargetID        = incoming.structTargetID;
       incomingCommandIncluded = incoming.structCommandIncluded;
       incomingCommand         = incoming.structCommand;
+      etmSendAck(senderIdx, incoming.structSequenceNumber);   // ACK FIRST so a lost-ACK resend stops retrying
+      if (incoming.structSequenceNumber != 0 && etmCmdSeqDup(senderIdx, incoming.structSequenceNumber))
+        break;   // exact retransmit of a command we already ran -- ACKed above, don't re-execute
       processESPNOWIncomingMessage();
-      etmSendAck(senderIdx, incoming.structSequenceNumber);
       break;
 
     default:
