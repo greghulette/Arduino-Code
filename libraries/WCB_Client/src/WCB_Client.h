@@ -255,6 +255,7 @@ struct WCBPending {
 #define WCB_CAP_PWM            0x0020
 #define WCB_CAP_CONTROLLER     0x0040
 #define WCB_CAP_MAESTRO_HOST   0x0080
+#define WCB_CAP_DFPLAYER       0x0100
 
 struct WCBNeighbor {
     bool          valid;             // slot holds a learned neighbor

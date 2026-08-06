@@ -9,8 +9,8 @@ across the mesh over ESP-NOW (a WCB parses it) or out a host-local serial port (
 parses it).
 
 You can also use it **standalone** — with no WCB anywhere — as a compact way to drive a
-Pololu Maestro, SparkFun MP3 Trigger, WLED node, or Human-Cyborg-Relations (HCR) vocalizer
-from short text commands over a serial port. See [Quick start](#quick-start).
+Pololu Maestro, SparkFun MP3 Trigger, DFPlayer Mini, WLED node, or Human-Cyborg-Relations
+(HCR) vocalizer from short text commands over a serial port. See [Quick start](#quick-start).
 
 > Related projects: [WCB firmware](https://github.com/greghulette/Wireless_Communication_Board-WCB) ·
 > [WCB_Client](https://github.com/greghulette/WCBClient) ·
@@ -37,14 +37,15 @@ Each device is wired to its own UART; you open that port at the device's baud, t
 ```cpp
 #include <WcbCmd.h>
 
-// Two modules are stateful objects; create them once, globally:
-Mp3Codec mp3;      // SparkFun MP3 Trigger
-HcrCodec hcr;      // Human-Cyborg-Relations vocalizer
+// Three modules are stateful objects; create them once, globally:
+Mp3Codec      mp3;   // SparkFun MP3 Trigger
+DfPlayerCodec dfp;   // DFPlayer Mini
+HcrCodec      hcr;   // Human-Cyborg-Relations vocalizer
 
 void setup() {
   Serial1.begin(9600);     // MP3 Trigger  (9600 or 38400)
   Serial2.begin(9600);     // Pololu Maestro (use the baud set in the Maestro Control Center)
-  // (WLED wants 115200; HCR wants 9600 — wire each to its own UART)
+  // (WLED wants 115200; HCR wants 9600; a DFPlayer is 9600 ONLY — wire each to its own UART)
 
   mp3.begin(Serial1);      // bind the MP3 Trigger's port
   // mp3.onFinished = [](const char* key){ /* track ended */ };   // optional callback
@@ -55,6 +56,11 @@ void setup() {
   // MP3 — set volume then play track 5 (";A,PLAY,5"):
   mp3.handle("PLAY,5");
 
+  // DFPlayer — play /01/002.mp3 (";D,FOLDER,1,2"). Volume is NOT re-sent per play,
+  // and its scale is 0=silent..30=loudest — the inverse of the MP3 Trigger's.
+  dfp.begin(Serial1);      // (its own 9600 UART in a real build)
+  dfp.handle("FOLDER,1,2");
+
   // WLED — recall preset 2 (";L,PS,2"):
   WcbWled::emit(Serial1, "PS,2");     // (use the WLED node's own 115200 UART)
 
@@ -64,6 +70,7 @@ void setup() {
 
 void loop() {
   mp3.poll();              // pump MP3 Trigger responses (fires onFinished / onError)
+  dfp.poll();              // same for the DFPlayer's 10-byte reply frames
 }
 ```
 
@@ -78,6 +85,7 @@ The library never opens a port — you do, at the baud the target device expects
 |---|---|---|---|
 | Pololu Maestro | `;M` | as configured in Maestro Control Center | Pololu protocol; subroutine-trigger only |
 | SparkFun MP3 Trigger | `;A` | 9600 or 38400 | wire TX↔RX both ways to use responses/ONFIN |
+| DFPlayer Mini | `;D` | **9600 only** (module-fixed) | volume is `0`=silent…`30`=loudest — the INVERSE of the MP3 Trigger's. Needs ~1.5–3 s after power-on |
 | WLED (serial) | `;L` | 115200 | enable serial in the WLED config; TX→WLED RX |
 | HCR vocalizer | `;H` | 9600 | HCR owns its RX for status; here we only write |
 
@@ -87,13 +95,19 @@ The library never opens a port — you do, at the baud the target device expects
 |---|---|---|---|
 | `WcbMaestro` | `;M<id><seq>` | **namespace** — `emit()` / `parse()` / `buildSubroutineFrame()` | stateless; subroutine-trigger only |
 | MP3 (`WcbMp3.h`) | `;A,…` | **`Mp3Codec`** class — `begin()`, `handle()`, `poll()` | stateful (volume shadow, ONFIN callback, RX pump) |
+| DFPlayer (`WcbDfPlayer.h`) | `;D,…` | **`DfPlayerCodec`** class — `begin()`, `handle()`, `poll()` | stateful; builds 10-byte frames. Does **not** re-send volume before each play (the module remembers it), and `VOLUP`/`VOLDN` emit an absolute frame so the shadow can't drift |
 | WLED (`WcbWled.h`) | `;L,…` | **namespace** `WcbWled` — `emit()` / `build()` | stateless JSON builder (WLED `/json/state`) |
 | HCR (`WcbHcr.h`) | `;H` (fn/chan/track) | **`HcrCodec`** class — `emit()`, `format()`, named `Fn`/`Emotion`/`Audio` constants | device-wire formatter; tiny volume shadow; no `HCRVocalizer` dependency |
 
-Maestro and MP3 **tolerate an optional leading verb letter**, so the exact same token can be
-handed to the local translator *and* relayed to a WCB; `WcbWled::build()` instead expects the
-id-stripped body (matching the WCB, which strips the `L<id>,` prefix before dispatch). The two stateful classes (`Mp3Codec`,
-`HcrCodec`) hold per-device state (volume shadow, ONFIN key); the two namespaces are stateless.
+Maestro, MP3 and DFPlayer **tolerate an optional leading verb letter**, so the exact same token
+can be handed to the local translator *and* relayed to a WCB; `WcbWled::build()` instead expects the
+id-stripped body (matching the WCB, which strips the `L<id>,` prefix before dispatch). The three stateful classes (`Mp3Codec`,
+`DfPlayerCodec`, `HcrCodec`) hold per-device state (volume shadow, ONFIN key); the two namespaces are stateless.
+
+The DFPlayer module deliberately does **not** depend on `DFRobotDFPlayerMini`: that library's
+`sendStack()` calls `delay(10)` after every ACK-off frame and blocks outright with ACK on,
+neither of which survives on a board whose `loop()` also re-emits SBUS every ~9 ms. Frames
+here are written and forgotten; at 9600 baud the UART paces them by itself.
 
 ## What's in scope (and what isn't)
 

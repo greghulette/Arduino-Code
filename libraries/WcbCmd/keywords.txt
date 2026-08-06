@@ -6,6 +6,7 @@
 WcbMaestro	KEYWORD1
 WcbWled	KEYWORD1
 Mp3Codec	KEYWORD1
+DfPlayerCodec	KEYWORD1
 HcrCodec	KEYWORD1
 HcrFade	KEYWORD1
 ReplyKind	KEYWORD1

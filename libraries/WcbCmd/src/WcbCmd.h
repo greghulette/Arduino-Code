@@ -16,6 +16,7 @@
 //     Phase 2: MP3 (;A)       ← shipping
 //     Phase 3: WLED (;L)      ← shipping
 //     Phase 4: HCR (;H)       ← shipping  (device-wire formatter; no lib dependency)
+//     Phase 5: DFPlayer (;D)  ← shipping  (alternate audio device to the MP3 Trigger)
 //
 //  TWO-COPY HAZARD: like WCB_Client, this library lives as two physical copies (the
 //  Arduino-Code/libraries copy each sketch compiles, and the standalone repo). If
@@ -24,10 +25,11 @@
 //  WCBCMD_VERSION so a stale copy fails loudly instead of drifting silently.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#define WCBCMD_VERSION "0.7.0"
+#define WCBCMD_VERSION "0.8.0"
 
 #include "WcbMaestro.h"   // ;M  Maestro
 #include "WcbMp3.h"       // ;A  MP3 Trigger
 #include "WcbWled.h"      // ;L  WLED
 #include "WcbHcr.h"       // ;H  HCR (numeric fn/chan/track -> device wire)
 #include "WcbHcrFade.h"   // ;H  HCR non-blocking volume fade (shared ramp)
+#include "WcbDfPlayer.h"  // ;D  DFPlayer Mini (alternate audio device)
