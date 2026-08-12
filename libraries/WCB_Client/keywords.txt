@@ -14,6 +14,7 @@ wcb_packet_t	KEYWORD1
 wcb_packet_etm_t	KEYWORD1
 WCBBoardStatus	KEYWORD1
 WCBPending	KEYWORD1
+WCBPeerStats	KEYWORD1
 
 # Methods (KEYWORD2)
 begin	KEYWORD2
@@ -31,6 +32,10 @@ setChecksum	KEYWORD2
 instance	KEYWORD2
 write	KEYWORD2
 tick	KEYWORD2
+getPeerStats	KEYWORD2
+getAggregateStats	KEYWORD2
+getBroadcastSent	KEYWORD2
+resetStats	KEYWORD2
 
 # Constants (LITERAL1)
 WCB_PACKET_COMMAND	LITERAL1

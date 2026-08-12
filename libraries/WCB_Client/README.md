@@ -250,6 +250,78 @@ void loop() {
 | `onStatusChange(callback)` | Register or replace the online/offline status callback. |
 | `setChecksum(bool)` | Enable/disable CRC32 checksums. Must match `?ETM,CHKSM` setting on WCBs (default: on). |
 | `setMeshChannel(uint8_t)` | Set the ESP-NOW mesh channel (1–11) this device expects. Best called before `begin()` if your fleet runs on a non-default channel (set on the WCBs via `?WCBCH` / the Wizard); calling it after `begin()` also re-pins the radio live when no SoftAP is active. One radio = one channel (default: 1). |
+| `getPeerStats(wcbID)` | Delivery counters for one peer, by value. Out-of-range returns a zeroed struct. |
+| `getAggregateStats()` | Totals across all peers, computed on demand. |
+| `getBroadcastSent()` | Broadcast COMMAND frames put on the air. |
+| `resetStats()` | Zero every counter. Call from `loop()`, not from a receive callback. |
+
+### Delivery statistics
+
+Per-peer counters for how ETM command traffic is actually landing — which links are
+healthy, which are retrying, which are failing. Nothing is computed for you: there are no
+floats and no ratios in the library, because the 0/0 case only the display layer can
+sensibly decide.
+
+```cpp
+WCBPeerStats s = wcb.getPeerStats(2);
+Serial.printf("WCB2: %lu sent, %lu ackd, %lu retries, %lu failed, %lu noSlot\n",
+              s.sent, s.ackd, s.retries, s.failed, s.noSlot);
+```
+
+| Counter | Increments when |
+|---|---|
+| `sent` | a command is first aimed at that peer — **initial attempts only**, never retries |
+| `ackd` | that peer's ACK arrives for a command we were waiting on — **once per command**, even though a peer re-ACKs every retransmit it hears |
+| `retries` | a resend fires to that peer; N retries on one command counts N |
+| `failed` | we stopped waiting for that peer's ACK without getting one — retries exhausted, peer dropped offline, slot evicted, or a best-effort unicast that timed out |
+| `noSlot` | a send **asked for a pending slot and was denied one** because all `WCB_PENDING_MAX` were busy: transmitted once, never tracked, so no ACK can match it and it can never be ackd or failed. Covers an ensured send losing its guarantee *and* a best-effort unicast losing its ACK tracking. Local backpressure, not a link problem |
+
+`sent` counts **commands**; `retries` counts **extra attempts**. Total airtime for a peer is
+`sent + retries`. They are kept apart on purpose — folding retries into `sent` would let a
+link that retries constantly show a healthy-looking `ackd/sent` while flooding the mesh.
+
+**Invariant, per peer and in the aggregate:** `ackd + failed + noSlot <= sent`, the difference
+being commands still in flight. `resetStats()` re-credits `sent` for whatever is in flight at
+the moment of the reset, so a reset means "start counting here" rather than leaving in-air
+commands to land as `ackd` against a zeroed `sent`.
+
+Two deliberate consequences worth knowing:
+
+- A board that was **offline when an ensured broadcast went out** still hears it and ACKs. That
+  ACK is *discarded*, not counted — it has no matching `sent`, and counting it would push `ackd`
+  past `sent` for a peer we never aimed at. Reachability is what `isOnline()` and `getNeighbor()`
+  are for; these counters answer "did what I sent arrive".
+- For an **advert-only peer that never heartbeats**, the final retry is transmitted in the same
+  pass that settles the slot, so that attempt gets no ACK window and is recorded as `failed`
+  even if it lands. This reports pre-existing retry behaviour rather than causing it; it cannot
+  happen for a peer that is online.
+
+#### What is counted
+
+**The ETM COMMAND layer only** — `send()`, `broadcast()`, `sendToSpecialPeer()`. That is the
+only outbound traffic carrying a sequence number that can be ACK'd.
+
+**Not counted, deliberately:** `sendRaw()` and `sendKyber()` — and therefore every
+`WCBStream` / Maestro byte, usually the highest-volume traffic on the mesh — plus
+`sendRawPacket()` (OTA), the MGMT chunks an oversized `send()` fragments into, heartbeats,
+WDP adverts, and outbound ACKs. None of these is acknowledged, so counting them as `sent`
+would leave `ackd` pinned at zero against a climbing `sent` — which reads as a dead link
+rather than as "not measured". **Seeing your Maestro traffic move none of these counters is
+correct behaviour, not a bug.**
+
+An ensured **broadcast** credits `sent` to every board it expects to ACK, because it *is* a
+per-board guaranteed delivery — retried per board, acknowledged per board.
+`getBroadcastSent()` is a separate **frame** counter (broadcast frames on the air, ensured or
+not) and is not a subset of any peer's `sent`; one ensured broadcast increments both.
+
+Counters are unsigned 32-bit and free-running. Without `resetStats()`, a board that had one
+bad hour looks bad forever and the ratios stop meaning anything.
+
+See the **`DeliveryStats`** example for a working readout: a per-peer table with deltas between
+samples, a continuous invariant self-check, and a guided two-board bench procedure (`g`) that
+walks target-on → target-off-under-50 s → target-off-past-50 s. That last step is the one worth
+doing carefully — it is the only way to exercise the give-up path, and a counter that is wrong
+there would never show up in normal use. `AllFeatures` also has a compact dump on the `t` key.
 
 ### WCBStream
 
@@ -564,12 +636,47 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 | `CombinedUsage` | Text commands and Maestro forwarding running simultaneously |
 | `SpecialPeer` | Talk to the out-of-band controller (e.g. NaviCore) at id 20 |
 | `NeighborDiscovery` | Learn the mesh over WDP — who's out there and what they can do |
+| `DeliveryStats` | Per-peer delivery counters, with a guided two-board bench procedure that proves each one |
 | `MgmtRelay` | Turn any ESP32 into a USB-serial ↔ ESP-NOW management relay — drive the Config Tool (Via WCB) and manage every WCB + the NaviCore over one USB port |
-| `AllFeatures` | Interactive "kitchen sink" — every public method in one sketch |
+| `AllFeatures` | Interactive "kitchen sink" — every public method in one sketch, including a `t` key that dumps per-peer delivery statistics and `z` to reset them |
 
 ---
 
 ## Changelog
+
+### 1.13.0
+
+- **Per-peer delivery statistics.** `getPeerStats()`, `getAggregateStats()`,
+  `getBroadcastSent()` and `resetStats()` expose `sent` / `ackd` / `retries` / `failed` /
+  `noSlot` counts for the ETM COMMAND layer, so a host can finally see which mesh links are
+  healthy and which are retrying or failing. Read-only, free-running `uint32_t`, ~400 bytes.
+  See **API Reference → Delivery statistics** for exactly what is and is not counted — raw
+  and Maestro traffic is deliberately excluded, because it carries no delivery signal.
+- `failed` counts **every** way we stop waiting for a peer's ACK, not just retry exhaustion.
+  The common case by far is a target that is simply powered off: the offline window is 50 s
+  against a ~2 s retry budget, so those sends complete with **zero** retries and never touch
+  the retry-exhausted path at all.
+- `ackd` counts the ACK **transition**, not the ACK packet. A peer re-ACKs every retransmit
+  it hears, and an ensured broadcast slot stays open to collect ACKs from several boards, so
+  one board can ACK the same command up to four times.
+
+### 1.12.1
+
+- **Sequence number 0 is no longer sent.** The WCB firmware's per-sender duplicate ring is
+  zero-initialised and treats `0` as "empty slot", so a COMMAND that landed on seq 0 — once
+  every 65,536 tracked sends — was **ACKd and then silently discarded as a duplicate** by
+  every board. The firmware ACKs before it de-dups, and the ensured retries reuse the same
+  sequence number, so the pending slot completed on those ACKs and the sender reported a
+  clean ensured delivery for a command that executed nowhere. `_sendPacket()` now skips 0 on
+  the wrap. Inbound, this library exempts seq 0 from its own de-dup, so the mirror case
+  would have double-fired the command instead.
+- **`_seqCounter` is explicitly zero-initialised.** A default-initialised `std::atomic` holds
+  an indeterminate value, and a heap-allocated client (`new WCB_Client(...)`, as NaviCore does)
+  gets none of the static zeroing a global-scope instance gets. `begin()` already assigns `0`
+  before anything can send, so this closes a window that was unreachable rather than a live
+  bug — it is there to keep it unreachable.
+
+> Changelog entries for 1.10.0–1.12.0 are not recorded here; see the commit history.
 
 ### 1.9.7
 
