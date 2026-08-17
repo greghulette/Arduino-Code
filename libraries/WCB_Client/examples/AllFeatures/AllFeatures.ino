@@ -283,14 +283,15 @@ void sendDemoRawPacket() {
 // never ACKd, so there is no delivery to count. That is working as intended.
 //
 // Watch for: ackd climbing with sent on a healthy link; retries climbing on a
-// marginal one; failed climbing when a board is powered off. `noSlot` should
+// marginal one; failed climbing when a board is powered off. `unguaranteed` should
 // normally stay 0 — it counts ensured sends that lost their guarantee because
 // all WCB_PENDING_MAX slots were busy, which is local backpressure, not a
 // radio problem.
 // ─────────────────────────────────────────────────────────────────────────────
 void dumpStats() {
     Serial.println("\n--- Delivery stats (ETM COMMAND layer only) ---");
-    Serial.println("  peer   sent   ackd  retry   fail noSlot");
+    // "unguar" = unguaranteed; abbreviated to keep the %6lu columns aligned.
+    Serial.println("  peer   sent   ackd  retry   fail unguar");
 
     for (uint8_t id = 1; id <= WCB_MAX_BOARDS; id++) {
         WCBPeerStats s = wcb.getPeerStats(id);
@@ -299,24 +300,24 @@ void dumpStats() {
         Serial.printf("  %4u %6lu %6lu %6lu %6lu %6lu\n", id,
                       (unsigned long)s.sent,   (unsigned long)s.ackd,
                       (unsigned long)s.retries,(unsigned long)s.failed,
-                      (unsigned long)s.noSlot);
+                      (unsigned long)s.unguaranteed);
     }
 
     WCBPeerStats t = wcb.getAggregateStats();
     Serial.printf("  ALL  %6lu %6lu %6lu %6lu %6lu\n",
                   (unsigned long)t.sent,   (unsigned long)t.ackd,
                   (unsigned long)t.retries,(unsigned long)t.failed,
-                  (unsigned long)t.noSlot);
+                  (unsigned long)t.unguaranteed);
     Serial.printf("  broadcast frames on the air: %lu\n",
                   (unsigned long)wcb.getBroadcastSent());
 
-    // The invariant worth watching on the bench: ackd + failed + noSlot <= sent,
+    // The invariant worth watching on the bench: ackd + failed + unguaranteed <= sent,
     // per peer AND in the total, so this figure should never go negative. If it
     // does, a pending slot is being settled twice — a library bug, not a lost
     // packet. It should hover near 0 on an idle mesh and rise only briefly while
     // commands are actually in the air.
-    Serial.printf("  in flight (sent - ackd - failed - noSlot): %ld\n",
-                  (long)t.sent - (long)t.ackd - (long)t.failed - (long)t.noSlot);
+    Serial.printf("  in flight (sent - ackd - failed - unguaranteed): %ld\n",
+                  (long)t.sent - (long)t.ackd - (long)t.failed - (long)t.unguaranteed);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

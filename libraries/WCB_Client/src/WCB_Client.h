@@ -257,11 +257,17 @@ struct WCBPending {
 // An airtime metric, if it is ever wanted, needs its own counter — not this one.
 //
 // WHY sent AND retries ARE SEPARATE: `sent` counts COMMANDS, `retries` counts
-// EXTRA attempts; total airtime for a peer is sent + retries. Folding retries
-// into `sent` would let a link that retries constantly show a healthy-looking
-// ackd/sent ratio while flooding the mesh.
+// EXTRA attempts, so sent + retries is the DELIVERY ATTEMPTS aimed at that peer.
+// Folding retries into `sent` would let a link that retries constantly show a
+// healthy-looking ackd/sent ratio while flooding the mesh.
+//   That is attempts, NOT frames on the air, and the two differ for broadcasts:
+// one ensured broadcast puts ONE frame up but credits `sent` to every board in
+// expected[], so summing sent+retries across peers over-counts the initial frame
+// by (N-1). Per-board RETRIES are genuinely separate unicast frames, so those do
+// count once each. getBroadcastSent() is the frame counter; use it, not this sum,
+// if what you want is airtime.
 //
-// INVARIANT, per peer AND in the aggregate:  ackd + failed + noSlot <= sent
+// INVARIANT, per peer AND in the aggregate:  ackd + failed + unguaranteed <= sent
 // The difference is commands still in flight. Observing the left side exceed
 // `sent` means a pending slot was settled twice — a bug in this library, not a
 // lost packet. What holds it together is that ONE predicate (_statExpects)
@@ -282,15 +288,18 @@ struct WCBPeerStats {
     uint32_t failed;   // we stopped waiting for this peer's ACK without getting
                        // one — retries exhausted, peer dropped offline, slot
                        // evicted, or a best-effort unicast that timed out
-    uint32_t noSlot;   // a send that asked for a pending slot and was denied one
-                       // because the table was saturated: transmitted once,
-                       // never tracked, so no ACK can ever match it and it can
-                       // never become ackd or failed. Covers BOTH an ensured
-                       // send losing its guarantee and a best-effort unicast
-                       // losing its ACK tracking. Separate from `failed` on
-                       // purpose — this is local backpressure, not a link
-                       // problem, and conflating them sends someone to check
-                       // antennas over a software condition.
+    uint32_t unguaranteed; // sent, but WITHOUT a delivery guarantee: it asked for
+                       // a pending slot and was denied one because the table was
+                       // saturated, so it was transmitted once and never tracked.
+                       // No ACK can ever match it, so it can never become ackd or
+                       // failed. Covers BOTH an ensured send losing its guarantee
+                       // and a best-effort unicast losing its ACK tracking.
+                       //
+                       // NOT "not sent" — the packet is on the air either way; the
+                       // pending table is a confirmation registry, not a TX queue.
+                       // Separate from `failed` on purpose: this is local
+                       // backpressure, not a link problem, and conflating them
+                       // sends someone to check antennas over a software condition.
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1127,7 +1136,7 @@ private:
 
     // Is slot `p` still counting on board `boardIdx` (0-based) to ACK? This is
     // the SAME predicate that decided who got credited `sent`, which is what
-    // keeps ackd + failed + noSlot <= sent true. An ensured slot carries an
+    // keeps ackd + failed + unguaranteed <= sent true. An ensured slot carries an
     // explicit expected[] set; a tracked best-effort unicast implicitly expects
     // only its own target. A board given up on has expected[] cleared, so it
     // answers false — that is what stops a late ACK counting after `failed`.

@@ -58,23 +58,24 @@
 */
 
 #include <WCB_Client.h>
+#include <mbedtls/base64.h>   // Phase 3: decode the Wizard's base64 OTA_DATA fragments
 
 // ── Network credentials — must match your WCB system exactly (see BasicUsage) ──
 //   MAC_OCT2 / MAC_OCT3 : shared MAC octets that identify your network (?WCBM)
 //   PASSWORD            : the ESP-NOW network password (?WCBP)
 //   WCB_QUANTITY        : total number of WCBs in the system (?WCBQ)
 //   DEVICE_ID           : a unique id for THIS relay — see setup note #2
-const uint8_t MAC_OCT2     = 0x00;
-const uint8_t MAC_OCT3     = 0x00;
-const char*   PASSWORD     = "change_me_or_risk_takeover";
-const uint8_t WCB_QUANTITY = 4;
+const uint8_t MAC_OCT2     = 0x05;
+const uint8_t MAC_OCT3     = 0x4B;
+const char*   PASSWORD     = "khEdzNZNh9rMFP";
+const uint8_t WCB_QUANTITY = 1;
 const uint8_t DEVICE_ID    = 19;
 
 // The NaviCore / out-of-band controller lives at the special-peer id (default 20).
 const uint8_t NAVICORE_ID  = WCB_SPECIAL_ID;   // = 20
 
 // This relay's firmware string, advertised over WDP so it shows up by name.
-const char*   RELAY_FW     = "1.0";
+const char*   RELAY_FW     = "1.1";
 
 // Name this relay advertises (WDP) and reports to the WCB Wizard as its alias.
 const char*   RELAY_ALIAS  = "Mgmt Relay";
@@ -166,6 +167,53 @@ typedef struct __attribute__((packed)) {
 // the larger of the two structs (config-frag 230 / remote-term 204).
 struct RawPkt { uint8_t len; uint8_t data[232]; };
 QueueHandle_t rawInQueue = nullptr;
+
+// ── Phase 3: wireless OTA relay (?OTA,* ↔ [OTA:ACK,…]) ─────────────────────────
+// The WCB Wizard drives a firmware update THROUGH this relay: it sends, on USB serial,
+//   ?OTA,BEGIN,<target>,<session>,<imageSize>,<family>
+//   ?OTA,DATA,<target>,<session>,<offset>,<base64(<=192 B)>
+//   ?OTA,END,<target>,<session>        (?OTA,ABORT,<target>,<session> to tear down)
+// We unicast the matching ESP-NOW packet to the target; the target unicasts a 55-byte
+// OTA_ACK ctrl packet back to us (addressed to DEVICE_ID) which we surface as
+//   [OTA:ACK,<target>,<session>,<offset>,<status>]
+// for the Wizard's _otaRelayAwaitAck sentinel. The wire format (packet types + struct
+// bytes) is IDENTICAL to WCB_OTA.cpp / navicore_ota.h, so a WCB, a NaviCore, or this
+// relay are interchangeable as the relay. This relay only RECEIVES the 55-byte ACK
+// (BEGIN/DATA/END all go relay→target), so RawPkt's 232-byte buffer already covers it.
+#define PT_OTA_BEGIN  20
+#define PT_OTA_DATA   21
+#define PT_OTA_ACK    22
+#define PT_OTA_END    23
+#define PT_OTA_ABORT  24
+#define OTA_PAYLOAD   192      // firmware bytes per OTA_DATA packet (== OTA_ESPNOW_PAYLOAD)
+
+// 55 B — BEGIN / END / ABORT / ACK control packet (this size is unique on the mesh).
+typedef struct __attribute__((packed)) {
+  char     structPassword[40];
+  uint8_t  packetType;
+  uint8_t  targetWCB;
+  uint8_t  sourceWCB;
+  uint8_t  chipFamily;
+  uint8_t  status;
+  uint16_t sessionId;
+  uint32_t imageSize;
+  uint32_t ackedOffset;
+} relay_ota_ctrl;
+
+// 243 B — one firmware fragment (relay → target ONLY; never received here).
+typedef struct __attribute__((packed)) {
+  char     structPassword[40];
+  uint8_t  packetType;
+  uint8_t  targetWCB;
+  uint8_t  sourceWCB;
+  uint16_t sessionId;
+  uint16_t dataLen;
+  uint32_t fragOffset;
+  uint8_t  data[OTA_PAYLOAD];
+} relay_ota_data;
+
+static_assert(sizeof(relay_ota_ctrl) == 55,  "relay_ota_ctrl must be 55 B to match WCB_OTA / navicore_ota");
+static_assert(sizeof(relay_ota_data) == 243, "relay_ota_data must be 243 B to match WCB_OTA / navicore_ota");
 
 // Reassembly state for one config/stats/etm reply at a time (the Wizard requests serially).
 struct FragReasm {
@@ -406,7 +454,8 @@ void sendConfigReq(uint8_t target, uint8_t packetType, uint8_t times) {
 void onMeshRaw(const uint8_t* mac, const uint8_t* data, int len) {
   (void)mac;
   if (!rawInQueue) return;
-  if (len != (int)sizeof(relay_config_frag) && len != (int)sizeof(relay_remote_term)) return;
+  if (len != (int)sizeof(relay_config_frag) && len != (int)sizeof(relay_remote_term) &&
+      len != (int)sizeof(relay_ota_ctrl)) return;   // Phase 3: 55-byte OTA ACK
   RawPkt r; r.len = (uint8_t)len; memcpy(r.data, data, len);
   xQueueSend(rawInQueue, &r, 0);               // non-blocking; a dropped frag is covered by the 2nd pass
 }
@@ -471,6 +520,98 @@ void processRemoteTerm(const uint8_t* data) {
   Serial.printf("[TERM:%d]%s\n", pkt.sourceWCB, line);
 }
 
+// ── Phase 3: OTA relay ────────────────────────────────────────────────────────
+// Forward a Wizard "?OTA,<sub>,<target>,<session>,…" line to the target as the matching
+// ESP-NOW OTA packet. Mirrors navicore_ota.h processOtaRelayCommand / WCB_OTA.cpp exactly:
+// BEGIN/END/ABORT ride the 55-byte ctrl packet, DATA the 243-byte data packet.
+// wcb.sendRawPacket() registers the target as an ESP-NOW peer on demand, so OTA does not
+// depend on ambient WDP peering (the classic "worked, then silently stopped" relay-OTA bug).
+void relayOtaCommand(const char* argsC) {
+  String args(argsC);
+  int c1 = args.indexOf(',');
+  String sub  = (c1 < 0) ? args : args.substring(0, c1);
+  String rest = (c1 < 0) ? ""   : args.substring(c1 + 1);
+  sub.trim(); sub.toUpperCase();
+
+  int c2 = rest.indexOf(',');
+  uint8_t  target  = (uint8_t)((c2 < 0 ? rest : rest.substring(0, c2)).toInt());
+  String   r2      = (c2 < 0) ? "" : rest.substring(c2 + 1);
+  int c3 = r2.indexOf(',');
+  uint16_t session = (uint16_t)((c3 < 0 ? r2 : r2.substring(0, c3)).toInt());
+  String   r3      = (c3 < 0) ? "" : r2.substring(c3 + 1);
+
+  if (target < 1 || target > WCB_MAX_BOARDS) { Serial.printf("[OTA] relay: invalid target %u\n", target); return; }
+
+  // Send and SAY SO IF IT FAILED. sendRawPacket() returns false when the target
+  // could not be registered as an ESP-NOW peer — the usual cause being a full
+  // peer table (ESP-NOW caps at ~20, and auto-join makes learned peers permanent
+  // in NVS, so the set only grows). Discarding that bool made a failed BEGIN
+  // indistinguishable from a target that never answered: the Wizard and the
+  // NaviCore config tool both just time out and report "no response via relay" /
+  // "target rejected BEGIN", with nothing whatsoever on this console. The WCB
+  // firmware surfaces the same failure on its own leg (WCB_OTA.cpp otaUnicast).
+  auto otaSend = [&](const void* p, size_t n, const char* label) {
+    if (wcb.sendRawPacket(target, (const uint8_t*)p, n)) return;
+    Serial.printf("[OTA] relay %s -> WCB%u FAILED to send — could not register the "
+                  "peer (ESP-NOW table full? cap ~20; ?WDP,DUMP reports PEERS=n)\n",
+                  label, target);
+  };
+
+  if (sub == "BEGIN") {
+    int p = r3.indexOf(',');
+    uint32_t size   = (uint32_t)((p < 0 ? r3 : r3.substring(0, p)).toInt());
+    uint8_t  family = (uint8_t) (p < 0 ? 0 : r3.substring(p + 1).toInt());
+    relay_ota_ctrl pkt; memset(&pkt, 0, sizeof(pkt));
+    strncpy(pkt.structPassword, PASSWORD, sizeof(pkt.structPassword) - 1);
+    pkt.packetType = PT_OTA_BEGIN; pkt.targetWCB = target; pkt.sourceWCB = DEVICE_ID;
+    pkt.chipFamily = family; pkt.sessionId = session; pkt.imageSize = size;
+    otaSend(&pkt, sizeof(pkt), "BEGIN");
+    return;
+  }
+
+  if (sub == "DATA") {
+    int p = r3.indexOf(',');
+    if (p < 0) { Serial.println("[OTA] relay DATA usage: ?OTA,DATA,<t>,<s>,<offset>,<b64>"); return; }
+    uint32_t offset = (uint32_t)r3.substring(0, p).toInt();
+    String   b64    = r3.substring(p + 1); b64.trim();
+    relay_ota_data pkt; memset(&pkt, 0, sizeof(pkt));
+    strncpy(pkt.structPassword, PASSWORD, sizeof(pkt.structPassword) - 1);
+    pkt.packetType = PT_OTA_DATA; pkt.targetWCB = target; pkt.sourceWCB = DEVICE_ID;
+    pkt.sessionId = session; pkt.fragOffset = offset;
+    size_t outLen = 0;
+    int rc = mbedtls_base64_decode(pkt.data, sizeof(pkt.data), &outLen,
+                                   (const unsigned char*)b64.c_str(), b64.length());
+    if (rc != 0) { Serial.printf("[OTA] relay DATA base64 error %d\n", rc); return; }
+    pkt.dataLen = (uint16_t)outLen;
+    otaSend(&pkt, sizeof(pkt), "DATA");
+    return;
+  }
+
+  if (sub == "END" || sub == "ABORT") {
+    relay_ota_ctrl pkt; memset(&pkt, 0, sizeof(pkt));
+    strncpy(pkt.structPassword, PASSWORD, sizeof(pkt.structPassword) - 1);
+    pkt.packetType = (sub == "END") ? PT_OTA_END : PT_OTA_ABORT;
+    pkt.targetWCB  = target; pkt.sourceWCB = DEVICE_ID; pkt.sessionId = session;
+    otaSend(&pkt, sizeof(pkt), (sub == "END") ? "END" : "ABORT");
+    return;
+  }
+
+  Serial.printf("[OTA] relay: unknown subcommand '%s'\n", sub.c_str());
+}
+
+// loop(): a target's 55-byte OTA_ACK → [OTA:ACK,<src>,<session>,<offset>,<status>] on USB,
+// the sentinel the Wizard's _otaRelayAwaitAck waits for. Mirrors navicore_ota.h handleOtaAckRelay.
+void processOtaAck(const uint8_t* data) {
+  relay_ota_ctrl pkt;
+  memcpy(&pkt, data, sizeof(pkt));
+  pkt.structPassword[sizeof(pkt.structPassword) - 1] = '\0';
+  if (strcmp(pkt.structPassword, PASSWORD) != 0) return;
+  if (pkt.packetType != PT_OTA_ACK) return;          // BEGIN/END/ABORT are ours→target; ignore any echo
+  if (pkt.targetWCB  != DEVICE_ID)  return;           // this ACK is addressed to us (the relay)
+  Serial.printf("[OTA:ACK,%u,%u,%lu,%u]\n",
+                pkt.sourceWCB, pkt.sessionId, (unsigned long)pkt.ackedOffset, pkt.status);
+}
+
 // ── Serial → mesh: parse one line and relay it ────────────────────────────────
 // Mirrors the WCB firmware's serial routing:
 //   ;w<id>,<cmd> / ;w<alias>,<cmd>  → unicast to that board
@@ -504,6 +645,7 @@ void relaySerialLine(char* line) {
             else if (iStarts(m, "ETM,CHAR,")) sendConfigReq((uint8_t)atoi(m + 9), PT_ETM_REQ,   1);
             return;
         }
+        if (iStarts(c, "OTA,")) { relayOtaCommand(c + 4); return; }   // Phase 3: wireless OTA relay
         return;                                  // other ? queries: answer nothing, don't broadcast to the mesh
     }
 
@@ -609,8 +751,20 @@ void setup() {
     Serial.println("[relay]   <text>          broadcast to all boards");
 }
 
-char   inBuf[256];
+// 384 B: a relay OTA "?OTA,DATA,<t>,<s>,<offset>,<base64>" line is the longest
+// input we take — a 192-byte firmware chunk base64-encodes to 256 chars, plus the
+// ~16-27 char prefix = up to 283 chars. inBuf[256] would truncate EVERY DATA frame
+// at the "line too long" guard below, silently dropping the whole OTA stream (BEGIN
+// acks, then nothing transfers). Sized with headroom so DATA lines pass intact.
+char   inBuf[384];
 size_t inLen = 0;
+// Set when a line overruns inBuf, cleared at the next newline. Without it, zeroing
+// inLen mid-line does not DROP the line — it restarts accumulation, so the tail of
+// an oversized line is treated as a fresh command at the newline. An unprefixed
+// tail falls through relaySerialLine() to wcb.broadcast(), putting an arbitrary
+// mid-line fragment on EVERY board on the mesh moments after the operator was told
+// the line was dropped. Suppress to end-of-line instead.
+bool   inOverrun = false;
 
 void loop() {
     wcb.update();                            // heartbeats out, offline detection, WDP, retries
@@ -627,6 +781,7 @@ void loop() {
     while (rawInQueue && xQueueReceive(rawInQueue, &rp, 0) == pdTRUE) {
         if      (rp.len == (uint8_t)sizeof(relay_config_frag)) processConfigFrag(rp.data);
         else if (rp.len == (uint8_t)sizeof(relay_remote_term)) processRemoteTerm(rp.data);
+        else if (rp.len == (uint8_t)sizeof(relay_ota_ctrl))    processOtaAck(rp.data);   // Phase 3
     }
     // Drop a stalled reassembly (lost fragment) after 6 s so a later pull isn't wedged.
     if (fragReasm.active && (millis() - fragReasm.lastMs) > 6000) fragReasm.active = false;
@@ -635,11 +790,17 @@ void loop() {
     while (Serial.available()) {
         char c = (char)Serial.read();
         if (c == '\n' || c == '\r') {
-            if (inLen) { inBuf[inLen] = '\0'; relaySerialLine(inBuf); inLen = 0; }
+            // End of line: relay it, unless the line overran — then drop the WHOLE
+            // line (nothing has been relayed) and re-arm for the next one.
+            if (inOverrun) { inOverrun = false; inLen = 0; }
+            else if (inLen) { inBuf[inLen] = '\0'; relaySerialLine(inBuf); inLen = 0; }
+        } else if (inOverrun) {
+            continue;                         // still swallowing an oversized line
         } else if (inLen < sizeof(inBuf) - 1) {
             inBuf[inLen++] = c;
         } else {
-            inLen = 0;                        // overrun — drop the oversized line
+            inOverrun = true;                 // overrun — swallow to end-of-line
+            inLen     = 0;
             Serial.println("[relay] line too long — dropped (use the Config Tool for big configs)");
         }
     }

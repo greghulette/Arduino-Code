@@ -1896,7 +1896,7 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command, bool ensured
     //
     // `degraded`: the saturation case handled just below — no slot was free, so
     // this send goes out once, untracked, and can never be ACKd or failed.
-    // Counting it in `noSlot` is what keeps sent - (ackd + failed + noSlot)
+    // Counting it in `unguaranteed` is what keeps sent - (ackd + failed + unguaranteed)
     // meaning "still in flight" instead of silently accruing a permanent residue.
     //
     // Gated on `track`, NOT on `ensured`: a best-effort UNICAST is tracked too
@@ -1917,12 +1917,12 @@ bool WCB_Client::_sendPacket(uint8_t targetID, const char* command, bool ensured
                                          : (_boards[b].online && (b + 1) != _deviceID);
                 if (!aimed) continue;
                 _stats[b].sent++;
-                if (degraded) _stats[b].noSlot++;
+                if (degraded) _stats[b].unguaranteed++;
             }
         }
     } else if (targetID >= 1 && targetID <= WCB_MAX_BOARDS) {
         _stats[targetID - 1].sent++;
-        if (degraded) _stats[targetID - 1].noSlot++;
+        if (degraded) _stats[targetID - 1].unguaranteed++;
     }
     portEXIT_CRITICAL(&_pendingMux);
 
@@ -2051,7 +2051,7 @@ WCBPeerStats WCB_Client::getAggregateStats() const {
         total.ackd    += _stats[b].ackd;
         total.retries += _stats[b].retries;
         total.failed  += _stats[b].failed;
-        total.noSlot  += _stats[b].noSlot;
+        total.unguaranteed  += _stats[b].unguaranteed;
     }
     return total;
 }
@@ -2067,7 +2067,7 @@ void WCB_Client::resetStats() {
 
     // Re-credit `sent` for every delivery STILL IN FLIGHT. A bare zeroing would
     // leave the active slots armed to deliver `ackd`/`failed` against a `sent`
-    // of 0, permanently inverting ackd + failed + noSlot <= sent — and these
+    // of 0, permanently inverting ackd + failed + unguaranteed <= sent — and these
     // counters never wrap back, so that inversion would outlive by far the
     // traffic that caused it. Re-crediting exactly the outstanding expectations
     // makes a reset mean "start counting from here" rather than "corrupt the

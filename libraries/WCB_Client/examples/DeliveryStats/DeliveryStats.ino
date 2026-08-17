@@ -6,7 +6,7 @@
   works" and you need to know whether the radio is the problem.
 
   What you get:
-    getPeerStats(id)      sent / ackd / retries / failed / noSlot for one peer
+    getPeerStats(id)      sent / ackd / retries / failed / unguaranteed for one peer
     getAggregateStats()   the same, totalled across all peers
     getBroadcastSent()    broadcast COMMAND frames put on the air
     resetStats()          zero everything and start counting from here
@@ -120,15 +120,17 @@ void dumpStats() {
                   millis() / 1000, TARGET_WCB,
                   wcb.isOnline(TARGET_WCB) ? "ONLINE" : "OFFLINE",
                   autoSend ? "ON" : "off");
-    Serial.println("  peer    sent    ackd   retry    fail  noSlot");
+    // "unguar" = unguaranteed (sent, but denied a pending slot so never tracked).
+    // Abbreviated to keep the %7lu columns aligned.
+    Serial.println("  peer    sent    ackd   retry    fail  unguar");
 
     for (uint8_t id = 1; id <= WCB_MAX_BOARDS; id++) {
         WCBPeerStats s = wcb.getPeerStats(id);
-        if (s.sent == 0 && s.ackd == 0 && s.failed == 0 && s.noSlot == 0) continue;
+        if (s.sent == 0 && s.ackd == 0 && s.failed == 0 && s.unguaranteed == 0) continue;
         Serial.printf("  %4u %7lu %7lu %7lu %7lu %7lu%s\n", id,
                       (unsigned long)s.sent,   (unsigned long)s.ackd,
                       (unsigned long)s.retries,(unsigned long)s.failed,
-                      (unsigned long)s.noSlot,
+                      (unsigned long)s.unguaranteed,
                       id == TARGET_WCB ? "   <- target" : "");
     }
 
@@ -141,7 +143,7 @@ void dumpStats() {
                       (long)t.ackd    - (long)prevTarget.ackd,
                       (long)t.retries - (long)prevTarget.retries,
                       (long)t.failed  - (long)prevTarget.failed,
-                      (long)t.noSlot  - (long)prevTarget.noSlot,
+                      (long)t.unguaranteed  - (long)prevTarget.unguaranteed,
                       DUMP_INTERVAL_MS / 1000);
     }
     prevTarget = t;
@@ -151,7 +153,7 @@ void dumpStats() {
     Serial.printf("   ALL %7lu %7lu %7lu %7lu %7lu\n",
                   (unsigned long)agg.sent,   (unsigned long)agg.ackd,
                   (unsigned long)agg.retries,(unsigned long)agg.failed,
-                  (unsigned long)agg.noSlot);
+                  (unsigned long)agg.unguaranteed);
     Serial.printf("  broadcast frames on the air: %lu\n",
                   (unsigned long)wcb.getBroadcastSent());
 
@@ -161,7 +163,7 @@ void dumpStats() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Continuous self-check.
 //
-// ackd + failed + noSlot <= sent must hold for every peer AND in the total, the
+// ackd + failed + unguaranteed <= sent must hold for every peer AND in the total, the
 // difference being commands still in the air. A violation is not a lost packet —
 // it means a pending slot was settled twice, which is a library bug. Checking it
 // automatically is the whole point: nobody eyeballs five columns every 5 s.
@@ -171,17 +173,17 @@ void checkInvariant() {
 
     for (uint8_t id = 1; id <= WCB_MAX_BOARDS; id++) {
         WCBPeerStats s = wcb.getPeerStats(id);
-        uint32_t settled = s.ackd + s.failed + s.noSlot;
+        uint32_t settled = s.ackd + s.failed + s.unguaranteed;
         if (settled > s.sent) {
             Serial.printf("  *** INVARIANT VIOLATED on WCB%u: "
-                          "ackd+failed+noSlot (%lu) > sent (%lu) ***\n", id,
+                          "ackd+failed+unguaranteed (%lu) > sent (%lu) ***\n", id,
                           (unsigned long)settled, (unsigned long)s.sent);
             ok = false;
         }
     }
 
     WCBPeerStats a = wcb.getAggregateStats();
-    long inFlight = (long)a.sent - (long)a.ackd - (long)a.failed - (long)a.noSlot;
+    long inFlight = (long)a.sent - (long)a.ackd - (long)a.failed - (long)a.unguaranteed;
     if (inFlight < 0) {
         Serial.printf("  *** INVARIANT VIOLATED in aggregate: in-flight = %ld ***\n",
                       inFlight);
@@ -235,7 +237,7 @@ void printMenu() {
         "  1 = 10 ensured unicasts to target    2 = 10 best-effort unicasts\n"
         "  3 = ensured broadcast                4 = best-effort broadcast\n"
         "  5 = raw/Maestro burst (counts NOTHING — that is the point)\n"
-        "  6 = 15 rapid ensured sends (tries to saturate the table -> noSlot)\n"
+        "  6 = 15 rapid ensured sends (tries to saturate the table -> unguaranteed)\n"
         "  a = toggle 1 Hz auto-send            t = dump stats now\n"
         "  z = reset stats                      g = guided bench procedure\n"
         "  h = this help");
@@ -279,10 +281,10 @@ void handleKey(char c) {
             // The pending table holds WCB_PENDING_MAX (10) in-flight COMMANDS.
             // Firing more than that in one loop pass, with no chance for update()
             // to service ACKs in between, is how a send gets denied a slot: it
-            // goes out once, untracked, and lands in noSlot. Most visible when
+            // goes out once, untracked, and lands in unguaranteed. Most visible when
             // the target is OFF, since then nothing is ACKing slots free.
             for (int i = 0; i < 15; i++) wcb.send(TARGET_WCB, TEST_COMMAND);
-            Serial.println("[TX] 15 rapid ensured sends — watch noSlot");
+            Serial.println("[TX] 15 rapid ensured sends — watch unguaranteed");
             break;
 
         case 'a':

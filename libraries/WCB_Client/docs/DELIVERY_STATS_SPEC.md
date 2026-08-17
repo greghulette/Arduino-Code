@@ -61,14 +61,20 @@ Five counters per peer, plus a broadcast frame counter.
 | `ackd` | that peer's ACK arrives for a command we were still waiting on — **once per command** |
 | `retries` | a resend fires to that peer — **every** resend, so N retries on one command counts N |
 | `failed` | we stopped waiting for that peer's ACK without ever getting one |
-| `noSlot` | a send asked for a pending slot and was denied one (table saturated) |
+| `unguaranteed` | a send asked for a pending slot and was denied one (table saturated) |
 
-**The distinction that matters:** `sent` counts *commands*, `retries` counts *extra attempts*.
-Total airtime is `sent + retries`. Keeping them separate is what makes the ratio meaningful — if
-`sent` also counted retries, a link that retries constantly would show a healthy-looking
-`ackd/sent` while flooding the mesh.
+**The distinction that matters:** `sent` counts *commands*, `retries` counts *extra attempts*, so
+`sent + retries` is the *delivery attempts* aimed at a peer. Keeping them separate is what makes
+the ratio meaningful — if `sent` also counted retries, a link that retries constantly would show
+a healthy-looking `ackd/sent` while flooding the mesh.
 
-**Invariant, per peer and in the aggregate: `ackd + failed + noSlot <= sent`**, the difference
+Attempts are **not** frames on the air. One ensured broadcast puts a single frame up but credits
+`sent` to every board in `expected[]`, so summing `sent + retries` across peers over-counts that
+frame by (N−1); per-board retries are separate unicast frames and do count once each.
+`getBroadcastSent()` is the frame counter — use it rather than this sum if what you want is
+airtime.
+
+**Invariant, per peer and in the aggregate: `ackd + failed + unguaranteed <= sent`**, the difference
 being commands still in flight. If a test ever shows the left side exceeding `sent`, a slot is
 being settled twice. It holds in the aggregate as well as per peer because `ackd` is gated on
 the same `_statExpects()` predicate that granted `sent` — see "Broadcasts" below for what that
@@ -172,7 +178,7 @@ struct WCBPeerStats {
     uint32_t ackd;       // ACKs received, once per command
     uint32_t retries;    // resend attempts
     uint32_t failed;     // stopped waiting without an ACK
-    uint32_t noSlot;     // asked for a pending slot, denied one (table saturated)
+    uint32_t unguaranteed;     // asked for a pending slot, denied one (table saturated)
 };
 
 // Per-peer, 1..WCB_MAX_BOARDS. Out-of-range returns a zeroed struct.
@@ -211,7 +217,7 @@ void resetStats();
 
 | Counter | Hook |
 |---|---|
-| `sent`, `noSlot`, broadcast frames | `_sendPacket()`, inside the existing slot-claim critical section |
+| `sent`, `unguaranteed`, broadcast frames | `_sendPacket()`, inside the existing slot-claim critical section |
 | `retries` | `update()`'s retry pass, beside the existing `retryCount[b]++` |
 | `ackd` | the ACK handler, gated on the first transition and on `_statExpects()` |
 | `failed` | both per-board give-ups directly; every slot teardown via `_settleSlot()` |
@@ -307,7 +313,7 @@ signatures are right, and the measured RAM delta in §7. **A wrong counter compi
 deltas between samples, self-checks the invariant on every dump (so a violation announces itself
 rather than waiting to be spotted in five columns of running totals), and its `g` key prints the
 procedure below with the expected deltas at each step. Keys `1`–`6` fire the traffic each step
-needs, including a raw/Maestro burst for step 8 and a rapid-send burst to provoke `noSlot`.
+needs, including a raw/Maestro burst for step 8 and a rapid-send burst to provoke `unguaranteed`.
 
 Real verification needs two boards:
 
@@ -323,7 +329,7 @@ Real verification needs two boards:
 5. **Ensured broadcast with 2+ boards online.** Expect `sent` to increment on *each* expected
    peer and `getBroadcastSent()` by 1. Watch that no peer's `ackd` exceeds its `sent` — that is
    the duplicate-ACK over-count showing up.
-6. **Assert `ackd + failed + noSlot <= sent` per peer throughout.**
+6. **Assert `ackd + failed + unguaranteed <= sent` per peer throughout.**
 7. **Cross-core** — sustained bidirectional traffic (A→B while B→A) for several minutes, so
    `ackd` increments on Core 0 concurrently with `sent`/`retries` on Core 1. A misplaced
    increment relative to the critical section shows up as a stuck or wildly wrong counter, and
@@ -384,5 +390,7 @@ are the counters nobody will notice are wrong. Step 4 needs a real 50-second wai
 | Date | Commit | Change | Why |
 |---|---|---|---|
 | 2026-08-12 | — | Spec written | Step 1 of `Astromech-Control/docs/MESH_STATS.md`, split out to be implemented in a session on this repo. Records that the counters were deleted rather than disconnected, that `_pending[]`/`retryCount[]` already observe every outcome, and that the Sled is excluded by decision |
-| 2026-08-12 | _(this commit)_ | Implemented as 1.13.0; spec corrected to as-built | Four counter definitions were wrong against the code. `failed` hooked only at retry-exhaustion would never fire for a powered-off target (50 s offline window vs ~2 s retry budget) — the common case; now credited at every stop-waiting site via `_settleSlot()`. Ensured broadcasts are not fire-and-forget and now credit per-peer `sent`, with `getBroadcastSent()` redefined as a frame counter. `ackd` gated on the ACK transition (a peer re-ACKs every retransmit — up to 4× per slot). Added `noSlot` for any tracked send denied a pending slot, which `sent`/`ackd`/`failed` alone could never account for. Return by value, not const reference. Also corrected: measured RAM is 400 B not 324 B, NaviCore heap-allocates the client, the WCB firmware does not compile this library, and the 10-vs-20 "asymmetry" is per-command vs per-peer, not a shortfall |
-| 2026-08-12 | _(same commit)_ | Three defects found by adversarial review of the first implementation, fixed before landing | (1) `noSlot` was gated on `ensured`, but a best-effort **unicast** is tracked too and can equally be denied a slot — it credited `sent` and could then never be ackd or failed, accruing a permanent phantom "in flight" residue. Gate is now `track`, and `noSlot` is redefined as "asked for a slot, denied one". (2) `resetStats()` zeroed the counters while pending slots stayed armed, so in-flight commands landed `ackd`/`failed` against a zeroed `sent` and permanently **inverted** the invariant; it now re-credits `sent` for outstanding expectations. (3) The header and this page both claimed an aggregate `ackd > sent` surplus from offline boards ACKing a broadcast — impossible, because the `_statExpects()` gate discards that ACK outright; the invariant holds in the aggregate too. Also documented, not fixed: the final retry to a never-online peer is settled in the same pass that transmits it (see "Known accounting gaps") |
+| 2026-08-12 | _(this commit)_ | Implemented as 1.13.0; spec corrected to as-built | Four counter definitions were wrong against the code. `failed` hooked only at retry-exhaustion would never fire for a powered-off target (50 s offline window vs ~2 s retry budget) — the common case; now credited at every stop-waiting site via `_settleSlot()`. Ensured broadcasts are not fire-and-forget and now credit per-peer `sent`, with `getBroadcastSent()` redefined as a frame counter. `ackd` gated on the ACK transition (a peer re-ACKs every retransmit — up to 4× per slot). Added `noSlot` (renamed `unguaranteed` in 1.13.1) for any tracked send denied a pending slot, which `sent`/`ackd`/`failed` alone could never account for. Return by value, not const reference. Also corrected: measured RAM is 400 B not 324 B, NaviCore heap-allocates the client, the WCB firmware does not compile this library, and the 10-vs-20 "asymmetry" is per-command vs per-peer, not a shortfall |
+| 2026-08-12 | _(same commit)_ | Three defects found by adversarial review of the first implementation, fixed before landing | (1) `noSlot` was gated on `ensured`, but a best-effort **unicast** is tracked too and can equally be denied a slot — it credited `sent` and could then never be ackd or failed, accruing a permanent phantom "in flight" residue. Gate is now `track`, and the counter is redefined as "asked for a slot, denied one". (2) `resetStats()` zeroed the counters while pending slots stayed armed, so in-flight commands landed `ackd`/`failed` against a zeroed `sent` and permanently **inverted** the invariant; it now re-credits `sent` for outstanding expectations. (3) The header and this page both claimed an aggregate `ackd > sent` surplus from offline boards ACKing a broadcast — impossible, because the `_statExpects()` gate discards that ACK outright; the invariant holds in the aggregate too. Also documented, not fixed: the final retry to a never-online peer is settled in the same pass that transmits it (see "Known accounting gaps") |
+| 2026-08-13 | _(this commit)_ | Renamed `noSlot` → `unguaranteed`; released as 1.13.1 | Every other counter names what it *is*; `noSlot` named what the implementation ran out of, and nothing got a reader from `NoSlot: 4` to "four commands went out without a delivery guarantee". The concept stays — it is genuinely distinct from `failed` (local backpressure vs a link problem) — only the name changed. `unguaranteed` was chosen over `bestEffort` (would read as counting every `ensured=false` send, which it does not) and `noETM` (actively wrong: the packet IS a full 252-byte ETM COMMAND, is ACKed by the receiver, and is deduped — only the sender's tracking is absent). Source-breaking for consumers of `WCBPeerStats`; done immediately after 1.13.0 while NaviCore was the only one |
+| 2026-08-14 | _(this commit)_ | Corrected the airtime claim; released as 1.13.2 | `sent + retries` was described as "total airtime for a peer". True for unicast, wrong once broadcasts are involved: one ensured broadcast puts a SINGLE frame on the air but credits `sent` to every board in `expected[]`, so summing across peers over-counts the initial frame by (N-1). Per-board retries are separate unicast frames and do count once each. Reworded to "delivery attempts", with `getBroadcastSent()` named as the frame counter — which is what the header already said it was, so the two no longer contradict each other. Docs only, no code change. Found by code review alongside two `MgmtRelay` defects (oversized-line tail reaching `broadcast()`, and silent OTA send failures) fixed in the same commit |
