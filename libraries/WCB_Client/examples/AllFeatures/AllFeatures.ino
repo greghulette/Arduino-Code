@@ -148,6 +148,11 @@ void setup() {
     wcb.onNeighbor(onNeighborRx);
     wcb.onRawPacket(onRawPacketRx);
 
+    // Optional: match a non-default ESP-NOW mesh channel BEFORE begin() (set on
+    //    the WCBs via ?WCBCH / the Wizard). One radio = one channel, so a mismatch
+    //    means this device silently can't hear the mesh. Default is 1.
+    // wcb.setMeshChannel(6);
+
     // 4) Join the mesh. ALWAYS check begin(): false = ESP-NOW did not start
     //    (e.g. WiFi didn't come up); running update()/send() then would crash.
     if (!wcb.begin()) {
@@ -270,6 +275,52 @@ void sendDemoRawPacket() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Delivery statistics — getPeerStats() / getAggregateStats() / getBroadcastSent().
+//
+// These count the ETM COMMAND layer ONLY: the 'b', 'u' and 's' keys below move
+// these numbers. The 'r' and 'k' keys (sendRaw / sendKyber) and the servo sweep
+// deliberately do NOT — raw and Maestro traffic carries no sequence number and is
+// never ACKd, so there is no delivery to count. That is working as intended.
+//
+// Watch for: ackd climbing with sent on a healthy link; retries climbing on a
+// marginal one; failed climbing when a board is powered off. `unguaranteed` should
+// normally stay 0 — it counts ensured sends that lost their guarantee because
+// all WCB_PENDING_MAX slots were busy, which is local backpressure, not a
+// radio problem.
+// ─────────────────────────────────────────────────────────────────────────────
+void dumpStats() {
+    Serial.println("\n--- Delivery stats (ETM COMMAND layer only) ---");
+    // "unguar" = unguaranteed; abbreviated to keep the %6lu columns aligned.
+    Serial.println("  peer   sent   ackd  retry   fail unguar");
+
+    for (uint8_t id = 1; id <= WCB_MAX_BOARDS; id++) {
+        WCBPeerStats s = wcb.getPeerStats(id);
+        // Skip peers we have never sent to, so the table stays readable.
+        if (s.sent == 0 && s.ackd == 0 && s.failed == 0) continue;
+        Serial.printf("  %4u %6lu %6lu %6lu %6lu %6lu\n", id,
+                      (unsigned long)s.sent,   (unsigned long)s.ackd,
+                      (unsigned long)s.retries,(unsigned long)s.failed,
+                      (unsigned long)s.unguaranteed);
+    }
+
+    WCBPeerStats t = wcb.getAggregateStats();
+    Serial.printf("  ALL  %6lu %6lu %6lu %6lu %6lu\n",
+                  (unsigned long)t.sent,   (unsigned long)t.ackd,
+                  (unsigned long)t.retries,(unsigned long)t.failed,
+                  (unsigned long)t.unguaranteed);
+    Serial.printf("  broadcast frames on the air: %lu\n",
+                  (unsigned long)wcb.getBroadcastSent());
+
+    // The invariant worth watching on the bench: ackd + failed + unguaranteed <= sent,
+    // per peer AND in the total, so this figure should never go negative. If it
+    // does, a pending slot is being settled twice — a library bug, not a lost
+    // packet. It should hover near 0 on an idle mesh and rise only briefly while
+    // commands are actually in the air.
+    Serial.printf("  in flight (sent - ackd - failed - unguaranteed): %ld\n",
+                  (long)t.sent - (long)t.ackd - (long)t.failed - (long)t.unguaranteed);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Serial menu.
 // ─────────────────────────────────────────────────────────────────────────────
 void printMenu() {
@@ -280,12 +331,22 @@ void printMenu() {
         "  r = sendRaw WCB1:port1           k = sendKyber (broadcast)\n"
         "  p = sendRawPacket WCB1           n = dump roster    o = online status\n"
         "  a = toggle auto-join             f = forgetPeer(demo id)   c = clearLearnedPeers\n"
+        "  t = delivery stats               z = reset delivery stats\n"
         "  x = toggle checksum              h = this help");
 }
 
 void handleKey(char c) {
     static bool checksumOn = true;
     switch (c) {
+        case 't': dumpStats(); break;
+
+        case 'z':
+            // Safe to call from loop(); it takes the pending-table lock, so do
+            // NOT call it from inside a receive callback.
+            wcb.resetStats();
+            Serial.println("[--] delivery stats reset");
+            break;
+
         case 'b': wcb.broadcast(":PP100"); Serial.println("[TX] broadcast :PP100"); break;
 
         case 'u':

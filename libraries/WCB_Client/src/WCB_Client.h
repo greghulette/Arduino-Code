@@ -49,6 +49,7 @@ class WCBStream;
 #define WCB_PACKET_COMMAND    0   // A text command (or raw binary) directed at a target
 #define WCB_PACKET_ACK        1   // Acknowledgement that a COMMAND was received
 #define WCB_PACKET_HEARTBEAT  2   // Periodic keepalive broadcast — no command payload
+#define WCB_PACKET_ETM_BOOT  11   // A WCB's "I just (re)booted" announce (matches firmware PACKET_TYPE_ETM_BOOT)
 #define WCB_PACKET_WDP       12   // WDP device-identity advert (matches firmware PACKET_TYPE_WDP)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +76,11 @@ constexpr uint8_t broadcast = 0;
 // Library limits
 // ─────────────────────────────────────────────────────────────────────────────
 #define WCB_MAX_BOARDS   20   // Maximum WCB IDs supported (1–20)
+#define WCB_MESH_CHANNEL  1   // Default ESP-NOW mesh channel (1–11). The ESP32 has ONE
+                              // radio, so this MUST match the channel every WCB is on or
+                              // this device is silently unreachable. If your fleet runs on
+                              // a non-default channel (set via ?WCBCH / the Wizard), call
+                              // setMeshChannel(ch) before begin() to match it.
 #define WCB_PENDING_MAX  10   // In-flight COMMAND slots tracked for ACK.
                               // Matches the WCB firmware's ETM_PENDING_MAX so
                               // client ensured traffic has the same depth as
@@ -84,8 +90,36 @@ constexpr uint8_t broadcast = 0;
 #define WCB_SPECIAL_ID   20   // Device ID 20 is an out-of-band slot for third-party
                               // devices that don't consume a WCB slot in the system.
                               // Requires specialPeerEnabled = true on the WCBs.
+
+// ── Bulk transfer (large opaque payloads streamed to consumer-owned storage) ──
+// A first-class facility for moving a payload too big to hold in RAM (e.g. a
+// >15 KB command library) across the mesh WITHOUT buffering it here: chunks are
+// handed to the consumer via callbacks that fire on the LOOP task, tracked by a
+// bitmask (no payload buffer), with a selective-NACK back-channel. See onBulk*.
+#define WCB_BULK_MAX_CHUNKS  512      // hard ceiling on chunks/transfer (bitmask sized to this)
+#define WCB_BULK_CHUNK_RAW    96      // decoded bytes per chunk (base64 → ~128 chars; envelope <=187 B)
+#define WCB_BULK_RING_DEPTH   16      // Core-0 (RX) → Core-1 (loop) hand-off ring slots
+#define WCB_BULK_MISS_MAX     20      // missing-chunk indices reported per STATUS
+#define WCB_BULK_DONECACHE     4      // completed sessions remembered (to re-answer a lost FINAL)
+#define WCB_BULK_TIMEOUT_MS 15000UL   // abort a session idle this long (no BEGIN/CHUNK/DONE frame)
+#define WCB_BULK_MASK_BYTES ((WCB_BULK_MAX_CHUNKS + 7) / 8)   // 64 bytes
+#define WCB_WDP_MAX_MAESTRO    9      // Local Maestro IDs this device can advertise
+                              // (mirrors the firmware's WDP_MAX_MAESTRO — the receive side
+                              // truncates to the same 9, so advertising more is wasted bytes).
 #define WCB_WDP_NEIGHBOR_TTL_MS 180000UL  // Drop a learned WDP neighbor after this
                               // long without an advert (~6 missed 30s cycles).
+#define WCB_WDP_TEMP_ADVERT_MS       15000UL  // A TEMPORARY device adverts faster than the 60s
+                              // backstop so peers notice it LEAVE quickly (it's transient by design).
+#define WCB_WDP_TEMP_NEIGHBOR_TTL_MS 50000UL  // Drop a TEMPORARY neighbor after this shorter silence
+                              // (~3 missed 15s temp adverts) so a powered-off relay clears from the
+                              // roster in <1 min instead of lingering the full ~3 min neighbor TTL.
+
+// ── Transmit watchdog (setTxWatchdog, 1.18.0) ───────────────────────────────
+#define WCB_TXWD_PROBE_MS   30000UL  // default: prove the mesh still hears this device this often
+#define WCB_TXWD_ANSWER_MS   2500UL  // a WCB answers a solicit within 0.6 s (WCB_WDP.cpp jitter); wait this long
+#define WCB_TXWD_RETRY_MS    5000UL  // once a probe goes unanswered, ask again this soon
+#define WCB_TXWD_MISSES      3       // unanswered probes in a row that make a stall (one lost frame is not)
+#define WCB_TXWD_HEARD_MS   15000UL  // a judge must have been heard this recently (WCB heartbeats are ~10 s)
 
 // ── Ensured-delivery (ETM) retransmit tuning ─────────────────────────────────
 // Applies ONLY to send()/broadcast() calls made with ensured=true. These values
@@ -162,6 +196,10 @@ typedef struct __attribute__((packed)) {
 #define WCB_MGMT_MAX_CHUNKS        16    // firmware MGMT_MAX_CHUNKS (uint16 mask)
 #define WCB_MGMT_CHUNK_LEN         179   // payload[180] minus NUL (firmware strncpy)
 #define WCB_MGMT_MAX_COMMAND_LEN   ((size_t)WCB_MGMT_CHUNK_LEN * WCB_MGMT_MAX_CHUNKS)
+#define WCB_MGMT_RX_TIMEOUT_MS     15000UL  // abandon a half-received fragment session after this
+                                            // silence. Matches the WCB firmware reassembly window;
+                                            // a sender needs only ~10 ms/chunk, so anything near this
+                                            // means the peer stopped or went away.
 
 typedef struct __attribute__((packed)) {
     char     structPassword[40];   // network password — must match all peers
@@ -174,6 +212,59 @@ typedef struct __attribute__((packed)) {
 } wcb_packet_mgmt_t;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Stored-sequence inventory request (see requestSequenceNames / onSequenceNames)
+//
+// Two packets, both byte-identical to the WCB firmware's espnow_struct_config_req
+// (43 B) and espnow_struct_config_frag (230 B). The firmware routes inbound ESP-NOW
+// BY SIZE and only then by packetType — CONFIG_REQ(5) and MGMT_FRAG_UNICAST(5) share
+// a type number and are told apart solely by 43 vs 226 bytes. So these sizes are
+// load-bearing: a stray field here silently routes the packet into another handler
+// (or nowhere). The static_asserts in WCB_Client.cpp pin them.
+//
+// Why names and not the whole config: the firmware's config pull carries sequence
+// VALUES and caps at 16 chunks (~2912 chars) for the ENTIRE board config, which a
+// real sequence set exhausts — and the target then sends NOTHING, with the "too
+// large" diagnostic behind a debug flag. An inventory is ~16 bytes per entry.
+// ─────────────────────────────────────────────────────────────────────────────
+#define WCB_PACKET_SEQ_REQ     13  // firmware PACKET_TYPE_SEQ_REQ     (this → target)
+#define WCB_PACKET_SEQ_FRAG    14  // firmware PACKET_TYPE_SEQ_FRAG    (target → this)
+#define WCB_PACKET_SEQVAL_REQ  15  // firmware PACKET_TYPE_SEQVAL_REQ  (this → target)
+#define WCB_PACKET_SEQVAL_FRAG 16  // firmware PACKET_TYPE_SEQVAL_FRAG (target → this)
+#define WCB_SEQ_PAYLOAD_SIZE  183  // firmware CONFIG_PAYLOAD_SIZE
+#define WCB_SEQ_MAX_CHUNKS    16   // firmware MGMT_MAX_CHUNKS (uint16 mask)
+#define WCB_SEQ_KEY_MAX       15   // NVS key limit — a longer key cannot be stored at all
+
+typedef struct __attribute__((packed)) {
+    char    structPassword[40];
+    uint8_t packetType;            // WCB_PACKET_SEQ_REQ
+    uint8_t targetWCB;             // board to ask
+    uint8_t requesterWCB;          // this device's ID — the target answers only this
+} wcb_packet_seq_req_t;
+
+// Single-sequence request (59 B). Separate from the 43-byte request above purely
+// because it must carry the key. Sending `?SEQ,GET,<key>` as an ordinary command
+// would NOT work: a command arriving over ESP-NOW does not carry its sender into
+// the firmware's handler, so the target could not tell who to answer.
+typedef struct __attribute__((packed)) {
+    char    structPassword[40];
+    uint8_t packetType;            // WCB_PACKET_SEQVAL_REQ
+    uint8_t targetWCB;
+    uint8_t requesterWCB;
+    char    key[16];               // NUL-terminated, ≤15 chars
+} wcb_packet_seqval_req_t;
+
+typedef struct __attribute__((packed)) {
+    char     structPassword[40];
+    uint8_t  packetType;           // WCB_PACKET_SEQ_FRAG
+    uint8_t  sourceWCB;            // board that answered
+    uint8_t  requesterWCB;         // who this is for
+    uint16_t sessionId;
+    uint8_t  chunkIdx;
+    uint8_t  totalChunks;
+    char     payload[WCB_SEQ_PAYLOAD_SIZE];
+} wcb_packet_seq_frag_t;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Internal state types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -183,7 +274,19 @@ typedef struct __attribute__((packed)) {
 struct WCBBoardStatus {
     bool          online;       // true = board has sent a recent heartbeat
     unsigned long lastSeenMs;   // millis() timestamp of the last heartbeat received
+    // ── Inbound COMMAND de-dup (anti-replay) window ──────────────────────────
+    // Drops an exact ETM retransmit (same structSequenceNumber) so a lost-ACK
+    // resend can't double-fire a command. `cmdSeqMask` bit i = "seq (cmdSeqHigh
+    // - (i+1)) was seen". Touched ONLY on the RX task (Core 0), so lock-free.
+    bool          haveCmdSeq = false;
+    uint16_t      cmdSeqHigh = 0;   // highest COMMAND seq seen from this board
+    uint32_t      cmdSeqMask = 0;   // 32-wide backlog of recently-seen older seqs
+    unsigned long seqResetMs = 0;   // millis() when a boot announce last cleared the window (0 = never)
 };
+
+// A rebooted WCB sends three boot announces ~1.2 s apart. The anti-replay window is cleared on the first one only;
+// later announces from the same board within this hold are presence only (see the WCB_PACKET_ETM_BOOT case).
+#define WCB_BOOT_RESET_HOLD_MS 4000
 
 // Tracks an in-flight COMMAND that is waiting for an ACK.
 // When an ACK arrives with a matching seqNum the slot is updated; a unicast
@@ -208,6 +311,68 @@ struct WCBPending {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Delivery statistics — per-peer ETM COMMAND accounting
+//
+// WHAT IS COUNTED: the COMMAND layer only — everything that goes through
+// send() / broadcast() / sendToSpecialPeer() and therefore carries a sequence
+// number that can be ACKd. That is the only outbound traffic with a delivery
+// signal to count.
+//
+// WHAT IS NOT COUNTED, DELIBERATELY: sendRaw() and sendKyber() — and so every
+// WCBStream / Maestro byte, usually the highest-volume class on the mesh —
+// plus sendRawPacket() (OTA), the MGMT chunks an oversized send() fragments
+// into, heartbeats, WDP adverts and outbound ACKs. None of them is ACKd, so
+// crediting `sent` for them would leave `ackd` permanently zero against a
+// climbing `sent`, which reads as a dead link rather than as "not measured".
+// An airtime metric, if it is ever wanted, needs its own counter — not this one.
+//
+// WHY sent AND retries ARE SEPARATE: `sent` counts COMMANDS, `retries` counts
+// EXTRA attempts, so sent + retries is the DELIVERY ATTEMPTS aimed at that peer.
+// Folding retries into `sent` would let a link that retries constantly show a
+// healthy-looking ackd/sent ratio while flooding the mesh.
+//   That is attempts, NOT frames on the air, and the two differ for broadcasts:
+// one ensured broadcast puts ONE frame up but credits `sent` to every board in
+// expected[], so summing sent+retries across peers over-counts the initial frame
+// by (N-1). Per-board RETRIES are genuinely separate unicast frames, so those do
+// count once each. getBroadcastSent() is the frame counter; use it, not this sum,
+// if what you want is airtime.
+//
+// INVARIANT, per peer AND in the aggregate:  ackd + failed + unguaranteed <= sent
+// The difference is commands still in flight. Observing the left side exceed
+// `sent` means a pending slot was settled twice — a bug in this library, not a
+// lost packet. What holds it together is that ONE predicate (_statExpects)
+// decides both who gets `sent` at send time and who may get `ackd`/`failed`
+// later; resetStats() re-credits `sent` for whatever is in flight for the same
+// reason. The one known exception is documented at resetStats()'s sibling gap:
+// a re-begin() wipes _pending[] without settling it, which loses outstanding
+// expectations (leaving a permanent "in flight" residue, not an inversion).
+struct WCBPeerStats {
+    uint32_t sent;     // COMMANDs aimed at this peer — INITIAL attempts only.
+                       // An ensured broadcast credits every board it expects to
+                       // ACK: it is a per-board guaranteed delivery, retried and
+                       // acknowledged per board, so it belongs to each of them.
+    uint32_t ackd;     // this peer's ACKs, counted once per command (a peer
+                       // re-ACKs every retransmit it hears — see _handleReceive)
+    uint32_t retries;  // resend attempts to this peer; N retries on one command
+                       // counts N
+    uint32_t failed;   // we stopped waiting for this peer's ACK without getting
+                       // one — retries exhausted, peer dropped offline, slot
+                       // evicted, or a best-effort unicast that timed out
+    uint32_t unguaranteed; // sent, but WITHOUT a delivery guarantee: it asked for
+                       // a pending slot and was denied one because the table was
+                       // saturated, so it was transmitted once and never tracked.
+                       // No ACK can ever match it, so it can never become ackd or
+                       // failed. Covers BOTH an ensured send losing its guarantee
+                       // and a best-effort unicast losing its ACK tracking.
+                       //
+                       // NOT "not sent" — the packet is on the air either way; the
+                       // pending table is a confirmation registry, not a TX queue.
+                       // Separate from `failed` on purpose: this is local
+                       // backpressure, not a link problem, and conflating them
+                       // sends someone to check antennas over a software condition.
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WDP discovery — a neighbor learned from a WDP advert
 //
 // Populated by the WDP consumer when another WCB (or a WCB_Client device that
@@ -225,10 +390,14 @@ struct WCBPending {
 #define WCB_CAP_PWM            0x0020
 #define WCB_CAP_CONTROLLER     0x0040
 #define WCB_CAP_MAESTRO_HOST   0x0080
+#define WCB_CAP_DFPLAYER       0x0100
 
 struct WCBNeighbor {
     bool          valid;             // slot holds a learned neighbor
     bool          isClient;          // a WCB_Client device (advertised a device type) vs a WCB
+    bool          temporary;         // advertised the WDP "temporary" flag (WCB_WDP_ADVFLAG_TEMPORARY):
+                                     // track as a live neighbor but NEVER learn/persist it (drops on
+                                     // silence via getNeighbor()->null, and on reboot). See _handleWdpAdvert.
     uint8_t       wcbNumber;         // 1..WCB_MAX_BOARDS
     char          name[25];          // WCB alias, or the client's device type
     char          fw[28];            // firmware version string
@@ -240,6 +409,13 @@ struct WCBNeighbor {
     uint8_t       maestroIds[9];     // this board's local Maestro IDs
     uint8_t       maestroCount;
     char          portLabels[5][25]; // advertised serial-port labels ("" = unlabeled)
+    // Fingerprint of this board's STORED SEQUENCE inventory (WDP TLV 0x13).
+    // Changes whenever a sequence is saved, renamed or erased on that board, so a
+    // consumer can cache the name list from requestSequenceNames() and re-pull only
+    // when this moves — instead of polling. 0 = not advertised (firmware older than
+    // the TLV); it does NOT mean "no sequences", because an EMPTY inventory hashes
+    // to the FNV-1a basis 0x811C9DC5.
+    uint32_t      seqHash;
     unsigned long lastSeenMs;        // millis() of the last advert heard
 };
 
@@ -260,6 +436,30 @@ typedef void (*WCBCommandCallback)(uint8_t senderID, const char* command);
 // callback is registered — use isOnline() to poll status at any time.
 typedef void (*WCBStatusCallback)(uint8_t wcbID, bool online);
 
+// ── Transmit watchdog (1.18.0, setTxWatchdog) ────────────────────────────────
+// Called when the watchdog's level changes. Runs from update() - the LOOP task -
+// so flash, NVS, allocation and even a restart are safe inside it.
+//   level 1 : boards this device still hears have stopped answering it (WDP
+//             solicits drew no advert and no ACK came, WCB_TXWD_MISSES probes in a
+//             row); the library has just restarted ESP-NOW and put the mesh MAC back
+//   level 2 : still unanswered WCB_TXWD_MISSES probes after that restart - the
+//             library cannot fix it from here, and a reboot of this device may. It
+//             fires again after every further restart the library tries.
+//   level 0 : answered again (after a level 1 or 2)
+//   stalledMs : how long the mesh has not answered (for level 0: how long it was)
+typedef void (*WCBTxStallCallback)(uint8_t level, uint32_t stalledMs);
+
+// A snapshot of the transmit watchdog (getTxWatchStatus).
+struct WCBTxWatchStatus {
+    bool     enabled;
+    uint8_t  level;         // 0 answered, 1 ESP-NOW restarted, 2 still unanswered after that
+    uint8_t  misses;        // probes in a row that drew no answer
+    uint32_t probes;        // WDP solicits the watchdog has sent
+    uint32_t restarts;      // ESP-NOW restarts the watchdog has made
+    uint32_t sendErrors;    // esp_now_send() calls that returned an error, all senders
+    uint32_t sinceProofMs;  // ms since the mesh last showed it hears this device; 0xFFFFFFFF = never
+};
+
 // Called for any received ESP-NOW packet whose size is NOT the standard
 // wcb_packet_etm_t (252 B) — e.g. an application layer's own structs (the
 // NaviCore OTA control/data packets are 55/243 B). The packet has already
@@ -275,6 +475,72 @@ typedef void (*WCBRawPacketCallback)(const uint8_t* mac, const uint8_t* data, in
 // (WiFi) task — keep it minimal; poll getNeighbor() from loop() for heavier
 // work. `nb` is valid only for the duration of the call.
 typedef void (*WCBNeighborCallback)(const WCBNeighbor& nb);
+
+// Called when a board answers requestSequenceNames() with its stored-sequence
+// inventory. FIRES ON THE LOOP TASK (from update()), so it is safe to do real work
+// (allocate, touch flash, rebuild a UI model) inside it.
+//   wcbNumber : the board that answered
+//   hash      : inventory fingerprint — the same value that board advertises as
+//               WCBNeighbor::seqHash. Cache it; re-request only when it changes.
+//   count     : number of sequence names
+//   names     : comma-separated key list, NUL-terminated ("" when count == 0).
+//               Keys can never contain a comma (the firmware takes a stored key as
+//               everything before the first comma), so a plain split is safe.
+// `names` points at library-owned memory that is freed when the callback returns —
+// copy anything you need to keep.
+typedef void (*WCBSequenceNamesCallback)(uint8_t wcbNumber, uint32_t hash,
+                                         uint16_t count, const char* names);
+
+// Outcome of a requestSequence() — the target distinguishes these explicitly rather
+// than answering with silence, which is what makes the config-pull path unusable.
+enum WCBSeqStatus : uint8_t {
+    WCB_SEQ_OK       = 0,   // `value` holds the sequence
+    WCB_SEQ_NOTFOUND = 1,   // no such key on that board (`value` empty)
+    WCB_SEQ_TOOBIG   = 2,   // stored value exceeds what one reply can carry (`value` empty)
+};
+
+// Called when a board answers requestSequence() with ONE sequence's contents.
+// FIRES ON THE LOOP TASK (from update()) — safe to allocate / touch flash.
+//   wcbNumber : the board that answered
+//   key       : the sequence key that was asked for (echoed back, so a consumer
+//               walking a list can match the answer to its request)
+//   status    : see WCBSeqStatus — always check this before trusting `value`
+//   value     : the stored sequence, NUL-terminated; "" unless status is WCB_SEQ_OK.
+//               Commands inside it are separated by the board's delimiter
+//               (normally '^'), and `***` marks an inline comment.
+// `key` and `value` point at library-owned memory freed when the callback
+// returns — copy anything you need to keep.
+typedef void (*WCBSequenceValueCallback)(uint8_t wcbNumber, const char* key,
+                                         WCBSeqStatus status, const char* value);
+
+// ── Bulk-transfer callbacks (see onBulkBegin/onBulkChunk/onBulkComplete) ──────
+// ALL THREE FIRE ON THE LOOP TASK (from update()), never the RX/WiFi task, so the
+// consumer may safely do flash I/O inside them. The library owns the wire framing,
+// the completion bitmask, de-dup, timeout and the selective-NACK back-channel; the
+// consumer owns storage. The library never buffers the payload.
+//
+// onBulkBegin: a transfer is starting. Open/prepare your sink (e.g. a tmp file
+//   pre-extended to totalLen). RETURN true to accept, false to reject (the library
+//   NAKs the sender with FINAL ok=0 and no session is created).
+//     senderID    : WCB that is sending (the relay for bridged tool traffic)
+//     sid         : session id (nonce chosen by the sender)
+//     totalLen    : total payload bytes
+//     totalChunks : number of fixed-size chunks
+//     hash        : FNV-1a the sender expects the reassembled payload to have
+//     tag         : routing tag from the sender (e.g. "cmdlib")
+typedef bool (*WCBBulkBeginCallback)(uint8_t senderID, uint16_t sid, uint32_t totalLen,
+                                     uint16_t totalChunks, uint32_t hash, const char* tag);
+
+// onBulkChunk: write `len` bytes at byte `offset` (= chunkIndex * WCB_BULK_CHUNK_RAW).
+// Fires once per DISTINCT chunk (duplicates are already dropped). Data is valid
+// only for the call.
+typedef void (*WCBBulkChunkCallback)(uint16_t sid, uint32_t offset, const uint8_t* data, uint16_t len);
+
+// onBulkComplete: `allReceived` true = every chunk arrived — verify your hash and
+//   commit (rename tmp→final); RETURN true if it verified + persisted, false if not.
+//   `allReceived` false = the transfer was aborted/timed out — clean up (delete tmp)
+//   and the return value is ignored. The library sends the sender FINAL ok=<return>.
+typedef bool (*WCBBulkCompleteCallback)(uint16_t sid, bool allReceived, uint32_t totalLen, uint32_t hash);
 
 
 // =============================================================================
@@ -298,7 +564,10 @@ public:
     // password    : network password — must match all WCBs  (max 39 chars)
     // wcb_quantity: total WCBs in the system (?WCBQ value)
     // device_id   : this device's unique ID on the network
-    //               1–19 : must be <= wcb_quantity; WCBs pre-register this MAC
+    //               1–19 : any id here is allowed. If <= wcb_quantity the WCBs
+    //                       pre-register this MAC. If > wcb_quantity it's reachable
+    //                       INBOUND only after the floor boards auto-join it from
+    //                       its WDP advert — call setIdentity() (begin() warns).
     //               20   : special out-of-band slot (requires specialPeerEnabled
     //                       on the WCBs, does not consume a WCB slot)
     // commandCb   : optional — called when a command is received from the network
@@ -314,6 +583,13 @@ public:
     // register all WCB peers, and begin the heartbeat timer.
     // Call once from setup(). Returns true on success.
     // On failure the library prints a descriptive error to Serial.
+    //
+    // AP coexistence: if a SoftAP is already up (WiFi.softAP() called BEFORE
+    // begin()), it is preserved — WiFi is switched to WIFI_AP_STA instead of
+    // WIFI_STA, and ESP-NOW rides the AP's radio channel (AP and STA share one
+    // channel on the ESP32). Bring up the AP first with the channel you want
+    // the whole WCB mesh to use; calling softAP() AFTER begin() also works
+    // (Arduino's WiFi.mode() ORs in WIFI_AP without dropping STA).
     bool begin();
 
     // ── Main loop ────────────────────────────────────────────────────────────
@@ -430,6 +706,56 @@ public:
     // the target is reachable before dispatching a critical command.
     bool isOnline(uint8_t wcb_number);
 
+    // ── Delivery statistics ──────────────────────────────────────────────────
+    // Read-only counters for the ETM COMMAND layer. See WCBPeerStats above for
+    // exactly what is and is not counted, and for the per-peer invariant.
+    //
+    // These are diagnostics, not control flow: use them to see which links are
+    // healthy, not to decide whether to send. Cheap enough to poll from loop().
+
+    // Counters for one peer, 1..WCB_MAX_BOARDS. An out-of-range id returns a
+    // zeroed struct rather than failing, so a telemetry loop can call it blind.
+    //
+    // Returned BY VALUE: 20 bytes is five words, trivial next to a radio send,
+    // and a reference would hand the caller a live view of state the ESP-NOW
+    // receive task mutates underneath it.
+    //
+    // NOT LOCKED, deliberately. Each counter is an aligned 32-bit word, so a
+    // single load cannot tear on this MCU — do NOT "fix" this by adding a lock,
+    // it would put the loop task in contention with the RX callback for the
+    // pending-table spinlock. The honest caveat is one level up: the five
+    // fields are read one at a time, so the struct is a near-instant sample and
+    // not a mutually consistent snapshot (a peer's ackd may include an ACK that
+    // landed just after its sent was read). Harmless for telemetry.
+    WCBPeerStats getPeerStats(uint8_t wcbID) const;
+
+    // Totals across all peers. Computed on demand — a second running total
+    // would be a second thing to get wrong, and summing 20 peers costs nothing
+    // next to a radio send. Same snapshot caveat as getPeerStats().
+    //
+    // The invariant holds in the aggregate exactly as it does per peer, because
+    // `ackd` is gated on the same _statExpects predicate that granted `sent`.
+    // The deliberate consequence: a board that was OFFLINE when an ensured
+    // broadcast went out still hears it and ACKs, and that ACK is discarded
+    // rather than counted. It is real evidence the board is reachable, but it
+    // has no matching `sent` and counting it would make ackd exceed sent for a
+    // peer we never aimed at. Reachability is what getNeighbor()/isOnline() are
+    // for; these counters answer "did what I sent arrive", not "who is out there".
+    WCBPeerStats getAggregateStats() const;
+
+    // Broadcast COMMAND frames put on the air — a FRAME counter, not a delivery
+    // counter, and NOT a subset of any peer's `sent`. One ensured broadcast is
+    // one frame here AND one `sent` against each board expected to ACK it; a
+    // best-effort broadcast is one frame here and nothing per-peer, because
+    // nothing about its delivery is observable.
+    uint32_t getBroadcastSent() const;
+
+    // Zero every counter. Without this a board that had one bad hour looks bad
+    // forever and the ratios stop meaning anything. Takes the pending-table
+    // lock (it races the RX task's ackd increment), so call it from loop(),
+    // not from inside a receive callback.
+    void resetStats();
+
     // ── Special peer (NaviCore) ────────────────────────────────────────────────
 
     // Enable two-way communication with the out-of-band "special peer" — e.g.
@@ -456,6 +782,49 @@ public:
     // never called.
     bool sendToSpecialPeer(const char* command, bool ensured = true);
 
+    // ── Transmit watchdog (1.18.0) ─────────────────────────────────────────────
+    //
+    // Off by default. A device can go on HEARING the mesh while nothing it sends
+    // arrives: NaviCore did, for 20 minutes, after ten minutes of heavy relayed
+    // traffic (WCB repo HIL run 20261014-084137) - every WCB listed it offline and
+    // dropped out of its WDP table while its own roster showed them all online, and
+    // only a reboot brought it back. Nothing on the device could see it, because
+    // broadcasts are never acknowledged.
+    //
+    // With the watchdog on, the library proves every `probeIntervalMs` that the mesh
+    // still hears this device, using only what WCBs already do: it broadcasts a WDP
+    // SOLICIT (as ?WDP,POLL does) and expects a fresh advert from a board within
+    // WCB_TXWD_ANSWER_MS - a WCB answers a solicit within 0.6 s and prints nothing
+    // unless ?DEBUG,MGMT is on. An ACK to any send counts as proof too, and makes the
+    // next probe unnecessary. Only boards heard within WCB_TXWD_HEARD_MS that have
+    // advertised before are asked, so a fleet with WDP off, or with nobody around,
+    // is never judged. WCB_TXWD_MISSES unanswered probes in a row (WCB_TXWD_RETRY_MS
+    // apart once one is missed) restart ESP-NOW and put the mesh MAC back (level 1);
+    // as many more after that report level 2 to onTxStall(), where the app decides
+    // whether to reboot. Every level change is printed with the radio's MAC,
+    // channel, send errors and internal heap, so the cause can be read off the log.
+    //
+    // Cost while healthy: one ~10-byte broadcast per interval and one advert back
+    // from each board. Call after begin() or before it.
+    //   probeIntervalMs : 5000 - 600000 (clamped); default WCB_TXWD_PROBE_MS
+    void setTxWatchdog(bool enabled, uint32_t probeIntervalMs = WCB_TXWD_PROBE_MS);
+
+    // Register or replace the watchdog's level-change callback (see
+    // WCBTxStallCallback). Fires on the LOOP task, from update().
+    void onTxStall(WCBTxStallCallback callback);
+
+    // A snapshot of the watchdog's counters. Safe from loop().
+    WCBTxWatchStatus getTxWatchStatus() const;
+
+    // TEST ONLY - a fault injector for hardware-in-the-loop tests. Every frame this
+    // library would send is reported as sent and never handed to the radio, as a
+    // wedged radio's would be:
+    //   mode 1 : until the watchdog's next ESP-NOW restart (the recovery it can make)
+    //   mode 2 : until reboot (the case only a reboot fixes)
+    //   mode 0 : off
+    // RAM only. Never call it in a shipping sketch.
+    void debugTxWedge(uint8_t mode);
+
     // ── Callbacks ────────────────────────────────────────────────────────────
 
     // Register or replace the command callback after construction.
@@ -481,6 +850,15 @@ public:
     // the neighbor table is maintained regardless; poll it with getNeighbor().
     void onNeighbor(WCBNeighborCallback callback);
 
+    // ── Bulk transfer (large opaque payloads → consumer storage) ───────────────
+    // Register the three bulk callbacks (see the typedefs above). All fire on the
+    // LOOP task from update(), so flash I/O inside them is safe. Registering
+    // onBulkBegin is what ARMS bulk interception: until a begin-callback is set,
+    // bb/bc/bd envelopes fall through to the ordinary command callback.
+    void onBulkBegin(WCBBulkBeginCallback callback);
+    void onBulkChunk(WCBBulkChunkCallback callback);
+    void onBulkComplete(WCBBulkCompleteCallback callback);
+
     // Return the learned neighbor with this WCB number (1..WCB_MAX_BOARDS), or
     // nullptr if none has been heard (or it aged out). Do not retain the pointer
     // across update() calls.
@@ -488,6 +866,83 @@ public:
 
     // Number of neighbors currently in the table.
     uint8_t neighborCount();
+
+    // ── Stored-sequence inventory ──────────────────────────────────────────────
+
+    // Register the callback fired when a board answers requestSequenceNames().
+    // Registering it also ARMS interception of the response packets: until a
+    // callback is set, SEQ_FRAG packets fall through to onRawPacket() exactly as
+    // before, so a sketch that doesn't use this is completely unaffected.
+    void onSequenceNames(WCBSequenceNamesCallback callback);
+
+    // Ask WCB `wcbNumber` for the NAMES of its stored sequences (?SEQ keys) — not
+    // their contents. The reply arrives asynchronously on the callback above,
+    // typically within ~100 ms on a quiet mesh.
+    //
+    // The request is broadcast three times (a first frame to a board is routinely
+    // dropped on a busy mesh); the target dedups within 1.5 s, so this still yields
+    // exactly ONE response. Only one request may be in flight at a time — a second
+    // call while one is pending returns false rather than corrupting reassembly.
+    // A request that gets no complete answer within ~4 s is abandoned silently;
+    // just call again.
+    //
+    // Returns false if: not started, `wcbNumber` out of range, a request is already
+    // pending, no callback registered, or the reassembly buffer couldn't be
+    // allocated (~3 KB, held only while the request is in flight).
+    bool requestSequenceNames(uint8_t wcbNumber);
+
+    // True while a requestSequenceNames() or requestSequence() is awaiting its
+    // reply. Both share one reassembly slot, so this gates either kind.
+    bool sequenceNamesPending() const { return _seqPending; }
+
+    // Register the callback fired when a board answers requestSequence().
+    // Like onSequenceNames(), registering it also arms interception of the reply.
+    void onSequenceValue(WCBSequenceValueCallback callback);
+
+    // Fetch ONE sequence's full contents from `wcbNumber` by key.
+    //
+    // Deliberately one at a time. A single value is bounded (~1800 chars, about 10
+    // of the 16 available chunks) but the whole set is not — pull the name list with
+    // requestSequenceNames() and walk it, which has no aggregate ceiling, fetches
+    // lazily, and resumes cleanly if a board drops mid-walk.
+    //
+    // Shares the single in-flight slot with requestSequenceNames(): returns false if
+    // either is already pending. Same ~4 s silent abandon.
+    //
+    // Returns false if: not started, `wcbNumber` out of range, key empty or longer
+    // than WCB_SEQ_KEY_MAX, a request is already pending, no callback registered, or
+    // the reassembly buffer couldn't be allocated.
+    bool requestSequence(uint8_t wcbNumber, const char* key);
+
+    // ── Writing sequences ─────────────────────────────────────────────────────
+
+    // Save (create or overwrite) a stored sequence on `wcbNumber`.
+    //
+    // `value` is the sequence body: commands separated by the board's delimiter
+    // (normally '^'), e.g. ";M1,1^;S5,<CA1021>". `***text` in a part is an inline
+    // comment, kept in storage and stripped at recall.
+    //
+    // Sent as a normal command, so it rides the library's automatic fragmentation
+    // (up to WCB_MGMT_MAX_COMMAND_LEN) and the firmware's `?SEQ,SAVE` parser, which
+    // deliberately does NOT split on the '^' characters inside the value. It is
+    // delivered with UNICAST semantics, so it applies to that board only rather than
+    // fanning out across the mesh.
+    //
+    // FIRE AND FORGET at the API level. There is no per-save reply packet — confirm
+    // it landed by watching the target's WCBNeighbor::seqHash change (WDP
+    // re-advertises within ~500 ms of the write) or by reading the value back with
+    // requestSequence(). The hash covers stored VALUES as well as names, so an
+    // in-place edit moves it too.
+    //
+    // Returns false if: not started, `wcbNumber` out of range, key empty / longer
+    // than WCB_SEQ_KEY_MAX / containing a comma (the firmware takes the key as
+    // everything before the first comma, so one would silently truncate it), value
+    // empty, or the assembled command exceeds what send() can fragment.
+    bool saveSequence(uint8_t wcbNumber, const char* key, const char* value);
+
+    // Delete one stored sequence from `wcbNumber` (the firmware's ?SEQ,CLEAR,<key>).
+    // Same fire-and-forget contract and same key validation as saveSequence().
+    bool deleteSequence(uint8_t wcbNumber, const char* key);
 
     // Auto-join (default ON): when this device decodes a WDP advert from a node
     // it isn't already peered with — a WCB OR a client device (mesh monitor, other
@@ -585,6 +1040,15 @@ public:
     // Note: enabling checksum reduces the usable command length from 200 to ~188 chars.
     void setChecksum(bool enabled);
 
+    // Set the ESP-NOW mesh channel this device expects the WCBs to be on (1–11).
+    // The ESP32 has one radio, so this device can only hear the mesh if it sits on
+    // the same channel. Best called BEFORE begin() if your fleet runs on a
+    // non-default channel (changed via ?WCBCH / the Wizard). Calling it AFTER
+    // begin() also works when no SoftAP is active — it re-pins the radio live.
+    // With a SoftAP active (which owns the channel) begin() and update() instead
+    // WARN if the radio ends up on the wrong channel. Default: WCB_MESH_CHANNEL (1).
+    void setMeshChannel(uint8_t channel);
+
     // ── Device identity (WDP discovery) ────────────────────────────────────
 
     // Advertise this device's identity on the WCB mesh via WDP so every WCB
@@ -609,6 +1073,37 @@ public:
     // is the WCB factory default).
     void setIdentity(const char* type, const char* fw,
                      const char* hwRev = nullptr, const char* caps = nullptr);
+
+    // Mark this device as a TEMPORARY mesh peer. When set, the WDP advert
+    // carries a flag telling every WCB to adopt this device live but NOT permanently:
+    // reachable while it keeps advertising, dropped after it goes silent (~3 min) and on
+    // reboot, and never written to the WCB's persisted peer list. Use for occasional
+    // devices — e.g. a management relay — that shouldn't become a permanent fixture.
+    // Default off (permanent auto-join). Call before/with setIdentity() so the boot-burst
+    // advert already carries it; a later change takes effect on the next periodic advert.
+    void setTemporary(bool temporary) { _wdpTemporary = temporary; }
+
+    // Advertise a label for one of THIS device's serial ports (port 1-5) in the WDP
+    // advert, so WCBs + the Wizard show what's attached to it — the same PORTLABEL
+    // TLV the WCB boards emit. Empty/null clears that port. A change re-broadcasts
+    // promptly (short burst); no-op if the label is unchanged.
+    void setPortLabel(uint8_t port, const char* label);
+
+    // Advertise the Maestro controllers THIS device hosts locally, so every WCB
+    // learns where they live and can build a remote-Maestro target for them —
+    // the same WDP MAESTRO / MAESTRO_CFG TLVs the WCB boards emit for their own.
+    // `ids` are the mesh-facing Maestro IDs (1-9, the number in ;M<id>), `bauds`
+    // the wire baud of each one's serial bus; both arrays are `count` long and
+    // are copied. count 0 (or ids == nullptr) clears the advert.
+    //
+    // A baud outside the WDP table advertises as "unknown": receivers still SEE
+    // the Maestro but won't auto-configure a proxy for it, since they'd have no
+    // safe rate to open it at. Supported: 110, 300, 600, 1200, 2400, 9600, 14400,
+    // 19200, 38400, 57600, 115200, 128000, 256000.
+    //
+    // Like setPortLabel(), an unchanged set is a no-op and a change re-broadcasts
+    // promptly. Call it again whenever the local Maestro set or its baud changes.
+    void setMaestroIds(const uint8_t* ids, uint8_t count, const uint32_t* bauds = nullptr);
 
 
 private:
@@ -640,6 +1135,18 @@ private:
     // apply in _handleReceive). Only _seqCounter needs to stay separately atomic.
     portMUX_TYPE   _pendingMux = portMUX_INITIALIZER_UNLOCKED;
 
+    // ── Delivery statistics ──────────────────────────────────────────────────
+    // Accumulated at the pending table's existing hook points (see WCBPeerStats).
+    // Written ONLY with _pendingMux held — `ackd` is incremented on the RX task
+    // while `sent`/`retries` are incremented on the loop task, and the lock that
+    // already serialises those two contexts covers the counters for free. Read
+    // unlocked by the accessors. Costs a MEASURED 400 B (examples/AllFeatures,
+    // esp32s3: 54944 -> 55344 B of globals) — 20 peers x 20 B, with the scalar
+    // absorbed into existing padding. Lands in .bss on a global-scope client,
+    // on the internal-SRAM heap for NaviCore, which allocates the client.
+    WCBPeerStats   _stats[WCB_MAX_BOARDS] = {};
+    uint32_t       _statBroadcastSent     = 0;
+
     // ── ETM state ────────────────────────────────────────────────────────────
     // Atomic: the sequence number is incremented from BOTH cores — the main
     // loop (send()/broadcast() via the application) AND the ESP-NOW receive
@@ -647,16 +1154,55 @@ private:
     // A non-atomic ++ races and can hand the same sequence number to two
     // packets, causing the receiver's duplicate-detection to silently drop
     // one of them.  std::atomic<uint16_t> is lock-free on Xtensa.
-    std::atomic<uint16_t> _seqCounter;  // monotonic per-COMMAND sequence number
+    // Explicitly zero-initialised for hygiene: a default-initialised std::atomic
+    // holds an INDETERMINATE value, and a heap-allocated client (NaviCore does
+    // `new WCB_Client(...)`) does not get the static zeroing a global gets.
+    // begin() also assigns 0 before anything can send — send()/broadcast() bail
+    // on !_started — so this closes a window that is currently unreachable
+    // rather than a live bug. Left in so it stays unreachable.
+    std::atomic<uint16_t> _seqCounter{0};  // monotonic per-COMMAND sequence number
     unsigned long _nextHeartbeatMs;  // millis() when the next heartbeat is due
+    uint8_t       _bootAnnouncesLeft  = 0;   // boot announces still to send (3 at begin())
+    unsigned long _nextBootAnnounceMs = 0;   // millis() when the next one is due
 
     // ETM timing — defaults match WCB firmware factory defaults.
     // Changing these here without matching changes on the WCBs will cause
     // incorrect online/offline detection timing.
     uint16_t _heartbeatIntervalSec = 10;  // How often to send a heartbeat (seconds)
-    uint8_t  _missedBeforeOffline  = 3;   // Missed heartbeats before marking offline
+    uint8_t  _missedBeforeOffline  = 5;   // Missed heartbeats before marking offline (10s beat x 5 = 50s; widened from 3/30s so a couple of lost/collided broadcast heartbeats on a busy mesh don't flap a live board out of the roster)
 
     bool _checksumEnabled = true;  // CRC32 on/off — must match ?ETM,CHKSM on WCBs
+
+    // ── Mesh channel ─────────────────────────────────────────────────────────
+    uint8_t       _meshChannel       = WCB_MESH_CHANNEL;  // expected ESP-NOW channel (1–13)
+    uint8_t       _lastWarnedChannel = 0;                 // last off-channel value we warned about (0 = none)
+    unsigned long _lastChannelWarnMs = 0;                 // millis() of the last mismatch warning (rate-limit)
+
+    // ── Transmit watchdog (setTxWatchdog) ────────────────────────────────────
+    // _txwdProofMs/_txwdAdvertMs are written on the RX task and read on the loop
+    // task: single aligned words, compared with rollover-safe subtraction.
+    bool                   _txwdEnabled  = false;
+    uint32_t               _txwdProbeMs  = WCB_TXWD_PROBE_MS;
+    unsigned long          _txwdNextMs   = 0;   // next probe due
+    unsigned long          _txwdSentMs   = 0;   // the outstanding probe's send time (0 = none)
+    volatile unsigned long _txwdProofMs  = 0;   // RX task: an ACK arrived (the mesh hears us)
+    volatile unsigned long _txwdAdvertMs = 0;   // RX task: a board's WDP advert arrived
+    uint8_t                _txwdMisses   = 0;   // unanswered probes in a row
+    uint8_t                _txwdLevel    = 0;   // 0 answered, 1 ESP-NOW restarted, 2 still unanswered
+    unsigned long          _txwdStallMs  = 0;   // when the first unanswered probe went out (0 = none)
+    uint32_t               _txwdProbes   = 0;
+    uint32_t               _txwdRestarts = 0;
+    volatile uint32_t      _txSendErrors = 0;   // every sender, both tasks
+    volatile uint8_t       _txWedge      = 0;   // debugTxWedge: 0 off, 1 until an ESP-NOW restart, 2 until reboot
+    WCBTxStallCallback     _txStallCb    = nullptr;
+
+    esp_err_t _espSend(const uint8_t* mac, const uint8_t* data, size_t len);   // EVERY send goes through here
+    void      _txWatchTick(unsigned long now);
+    bool      _txHaveJudge(unsigned long now) const;   // a board heard lately that has advertised before
+    void      _txWatchAnswered(unsigned long now);
+    void      _txWatchLevel(uint8_t level, unsigned long now);
+    void      _sendWdpSolicit();
+    void      _restartEspNow();
 
     // ── WDP device-identity advert ───────────────────────────────────────────
     // Set via setIdentity(); broadcast on the mesh as WCB_PACKET_WDP so WCBs
@@ -665,6 +1211,11 @@ private:
     char          _wdpFw[28]       = "";  // firmware version string
     char          _wdpHwRev[16]    = "";  // hardware revision ("" = omit)
     char          _wdpCaps[49]     = "";  // space-separated capability tags ("" = omit)
+    char          _wdpPortLabels[5][25] = {{0}};  // this device's OWN per-serial-port labels (WDP PORTLABEL TLVs); "" = omit that port
+    uint8_t       _wdpMaestroIds[WCB_WDP_MAX_MAESTRO]  = {0};  // this device's OWN local Maestro IDs (setMaestroIds)
+    uint8_t       _wdpMaestroCodes[WCB_WDP_MAX_MAESTRO] = {0}; // baud wire-code per id (0xFF = unknown/unadvertisable)
+    uint8_t       _wdpMaestroCount = 0;   // 0 = omit the Maestro TLVs entirely
+    bool          _wdpTemporary    = false;  // advertise the "temporary peer" flag (see setTemporary)
     uint8_t       _wdpBootLeft     = 0;   // remaining boot-burst adverts
     unsigned long _wdpNextBootMs   = 0;   // next boot-burst advert due
     unsigned long _wdpNextAdvertMs = 0;   // next periodic backstop advert due
@@ -674,6 +1225,57 @@ private:
     WCBStatusCallback    _statusCallback    = nullptr;
     WCBRawPacketCallback _rawPacketCallback = nullptr;
 
+    // ── Bulk transfer state (facility owns transport; consumer owns storage) ──
+    WCBBulkBeginCallback    _bulkBeginCb    = nullptr;  // set → bulk interception armed
+    WCBBulkChunkCallback    _bulkChunkCb    = nullptr;
+    WCBBulkCompleteCallback _bulkCompleteCb = nullptr;
+
+    // One active session (single-flight for v1). No payload buffer — just a bitmask.
+    // Touched ONLY on the loop task (from update()); the RX task never reads/writes it.
+    struct WCBBulkRx {
+        bool          active   = false;
+        uint8_t       senderID = 0;
+        uint16_t      sid      = 0;
+        uint16_t      total    = 0;    // chunk count (n)
+        uint16_t      got      = 0;    // distinct chunks written (== popcount(mask))
+        uint16_t      round    = 0;    // last DONE round seen (echoed in STATUS/FINAL)
+        uint32_t      totalLen = 0;    // t
+        uint32_t      hash     = 0;    // h expected
+        unsigned long lastMs   = 0;    // millis() of the last frame for this session
+        uint8_t       mask[WCB_BULK_MASK_BYTES] = {0};
+    } _bulkRx;
+
+    // Completed-session cache: re-answer a re-DONE whose FINAL was lost.
+    struct WCBBulkDone {
+        bool          used = false;
+        uint8_t       senderID = 0;
+        uint16_t      sid = 0;
+        bool          ok = false;
+        uint32_t      hash = 0;
+        unsigned long ts = 0;
+    } _bulkDone[WCB_BULK_DONECACHE];
+
+    // Core-0 (RX) → Core-1 (loop) typed hand-off ring. Guarded by _bulkMux so the
+    // producer (RX) and consumer (loop) never tear a slot across cores.
+    struct WCBBulkMsg {
+        uint8_t  type;      // 0=BEGIN 1=CHUNK 2=DONE
+        uint8_t  senderID;
+        uint16_t sid;
+        uint16_t total;     // BEGIN: n
+        uint16_t q;         // CHUNK: index
+        uint16_t round;     // DONE: round
+        uint16_t len;       // CHUNK: decoded byte length
+        uint32_t totalLen;  // BEGIN: t
+        uint32_t hash;      // BEGIN: h
+        char     tag[12];   // BEGIN: routing tag
+        uint8_t  data[WCB_BULK_CHUNK_RAW];  // CHUNK: decoded bytes
+    };
+    WCBBulkMsg        _bulkRing[WCB_BULK_RING_DEPTH];
+    volatile uint16_t _bulkRingHead = 0;   // producer index (RX task)
+    volatile uint16_t _bulkRingTail = 0;   // consumer index (loop task)
+    portMUX_TYPE      _bulkMux = portMUX_INITIALIZER_UNLOCKED;
+    unsigned long     _bulkNbLastMs = 0;   // rate-limit for need-begin NAKs
+
     // ── WDP consumer ──────────────────────────────────────────────────────────
     WCBNeighborCallback  _neighborCallback = nullptr;
     WCBNeighbor          _neighbors[WCB_MAX_BOARDS] = {};   // learned mesh neighbors, indexed by (wcbNumber-1)
@@ -681,6 +1283,7 @@ private:
     bool                 _learnedPeer[WCB_MAX_BOARDS] = {}; // auto-joined ids (beyond 1..quantity)
     uint8_t              _advertCount[WCB_MAX_BOARDS] = {}; // WDP adverts heard per board (join needs >=2)
     volatile bool        _pendingJoin[WCB_MAX_BOARDS] = {}; // flagged in RX callback, drained in update() (loop task)
+    volatile bool        _pendingReplyPeer[WCB_MAX_BOARDS] = {}; // RX-callback flag: an authenticated above-floor sender we can't unicast to yet; update() adds it as a transient ESP-NOW peer (no NVS) so we can ACK/reply immediately
 
     // ── WCBStream registry ───────────────────────────────────────────────────
     // WCBStream instances self-register here during construction so update()
@@ -730,6 +1333,11 @@ private:
 
     // Build and broadcast a HEARTBEAT packet so all WCBs know this device is alive.
     void _sendHeartbeat();
+    void _sendBootAnnounce();   // clears this device's duplicate ring on every WCB that hears it
+
+    // Compare the radio's current channel to _meshChannel; emit a rate-limited
+    // warning if they differ (a hosted SoftAP can move the radio off the mesh).
+    void _checkMeshChannel();
 
     // ── WDP device-identity advert helpers ───────────────────────────────────
     // Build the WDP TLV payload (magic + proto + DEVTYPE/FWVER/HWREV/CAPTAGS +
@@ -801,6 +1409,36 @@ private:
     // has either ACK'd or dropped offline (so we no longer wait on it).
     bool _ensuredComplete(const WCBPending& p) const;
 
+    // ── Delivery-statistics helpers ──────────────────────────────────────────
+    // ALL THREE REQUIRE _pendingMux TO BE HELD BY THE CALLER and must never take
+    // it themselves — they are called from inside the existing critical sections
+    // in _sendPacket(), update() and the ACK handler, and a recursive acquire of
+    // the same spinlock on the same core is an instant deadlock. Same contract
+    // _findFreePending() already carries.
+    //
+    // Keep them free of Serial and esp_now calls for the same reason the
+    // surrounding sections are: portENTER_CRITICAL disables interrupts on that
+    // core, and a blocking UART write there hangs or crashes the chip. If you
+    // are tempted to printf a counter while debugging, do it AFTER the unlock.
+
+    // Is slot `p` still counting on board `boardIdx` (0-based) to ACK? This is
+    // the SAME predicate that decided who got credited `sent`, which is what
+    // keeps ackd + failed + unguaranteed <= sent true. An ensured slot carries an
+    // explicit expected[] set; a tracked best-effort unicast implicitly expects
+    // only its own target. A board given up on has expected[] cleared, so it
+    // answers false — that is what stops a late ACK counting after `failed`.
+    bool _statExpects(const WCBPending& p, uint8_t boardIdx) const;
+
+    // Credit `failed` to one board — we stopped waiting without an ACK.
+    void _statFail(uint8_t boardIdx);
+
+    // Credit `failed` to every board this slot is still waiting on. Called at
+    // EVERY site that deactivates a slot, so a give-up cannot slip through an
+    // un-instrumented path. Sites that give up on ONE board (and clear its
+    // expected[] bit) credit it directly instead; this sweep then sees nothing
+    // for that board, which is exactly why there is no double count.
+    void _settleSlot(const WCBPending& p);
+
     // Scan _boards[] and mark any WCB as offline if its last heartbeat is older
     // than (heartbeatInterval * missedBeforeOffline) seconds.
     void _checkOfflineBoards();
@@ -824,6 +1462,70 @@ private:
     // (deregisters) an auto-joined peer that has aged out.
     void _ageNeighbors(unsigned long now);
 
+    // ── Stored-sequence inventory request state ───────────────────────────────
+    // The reassembly buffer is ~3 KB, so it is heap-allocated only while a request
+    // is in flight and freed the moment the result is delivered or abandoned — a
+    // library this widely included shouldn't cost every sketch 3 KB of BSS for a
+    // feature most don't use.
+    WCBSequenceNamesCallback _seqNamesCallback = nullptr;
+    WCBSequenceValueCallback _seqValueCallback = nullptr;
+    bool          _seqPending     = false;   // a request is awaiting its reply
+    // Which reply this slot is waiting for — WCB_PACKET_SEQ_FRAG (names) or
+    // WCB_PACKET_SEQVAL_FRAG (one value). Both kinds share one buffer and one
+    // in-flight slot, so a stray frag of the other kind is ignored rather than
+    // corrupting the reassembly.
+    uint8_t       _seqWantFrag    = 0;
+    char          _seqReqKey[16]  = {0};     // key asked for (SEQVAL only), echoed to the callback
+    uint8_t       _seqTargetWCB   = 0;       // board we asked
+    uint16_t      _seqSessionId   = 0;       // session of the frags being reassembled (0 = none yet)
+    uint8_t       _seqTotalChunks = 0;
+    uint16_t      _seqReceivedMask = 0;      // bit i = chunk i in hand
+    // ── Inbound MGMT-fragment reassembly (see _maybeHandleMgmtFrag) ──────────
+    // send() already fragments a command longer than one packet automatically
+    // (it falls through to _sendFragmented), but until now NOTHING in this
+    // library could put one back together — only the WCB firmware could. That
+    // made oversized traffic one-directional: client -> WCB worked, client ->
+    // client silently delivered nothing. These reassemble it, so send() is
+    // symmetric between any two peers.
+    //
+    // Static, not heap: fragments arrive on the ESP-NOW receive callback, and
+    // allocating there is exactly the class of work this library keeps off that
+    // path. 2.9 KB of BSS buys an allocation-free receive.
+    char          _mgmtBuf[WCB_MGMT_MAX_CHUNKS * WCB_MGMT_CHUNK_LEN + 1] = {0};
+    uint16_t      _mgmtMask       = 0;       // bit i = chunk i received
+    uint16_t      _mgmtSession    = 0xFFFF;  // 0xFFFF = no session in progress
+    uint8_t       _mgmtSender     = 0;
+    uint8_t       _mgmtTotal      = 0;
+    size_t        _mgmtLastLen    = 0;       // payload length of the FINAL chunk
+    unsigned long _mgmtDeadline   = 0;
+    // The sender re-broadcasts every chunk across 2-3 passes, so the complete
+    // set arrives more than once. Remember what we just delivered and drop the
+    // repeats, or one send() would fire the command callback three times.
+    uint16_t      _mgmtDoneSession = 0xFFFF;
+    uint8_t       _mgmtDoneSender  = 0;
+    bool _maybeHandleMgmtFrag(const uint8_t* mac, const uint8_t* data, int len);
+
+    char*         _seqChunks      = nullptr; // [WCB_SEQ_MAX_CHUNKS][WCB_SEQ_PAYLOAD_SIZE+1], heap
+    unsigned long _seqDeadlineMs  = 0;       // abandon the request at this time
+    volatile bool _seqComplete    = false;   // set on the RX task, consumed by update()
+    // The RX task writes into _seqChunks while the LOOP task frees it on delivery
+    // or timeout — a use-after-free window without this. Same pattern as _bulkMux:
+    // the guarded regions are tiny (a bounds check + one 183-byte memcpy on RX, a
+    // pointer swap on loop), never the String building or the user callback.
+    portMUX_TYPE  _seqMux = portMUX_INITIALIZER_UNLOCKED;
+
+    // Try to consume a non-252-byte packet as a SEQ_FRAG. Returns true if it was
+    // one (and thus must NOT also go to the raw-packet hook). Runs on the WiFi
+    // task: it only memcpys into the buffer and sets _seqComplete — the callback
+    // itself fires from _seqTick() on the loop task.
+    bool _maybeHandleSeqFrag(const uint8_t* data, int len);
+
+    // Deliver a completed inventory / abandon a timed-out request. Loop task.
+    void _seqTick(unsigned long now);
+
+    // Free the reassembly buffer and clear the in-flight state.
+    void _seqReset();
+
     // Register a regular WCB learned via WDP as an ESP-NOW peer, live, and
     // persist it. Derived MAC, idempotent, guarded against self / the special
     // peer / the 1..quantity floor / the ~20-peer cap. Returns true if it's a
@@ -844,6 +1546,24 @@ private:
     // Init=0xFFFFFFFF, poly=0xEDB88320 (reflected), final XOR=~crc.
     // Must be identical to the firmware version or checksums won't match.
     uint32_t _crc32(const char* data, size_t len);
+
+    // ── Bulk transfer internals ───────────────────────────────────────────────
+    // _cmdSeqDup + _maybeRouteBulk + _bulkRingPush run on the RX task (Core 0).
+    // Everything else runs on the loop task (Core 1) from update().
+    bool _cmdSeqDup(uint8_t senderID, uint16_t seq);          // COMMAND anti-replay window
+    bool _maybeRouteBulk(uint8_t senderID, const char* cmd);  // parse bb/bc/bd → ring; true if consumed
+    bool _bulkRingPush(const WCBBulkMsg& m);                  // Core 0 producer
+    bool _bulkRingPop(WCBBulkMsg& out);                       // Core 1 consumer
+    void _bulkDrain(unsigned long now);                       // process ring messages
+    void _bulkTick(unsigned long now);                        // session timeout + done-cache TTL
+    void _bulkHandleBegin(const WCBBulkMsg& m, unsigned long now);
+    void _bulkHandleChunk(const WCBBulkMsg& m, unsigned long now);
+    void _bulkHandleDone (const WCBBulkMsg& m, unsigned long now);
+    void _bulkSendStatus (uint8_t senderID, uint16_t sid, uint16_t round);
+    void _bulkSendNeedBegin(uint8_t senderID, uint16_t sid, unsigned long now);
+    void _bulkSendFinal  (uint8_t senderID, uint16_t sid, uint16_t round, bool ok, uint32_t hash);
+    void _bulkCacheDone  (uint8_t senderID, uint16_t sid, bool ok, uint32_t hash, unsigned long now);
+    WCBBulkDone* _bulkFindDone(uint8_t senderID, uint16_t sid);
 
     // WCBStream needs access to _registerWCBStream() and sendRaw().
     friend class WCBStream;

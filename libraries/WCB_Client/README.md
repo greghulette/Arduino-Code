@@ -44,16 +44,30 @@ This library lets any ESP32 — a Kyber controller, a custom prop brain, a stage
 This library takes over the ESP32's radio to join the WCB ESP-NOW network. Read
 this before combining it with WiFi or another ESP-NOW stack.
 
-### It takes over WiFi
+### It takes over WiFi (STA) — but a SoftAP can coexist
 
-`begin()` calls `WiFi.mode(WIFI_STA)` followed by `WiFi.disconnect()`. **It will
-drop any existing connection to a WiFi router/AP**, and ESP-NOW timing assumes no
-AP association. You generally **cannot run a normal WiFi workload (web server,
-MQTT, cloud, HTTP/OTA-over-WiFi) on the same ESP32** while using this library.
+`begin()` puts WiFi into station mode and calls `WiFi.disconnect()`. **It will
+drop any existing STA connection to a WiFi router**, and ESP-NOW timing assumes
+no STA association. You generally **cannot associate this ESP32 with an
+external WiFi router** while using this library — connecting to someone else's
+AP hands channel control to that AP, and ESP-NOW only works if every WCB
+happens to already be on that channel too (see below).
 
-If you genuinely need both, you must keep everything on a **single fixed WiFi
-channel** (see below) and accept the MAC override — in practice it's far simpler
-to dedicate this ESP32 to the WCB network and use a second board for WiFi tasks.
+**Hosting your own SoftAP is a different story and is supported.** If you call
+`WiFi.softAP(ssid, password, channel)` *before* `begin()`, the library detects
+it and switches to `WIFI_AP_STA` instead of `WIFI_STA` — your AP (and any web
+server built on it) stays up, and ESP-NOW simply rides the AP's radio channel
+(AP and STA share a single channel on the ESP32, so there's no separate
+negotiation). Calling `softAP()` *after* `begin()` also works, since
+`WiFi.mode()` ORs in `WIFI_AP` without dropping STA. Either way, all WCBs and
+clients still need to end up on the AP's channel — pick it deliberately rather
+than leaving it to default to channel 1.
+
+If you need to *associate* with an external router (not host your own AP)
+alongside WCB traffic, that's still unsupported without keeping everything on
+a **single fixed WiFi channel** (see below) and accepting the MAC override —
+in practice it's far simpler to dedicate this ESP32 to the WCB network and use
+a second board for that WiFi workload.
 
 ### Shared radio channel
 
@@ -97,7 +111,8 @@ miss ESP-NOW packets. Disable it with `esp_wifi_set_ps(WIFI_PS_NONE)` (or
 | If you need… | Result with this library |
 |---|---|
 | WCB ESP-NOW only | ✅ Intended use — works out of the box |
-| WiFi STA + WCB on the same board | ⚠️ Only if all peers share the AP's fixed channel; `begin()` still disconnects WiFi |
+| SoftAP (hosted web UI) + WCB on the same board | ✅ Supported — `begin()` preserves an existing/later SoftAP as `WIFI_AP_STA`. The AP owns the single radio's channel, so bring it up on the mesh channel (`WiFi.softAP(ssid, pass, 1)`); the library **warns** (never force-moves it) if the radio ends up elsewhere. Match a non-default fleet channel with `setMeshChannel()`. |
+| WiFi STA (associating with an external router) + WCB on the same board | ⚠️ Only if all peers share the router's fixed channel; `begin()` still disconnects STA |
 | A second, separate ESP-NOW network | ❌ Not supported — single global receive callback |
 | Multiple `WCB_Client` objects | ❌ Not supported — singleton |
 | Factory MAC preserved | ❌ MAC is overwritten by design |
@@ -234,6 +249,86 @@ void loop() {
 | `onCommand(callback)` | Register or replace the received-command callback. |
 | `onStatusChange(callback)` | Register or replace the online/offline status callback. |
 | `setChecksum(bool)` | Enable/disable CRC32 checksums. Must match `?ETM,CHKSM` setting on WCBs (default: on). |
+| `setMeshChannel(uint8_t)` | Set the ESP-NOW mesh channel (1–11) this device expects. Best called before `begin()` if your fleet runs on a non-default channel (set on the WCBs via `?WCBCH` / the Wizard); calling it after `begin()` also re-pins the radio live when no SoftAP is active. One radio = one channel (default: 1). |
+| `getPeerStats(wcbID)` | Delivery counters for one peer, by value. Out-of-range returns a zeroed struct. |
+| `getAggregateStats()` | Totals across all peers, computed on demand. |
+| `getBroadcastSent()` | Broadcast COMMAND frames put on the air. |
+| `resetStats()` | Zero every counter. Call from `loop()`, not from a receive callback. |
+
+### Delivery statistics
+
+Per-peer counters for how ETM command traffic is actually landing — which links are
+healthy, which are retrying, which are failing. Nothing is computed for you: there are no
+floats and no ratios in the library, because the 0/0 case only the display layer can
+sensibly decide.
+
+```cpp
+WCBPeerStats s = wcb.getPeerStats(2);
+Serial.printf("WCB2: %lu sent, %lu ackd, %lu retries, %lu failed, %lu unguaranteed\n",
+              s.sent, s.ackd, s.retries, s.failed, s.unguaranteed);
+```
+
+| Counter | Increments when |
+|---|---|
+| `sent` | a command is first aimed at that peer — **initial attempts only**, never retries |
+| `ackd` | that peer's ACK arrives for a command we were waiting on — **once per command**, even though a peer re-ACKs every retransmit it hears |
+| `retries` | a resend fires to that peer; N retries on one command counts N |
+| `failed` | we stopped waiting for that peer's ACK without getting one — retries exhausted, peer dropped offline, slot evicted, or a best-effort unicast that timed out |
+| `unguaranteed` | a send **asked for a pending slot and was denied one** because all `WCB_PENDING_MAX` were busy: transmitted once, never tracked, so no ACK can match it and it can never be ackd or failed. Covers an ensured send losing its guarantee *and* a best-effort unicast losing its ACK tracking. Local backpressure, not a link problem |
+
+`sent` counts **commands**; `retries` counts **extra attempts**, so `sent + retries` is the
+**delivery attempts** aimed at that peer. They are kept apart on purpose — folding retries into
+`sent` would let a link that retries constantly show a healthy-looking `ackd/sent` while
+flooding the mesh.
+
+That is attempts, **not frames on the air**. One ensured broadcast puts a single frame up but
+credits `sent` to every board it expects to ACK, so summing `sent + retries` across peers
+over-counts that frame by (N−1). Per-board *retries* are genuine separate unicast frames and do
+count once each. If you want airtime, use `getBroadcastSent()` alongside the unicast counts
+rather than this sum.
+
+**Invariant, per peer and in the aggregate:** `ackd + failed + unguaranteed <= sent`, the difference
+being commands still in flight. `resetStats()` re-credits `sent` for whatever is in flight at
+the moment of the reset, so a reset means "start counting here" rather than leaving in-air
+commands to land as `ackd` against a zeroed `sent`.
+
+Two deliberate consequences worth knowing:
+
+- A board that was **offline when an ensured broadcast went out** still hears it and ACKs. That
+  ACK is *discarded*, not counted — it has no matching `sent`, and counting it would push `ackd`
+  past `sent` for a peer we never aimed at. Reachability is what `isOnline()` and `getNeighbor()`
+  are for; these counters answer "did what I sent arrive".
+- For an **advert-only peer that never heartbeats**, the final retry is transmitted in the same
+  pass that settles the slot, so that attempt gets no ACK window and is recorded as `failed`
+  even if it lands. This reports pre-existing retry behaviour rather than causing it; it cannot
+  happen for a peer that is online.
+
+#### What is counted
+
+**The ETM COMMAND layer only** — `send()`, `broadcast()`, `sendToSpecialPeer()`. That is the
+only outbound traffic carrying a sequence number that can be ACK'd.
+
+**Not counted, deliberately:** `sendRaw()` and `sendKyber()` — and therefore every
+`WCBStream` / Maestro byte, usually the highest-volume traffic on the mesh — plus
+`sendRawPacket()` (OTA), the MGMT chunks an oversized `send()` fragments into, heartbeats,
+WDP adverts, and outbound ACKs. None of these is acknowledged, so counting them as `sent`
+would leave `ackd` pinned at zero against a climbing `sent` — which reads as a dead link
+rather than as "not measured". **Seeing your Maestro traffic move none of these counters is
+correct behaviour, not a bug.**
+
+An ensured **broadcast** credits `sent` to every board it expects to ACK, because it *is* a
+per-board guaranteed delivery — retried per board, acknowledged per board.
+`getBroadcastSent()` is a separate **frame** counter (broadcast frames on the air, ensured or
+not) and is not a subset of any peer's `sent`; one ensured broadcast increments both.
+
+Counters are unsigned 32-bit and free-running. Without `resetStats()`, a board that had one
+bad hour looks bad forever and the ratios stop meaning anything.
+
+See the **`DeliveryStats`** example for a working readout: a per-peer table with deltas between
+samples, a continuous invariant self-check, and a guided two-board bench procedure (`g`) that
+walks target-on → target-off-under-50 s → target-off-past-50 s. That last step is the one worth
+doing carefully — it is the only way to exercise the give-up path, and a counter that is wrong
+there would never show up in normal use. `AllFeatures` also has a compact dump on the `t` key.
 
 ### WCBStream
 
@@ -365,6 +460,173 @@ Turn auto-join off to pin the peer set to exactly `1..wcb_quantity` (+ special p
 ```cpp
 wcb.setAutoJoin(false);
 ```
+
+---
+
+### Stored-sequence inventory
+
+Ask a WCB which stored sequences it has, **by name**, so a controller can build its command
+list from the live mesh instead of a hard-coded snapshot that goes stale the first time
+someone saves one from the Wizard.
+
+```cpp
+// Read
+void onSequenceNames(WCBSequenceNamesCallback callback);
+bool requestSequenceNames(uint8_t wcbNumber);          // what exists
+void onSequenceValue(WCBSequenceValueCallback callback);
+bool requestSequence(uint8_t wcbNumber, const char* key);   // one sequence's contents
+bool sequenceNamesPending() const;                     // gates BOTH reads
+
+// Write
+bool saveSequence(uint8_t wcbNumber, const char* key, const char* value);
+bool deleteSequence(uint8_t wcbNumber, const char* key);
+```
+
+```cpp
+wcb.onSequenceNames([](uint8_t n, uint32_t hash, uint16_t count, const char* names) {
+    // names = "wave,park,scream"  — comma-separated, "" when count == 0
+    // Fires on the LOOP task, so allocation / flash I/O here is safe.
+});
+wcb.requestSequenceNames(3);
+```
+
+**Don't poll this.** Every WDP advert carries a 4-byte fingerprint of that board's
+inventory, so you can request only when it has actually changed:
+
+```cpp
+const WCBNeighbor* nb = wcb.getNeighbor(3);
+if (nb && nb->seqHash != 0 && nb->seqHash != myCachedHash)
+    wcb.requestSequenceNames(3);
+```
+
+A board re-advertises within ~500 ms of a config change, so a newly saved sequence appears
+within a couple of seconds while a steady mesh costs no request traffic at all. The hash
+covers stored **values** as well as names, so an in-place edit moves it too.
+
+#### Pulling contents, and pushing edits back
+
+```cpp
+wcb.onSequenceValue([](uint8_t n, const char* key, WCBSeqStatus st, const char* value) {
+    if (st == WCB_SEQ_OK) { /* value = ";M1,1^;S5,<CA1021>" */ }
+    // else WCB_SEQ_NOTFOUND / WCB_SEQ_TOOBIG — always check before trusting value
+});
+
+wcb.requestSequence(3, "wave");                          // one at a time
+wcb.saveSequence(3, "wave", ";M1,1^;S5,<CA1021>");       // create or overwrite
+wcb.deleteSequence(3, "oldname");
+```
+
+To mirror a whole board, pull the names and **walk them one at a time** — there is no
+"give me everything" call on purpose. A single value is bounded (~1800 chars, about 10 of
+the 16 chunks a reply can carry) but the total is not, so a bulk fetch would silently
+exceed it. Walking has no aggregate ceiling, lets you fetch lazily, and resumes cleanly if
+a board drops. At ~100 ms per round trip a 20-sequence board mirrors in 2–3 seconds.
+
+Issuing the next request from *inside* a callback is fine — the library clears its
+in-flight state before firing you.
+
+Writes are **fire-and-forget**: they ride the ordinary command path (auto-fragmented,
+unicast) and there is no reply packet. Confirm by watching `seqHash` change, or by reading
+the value back. Keys must be 1–15 chars with **no comma** — the firmware takes a stored key
+as everything before the first comma, so one would silently truncate it.
+
+Notes:
+
+- `seqHash == 0` means the board advertised **no** hash — firmware older than the feature.
+  It does **not** mean "no sequences": an empty inventory hashes to `0x811C9DC5`.
+- **One request in flight at a time**, shared between `requestSequenceNames()` and
+  `requestSequence()`; a second call returns `false`. Poll `sequenceNamesPending()`, which
+  gates either kind.
+- A request with no complete answer within ~4 s is abandoned silently — no callback fires,
+  because a half-list would look like a real answer. Just call again.
+- `requestSequenceNames()` returns `false` unless a callback is registered first.
+- Names only, never contents. The values live in the board's config pull, which fits one
+  reply only up to 2912 characters for the *entire* board config; past that it takes a
+  multi-part protocol and a requester that asks for parts (see
+  [Management relay](#management-relay-wcb_mgmth)). A bulk fetch here would have walked into
+  the same ceiling.
+
+Full example: [`examples/SequenceInventory`](examples/SequenceInventory).
+
+### Management relay (`WCB_Mgmt.h`)
+
+`WcbMgmt` makes a `WCB_Client` host the WCB Wizard's doorway into the mesh, answering on
+whatever `Print` the host passes to `begin()`. The host wires it in with four calls
+(`begin()`, `handleLine()`, `onRawPacket()`, `service()`; see the 1.17.0 notes below).
+`examples/MgmtRelay` keeps its own copy of the same surface, with the same wire behaviour.
+
+| Line from the Wizard | Sent on the mesh | Printed back |
+|---|---|---|
+| `?MGMT,PULL,<n>` | CONFIG_REQ (type 5) ×3 | `[MGMT:CONFIG,<n>]<config>`, or `[MGMT:CFGERR,<n>]<code>,<detail>` |
+| `?MGMT,PULL,<n>,P` | CONFIG_REQ_PARTS (type 19) ×3, then CONFIG_REQ (5) ×3 | as above, or one `[MGMT:CFGPART,<n>]P<id>,<k>,<K>:<data>~` line per part |
+| `?MGMT,STATS,<n>` | STATS_REQ (7) | `[MGMT:STATS,<n>]<text>` |
+| `?MGMT,ETM,CHAR,<n>` | ETM_REQ (8) | `[MGMT:ETM,<n>]<text>` |
+| `?MGMT,FRAG,<n>,<sid>,<idx>,<total>,<payload>` | the chunk, forwarded | a `[relay] MGMT -> WCB<n> …` note |
+
+- **A config of up to 2912 characters is one `[MGMT:CONFIG,<n>]` line, exactly as before.**
+  Above that, a WCB that supports parts sends the config in parts, but only to a requester
+  that asked with `,P`. The relay prints each part as it completes and never joins them; the
+  requester collects the `K` parts of one `id`, joins them in order and checks the CRC
+  (`^?CHK`) of the whole. An older WCB ignores type 19 and answers the type-5 copies as it
+  always has — with nothing, for a config over the limit.
+- **Parts and errors ride packet type 18, never type 6.** Every older relay drops type 18
+  silently, and every older Wizard stores any non-empty `[MGMT:CONFIG,<n>]` body as the
+  board's config without checking it, so a part must never be able to look like one.
+- `[MGMT:CFGERR,<n>]` is a code and a short ASCII detail, never config text: `NOPARTS` (over
+  the limit, and the request did not ask for parts), `TOOBIG` (would need more than 16
+  parts), and `NOMEM` and `CHANGED`, which are worth retrying.
+- **One reassembly slot.** A reply is keyed on (session id, packet type, source board), and a
+  part never displaces a CONFIG/STATS/ETM reply that is still arriving (a frame within the
+  last 200 ms): the part is dropped and recovered by the target's second pass or a retry.
+  Send pulls through one relay one at a time.
+- Every line is printed from `service()`, on the loop task, with one `printf`, so nothing
+  another task prints can land inside it. `?MGMT,PULL,<n>,P` blocks the calling task for about
+  75 ms (six request frames, 15 ms apart; a plain pull is about 30 ms).
+- A pulled config holds the board's secrets (`?EPASS`, and a WiFi passphrase where one is
+  set). Don't log these lines.
+
+### Transmit watchdog (1.18.0)
+
+A device can go on **hearing** the mesh while nothing it sends arrives. NaviCore did, for 20
+minutes, after ten minutes of heavy relayed traffic: every WCB listed it offline and dropped it
+from WDP while its own roster showed every board online, and only a reboot brought it back.
+Broadcasts are never acknowledged, so nothing on the device could see it.
+
+```cpp
+wcb.onTxStall(onTxStall);        // optional: hear about it on the loop task
+wcb.setTxWatchdog(true);         // off by default; probe every WCB_TXWD_PROBE_MS (30 s)
+
+void onTxStall(uint8_t level, uint32_t stalledMs) {
+  if (level == 2) ESP.restart(); // the library could not fix it - a reboot did, in the field
+}
+```
+
+- **The probe is a WDP SOLICIT**, the frame `?WDP,POLL` sends. A WCB answers it with an advert
+  within 0.6 s and prints nothing (unless `?DEBUG,MGMT` is on). An advert after the probe, or an
+  ACK to anything this device sent, proves the mesh hears it; an ACK also makes the next probe
+  unnecessary. Cost while healthy: one ~10-byte broadcast per interval and one advert back
+  from each board.
+- **Only boards that can answer are asked**: heard within `WCB_TXWD_HEARD_MS` (15 s) and known to
+  advertise. A fleet with WDP off, or nobody around, is never judged — no false stall.
+- **`WCB_TXWD_MISSES` (3) unanswered probes in a row**, `WCB_TXWD_RETRY_MS` (5 s) apart once one is
+  missed, are a stall: level 1. The library puts the mesh MAC back on the STA interface if the
+  radio lost it, restarts ESP-NOW and registers every peer again (floor, broadcast, special,
+  learned — from RAM, no NVS write). As many more misses after that are level 2, reported again
+  after each further restart the library tries; at level 2 it probes at the normal interval.
+- **Every level change is printed** with the radio's STA MAC (and whether it is still the mesh
+  MAC), its channel against the mesh channel, `esp_now_send()` errors and the internal heap —
+  the evidence a wedge leaves:
+  `[WCB_Client] mesh transmit stalled: 3 WDP solicit(s) in a row unanswered for 15 s while boards
+  are heard (STA MAC 02:05:4B:00:00:14 as set, channel 1 of mesh 1, send errors 0, internal heap
+  free … largest … min …) - restarting ESP-NOW`, then `… mesh transmit recovered: the boards
+  answer again after N s unanswered`.
+- **`onTxStall(level, stalledMs)` fires on the loop task** (from `update()`), so a callback may
+  touch flash or restart the device. Level 0 means answered again.
+- `getTxWatchStatus()` returns enabled, level, misses, probes, restarts, send errors and the ms
+  since the mesh last answered.
+- `debugTxWedge(mode)` is a **test-only fault injector**: every frame is reported as sent and
+  never reaches the radio — until the watchdog's ESP-NOW restart (1) or until reboot (2).
+  Never call it in a shipping sketch.
 
 ---
 
@@ -546,10 +808,346 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 | `MaestroUnicast` | Forward Maestro commands to a specific WCB:port (unicast) |
 | `MaestroBroadcast` | Broadcast Maestro commands to all WCBs with Maestros configured |
 | `CombinedUsage` | Text commands and Maestro forwarding running simultaneously |
+| `SpecialPeer` | Talk to the out-of-band controller (e.g. NaviCore) at id 20 |
+| `NeighborDiscovery` | Learn the mesh over WDP — who's out there and what they can do |
+| `DeliveryStats` | Per-peer delivery counters, with a guided two-board bench procedure that proves each one |
+| `MgmtRelay` | Turn any ESP32 into a management relay — drive the Config Tool (Via WCB) and manage every WCB + the NaviCore over one USB port, and optionally over a WebSocket from its own SoftAP or NaviCore's  |
+| `TxWatchdog` | Turn on the transmit watchdog and reboot when the library cannot recover the mesh |
+| `AllFeatures` | Interactive "kitchen sink" — every public method in one sketch, including a `t` key that dumps per-peer delivery statistics and `z` to reset them |
 
 ---
 
 ## Changelog
+
+### 1.18.0
+
+- **Transmit watchdog** (`setTxWatchdog`, `onTxStall`, `getTxWatchStatus`, `debugTxWedge`; off by
+  default). Proves every 30 s, with the WDP SOLICIT `?WDP,POLL` uses, that boards this device
+  hears still hear it; after 3 unanswered probes it puts the mesh MAC back, restarts ESP-NOW and
+  re-registers every peer, and reports level 2 to the app if that does not help. Found on
+  NaviCore: after ten minutes of relayed traffic it heard every WCB and none heard it, for 20
+  minutes, until a reboot (WCB repo HIL run 20261014-084137). See *Transmit watchdog* above.
+- Every frame the library sends now goes through one wrapper (`_espSend`), which counts
+  `esp_now_send()` errors for the watchdog's report.
+
+### 1.17.2
+
+- **A config push of more than one chunk through a `WcbMgmt` host now reaches the board.**
+  `?MGMT,FRAG` with a total above 1 forwarded each chunk as a `config_frag`, the 230-byte
+  layout of a config *reply*. A WCB routes a raw frame by its size and reassembles a push only
+  from its 226-byte push struct, so the chunks were dropped and the push never ran. They now go
+  as `wcb_packet_mgmt_t`, the frame `examples/MgmtRelay` already sends. A single-chunk push was
+  never affected. (NaviCore D-NC48.)
+
+### 1.17.1
+
+- **A rebooted WCB's commands are no longer dropped as duplicates.** The inbound anti-replay
+  window keeps the highest COMMAND sequence number seen from each board plus 32 older ones. A
+  WCB restarts its sequence counter at 0 when it reboots, so a client that stayed up (NaviCore)
+  kept the old window: until the WCB's counter climbed back past the old high, any command whose
+  new number landed on a remembered one was ACKd and silently discarded — some `;W<id>` commands
+  ran and others did not. The client now handles the WCB boot announce (packet type 11,
+  `WCB_PACKET_ETM_BOOT`) by forgetting that board's window, the same thing the WCB firmware does
+  to its own duplicate ring, and counts the announce as presence like a heartbeat. The window is
+  cleared once per boot: the three announces arrive about 1.2 s apart, and further announces from
+  that board within `WCB_BOOT_RESET_HOLD_MS` (4 s) are presence only, so a command sent between
+  them whose ACK was lost is not run a second time by its retry. The announce is an unacknowledged
+  broadcast, so a window can still survive if all three are lost, and a board that reboots again
+  within 4 s of its previous boot's first announce is not cleared. Found by the WCB
+  hardware-in-the-loop bench.
+- **The client announces its own boot.** `begin()` now sends the same three boot announces a WCB
+  does (about 1.2 s apart, from `update()`, so joining is never blocked). A WCB clears a sender's
+  duplicate ring only on that sender's boot announce, and a client restarts its sequence counter
+  at every `begin()` — so before this, a rebooted client's first commands could be ACKd and then
+  dropped as duplicates. `broadcast()` also sends a `{`-prefixed (JSON) payload best-effort even
+  with `ensured` true: a WCB never ACKs a target-0 JSON frame, so an ensured one could only time
+  out and be re-sent as unicast, reaching every board twice.
+- **A heartbeat or boot announce no longer marks an untracked sender online.** Only a floor peer,
+  a learned peer or the special peer is marked online by them, because those are the only boards
+  `update()`'s offline check ever marks offline again. A temporary client above the floor (a
+  management relay, a bench probe) heartbeats and now announces its boot too; marked online, it
+  stayed online and "known" forever after it left. It is tracked through its WDP neighbour row
+  instead, which ages out. Found by the WCB hardware-in-the-loop bench.
+- **`WcbMgmt` and `MgmtRelay`: a config over 2912 characters can be pulled in parts, and a
+  refusal arrives as a coded error.** `?MGMT,PULL,<n>,P` sends three CONFIG_REQ_PARTS requests
+  (packet type 19) ahead of the usual three CONFIG_REQs. A WCB with parts support answers an
+  over-limit config with type-18 messages, printed as `[MGMT:CFGPART,<n>]` lines, and a request
+  it cannot serve with `[MGMT:CFGERR,<n>]<code>,<detail>`; an older WCB ignores type 19 and
+  answers the CONFIG_REQs as before. They are new tags on a new packet type because every older
+  relay prints a type-6 reply as `[MGMT:CONFIG,<n>]` and every older Wizard stores that as the
+  board's config with no CRC check. Replies are now keyed on (session, type, source board)
+  rather than on the session alone, so two boards' replies can no longer be spliced into one
+  line; a part never displaces a CONFIG/STATS/ETM reply that is still arriving; and a reply is
+  assembled in place instead of through `String`, whose `+=` skipped a chunk silently when an
+  allocation failed and could print a short but well-formed `[MGMT:CONFIG]` line. A plain
+  `?MGMT,PULL,<n>` sends what it always sent, and every existing reply line is byte for byte
+  what it was. See [Management relay](#management-relay-wcb_mgmth).
+
+### 1.17.0
+
+**`WCB_Mgmt.h` — the WCB Wizard's management surface, usable by any `WCB_Client` host.**
+Previously it lived inside `examples/MgmtRelay`, so only that sketch could be the Wizard's
+doorway into the mesh. It is now a library module, and a host enables it with four calls:
+
+```cpp
+WcbMgmt::begin(&wcb, &Serial, identity);   // once, in setup()
+WcbMgmt::handleLine(line)                  // from your "?" dispatcher — true = consumed
+WcbMgmt::onRawPacket(data, len)            // from your raw-packet hook — true = consumed
+WcbMgmt::service();                        // from loop()
+```
+
+That covers `WCB_WEBTOOL_CONFIG_PULL` / `?backup`, `?version`, `?WDP,DUMP`, and
+`?MGMT,FRAG|PULL|STATS|ETM,CHAR`, plus reassembly of the replies into `[MGMT:CONFIG|STATS|
+ETM,<src>]` and `[TERM:<src>]` lines. `Identity.advertiseRelay` emits `?RELAY,1`, which makes
+the Wizard file the device as a dedicated **relay card** rather than a configurable board.
+
+**Why a module and not a copy.** This is a wire protocol with three parties — the Wizard, the
+relaying device, and the WCB firmware. Every struct is byte-matched to `WCB.ino` and every
+reply string to the Wizard's parser. A second copy in another firmware drifts the first time
+one side is fixed and the other is not, and drifts *silently*, because a stale copy still
+answers — just wrongly. One module compiled by both is the same answer `WcbCmd` gives to the
+same problem.
+
+**It registers nothing with `WCB_Client`.** No `onRawPacket`, no `onCommand`, no channel
+handling — the host feeds it. That is required, not polite: `onRawPacket()` takes a single
+callback and a host may already own it (NaviCore registers its firmware-OTA hook there).
+Self-registering would silently replace that hook, with nothing visible until an update failed.
+Composing from the host's existing hook — which should already discriminate by packet length —
+is the only safe shape.
+
+**Concurrency.** `onRawPacket()` runs on the WiFi/ESP-NOW task and only copies into a queue.
+Every decode, reassembly and print happens in `service()` on the loop task, so there is exactly
+one writer to the output `Print`. A multi-packet write from the receive callback races the loop
+task and corrupts any line longer than one USB packet.
+
+`examples/MgmtRelay` keeps its own behaviour unchanged; the module is what it was built from.
+
+### 1.16.1
+
+**`MgmtRelay` can now be reached over WiFi, so a phone or desktop app can manage the
+whole mesh with no USB cable.** Library source is unchanged — this is the example
+plus a new `mgmt_wsserver.h` beside it. Off by default (`RELAY_WIFI_MODE`), and with
+it off the compiled binary is byte-identical to 1.16.0's.
+
+`RELAY_WIFI_AP` hosts a SoftAP; `RELAY_WIFI_JOIN` joins an existing one (NaviCore's,
+typically) with automatic fallback to hosting its own. Either way a WebSocket at
+`ws://<ip>/ws` carries **exactly** the newline-delimited line protocol the USB port
+already speaks — `;w3,:PP100`, bare text to broadcast — because both mouths feed the
+same `relaySerialLine()`. USB keeps working alongside it.
+
+**The mode is set from the console, not at compile time.** It and the credentials
+live in NVS, so moving a relay between a bench AP and a droid's network no longer
+means an edit, a rebuild and a reflash of a board that is already installed:
+
+```
+?RELAY,WIFI                     report the mode, SSID and address
+?RELAY,WIFI,OFF                 ESP-NOW only
+?RELAY,WIFI,AP[,<pass>]         host our own AP (optionally set its password)
+?RELAY,WIFI,JOIN,<ssid>,<pass>  join an existing AP
+?RELAY,WIFI,DEFAULTS            forget NVS, return to the compiled-in values
+```
+
+`RELAY_WIFI_MODE` is now only the **factory default**, used when NVS holds nothing.
+`RELAY_WIFI_BUILD` (default 1) decides whether the WiFi code is compiled in at all —
+a separate switch, because every mode has to be present in the image for a console
+command to be able to select it.
+
+Each of these saves and then **reboots**, once the console has been quiet for a
+moment. That is not laziness: a SoftAP must be up *before* `begin()` and a STA joined
+*after* it, so re-running that dance on a live radio would tear ESP-NOW down beneath
+a mesh that is mid-conversation. A reboot re-runs `setup()` in the one order known to
+work. It is deferred rather than immediate because a host tool sends commands as a
+stream, and restarting inside a handler discards everything queued behind it while
+the boot banner still satisfies the sender's "did it answer" test — the same trap as
+rule 11 in the WCB firmware.
+
+Passwords can be **set but never read back**. This console is mirrored to every
+connected WebSocket client, so echoing one would send it over the network it exists
+to protect.
+
+`RELAY_STATIC_IP` (on by default) pins the relay to `192.168.4.<DEVICE_ID>` —
+`192.168.4.19` out of the box — in **both** modes, so a host app needs no discovery
+and does not care whether the relay ended up hosting the AP or joining NaviCore's.
+That address cannot collide with the AP's DHCP pool, which the core fixes at eleven
+leases starting one above the AP's own IP (`NetworkInterface.cpp:451-453`) — `.2`–`.12`
+for a default `192.168.4.1` AP. Ids 2–12 land inside that pool and id 1 is the AP
+itself, so the build `static_assert`s `DEVICE_ID >= 13` rather than letting it fail in
+the field.
+
+This is deliberately the same transport NaviCore exposes (same URI, same framing, same
+console-mirror reply semantics), so a host app writes ONE client and points it at
+either box; only the payload grammar differs.
+
+Five constraints are load-bearing and are recorded in the code rather than left to
+be rediscovered:
+
+- **`JOIN` never blocks and keeps retrying.** Powered from one switch, the relay is
+  ready long before NaviCore raises its SoftAP — NaviCore mounts LittleFS, loads
+  config and allocates a ~3.1 MB PSRAM record buffer first — so a one-shot wait in
+  `setup()` loses that race on every cold boot and strands the app on a fallback AP
+  with two APs up. The join is now serviced from `loop()`, retrying every 5 s for
+  90 s with the mesh fully alive throughout, and only hosts its own AP if the other
+  never appears. Retries are affordable *because* the channel is pinned: the probe
+  is confined to the one channel we are already on instead of sweeping the band.
+
+- **The two modes have OPPOSITE ordering rules against `begin()`.** A SoftAP must be
+  raised *before* `WCB_Client::begin()`, because `begin()` inspects `WiFi.getMode()`
+  and preserves an existing AP as `WIFI_AP_STA` instead of forcing `WIFI_STA`. A STA
+  association must be made *after*, because that same `begin()` calls
+  `WiFi.disconnect()` unconditionally and would silently undo it.
+- **The channel is passed explicitly, everywhere.** `softAP()`'s channel parameter
+  defaults to 1, and once an AP owns the radio `begin()` stops calling
+  `esp_wifi_set_channel` and only warns. A defaulted channel against a mesh on any
+  other channel is a total, silent blackout. `JOIN` mode additionally *verifies* the
+  channel after associating and hangs up if it landed off-mesh — `update()` notices
+  the drift too, but it only warns, and a relay that cannot reach the mesh is useless.
+- **`JOIN` never scans.** The channel is pinned in `WiFi.begin()` and auto-reconnect
+  is off. An unpinned association sweeps every channel looking for its SSID and goes
+  deaf to the mesh for the length of each sweep; with the AP absent that repeats
+  forever, presenting not as "WiFi failed" but as the relay randomly dropping traffic.
+- **The AP fails closed without a password.** `softAP()` with an empty passphrase
+  creates an *open* network, and this WebSocket relays `;w<id>,<cmd>` to every board
+  with no credential of its own.
+
+The httpd handler runs on Core 0 beside the ESP-NOW receive callback, so it only
+copies, enqueues and returns; commands run from `loop()` on Core 1 — the same split
+`relayOutQueue` already uses, and for the same reason. Unlike NaviCore's equivalent
+the queue is by value, not a PSRAM pointer: this relay's longest input is a ~283-char
+OTA `DATA` line, so it stays within `WS_LINE_MAX` (kept in step with the sketch's
+`inBuf`) and the sketch still runs on a plain ESP32 with no PSRAM.
+
+Cost when enabled: **+37 KB flash, +4.7 KB RAM** (48% / 20% of a `min_spiffs` ESP32).
+Verified compiling on ESP32 and ESP32-S3 in all three modes.
+
+### 1.16.0
+
+**Oversized commands now work in BOTH directions.** `send()` has always
+auto-fragmented anything longer than one packet (it falls through to
+`_sendFragmented`), but nothing in this library could put one back together —
+only the WCB *firmware* could. So client → WCB worked, and client → client
+transmitted perfectly and then delivered nothing at all. Two `WCB_Client` hosts
+talking to each other — a NaviCore and a MgmtRelay, say — had a silent ceiling at
+`_maxSingleCommandLen()`.
+
+Inbound MGMT fragment sessions are now reassembled and handed to the ordinary
+command callback, so a consumer never learns the command was split. Nothing to
+enable and no API change: `send()` is simply symmetric now.
+
+Details that matter if you are debugging it:
+
+- Fragments are **broadcast** with `targetWCB` addressing, so every host sees
+  every session and filters on its own id. The sender is taken from `mac[5]`,
+  which is safe because the receive path has already proved the source MAC
+  belongs to this network's octet scheme.
+- The sender re-broadcasts each chunk over **2–3 passes**, so duplicates are
+  normal. A received-mask dedups them, and a completed session is remembered so
+  the following pass cannot deliver the same command twice.
+- Chunks may arrive **out of order**; a missing one simply withholds delivery
+  until a later pass fills it.
+- `totalChunks` and `chunkIdx` are bounds-checked *before* being used for
+  arithmetic, so a corrupt or hostile header cannot index past the buffer.
+- A half-received session is abandoned after `WCB_MGMT_RX_TIMEOUT_MS` (15 s),
+  swept from `update()` rather than from the receive callback.
+- The reassembly buffer is **static** (~2.9 KB), not heap: fragments arrive on
+  the ESP-NOW receive callback, and allocating there is exactly the work this
+  library keeps off that path.
+- Ceiling is unchanged at `WCB_MGMT_MAX_COMMAND_LEN` (16 × 179 = 2864 bytes).
+- `broadcast()` still refuses oversized input rather than fragmenting — a
+  broadcast has no addressed reassembly session, so it must fail loudly.
+
+### 1.13.2
+
+- **`MgmtRelay`: an oversized serial line no longer broadcasts its tail to the whole mesh.**
+  The overrun guard zeroed the buffer length mid-line, which did not *drop* the line — it
+  restarted accumulation, so the tail arrived at the newline looking like a fresh command. With
+  no `;` or `?` prefix it fell through to `broadcast()`, putting an arbitrary mid-line fragment
+  on **every board**, moments after the operator was told the line was dropped. The overrun is
+  now swallowed to end-of-line. Relay firmware string bumped to `1.1` so a fixed relay is
+  identifiable in a WDP roster.
+- **`MgmtRelay`: OTA relay failures are no longer silent.** `sendRawPacket()` returns `false`
+  when the target cannot be registered as an ESP-NOW peer — most often a full peer table (the
+  cap is ~20, and auto-join makes learned peers permanent in NVS, so the set only grows). All
+  three OTA paths discarded that, so a failed `BEGIN`/`DATA`/`END` vanished with nothing on the
+  console and the host tool simply timed out with "no response via relay" / "target rejected
+  BEGIN". Each now logs the target and the likely cause.
+- **Docs:** `sent + retries` is *delivery attempts*, not frames on the air. One ensured
+  broadcast is a single frame but credits `sent` to every board it expects to ACK, so summing
+  across peers over-counts it; `getBroadcastSent()` is the frame counter. No code change.
+
+### 1.13.0
+
+- **Per-peer delivery statistics.** `getPeerStats()`, `getAggregateStats()`,
+  `getBroadcastSent()` and `resetStats()` expose `sent` / `ackd` / `retries` / `failed` /
+  `unguaranteed` counts for the ETM COMMAND layer, so a host can finally see which mesh links are
+  healthy and which are retrying or failing. Read-only, free-running `uint32_t`, ~400 bytes.
+  See **API Reference → Delivery statistics** for exactly what is and is not counted — raw
+  and Maestro traffic is deliberately excluded, because it carries no delivery signal.
+- `failed` counts **every** way we stop waiting for a peer's ACK, not just retry exhaustion.
+  The common case by far is a target that is simply powered off: the offline window is 50 s
+  against a ~2 s retry budget, so those sends complete with **zero** retries and never touch
+  the retry-exhausted path at all.
+- `ackd` counts the ACK **transition**, not the ACK packet. A peer re-ACKs every retransmit
+  it hears, and an ensured broadcast slot stays open to collect ACKs from several boards, so
+  one board can ACK the same command up to four times.
+
+### 1.12.1
+
+- **Sequence number 0 is no longer sent.** The WCB firmware's per-sender duplicate ring is
+  zero-initialised and treats `0` as "empty slot", so a COMMAND that landed on seq 0 — once
+  every 65,536 tracked sends — was **ACKd and then silently discarded as a duplicate** by
+  every board. The firmware ACKs before it de-dups, and the ensured retries reuse the same
+  sequence number, so the pending slot completed on those ACKs and the sender reported a
+  clean ensured delivery for a command that executed nowhere. `_sendPacket()` now skips 0 on
+  the wrap. Inbound, this library exempts seq 0 from its own de-dup, so the mirror case
+  would have double-fired the command instead.
+- **`_seqCounter` is explicitly zero-initialised.** A default-initialised `std::atomic` holds
+  an indeterminate value, and a heap-allocated client (`new WCB_Client(...)`, as NaviCore does)
+  gets none of the static zeroing a global-scope instance gets. `begin()` already assigns `0`
+  before anything can send, so this closes a window that was unreachable rather than a live
+  bug — it is there to keep it unreachable.
+
+> Changelog entries for 1.10.0–1.12.0 are not recorded here; see the commit history.
+
+### 1.9.7
+
+- **Configurable ESP-NOW mesh channel.** The mesh channel (1–11) is now an explicit,
+  operator-selectable setting instead of an accident of "an unassociated STA lands on
+  channel 1." On the WCBs it's set via `?WCBCH,<n>` or the Wizard's **Advanced → Mesh
+  Channel** field, persisted in NVS, and applied on the next reboot. On this library the default is
+  `1`; call `setMeshChannel(ch)` before `begin()` to match a fleet running elsewhere.
+- **Channel awareness in `begin()` / `update()`.** With no hosted SoftAP, `begin()`
+  now pins the radio to the mesh channel deterministically. With a SoftAP active (which
+  owns the single radio's channel), the library instead **warns** — rate-limited and
+  re-checked on every heartbeat — when the radio isn't on the mesh channel, rather than
+  silently failing to reach the mesh. It never force-moves a deliberately chosen SoftAP
+  channel.
+
+### 1.9.6
+
+- **`device_id` may now sit above `wcb_quantity`.** `begin()` no longer hard-fails
+  when `device_id > wcb_quantity` (for ids 1–19) — it logs a non-fatal warning and
+  joins the mesh anyway. `wcb_quantity` means "how many WCBs I pre-register," not a
+  cap on this device's own id. A device above the floor is reachable **inbound**
+  once the other boards auto-join it from its WDP advert, so call `setIdentity()`
+  and keep auto-join on (the default). The normal case (`device_id <= wcb_quantity`)
+  is byte-for-byte unchanged. This also un-breaks the `AllFeatures` example, whose
+  `device_id 19 / quantity 4` combo previously failed `begin()`.
+- **Reply to any authenticated sender.** A board can now unicast an ACK/reply to
+  an above-floor client that commands it *before* auto-join has registered it: the
+  sender is flagged on the ESP-NOW receive callback and added as a **transient**
+  ESP-NOW peer on the loop task (no NVS write, no ≥2-advert wait), matching the
+  proven auto-join discipline. So e.g. the NaviCore answers a `MgmtRelay` at id 19
+  on the config tool's very next ping instead of never — which is what makes the
+  above-floor `device_id` genuinely usable for a bridge/relay/monitor.
+- **New example: `MgmtRelay`** — turn any ESP32 into a USB-serial ↔ ESP-NOW
+  management relay so a host tool (e.g. the NaviCore Config Tool in "Via WCB" mode)
+  can drive every WCB *and* the NaviCore over one USB port.
+
+### 1.9.5
+
+- **`forgetPeer()` now also clears the peer's WDP neighbor record**, so a forgotten
+  peer drops off `getNeighbor()` immediately instead of lingering until its advert
+  ages out (up to the neighbor TTL).
 
 ### 1.9.4
 

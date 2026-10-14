@@ -90,6 +90,12 @@ void setup() {
     // The library prints status and error messages to Serial automatically.
     // Always check begin(): false means ESP-NOW did not start and the device is
     // NOT on the mesh — calling update()/send after that would crash.
+    //
+    // Optional: if your fleet runs on a non-default ESP-NOW channel (changed via
+    // ?WCBCH or the Wizard's Advanced → Mesh Channel), match it here BEFORE
+    // begin(). The ESP32 has one radio, so a device on the wrong channel silently
+    // can't hear the mesh. Default is channel 1, so most sketches need nothing.
+    // wcb.setMeshChannel(1);
     if (!wcb.begin()) {
         Serial.println("[WCB] begin() FAILED (see error above) — halting.");
         while (true) delay(1000);
