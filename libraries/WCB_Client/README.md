@@ -608,8 +608,14 @@ void onTxStall(uint8_t level, uint32_t stalledMs) {
   from each board.
 - **Only boards that can answer are asked**: heard within `WCB_TXWD_HEARD_MS` (15 s) and known to
   advertise. A fleet with WDP off, or nobody around, is never judged — no false stall.
+- **Two boards make an answer** when two or more could give one: a solicit makes every board
+  advertise, while one board's own 60 s advert landing in the window is a coincidence — one did,
+  and 1.18.0 called a dead radio recovered (HIL run 20261014-173713). With a single board, its
+  advert is enough.
 - **`WCB_TXWD_MISSES` (3) unanswered probes in a row**, `WCB_TXWD_RETRY_MS` (5 s) apart once one is
-  missed, are a stall: level 1. The library puts the mesh MAC back on the STA interface if the
+  missed, are a stall: level 1. A stall ends only after `WCB_TXWD_RECOVER` (2) answered probes in a
+  row, and one that comes back within `WCB_TXWD_RELAPSE_MS` (3 min) of ending goes straight to
+  level 2 — the ESP-NOW restart did not hold. The library puts the mesh MAC back on the STA interface if the
   radio lost it, restarts ESP-NOW and registers every peer again (floor, broadcast, special,
   learned — from RAM, no NVS write). As many more misses after that are level 2, reported again
   after each further restart the library tries; at level 2 it probes at the normal interval.
@@ -818,6 +824,17 @@ wcb.setChecksum(false);   // Only if ?ETM,CHKSM,OFF on all WCBs
 ---
 
 ## Changelog
+
+### 1.18.1
+
+- **The transmit watchdog no longer takes a coincidence for an answer.** 1.18.0 counted any advert
+  inside a probe's 2.5 s window as the answer; on a busy mesh one board's own periodic advert landed
+  there while every frame this device sent was being dropped, and a dead radio was called recovered
+  after one probe (HIL `ncmesh.tx_watchdog_reboot`, run 20261014-173713). Now two boards must
+  answer when two or more can, a stall ends only after two answered probes in a row, and a stall
+  within 3 minutes of the last one skips the ESP-NOW restart and reports level 2.
+- `WCB_CLIENT_VERSION_NUM` (11801): the library version as a number, kept equal to
+  `library.properties`, so a consumer can refuse to build against an older one.
 
 ### 1.18.0
 

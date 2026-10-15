@@ -2087,7 +2087,6 @@ void WCB_Client::_handleWdpAdvert(uint8_t senderWCB, const uint8_t* cmd) {
     nb.valid      = true;
     nb.wcbNumber  = senderWCB;
     nb.lastSeenMs = millis();
-    _txwdAdvertMs = nb.lastSeenMs ? nb.lastSeenMs : 1;   // answers a watchdog solicit sent before it
 
     int o = 2;                             // skip magic + version
     while (o + 2 <= 200) {
@@ -2977,6 +2976,8 @@ void WCB_Client::setTxWatchdog(bool enabled, uint32_t probeIntervalMs) {
     _txwdProbeMs = probeIntervalMs;
     _txwdSentMs  = 0;
     _txwdMisses  = 0;
+    _txwdGood    = 0;
+    _txwdRecoveredMs = 0;
     _txwdNextMs  = millis() + probeIntervalMs;   // no verdict before the boards have had an interval to be heard
     if (!enabled) { _txwdLevel = 0; _txwdStallMs = 0; }
     Serial.printf("[WCB_Client] transmit watchdog %s (a WDP solicit every %lu s while boards are heard)\n",
@@ -3005,15 +3006,16 @@ void WCB_Client::debugTxWedge(uint8_t mode) {
                   _txWedge == 2 ? "every frame dropped before the radio until reboot" : "off");
 }
 
-// A board that can judge whether the mesh hears us: heard within WCB_TXWD_HEARD_MS (so it is there and on our
-// channel) and known to advertise (so it answers a solicit). Nobody like that -> no verdict, never a false stall.
-bool WCB_Client::_txHaveJudge(unsigned long now) const {
+// The boards that can judge whether the mesh hears us: heard within WCB_TXWD_HEARD_MS (so they are there and on our
+// channel) and known to advertise (so they answer a solicit). None -> no verdict, never a false stall.
+uint8_t WCB_Client::_txJudges(unsigned long now) const {
+    uint8_t n = 0;
     for (int b = 0; b < WCB_MAX_BOARDS; b++) {
         if ((b + 1) == _deviceID) continue;
         if (!_boards[b].online || !_neighbors[b].valid) continue;
-        if (now - _boards[b].lastSeenMs < WCB_TXWD_HEARD_MS) return true;
+        if (now - _boards[b].lastSeenMs < WCB_TXWD_HEARD_MS) n++;
     }
-    return false;
+    return n;
 }
 
 // The same bare SOLICIT the firmware's ?WDP,POLL sends (WCB_WDP.cpp wdpSendSolicit): magic, proto, SOLICIT len 0, END.
@@ -3032,6 +3034,7 @@ void WCB_Client::_sendWdpSolicit() {
 }
 
 void WCB_Client::_txWatchAnswered(unsigned long now) {
+    if (_txwdLevel) _txwdRecoveredMs = now ? now : 1;
     if (_txwdLevel) {
         const uint32_t was = _txwdStallMs ? (uint32_t)(now - _txwdStallMs) : 0;
         Serial.printf("[WCB_Client] mesh transmit recovered: the boards answer again after %lu s unanswered\n",
@@ -3108,21 +3111,37 @@ void WCB_Client::_txWatchTick(unsigned long now) {
         if (now - _txwdSentMs < WCB_TXWD_ANSWER_MS) return;
         const unsigned long sent = _txwdSentMs;
         _txwdSentMs = 0;
-        const unsigned long advert = _txwdAdvertMs, proof = _txwdProofMs;
-        const bool answered = (advert && (long)(advert - sent) >= 0) || (proof && (long)(proof - sent) >= 0);
+        // Answered: an ACK to anything we sent (no coincidence makes one), or adverts after the solicit from enough
+        // boards - two when two or more could answer, so one board's own periodic advert is not taken for an answer.
+        const unsigned long proof = _txwdProofMs;
+        int adverts = 0;
+        for (int b = 0; b < WCB_MAX_BOARDS; b++) {
+            if ((b + 1) == _deviceID || !_neighbors[b].valid) continue;
+            if ((long)(_neighbors[b].lastSeenMs - sent) >= 0) adverts++;
+        }
+        const bool answered = (proof && (long)(proof - sent) >= 0) || adverts >= (_txwdJudges >= 2 ? 2 : 1);
         if (answered) {
+            _txwdMisses = 0;
+            if (_txwdLevel && ++_txwdGood < WCB_TXWD_RECOVER) {   // a stall ends on answers in a row, not one
+                _txwdNextMs = now + WCB_TXWD_RETRY_MS;
+                return;
+            }
+            _txwdGood = 0;
             _txWatchAnswered(now);
             _txwdNextMs = now + _txwdProbeMs;
             return;
         }
-        if (!_txHaveJudge(now)) {             // everyone left during the wait: no verdict
+        _txwdGood = 0;
+        if (!_txJudges(now)) {                // everyone left during the wait: no verdict
             _txwdNextMs = now + _txwdProbeMs;
             return;
         }
         if (!_txwdStallMs) _txwdStallMs = sent;
         if (++_txwdMisses >= WCB_TXWD_MISSES) {
             _txwdMisses = 0;
-            _txWatchLevel(_txwdLevel == 0 ? 1 : 2, now);
+            // A stall soon after one ended: the ESP-NOW restart did not hold, so do not offer it again first.
+            const bool relapse = _txwdLevel == 0 && _txwdRecoveredMs && now - _txwdRecoveredMs < WCB_TXWD_RELAPSE_MS;
+            _txWatchLevel((_txwdLevel == 0 && !relapse) ? 1 : 2, now);
         }
         // At level 2 the library has done what it can: ask at the normal pace, not every few seconds.
         _txwdNextMs = now + (_txwdLevel >= 2 ? _txwdProbeMs : WCB_TXWD_RETRY_MS);
@@ -3136,11 +3155,13 @@ void WCB_Client::_txWatchTick(unsigned long now) {
         _txwdNextMs = proof + _txwdProbeMs;
         return;
     }
-    if (!_txHaveJudge(now)) {                 // nobody to ask
+    const uint8_t judges = _txJudges(now);
+    if (!judges) {                            // nobody to ask
         _txwdMisses = 0;
         _txwdNextMs = now + _txwdProbeMs;
         return;
     }
+    _txwdJudges = judges;
     _sendWdpSolicit();
     _txwdSentMs = now ? now : 1;
     _txwdProbes++;

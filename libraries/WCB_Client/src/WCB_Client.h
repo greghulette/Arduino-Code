@@ -120,6 +120,12 @@ constexpr uint8_t broadcast = 0;
 #define WCB_TXWD_RETRY_MS    5000UL  // once a probe goes unanswered, ask again this soon
 #define WCB_TXWD_MISSES      3       // unanswered probes in a row that make a stall (one lost frame is not)
 #define WCB_TXWD_HEARD_MS   15000UL  // a judge must have been heard this recently (WCB heartbeats are ~10 s)
+#define WCB_TXWD_RECOVER     2        // answered probes in a row that end a stall (one can be a coincidence)
+#define WCB_TXWD_RELAPSE_MS 180000UL  // a stall this soon after a recovery skips level 1 (the restart did not hold)
+
+// The library's version as a number - major*10000 + minor*100 + patch - kept equal to library.properties, so a
+// consumer can refuse to build against one too old: #if WCB_CLIENT_VERSION_NUM < 11801 ... #error ... #endif
+#define WCB_CLIENT_VERSION_NUM 11801
 
 // ── Ensured-delivery (ETM) retransmit tuning ─────────────────────────────────
 // Applies ONLY to send()/broadcast() calls made with ensured=true. These values
@@ -798,10 +804,16 @@ public:
     // unless ?DEBUG,MGMT is on. An ACK to any send counts as proof too, and makes the
     // next probe unnecessary. Only boards heard within WCB_TXWD_HEARD_MS that have
     // advertised before are asked, so a fleet with WDP off, or with nobody around,
-    // is never judged. WCB_TXWD_MISSES unanswered probes in a row (WCB_TXWD_RETRY_MS
+    // is never judged. With two or more such boards a probe counts as answered only
+    // when at least two advertise within the window: a solicit makes every board
+    // answer, while a board's own 60 s advert landing in the window is a coincidence
+    // (one did, in HIL run 20261014-173713, and the first cut called a dead radio
+    // recovered). WCB_TXWD_MISSES unanswered probes in a row (WCB_TXWD_RETRY_MS
     // apart once one is missed) restart ESP-NOW and put the mesh MAC back (level 1);
     // as many more after that report level 2 to onTxStall(), where the app decides
-    // whether to reboot. Every level change is printed with the radio's MAC,
+    // whether to reboot. A stall ends only after WCB_TXWD_RECOVER answered probes in
+    // a row, and one that comes back within WCB_TXWD_RELAPSE_MS of ending goes
+    // straight to level 2. Every level change is printed with the radio's MAC,
     // channel, send errors and internal heap, so the cause can be read off the log.
     //
     // Cost while healthy: one ~10-byte broadcast per interval and one advert back
@@ -1179,14 +1191,17 @@ private:
     unsigned long _lastChannelWarnMs = 0;                 // millis() of the last mismatch warning (rate-limit)
 
     // ── Transmit watchdog (setTxWatchdog) ────────────────────────────────────
-    // _txwdProofMs/_txwdAdvertMs are written on the RX task and read on the loop
-    // task: single aligned words, compared with rollover-safe subtraction.
+    // _txwdProofMs is written on the RX task and read on the loop task: a single
+    // aligned word, compared with rollover-safe subtraction. The adverts that answer
+    // a probe are read from _neighbors[].lastSeenMs the same way.
     bool                   _txwdEnabled  = false;
     uint32_t               _txwdProbeMs  = WCB_TXWD_PROBE_MS;
     unsigned long          _txwdNextMs   = 0;   // next probe due
     unsigned long          _txwdSentMs   = 0;   // the outstanding probe's send time (0 = none)
     volatile unsigned long _txwdProofMs  = 0;   // RX task: an ACK arrived (the mesh hears us)
-    volatile unsigned long _txwdAdvertMs = 0;   // RX task: a board's WDP advert arrived
+    uint8_t                _txwdJudges   = 0;   // boards that could answer the outstanding probe
+    uint8_t                _txwdGood     = 0;   // answered probes in a row since a stall (WCB_TXWD_RECOVER)
+    unsigned long          _txwdRecoveredMs = 0;   // when the last stall ended (WCB_TXWD_RELAPSE_MS); 0 = none
     uint8_t                _txwdMisses   = 0;   // unanswered probes in a row
     uint8_t                _txwdLevel    = 0;   // 0 answered, 1 ESP-NOW restarted, 2 still unanswered
     unsigned long          _txwdStallMs  = 0;   // when the first unanswered probe went out (0 = none)
@@ -1198,7 +1213,7 @@ private:
 
     esp_err_t _espSend(const uint8_t* mac, const uint8_t* data, size_t len);   // EVERY send goes through here
     void      _txWatchTick(unsigned long now);
-    bool      _txHaveJudge(unsigned long now) const;   // a board heard lately that has advertised before
+    uint8_t   _txJudges(unsigned long now) const;   // boards heard lately that have advertised before
     void      _txWatchAnswered(unsigned long now);
     void      _txWatchLevel(uint8_t level, unsigned long now);
     void      _sendWdpSolicit();
